@@ -1248,6 +1248,155 @@ def _finding_group_card(group, styles: dict) -> List[Any]:
     return story
 
 
+#: Order the comparison table lists its classes in. Deliberately not the order
+#: the counts dict happens to iterate: a reader looks for "new" first and
+#: "not assessed" last, and a table whose row order moves between reports is
+#: one nobody can skim.
+_COMPARISON_ROWS = (
+    ("new", "New", "Open now and not open at the baseline"),
+    ("still_open", "Still open", "Open in both scans"),
+    ("fixed", "Fixed", "Was open, this scan looked and did not find it"),
+    ("reappeared", "Reappeared", "Was fixed and has come back"),
+    (
+        "not_assessed",
+        "Not assessed",
+        "Was open; this scan did not assess the check, so it is NOT reported fixed",
+    ),
+)
+
+
+def _comparison_section(comparison, styles) -> List[Any]:
+    """
+    The change-since-last-scan section.
+
+    Returns an empty list when there is no comparison, so a report generated
+    without one is byte-for-byte what it was before this section existed. That
+    is the property to preserve: the delta is an addition, never a rewrite.
+    """
+    if not isinstance(comparison, dict) or not comparison:
+        return []
+
+    story: List[Any] = [_heading("Change since the previous scan", styles["h1"], 0)]
+
+    baseline = comparison.get("baseline_scan_id") or "—"
+    current = comparison.get("current_scan_id") or "—"
+    story.append(
+        _p(
+            f"Comparing scan <b>{escape_for_reportlab(str(current))}</b> against "
+            f"baseline <b>{escape_for_reportlab(str(baseline))}</b>.",
+            styles["body"],
+            escape=False,
+        )
+    )
+
+    if not comparison.get("comparable"):
+        # Said plainly rather than shown as zeroes. A table of noughts reads as
+        # "nothing changed", which is a different and much more reassuring
+        # claim than "these two scans cannot be compared".
+        story.append(
+            _p(
+                "<b>Not comparable.</b> "
+                + escape_for_reportlab(str(comparison.get("reason") or "")),
+                styles["body"],
+                escape=False,
+            )
+        )
+        return story
+
+    summary = str(comparison.get("summary") or "")
+    if summary:
+        story.append(
+            _p(f"<b>{escape_for_reportlab(summary)}</b>", styles["body"], escape=False)
+        )
+    story.append(Spacer(1, 3 * mm))
+
+    counts = comparison.get("counts") or {}
+    severity_counts = comparison.get("severity_counts") or {}
+    rows = [
+        [
+            _p("<b>Change</b>", styles["th"], escape=False),
+            _p("<b>Count</b>", styles["th"], escape=False),
+            _p("<b>Crit</b>", styles["th"], escape=False),
+            _p("<b>High</b>", styles["th"], escape=False),
+            _p("<b>Med</b>", styles["th"], escape=False),
+            _p("<b>Low</b>", styles["th"], escape=False),
+            _p("<b>Meaning</b>", styles["th"], escape=False),
+        ]
+    ]
+    for key, label, meaning in _COMPARISON_ROWS:
+        by_sev = severity_counts.get(key) or {}
+        rows.append(
+            [
+                _p(label, styles["body"]),
+                _p(str(counts.get(key, 0)), styles["body"]),
+                _p(str(by_sev.get("critical", 0)), styles["body"]),
+                _p(str(by_sev.get("high", 0)), styles["body"]),
+                _p(str(by_sev.get("medium", 0)), styles["body"]),
+                _p(str(by_sev.get("low", 0)), styles["body"]),
+                _p(meaning, styles["body"]),
+            ]
+        )
+    story.append(
+        _grid(
+            rows,
+            [26 * mm, 15 * mm, 12 * mm, 12 * mm, 12 * mm, 12 * mm, 72 * mm],
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+
+    scope = comparison.get("current_scope") or {}
+    if scope.get("recorded"):
+        story.append(
+            _p(
+                "Assessment scope for this scan: "
+                + escape_for_reportlab(", ".join(scope.get("families") or []) or "none")
+                + " across "
+                + str(len(scope.get("assets") or []))
+                + " host(s).",
+                styles["body"],
+                escape=False,
+            )
+        )
+    else:
+        story.append(
+            _p(
+                "This scan recorded no assessment scope, so no finding is "
+                "reported as fixed: an absent finding cannot be told apart from "
+                "one that was never looked for.",
+                styles["body"],
+            )
+        )
+
+    # Representative rows. Bounded, and the classes a reader acts on first.
+    interesting = [
+        f
+        for f in (comparison.get("findings") or [])
+        if f.get("classification") in ("new", "reappeared", "fixed")
+    ][:15]
+    if interesting:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_heading("Representative changes", styles["h2"], 1))
+        detail_rows = [
+            [
+                _p("<b>Change</b>", styles["th"], escape=False),
+                _p("<b>Finding</b>", styles["th"], escape=False),
+                _p("<b>Severity</b>", styles["th"], escape=False),
+                _p("<b>Host</b>", styles["th"], escape=False),
+            ]
+        ]
+        for f in interesting:
+            detail_rows.append(
+                [
+                    _p(str(f.get("classification") or ""), styles["body"]),
+                    _p(str(f.get("vuln_id") or ""), styles["body"]),
+                    _p(str(f.get("severity") or ""), styles["body"]),
+                    _p(str(f.get("asset_id") or ""), styles["body"]),
+                ]
+            )
+        story.append(_grid(detail_rows, [24 * mm, 74 * mm, 20 * mm, 43 * mm]))
+    return story
+
+
 def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     fg = SEVERITY_FG.get(finding.severity, MUTED)
 
@@ -1594,6 +1743,22 @@ class ScanReportGenerator:
         )
         story.append(_scan_metadata_block(meta, summary, findings, scan_type, styles))
         story.append(Spacer(1, 5 * mm))
+
+        # One line of change since the previous scan. The executive report
+        # answers "is this getting better or worse", and a total with nothing
+        # to compare it against cannot. Absent when there is no comparison, so
+        # a report generated without one is unchanged.
+        _cmp = result.get("scan_comparison") or {}
+        if _cmp.get("comparable") and _cmp.get("summary"):
+            story.append(
+                _p(
+                    "<b>Since the previous scan:</b> "
+                    + escape_for_reportlab(str(_cmp["summary"])),
+                    styles["body"],
+                    escape=False,
+                )
+            )
+            story.append(Spacer(1, 4 * mm))
 
         counts = findings.severity_counts()
         vuln_counts = {t: 0 for t in SEVERITY_TIERS}
@@ -1987,6 +2152,14 @@ class ScanReportGenerator:
         story.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=6))
         story.append(toc)
         story.append(PageBreak())
+
+        # ── Change since the previous scan ───────────────────────────────────
+        # Absent unless the scan carried a comparison, so a report generated
+        # without one is unchanged.
+        comparison_story = _comparison_section(result.get("scan_comparison"), styles)
+        if comparison_story:
+            story.extend(comparison_story)
+            story.append(PageBreak())
 
         # ── Host index ───────────────────────────────────────────────────────
         story.append(_heading("Host index", styles["h1"], 0))

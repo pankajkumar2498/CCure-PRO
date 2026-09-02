@@ -239,6 +239,39 @@ def _merge_host_identity(
     return merged
 
 
+def _assessed_config_definition_ids(config_summary) -> set:
+    """
+    Catalogue ids of the configuration checks this scan reached a *verdict* on.
+
+    Only PASS and FAIL count. A check that errored, was not applicable or could
+    not be collected established nothing about the host, and a finding it did
+    not report is not a finding that went away.
+
+    This is what stops the sweep below turning an unreachable session into a
+    page of remediated controls: 126 Windows STIG findings on one measured host
+    are absent from `cve_list` when the audit passes *and* when the audit never
+    ran, and only this set tells the two apart.
+    """
+    ids: set = set()
+    if not isinstance(config_summary, dict) or not config_summary.get("assessed"):
+        return ids
+    from core.config_audit.findings import config_definition_id
+
+    for result in config_summary.get("results") or []:
+        if not isinstance(result, dict):
+            continue
+        if str(result.get("outcome") or "").strip().lower() not in ("pass", "fail"):
+            continue
+        check_id = str(result.get("check_id") or "").strip()
+        if not check_id:
+            continue
+        finding_type = str(
+            (result.get("metadata") or {}).get("finding_type") or "config_check"
+        )
+        ids.add(config_definition_id(check_id, finding_type))
+    return ids
+
+
 def _sync_credentialed_asset_identity(
     db,
     *,
@@ -460,15 +493,55 @@ def _sync_credentialed_asset_identity(
         .all()
     )
 
+    # Which configuration checks actually produced a verdict this run, and
+    # therefore which absent configuration findings are genuinely gone.
+    _config_summary = (stored_report or {}).get("config_audit") or {}
+    _assessed_checks = _assessed_config_definition_ids(_config_summary)
+
+    from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
+
     for f in current_open:
         if _finding_family(_finding_source_from_record(f)) != "credentialed_package":
             continue
-        if f.vuln_id not in found_cve_ids:
-            f.status = "fixed"
-            f.fixed_at = utcnow()
-            _record_asset_change(
-                db, asset.id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
+        if f.vuln_id in found_cve_ids:
+            continue
+        # A configuration or privilege finding is only fixed if its check ran
+        # and answered. Package findings keep the previous behaviour: the
+        # matcher runs over the whole installed inventory, so a CVE it does not
+        # report on a host it inventoried really is gone.
+        if definition_type_for_id(f.vuln_id) != DEFINITION_TYPE_CVE:
+            if f.vuln_id not in _assessed_checks:
+                # Not assessed is not fixed. Left open, and the scan's recorded
+                # assessment scope is what lets a comparison say so out loud
+                # rather than silently carrying it forward.
+                continue
+        f.status = "fixed"
+        f.fixed_at = utcnow()
+        _record_asset_change(
+            db, asset.id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
+        )
+
+    # What this scan looked at, so a later comparison can tell "gone" from
+    # "nobody looked". Smallest clean record: merged into `scans.options`,
+    # which is JSONB and already carries `options.origin`. GAP-12's policy
+    # engine is where this eventually belongs; it is deliberately not built here.
+    try:
+        from core.findings import record_assessment_scope
+        from db.models.scans import Scan as _Scan
+
+        _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
+        if _scan_row is not None:
+            record_assessment_scope(
+                _scan_row,
+                assets=[asset.id],
+                families=["credentialed_package"],
+                detail={
+                    "config_audit_assessed": bool(_config_summary.get("assessed")),
+                    "checks_assessed": len(_assessed_checks),
+                },
             )
+    except Exception as exc:  # never fail a scan over its own bookkeeping
+        log.warning("Could not record assessment scope for scan %s: %s", scan_id, exc)
 
     db.flush()
 
@@ -4273,8 +4346,12 @@ def run_credentialed_scan_task(
                 **coverage,
             },
         }
-        orch = _new_orchestrator()
-        report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
+        # The report is generated *after* the findings are synced, further down.
+        # It used to be built here, before a single finding had been written,
+        # which is why it could not carry a comparison against the previous
+        # scan: at this point the current scan's findings do not yet exist to
+        # be compared. The scan row is created first with no report paths and
+        # they are set once the files exist, all inside the same transaction.
         scan = create_completed_scan(
             db=db,
             user_id=user_id,
@@ -4288,8 +4365,8 @@ def run_credentialed_scan_task(
             # Without this the helper's default silently relabelled the scan as
             # a vulnerability_audit — a pipeline none of whose phases ran.
             pipeline_mode="credentialed",
-            report_executive_path=report_paths.get("executive_pdf"),
-            report_technical_path=report_paths.get("technical_pdf"),
+            report_executive_path=None,
+            report_technical_path=None,
             scan_id=scan_id,
             commit=False,  # ENTERPRISE FIX: Do not commit yet
         )
@@ -4324,6 +4401,55 @@ def run_credentialed_scan_task(
                 system_data=system_data,
                 scan_id=str(scan.id),
             )
+
+        # ── Change since the previous scan ──────────────────────────────
+        # Computed here because the findings this scan wrote have to exist
+        # before they can be compared, and flushed first so the comparison
+        # reads them. A failure here costs the delta section and nothing else:
+        # the report is still generated, without it.
+        try:
+            db.flush()
+            from core.findings import compare_scans
+            from core.findings.comparison import previous_scan_for
+
+            _baseline = previous_scan_for(db, scan)
+            if _baseline is not None:
+                _comparison = compare_scans(
+                    db, current=scan, baseline=_baseline, limit_findings=200
+                )
+                report_result["scan_comparison"] = _comparison.as_dict()
+                summary["scan_comparison"] = _comparison.as_dict(include_findings=False)
+                log.info(
+                    "Scan %s vs baseline %s: %s",
+                    scan.id,
+                    _baseline.id,
+                    _comparison.summary_line(),
+                )
+        except Exception as cmp_exc:
+            log.warning(
+                "Could not compute the scan comparison for %s: %s", scan.id, cmp_exc
+            )
+
+        orch = _new_orchestrator()
+        report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
+        scan.report_executive_path = report_paths.get("executive_pdf")
+        scan.report_technical_path = report_paths.get("technical_pdf")
+        # Stamped *after* the findings are written, not before.
+        #
+        # `create_completed_scan` sets this when the scan row is built, which is
+        # before the sync runs — so every finding a scan produced carried a
+        # `first_found_at` a second or two *later* than the scan's own
+        # `completed_at`. Measured on a real target: baseline completed 18:48:44,
+        # its earliest finding first seen 18:48:45. A comparison anchored on that
+        # boundary therefore judged every finding the baseline itself wrote to be
+        # newer than the baseline, and reported 50 new / 0 unchanged on two scans
+        # of an almost unchanged host.
+        scan.completed_at = utcnow()
+        # No `db.add`: `create_completed_scan` already put this instance in the
+        # session, so assigning the attributes is enough. Re-adding also breaks
+        # any caller that hands back a stand-in rather than a mapped instance,
+        # which is what `test_an_unreachable_host_does_not_abandon_the_others`
+        # does — and it failed the whole task, not just the bookkeeping.
 
         # Trigger AMT reconciliation now that the asset identity has been fully synced
         try:

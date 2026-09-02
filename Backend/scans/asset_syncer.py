@@ -2447,6 +2447,24 @@ def sync_vulnerability_audit(
                     db, asset_id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
                 )
 
+        # What this scan looked at on this asset, so a later comparison can
+        # tell a finding that went away from one nobody looked for. The network
+        # sweep above is already family-scoped, so this is bookkeeping for the
+        # comparison rather than a guard on the sweep.
+        try:
+            from core.findings import record_assessment_scope
+            from db.models.scans import Scan as _Scan
+
+            _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
+            if _scan_row is not None:
+                record_assessment_scope(
+                    _scan_row, assets=[asset_id], families=[source_family]
+                )
+        except Exception as exc:  # bookkeeping must never fail a scan
+            logger.warning(
+                "Could not record assessment scope for scan %s: %s", scan_id, exc
+            )
+
         asset.last_scan_id = scan_id
         asset.last_seen_at = utcnow()
         asset.updated_at = utcnow()

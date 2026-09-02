@@ -84,7 +84,7 @@ were fixed in-phase, and §9N.6 records them.
 | **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)                                | `9d74a0c` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
 | GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                                              | —         |
-| GAP-13       | Scan comparison & finding lifecycle      | Findings       | 13    | High     | 25% [measured]   | 90%    | Open                                                                              | —         |
+| **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `pending` |
 | GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
@@ -4665,6 +4665,198 @@ test whose failure message says what the defect cost.
 - **`profiles`**: the eleven MAC-\*/CAT-\* profiles this content ships are not
   selectable per organisation; the loader takes one and `BenchmarkControl.profiles`
   carries it. Choosing one per tenant is GAP-12's business.
+
+---
+
+## 9O. Phase 16 — GAP-13: scan comparison and finding lifecycle
+
+Phase 15 and the two content loads took this product from 155 assessable checks
+to 955 benchmark rules plus the built-ins. Measured consequence: **4,633
+findings on one Linux host and 3,873 on one Windows host**. The full list
+stopped being something a person can read, and the product had no way to say
+what had changed. This adds one.
+
+**No new finding model, no second store, no migration.**
+
+### 9O.1 Reconstructing a baseline without a per-scan occurrence table
+
+The obvious design is a row per finding per scan. At the scale above that is
+thousands of rows per host per scan, and it is not needed:
+`asset_vulnerabilities` already carries `first_found_at`, `last_found_at`,
+`fixed_at` and `status`, and those answer the question for **any** point in
+time —
+
+    a finding was open at time T
+      iff  first_found_at <= T  and  (fixed_at is null or fixed_at > T)
+
+— because a baseline scan is just a T. The comparison therefore ships as a
+query rather than a schema change.
+
+Identity is the existing one: `AssetVulnerability.id` is minted from
+`(asset_id, vuln_id, source_family)`, so the same logical finding keeps one
+row across scans and re-detections. Note what the schema does _not_ say —
+`uq_asset_vuln_scan_asset_cve` is UNIQUE on
+`(org_id, scan_id, asset_id, vuln_id)` and excludes the family, so two
+families cannot share a `scan_id`.
+
+### 9O.2 The rule the phase exists for: absence is not a fix
+
+Both fixed-sweeps already marked _every_ open finding absent from a scan as
+fixed. For package findings that is defensible — the matcher runs over the
+whole inventory. For a configuration check it is not: 126 Windows STIG findings
+are absent from `cve_list` when the audit passes **and** when the audit never
+ran, and nothing distinguished the two. A credential that expired would have
+been reported as 126 remediated controls.
+
+Two things now prevent that:
+
+- **A per-scan assessment scope.** `record_assessment_scope` writes what a
+  scan actually looked at — asset ids and `source_family` values — into
+  `scans.options`, which is JSONB, already carries `options.origin`, and is
+  the smallest honest record. A dedicated column was rejected: it is a
+  migration on a live table for something with no query predicate of its own,
+  and GAP-12's policy record is where this should eventually fold in rather
+  than compete with. Scope **merges** rather than replaces, because one scan
+  writes findings from several paths.
+- **A guarded sweep.** `_assessed_config_definition_ids` builds the set of
+  checks that reached a verdict — PASS or FAIL only; ERROR and NOT_APPLICABLE
+  establish nothing — and a configuration finding is marked fixed only if its
+  check is in it.
+
+A scan with no recorded scope can **never** report a fix. Unknown reach is not
+"assessed everything"; it degrades to `NOT_ASSESSED`, which is a class of its
+own, counted separately and named in the summary line. A reader told "8 fixed"
+and not told "40 not assessed" has been handed a number implying progress the
+scan did not establish.
+
+### 9O.3 Two defects real hardware found
+
+Both produced confident, plausible, wrong answers, and neither was reachable
+from unit tests.
+
+- **A scan was stamped complete before its own findings existed.**
+  `create_completed_scan` sets `completed_at` when the scan row is built,
+  which is before the sync runs. Measured on the disposable target: baseline
+  completed **18:48:44**, its earliest finding first seen **18:48:45**. Every
+  finding a scan produced therefore post-dated the scan, so a comparison
+  anchored on that boundary judged all of them newer than the baseline and
+  reported **50 new, 0 unchanged** on two scans of an almost unchanged host.
+  `completed_at` is now stamped after the sync, which also makes it true.
+- **A regression was reported for ever.** `fixed_at` holds only the most
+  recent fix and is not cleared when a finding returns, so four curl CVEs fixed
+  in scan B and back in scan C were correctly flagged reappeared for C-against-B
+  and then **wrongly flagged again for D-against-C**, when by then they had
+  simply been open the whole time. A fix predating the baseline's own start, on
+  a finding that is open now, means the finding returned at or before the
+  baseline — so the baseline saw it open and it is unchanged. The cost is
+  stated rather than hidden: a regression occurring between an old fix and the
+  baseline reads as unchanged. One under-report against crying wolf
+  indefinitely.
+
+The report is also generated **after** the sync now, because a delta cannot be
+computed from findings that do not yet exist. Report paths are set on the scan
+row before the same commit, so nothing else changes.
+
+### 9O.4 Real-target validation — disposable Ubuntu 24.04, five scans
+
+Built, changed, scanned and destroyed, per the standing rule; the root
+credential was generated at run time and never written to source, configuration
+or Git, and both it and the container are gone.
+
+| #   | Change made before the scan        | Comparison | Result                                                          |
+| --- | ---------------------------------- | ---------- | --------------------------------------------------------------- |
+| A   | — (baseline)                       | —          | baseline established                                            |
+| B   | removed `libpam-pwquality`, `curl` | B vs A     | **4 fixed** — exactly the four curl CVEs                        |
+| C   | reinstalled `curl`, added `wget`   | C vs B     | **5 reappeared** — the four curl CVEs and the pwquality control |
+| D   | installed `nginx`                  | D vs C     | **3 new** — an nginx CVE and two nginx middleware controls      |
+| E   | **nothing**                        | E vs D     | **0 new, 54 unchanged, 0 fixed, 0 reappeared**                  |
+
+Scan E is the one that matters most. An unchanged host rescanned produces no
+spurious delta at all: no invented fix, no invented regression. Every figure
+above was computed by the scan itself and is in the worker log.
+
+Note the pwquality control appears as **reappeared**, not new — it had been
+fixed by installing the package and came back when it was removed. Folding that
+into "new" would have hidden a regression.
+
+### 9O.5 API
+
+`GET /scans/{scan_id}/comparison` — `baseline` (defaults to the previous
+completed scan of the same `pipeline_mode`), `asset_id`, `severity`,
+`limit`, `include_findings`.
+
+Both scans are fetched through `_get_scan_or_404`, so the organisation
+scoping and per-user visibility rule governing every other scan route govern
+this one: a caller cannot compare against a scan they could not read, and
+naming another tenant's scan id returns 404 rather than its findings. The
+comparison query filters on `org_id` again regardless.
+
+`limit` bounds the returned rows and **never the counts** — a truncated count
+is a wrong number, a short list is a sample. A first scan with no baseline
+returns the normal shape with `comparable: false` and a reason, so a report
+can render "no baseline" instead of an error.
+
+### 9O.6 Reporting
+
+    scan → sync → compare_scans → report payload → PDF
+
+The technical report gains a **Change since the previous scan** section: the
+baseline and current scan ids, the summary line, a table of the five classes
+with severity breakdown, the assessment scope, and up to fifteen representative
+new/fixed/reappeared rows. The executive report gains one line —
+_Since the previous scan: 12 new, 340 unchanged, 8 fixed, 2 reappeared._
+
+Two properties are pinned by tests. `_comparison_section` returns an empty
+list when there is no comparison, so **a report generated without one is
+byte-for-byte what it was before**. And an incomparable pair prints _Not
+comparable_ with the reason rather than a table of zeroes, which would read as
+"nothing changed" — a very different and much more reassuring claim.
+
+The `not_assessed` row is labelled in the table as _"Was open; this scan did
+not assess the check, so it is NOT reported fixed"_, so the distinction survives
+into the artefact a customer actually reads.
+
+### 9O.7 Coverage
+
+Denominator frozen before implementation at **14 areas**, from what a
+Nessus-class comparison offers:
+
+| Implemented (10)                              | Not implemented (4)                                 |
+| --------------------------------------------- | --------------------------------------------------- |
+| NEW classification                            | Per-scan finding occurrence history                 |
+| STILL_OPEN classification                     | Accurate comparison of arbitrary _historical_ pairs |
+| FIXED classification                          | Remediation-verification workflow (GAP-14)          |
+| REAPPEARED classification                     | UI presentation                                     |
+| NOT_ASSESSED (absence ≠ fix)                  |                                                     |
+| Per-scan assessment scope                     |                                                     |
+| Comparison API with RBAC and tenant isolation |                                                     |
+| Severity breakdown                            |                                                     |
+| Asset and severity filtering                  |                                                     |
+| Technical + executive report integration      |                                                     |
+
+**GAP-13: 25% → 71.4%** (10/14), implemented _and_ tested _and_ real-target
+validated. The four gaps are recorded below rather than rounded away.
+
+### 9O.8 Known limitations
+
+- **A comparison is accurate while it is the latest scan.** It reconstructs
+  from current row state, so once later scans move `fixed_at` and
+  `last_found_at` an older pair degrades. Measured: B-against-A gave "4 fixed,
+  1 reappeared" when B was current and a different answer once D had run. This
+  is why the report embeds the comparison **at scan time**, when it is right.
+  Accurate historical pairs need per-scan occurrence rows, which is the first
+  item in the not-implemented column.
+- **Multi-cycle findings reconstruct approximately.** Only the most recent
+  `fixed_at` survives; see §9O.3.
+- **Only the credentialed path records scope in full.** The network path
+  records assets and family; the configuration-audit detail
+  (`config_audit_assessed`, `checks_assessed`) is credentialed-only, which
+  is where the false-fix risk actually lives.
+- **Comparability is checked, not enforced.** Two scans of the same host with
+  different `sections` are compared and the scope is reported, but nothing
+  refuses the comparison — the real fix is GAP-12's policy record, deliberately
+  not built here.
+- **No UI.** API and reports only.
 
 ---
 

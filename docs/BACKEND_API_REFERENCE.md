@@ -394,6 +394,30 @@ Source: `Backend/routers/health.py` — 4 operations.
 | GET    | `/api/pipeline-modes`      | public       | Pipeline modes and their phase lists                                             |
 | GET    | `/api/workflow-example`    | public       | Frontend orchestration example                                                   |
 
+### `GET /scans/{scan_id}/comparison`
+
+What changed between this scan and a baseline. `scans:read`, 30/minute.
+
+| Query              | Meaning                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `baseline`         | Scan to compare against. Defaults to the previous completed scan of the same `pipeline_mode` in this organisation. |
+| `asset_id`         | Restrict to these assets (repeatable).                                                                             |
+| `severity`         | Restrict to these severities (repeatable).                                                                         |
+| `limit`            | Cap on returned rows, 1–5000, default 500. Bounds the list, **never the counts**.                                  |
+| `include_findings` | Omit the row list for a counts-only call.                                                                          |
+
+Findings are classified `new`, `still_open`, `fixed`, `reappeared` or
+`not_assessed`. The last is the important one: a finding that was open and is
+absent from this scan is only reported **fixed** when the scan actually
+assessed the relevant check. Where it did not — no credential, a collector
+that errored, a scan with no recorded assessment scope — it is
+`not_assessed`, never `fixed`.
+
+Both scans are resolved through the same tenant-scoped lookup as every other
+scan route, so a scan the caller could not read returns 404. A first scan with
+no baseline returns the normal shape with `comparable: false` and a reason
+rather than an error.
+
 ### `GET /scan/progress/{scan_id}`
 
 Reads from PostgreSQL (`scans/progress.py::read_progress`) rather than an
@@ -802,16 +826,17 @@ is compiled to check it parses and is never matched against anything.
 
 Source: `Backend/scans/router.py` — 8 HTTP operations + 1 WebSocket.
 
-| Method | Path                       | Permission      | Purpose                              |
-| ------ | -------------------------- | --------------- | ------------------------------------ |
-| GET    | `/scans`                   | `scans:read`    | Filtered, sorted, paginated history  |
-| GET    | `/scans/events`            | `scans:read`    | **SSE** live history stream          |
-| GET    | `/scans/{scan_id}`         | `scans:read`    | Full detail incl. all phase results  |
-| POST   | `/scans/{scan_id}/archive` | `scans:archive` | Move to Archived                     |
-| POST   | `/scans/{scan_id}/stop`    | `scans:execute` | Cancel a running scan                |
-| POST   | `/scans/{scan_id}/restore` | `scans:restore` | Restore from Archived or Recycle Bin |
-| DELETE | `/scans/{scan_id}`         | `scans:recycle` | Move to Recycle Bin (soft delete)    |
-| DELETE | `/scans/{scan_id}/purge`   | `scans:purge`   | Permanent delete                     |
+| Method | Path                          | Permission      | Purpose                              |
+| ------ | ----------------------------- | --------------- | ------------------------------------ |
+| GET    | `/scans`                      | `scans:read`    | Filtered, sorted, paginated history  |
+| GET    | `/scans/events`               | `scans:read`    | **SSE** live history stream          |
+| GET    | `/scans/{scan_id}`            | `scans:read`    | Full detail incl. all phase results  |
+| GET    | `/scans/{scan_id}/comparison` | `scans:read`    | What changed against a baseline scan |
+| POST   | `/scans/{scan_id}/archive`    | `scans:archive` | Move to Archived                     |
+| POST   | `/scans/{scan_id}/stop`       | `scans:execute` | Cancel a running scan                |
+| POST   | `/scans/{scan_id}/restore`    | `scans:restore` | Restore from Archived or Recycle Bin |
+| DELETE | `/scans/{scan_id}`            | `scans:recycle` | Move to Recycle Bin (soft delete)    |
+| DELETE | `/scans/{scan_id}/purge`      | `scans:purge`   | Permanent delete                     |
 
 ### `GET /scans`
 

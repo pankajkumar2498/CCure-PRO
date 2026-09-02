@@ -1785,6 +1785,79 @@ findings rather than only Windows:
   was first seen — the same staleness the version fields beside it already fix.
   On a configuration check the evidence *is* the finding.
 
+## Scan comparison and finding lifecycle (`core/findings/`)
+
+What changed between two scans. GAP-13; tracker §9O. **No new finding model, no
+second store, no migration** — `asset_vulnerabilities` already carried
+everything needed.
+
+- **A baseline is reconstructed from timestamps, not from an occurrence table.**
+  A finding was open at time T iff `first_found_at <= T and (fixed_at is null or
+  fixed_at > T)`, and a baseline scan is just a T. A row per finding per scan
+  would be thousands of rows per host per scan for something the lifecycle
+  columns already answer.
+
+- **Absence is not a fix, and this is the whole point.** Both fixed-sweeps
+  marked every open finding missing from a scan as fixed. For a package finding
+  that is defensible; for a configuration check it is not — 126 Windows STIG
+  findings are absent from `cve_list` when the audit *passes* and when it never
+  *ran*. A scan now records what it assessed, and a configuration finding is
+  marked fixed only if its check reached a verdict (PASS or FAIL — ERROR and
+  NOT_APPLICABLE establish nothing). A scan with no recorded scope can never
+  report a fix; the finding lands in `NOT_ASSESSED`, which is counted and named
+  in the summary rather than quietly dropped.
+
+- **`record_assessment_scope` writes into `scans.options`** — JSONB, already
+  carrying `options.origin`, client-visible, so no secret may go near it. It
+  **merges**, because one scan writes findings from several paths and the
+  configuration audit's record must not erase the package matcher's. It is
+  deliberately not a new column: GAP-12's scan-policy record is where this
+  should fold in, and a migration on a live table for something with no query
+  predicate of its own buys nothing.
+
+- **`completed_at` is stamped after the findings sync, not before.**
+  `create_completed_scan` set it when the row was built — before the sync — so
+  every finding a scan produced carried a `first_found_at` *later* than its own
+  scan's completion. Measured: baseline completed 18:48:44, its earliest finding
+  first seen 18:48:45, and the comparison duly reported **50 new, 0 unchanged**
+  on two scans of an almost unchanged host. Do not move it back.
+
+- **`updated_at` is not a scan boundary.** It carries `onupdate=utcnow`, so it
+  moves whenever the row is touched — the same property that once corrupted the
+  Scan History date. `_scan_window` uses `started_at`/`completed_at` and treats
+  `updated_at` only as a last-resort fallback for rows predating them.
+
+- **A fix predating the baseline's own start reads as unchanged, not as a
+  regression.** `fixed_at` holds only the most recent fix and is not cleared
+  when a finding returns, so without this four curl CVEs were correctly flagged
+  reappeared once and then flagged again on every subsequent comparison. The
+  trade is recorded: a regression between an old fix and the baseline
+  under-reports once, against crying wolf indefinitely.
+
+- **A comparison is accurate while it is the latest scan.** It reads current row
+  state, so once later scans move `fixed_at` and `last_found_at`, an older pair
+  degrades. That is why the report embeds the comparison **at scan time**. The
+  report is therefore generated after the sync, and the scan's report paths are
+  set before the same commit.
+
+- **The report section returns an empty list when there is no comparison**, so a
+  report generated without one is byte-for-byte what it was before. An
+  incomparable pair prints *Not comparable* and the reason rather than a table
+  of zeroes, which would read as "nothing changed".
+
+- **API**: `GET /scans/{scan_id}/comparison`. Both scans go through
+  `_get_scan_or_404`, so tenant scoping and per-user visibility are the same
+  rules every other scan route uses. `limit` bounds the rows and never the
+  counts — a truncated count is a wrong number, a short list is a sample.
+
+- **Do not test this through `TestClient` with `auth_headers`.** The login
+  commits, and because the app shares the test session every uncommitted fixture
+  row is committed with it, survives the per-test rollback and collides with
+  later tests — measured as 13 failures and 19 errors elsewhere in the suite.
+  `tests/scans/test_finding_comparison.py` calls the route function directly
+  with a real session, which exercises the same code including
+  `_get_scan_or_404`.
+
 ## Assessment framework (`core/checks/`)
 
 The common contract every new assessment speaks. Added in Phase 0 of the

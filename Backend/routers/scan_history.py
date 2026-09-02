@@ -25,10 +25,13 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
+
+from scan_helpers import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -669,6 +672,85 @@ def get_scan(
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     return _scan_to_dict(scan, db=db, include_results=True)
+
+
+@router.get("/{scan_id}/comparison")
+@limiter.limit("30/minute")
+def compare_scan(
+    # `request` and `response` are required, not decoration. The limiter is
+    # built headers_enabled=True and writes X-RateLimit-* after the handler
+    # returns; with neither a returned Response nor a declared one it hands
+    # slowapi None and every request to this route raises. CLAUDE.md records
+    # twenty-one routes that shipped in exactly that state.
+    request: Request,
+    response: Response,
+    scan_id: str,
+    baseline: str | None = Query(
+        None,
+        description=(
+            "Scan to compare against. Defaults to the most recent completed "
+            "scan of the same pipeline_mode in this organisation."
+        ),
+    ),
+    asset_id: list[str] | None = Query(None),
+    severity: list[str] | None = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    include_findings: bool = Query(True),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "read")),
+):
+    """
+    What changed between this scan and a baseline.
+
+    Both scans are fetched through ``_get_scan_or_404``, so the organisation
+    scoping and the per-user visibility rule that govern every other scan route
+    govern this one too — a caller cannot compare against a scan they could not
+    read, and cannot reach another tenant's findings by naming its id.
+
+    ``limit`` bounds the returned rows, never the counts: an estate with
+    thousands of findings on one host still gets accurate totals, and the list
+    is the sample. That split is deliberate — a truncated count would be a
+    wrong number rather than a short page.
+    """
+    from core.findings import compare_scans
+    from core.findings.comparison import previous_scan_for
+
+    current = _get_scan_or_404(scan_id, user, db, org_id)
+
+    if baseline:
+        baseline_scan = _get_scan_or_404(baseline, user, db, org_id)
+    else:
+        baseline_scan = previous_scan_for(db, current)
+        if baseline_scan is None:
+            # A first scan has nothing to be compared with. That is an answer,
+            # not an error: the caller gets the shape it expects with the
+            # reason filled in, so a report can render "no baseline" rather
+            # than a failure.
+            return {
+                "current_scan_id": str(current.id),
+                "baseline_scan_id": None,
+                "comparable": False,
+                "reason": (
+                    "no earlier completed scan of the same kind exists for this "
+                    "organisation, so there is nothing to compare against"
+                ),
+                "summary": "",
+                "counts": {},
+                "severity_counts": {},
+                "assets": [],
+                "findings": [],
+            }
+
+    comparison = compare_scans(
+        db,
+        current=current,
+        baseline=baseline_scan,
+        asset_ids=asset_id,
+        severities=severity,
+        limit_findings=limit,
+    )
+    return comparison.as_dict(include_findings=include_findings)
 
 
 @router.post("/{scan_id}/archive")

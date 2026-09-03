@@ -4858,43 +4858,65 @@ validated. The four gaps are recorded below rather than rounded away.
   not built here.
 - **No UI.** API and reports only.
 
-### 9O.9 The pytest scratch database needs a superuser repair
+### 9O.9 One residual test-database inconsistency, and it is mine
 
-**Recorded because it is mine and it is not fixed.** The suite reports
-**4,510 passed, 17 failed, 6 errors, 168 skipped**, and every failure and error
-is in `tests/audit/` — `test_audit_retention_safety`,
-`test_audit_retention_concurrency`, `test_audit_retention_holds`. Nothing else
-fails, including every test added by this phase.
+**Recorded because it is mine, it is not a product defect, and it is not fixed.**
 
-The cause is not the product. While clearing test pollution of my own making —
-API tests that went through `TestClient`, whose login commits and so committed
-the uncommitted fixture rows with it — I ran `DROP SCHEMA public CASCADE` on
-`ccure_pytest_db`. `conftest` rebuilt the tables, but the audit tamper-evidence
-and retention objects are installed by **privileged DBA scripts**, not by the
-suite:
+While clearing test pollution of my own making — API tests driven through
+`TestClient`, whose login commits and so committed the uncommitted fixture rows
+with it — I ran `DROP SCHEMA public CASCADE` on `ccure_pytest_db`. `conftest`
+rebuilt the tables, but the audit tamper-evidence and retention objects are
+installed by privileged DBA scripts, not by the suite, and they were lost.
 
-    scripts/audit/bootstrap_chain.sql
-    scripts/audit/bootstrap_chain_retention.sql
+**The bootstrap has since been restored** (`scripts/audit/bootstrap_chain.sql`
+and `bootstrap_chain_retention.sql`, run as a superuser). The suite went from
+**4,510 passed / 17 failed / 6 errors / 168 skipped** to
+**4,698 passed / 1 failed / 2 skipped** — skips back to their normal 2, so the
+audit-chain suite is genuinely restored.
 
-Those create the `audit_chain_writer` and `audit_maintenance` roles and the
-append-only triggers and grants on `audit_logs`, and they require SUPERUSER —
-`ccure_user` gets `ERROR: must be able to SET ROLE "audit_chain_writer"`. The
-schemas themselves survived; the triggers and grants on the recreated
-`public.audit_logs` did not, which is why those tests fail rather than skip.
+One inconsistency survives, in data rather than schema:
 
-Repair, as a database administrator, against the scratch database only:
+    test_audit_chain_schema_isolation::test_legacy_rows_remain_unhashed_and_uncounted
+    AssertionError: heads claim 1461 chained events but 0 rows carry a hash
+
+`audit_chain.audit_chain_heads` holds 454 rows totalling 1,461 counted events
+while `public.audit_logs` is empty. The heads live in their own schema, which
+`DROP SCHEMA public` did not touch, and they carry **no foreign key to
+`organizations`** — deliberately, so that deleting a tenant cannot erase the
+evidence that its audit trail existed. Nothing in the suite clears them. So the
+rows went and the counters stayed.
+
+The direction matters and is the one the design calls a break rather than a
+note: a head _ahead_ of the surviving rows means rows were removed out of band,
+which is exactly what happened. The check is working; the data is wrong.
+
+`ccure_user` cannot repair it, and that is the control functioning:
+`has_table_privilege` on `audit_chain_heads` returns false for DELETE, and
+`audit_chain_note_chained_purge_v1` and `audit_chain_seed_legacy_v1` are not
+executable by it. Repair is one statement as a superuser, against the scratch
+database only, and is safe precisely because `audit_logs` is empty — there is
+no evidence left to lose:
 
 ```
-psql "postgresql://postgres@127.0.0.1:5432/ccure_pytest_db" -f Backend/scripts/audit/bootstrap_chain.sql
-psql "postgresql://postgres@127.0.0.1:5432/ccure_pytest_db" -f Backend/scripts/audit/bootstrap_chain_retention.sql
-python Backend/scripts/audit/verify_retention_bootstrap.py
+psql "postgresql://postgres@127.0.0.1:5432/ccure_pytest_db" \
+  -c "DELETE FROM audit_chain.audit_chain_heads;"
 ```
 
-**`ccure_test`, the live database, was never touched by any of this.** The
-lesson worth keeping is the one that started it: do not drive this suite's API
-routes through `TestClient` with `auth_headers` while holding uncommitted
+**It is not GAP-13.** The failing test reads `public.audit_logs` and
+`audit_chain.audit_chain_heads`; commit `3b8ac56` contains zero occurrences of
+`audit_logs`, `audit_chain` or `record_hash`, and every GAP-13 test, the API
+guard tests and the report guard tests pass — 53 of 53.
+
+**`ccure_test`, the live database, was never touched.** Verified after the
+restore: 63 tables, 13 users, 4 organisations, 59 scans, 16 assets, 8,631
+findings, 2,525 compliance controls, 2,312 rules, 365,868 vulnerability
+definitions, 725 audit logs, and its own audit-chain objects intact.
+
+The lesson worth keeping is the one that started it: do not drive this suite's
+API routes through `TestClient` with `auth_headers` while holding uncommitted
 fixture rows — the login commits them, they survive the per-test rollback, and
-the cleanup is worse than the pollution.
+the cleanup is far worse than the pollution. `test_finding_comparison.py` calls
+the route function directly with a real session for exactly this reason.
 
 ---
 
@@ -5164,31 +5186,31 @@ the assertion is testing the right thing, and the generator really can collide.
 
 ## 12. Commit log
 
-| Phase | Commit    | Tag | Suite result                                           |
-| ----- | --------- | --- | ------------------------------------------------------ |
-| 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅                              |
-| 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅                              |
-| 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅                              |
-| 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅                              |
-| 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅                              |
-| 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅                              |
-| 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅                              |
-| 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅                              |
-| 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅                              |
-| 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅                              |
-| 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅                              |
-| 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅                              |
-| 11    | `426c282` | —   | 4279 passed, 2 skipped ✅                              |
-| 11s   | `dd79bee` | —   | 4359 passed, 2 skipped ✅                              |
-| 11s2  | `c5ec7b7` | —   | 4412 passed, 2 skipped ✅                              |
-| 12    | `4a88723` | —   | 4462 passed, 2 skipped ✅                              |
-| 12f   | `adf88c7` | —   | 4475 passed, 2 skipped ✅                              |
-| 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅                              |
-| 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅                              |
-| 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅                              |
-| 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅                              |
-| 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                              |
-| 16    | `3b8ac56` | —   | 4510 passed, 17 failed ⚠ (audit bootstrap, see §9O.9) |
+| Phase | Commit    | Tag | Suite result                                    |
+| ----- | --------- | --- | ----------------------------------------------- |
+| 0     | `31c10b4` | —   | 1589 passed, 2 skipped ✅                       |
+| 1     | `37871a6` | —   | 1661 passed, 2 skipped ✅                       |
+| 2     | `9e4ecaa` | —   | 1704 passed, 2 skipped ✅                       |
+| 3     | `daab13a` | —   | 1945 passed, 2 skipped ✅                       |
+| 4     | `9e762d0` | —   | 2044 passed, 2 skipped ✅                       |
+| 5     | `8a5bbd7` | —   | 2266 passed, 2 skipped ✅                       |
+| 6     | `d40800d` | —   | 2405 passed, 2 skipped ✅                       |
+| 7     | `9d74a0c` | —   | 3108 passed, 2 skipped ✅                       |
+| 8     | `7520e90` | —   | 3647 passed, 2 skipped ✅                       |
+| 9     | `13d6854` | —   | 3987 passed, 2 skipped ✅                       |
+| 10    | `6b4c06e` | —   | 4123 passed, 2 skipped ✅                       |
+| 10s   | `04a725e` | —   | 4138 passed, 2 skipped ✅                       |
+| 11    | `426c282` | —   | 4279 passed, 2 skipped ✅                       |
+| 11s   | `dd79bee` | —   | 4359 passed, 2 skipped ✅                       |
+| 11s2  | `c5ec7b7` | —   | 4412 passed, 2 skipped ✅                       |
+| 12    | `4a88723` | —   | 4462 passed, 2 skipped ✅                       |
+| 12f   | `adf88c7` | —   | 4475 passed, 2 skipped ✅                       |
+| 13    | `7fd2f17` | —   | 4515 passed, 2 skipped ✅                       |
+| 13c   | `ff5237a` | —   | 4515 passed, 2 skipped ✅                       |
+| 13v   | `7ad2b9a` | —   | 4555 passed, 2 skipped ✅                       |
+| 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅                       |
+| 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                       |
+| 16    | `3b8ac56` | —   | 4698 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

@@ -212,13 +212,104 @@ def _resolve_targets(db: Session, schedule: ScanSchedule) -> List[str]:
         raise ScheduleDispatchError(str(detail)) from exc
 
 
+def _schedule_policy_options(db: Session, schedule: ScanSchedule, *, scan_kind: str):
+    """
+    Resolve the schedule's policy into the configuration this run will use.
+
+    Called **before the scan row is created**, deliberately. ``create_scan``
+    commits, so resolving afterwards and raising would leave a committed scan
+    stuck in ``running`` that nothing ever dispatched — a ghost in Scan History
+    for every night a schedule's policy was archived. The route helper avoids
+    the same trap by deleting the row; here there is no need for one to exist.
+
+    Re-resolved and re-validated at **every** dispatch, never inherited from
+    the moment the schedule was written. A policy archived, disabled or
+    narrowed in June must take effect on the next run, exactly as scan scope
+    and quota already do — a schedule is a stored intent, not a standing
+    authorisation.
+
+    A policy that cannot be used raises :class:`ScheduleDispatchError`, so the
+    run is recorded as failed **with the reason** rather than quietly falling
+    back to the schedule's own ``scan_options``. Falling back is the failure
+    this whole phase exists to remove: a nightly scan that silently stopped
+    assessing what it was authorised to assess and went on reporting success.
+    """
+    from core.scan_policy import ResolvedPolicyError, resolve_policy
+
+    options: Dict[str, Any] = dict(schedule.scan_options or {})
+    try:
+        resolution = resolve_policy(
+            db,
+            policy_id=schedule.policy_id,
+            org_id=schedule.org_id,
+            scan_kind=scan_kind,
+            request_options=options,
+            has_credential=bool(schedule.credential_id),
+        )
+    except ResolvedPolicyError as exc:
+        raise ScheduleDispatchError(
+            f"scan policy cannot be used for this run: {exc}"
+        ) from exc
+
+    effective = resolution.policy
+
+    # The policy is authoritative for every setting it names; the schedule's
+    # own scan_options fill in the rest. Written back into `options` so the
+    # dispatch below reads one merged view rather than consulting two.
+    for key, value in (
+        ("custom_ports", effective.custom_ports),
+        ("exclude_ports", effective.exclude_ports),
+        ("discovery_intensity", effective.discovery_intensity),
+        ("port_scan_intensity", effective.port_scan_intensity),
+    ):
+        if value:
+            options[key] = value
+    if effective.os_detection is not None:
+        options["os_detection"] = effective.os_detection
+    if effective.excluded_targets:
+        options["exclude_ips"] = ",".join(effective.excluded_targets)
+    if effective.sections:
+        options["sections"] = list(effective.sections)
+
+    return effective, options
+
+
+def _count_policy_use(db: Session, schedule: ScanSchedule, effective) -> None:
+    """
+    Count a dispatched run against the policy that drove it.
+
+    Best-effort: the counter warns an operator that a policy is in use, and
+    failing a scheduled run over a statistics column would be a poor trade.
+    ``GET /scan-policies/{id}/usage`` counts snapshots and is authoritative.
+    """
+    if not effective.policy_id:
+        return
+    from db.models.scan_policies import ScanPolicy
+
+    row = (
+        db.query(ScanPolicy)
+        .filter(
+            ScanPolicy.id == effective.policy_id,
+            ScanPolicy.org_id == schedule.org_id,
+        )
+        .first()
+    )
+    if row is not None:
+        row.use_count = int(row.use_count or 0) + 1
+
+
 def _dispatch_network(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
     from core.tasks import run_host_discovery_task
     from scans.db_helpers import create_scan
 
-    options: Dict[str, Any] = dict(schedule.scan_options or {})
+    # Resolved before the scan row exists: `create_scan` commits, so a refusal
+    # afterwards would leave a committed scan stuck in `running` that nothing
+    # dispatched.
+    effective, options = _schedule_policy_options(
+        db, schedule, scan_kind=SCAN_KIND_NETWORK
+    )
     scan_type = str(options.get("scan_type") or "adaptive")
     pipeline_mode = str(options.get("pipeline_mode") or "basic")
 
@@ -231,6 +322,7 @@ def _dispatch_network(
         pipeline_mode=pipeline_mode,
         org_id=schedule.org_id,
     )
+    _count_policy_use(db, schedule, effective)
     # Marking the origin on the scan itself is what lets Scan History show
     # "scheduled" beside a run without joining back through the run table.
     scan.options = {
@@ -239,6 +331,11 @@ def _dispatch_network(
         "origin": "schedule",
         "schedule_id": schedule.id,
     }
+    # Re-applied because the literal above rebuilds `options` wholesale and
+    # would otherwise drop the snapshot written a moment ago.
+    from core.scan_policy import record_policy_snapshot
+
+    record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()
 
     task = run_host_discovery_task.delay(
@@ -295,7 +392,9 @@ def _dispatch_credentialed(
             "organisation"
         )
 
-    options: Dict[str, Any] = dict(schedule.scan_options or {})
+    effective, options = _schedule_policy_options(
+        db, schedule, scan_kind=SCAN_KIND_CREDENTIALED
+    )
     scan = create_scan(
         db=db,
         user_id=schedule.created_by,
@@ -305,11 +404,15 @@ def _dispatch_credentialed(
         pipeline_mode="credentialed",
         org_id=schedule.org_id,
     )
+    _count_policy_use(db, schedule, effective)
     scan.options = {
         **(scan.options or {}),
         "origin": "schedule",
         "schedule_id": schedule.id,
     }
+    from core.scan_policy import record_policy_snapshot
+
+    record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()
 
     # Only the credential *reference* travels to the worker. The task resolves

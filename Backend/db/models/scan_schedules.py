@@ -222,6 +222,27 @@ class ScanSchedule(Base):
         nullable=True,
     )
 
+    # ── Which policy ─────────────────────────────────────────────────────────
+    #: The reusable assessment configuration this schedule runs under, by
+    #: reference. NULL means "the settings in ``scan_options``", which is the
+    #: pre-GAP-12 behaviour and stays working unchanged.
+    #:
+    #: ``ON DELETE SET NULL``, matching ``credential_id`` above: a schedule
+    #: whose policy is deleted keeps running under the request defaults rather
+    #: than vanishing, and the dispatcher records that transition on the run so
+    #: the change is visible rather than silent. RESTRICT was rejected — it
+    #: makes deleting a policy fail with a foreign-key error naming neither the
+    #: schedule nor the tenant.
+    #:
+    #: Re-resolved and re-validated at every dispatch, never inherited from the
+    #: moment the schedule was written: a policy archived in June must stop
+    #: driving scans in July, for the same reason scope and quota are re-checked.
+    policy_id = Column(
+        String(100),
+        ForeignKey("scan_policies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # ── When to run ──────────────────────────────────────────────────────────
     recurrence = Column(String(20), nullable=False)
     #: IANA zone name, e.g. "Asia/Kolkata". Not an offset: an offset cannot
@@ -266,6 +287,12 @@ class ScanSchedule(Base):
 
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    policy = relationship(
+        "ScanPolicy",
+        back_populates="schedules",
+        foreign_keys=[policy_id],
+    )
 
     runs = relationship(
         "ScanScheduleRun",

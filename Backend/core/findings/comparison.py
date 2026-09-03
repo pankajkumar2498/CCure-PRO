@@ -197,6 +197,14 @@ class ScanComparison:
     current_scope: AssessmentScope = field(default_factory=AssessmentScope)
     baseline_scope: AssessmentScope = field(default_factory=AssessmentScope)
     assets: Tuple[str, ...] = ()
+    #: GAP-12. What configuration each scan ran under, and whether they agree.
+    #: ``policies_match`` False does not make the comparison invalid -- the
+    #: counts are still correct for the findings that exist -- but it means the
+    #: delta partly reflects a change in what was assessed, and the report says
+    #: so rather than implying the estate changed.
+    current_policy: Dict[str, Any] = field(default_factory=dict)
+    baseline_policy: Dict[str, Any] = field(default_factory=dict)
+    policies_match: bool = False
 
     def summary_line(self) -> str:
         """``12 new, 340 unchanged, 8 fixed, 2 reappeared`` — the report's line."""
@@ -226,6 +234,9 @@ class ScanComparison:
             "assets": list(self.assets),
             "current_scope": self.current_scope.as_dict(),
             "baseline_scope": self.baseline_scope.as_dict(),
+            "current_policy": dict(self.current_policy),
+            "baseline_policy": dict(self.baseline_policy),
+            "policies_match": self.policies_match,
         }
         if include_findings:
             payload["findings"] = [f.as_dict() for f in self.findings]
@@ -278,6 +289,61 @@ def record_assessment_scope(
     # Reassigned rather than mutated: SQLAlchemy does not see an in-place edit
     # of a JSON column, so the write would be silently dropped.
     scan.options = options
+
+
+def policy_context(scan: Optional[Scan]) -> Dict[str, Any]:
+    """
+    The assessment configuration a scan ran under, for the comparison payload.
+
+    GAP-12 supplies this; GAP-13 only reports it. Two scans are not equivalent
+    assessments merely because they ran against the same host — if one assessed
+    the Ubuntu 24.04 STIG at severity high and the other assessed everything
+    installed, the difference between their findings is a difference in *scope*
+    and reporting it as a change in the estate would be wrong.
+
+    A scan with no snapshot returns ``recorded: False``. That is "we do not
+    know how this was configured", which is deliberately **not** treated as
+    agreement — see ``policies_comparable`` below.
+    """
+    from core.scan_policy import read_policy_snapshot
+
+    policy = read_policy_snapshot(scan)
+    if policy is None:
+        return {"recorded": False}
+    return {
+        "recorded": True,
+        "policy_id": policy.policy_id,
+        "policy_name": policy.policy_name or None,
+        "policy_family_code": policy.policy_family_code or None,
+        "version_number": policy.version_number or None,
+        "fingerprint": policy.fingerprint(),
+        "source": policy.source,
+        "summary": policy.describe(),
+    }
+
+
+def policies_comparable(
+    current: Mapping[str, Any], baseline: Mapping[str, Any]
+) -> bool:
+    """
+    Whether the two scans were assessed the same way.
+
+    Compared on the fingerprint, which excludes the policy's name and version
+    by construction: renaming a policy, or bumping a version that changed only
+    a description, must not make a scan incomparable with the one before it.
+    Editing what it assesses must.
+
+    An unrecorded snapshot on either side is **not** agreement. Both scans
+    predating GAP-12 is the common case and is reported as unknown rather than
+    as equivalent — a comparison that quietly assumed two unknown
+    configurations matched would be making the claim this function exists to
+    stop.
+    """
+    if not current.get("recorded") or not baseline.get("recorded"):
+        return False
+    left = str(current.get("fingerprint") or "")
+    right = str(baseline.get("fingerprint") or "")
+    return bool(left) and left == right
 
 
 def read_assessment_scope(scan: Optional[Scan]) -> AssessmentScope:
@@ -410,11 +476,16 @@ def compare_scans(
     org_id = current.org_id
     current_scope = read_assessment_scope(current)
     baseline_scope = read_assessment_scope(baseline)
+    current_policy = policy_context(current)
+    baseline_policy = policy_context(baseline)
 
     comparison = ScanComparison(
         current_scan_id=str(current.id),
         baseline_scan_id=str(baseline.id),
         comparable=True,
+        current_policy=current_policy,
+        baseline_policy=baseline_policy,
+        policies_match=policies_comparable(current_policy, baseline_policy),
         current_scope=current_scope,
         baseline_scope=baseline_scope,
         counts={c: 0 for c in CLASSIFICATIONS},

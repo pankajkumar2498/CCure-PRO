@@ -741,12 +741,30 @@
             ],
             "title": "Password"
           },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy to run this audit under (GAP-12). The policy decides which benchmarks, profile, check families, severity floor and sections are assessed. Where it names a setting it wins over the same parameter in this request, and the response lists what it overrode.",
+            "title": "Policy Id"
+          },
           "port": {
-            "default": 22,
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Port",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
           },
           "sections": {
             "anyOf": [
@@ -1030,6 +1048,18 @@
               "basic"
             ],
             "title": "Pipeline Mode"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy to run this scan under (GAP-12). Where the policy names a setting it wins over the same parameter in this request, and the response lists what it overrode. Omitting it preserves the pre-policy behaviour exactly.",
+            "title": "Policy Id"
           },
           "port_scan_intensity": {
             "anyOf": [
@@ -2452,6 +2482,212 @@
         "title": "ScanCredentialValidateRequest",
         "type": "object"
       },
+      "ScanPolicyCreate": {
+        "properties": {
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_enabled": {
+            "default": true,
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_family_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Family Code"
+          },
+          "scan_kind": {
+            "default": "any",
+            "description": "network | credentialed | any",
+            "title": "Scan Kind",
+            "type": "string"
+          },
+          "status": {
+            "default": "draft",
+            "description": "draft | active | archived",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ScanPolicyCreate",
+        "type": "object"
+      },
+      "ScanPolicyEnable": {
+        "properties": {
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_enabled"
+        ],
+        "title": "ScanPolicyEnable",
+        "type": "object"
+      },
+      "ScanPolicyStatus": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ScanPolicyStatus",
+        "type": "object"
+      },
+      "ScanPolicyUpdate": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "scan_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Kind"
+          }
+        },
+        "title": "ScanPolicyUpdate",
+        "type": "object"
+      },
+      "ScanPolicyValidate": {
+        "properties": {
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "scan_kind": {
+            "default": "any",
+            "title": "Scan Kind",
+            "type": "string"
+          }
+        },
+        "title": "ScanPolicyValidate",
+        "type": "object"
+      },
+      "ScanPolicyVersion": {
+        "description": "A new version of an existing family, superseding the current one.",
+        "properties": {
+          "activate": {
+            "default": true,
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "ScanPolicyVersion",
+        "type": "object"
+      },
       "ScanScheduleCreate": {
         "properties": {
           "credential_id": {
@@ -2525,6 +2761,18 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy this schedule runs under (GAP-12). By reference, so editing the policy changes every future run without touching this schedule -- and completed scans keep their own recorded configuration. Re-resolved and re-validated at every dispatch, never inherited from the moment the schedule was written.",
+            "title": "Policy Id"
           },
           "recurrence": {
             "title": "Recurrence",
@@ -2666,6 +2914,17 @@
               }
             ],
             "title": "Name"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Id"
           },
           "recurrence": {
             "anyOf": [
@@ -7841,7 +8100,7 @@
     },
     "/api/v1/admin/nvd-sync-status": {
       "get": {
-        "description": "Check NVD 2.0 vulnerability sync progress, last sync timestamp, and total CVE count in vuln_intel DB.",
+        "description": "Check NVD 2.0 sync progress, last sync timestamp, and the catalogue count.\n\n``database_total_cves`` is the application catalogue. The intelligence feed\nis reported separately as ``scanner_feed_total_cves`` /\n``scanner_feed_last_modified``; the two are different stores and neither\nnumber stands in for the other.",
         "operationId": "get_sync_status_api_v1_admin_nvd_sync_status_get",
         "parameters": [
           {
@@ -7887,21 +8146,27 @@
     },
     "/api/v1/admin/sync-nvd": {
       "post": {
-        "description": "Manually trigger live NVD 2.0 API vulnerability sync into vuln_intel database.\nRuns asynchronously in the background.",
+        "description": "Trigger a live NVD 2.0 sync into the application vulnerability catalogue.\nRuns asynchronously in the background.\n\n``days_back`` is the mode selector, and deliberately so. It used to be a\nplain int with a default of 90 that the sync read and then discarded,\nbecause the stored checkpoint overrode it on every deployment that had ever\nsynced — an operator could ask for a year of history, receive a 202, and get\nthe last few hours. Presence now means \"backfill this window\"; absence means\n\"carry on from the checkpoint\".",
         "operationId": "trigger_nvd_sync_api_v1_admin_sync_nvd_post",
         "parameters": [
           {
-            "description": "Days of historical CVE modifications to pull",
+            "description": "Historical lookback in days. Omit to run the normal incremental sync, which resumes from the stored checkpoint. Supply a value to backfill exactly that many days: the checkpoint is then ignored and never advanced, so a backfill cannot move the incremental frontier past anything it failed to retrieve.",
             "in": "query",
             "name": "days_back",
             "required": false,
             "schema": {
-              "default": 90,
-              "description": "Days of historical CVE modifications to pull",
-              "maximum": 3650,
-              "minimum": 1,
-              "title": "Days Back",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Historical lookback in days. Omit to run the normal incremental sync, which resumes from the stored checkpoint. Supply a value to backfill exactly that many days: the checkpoint is then ignored and never advanced, so a backfill cannot move the incremental frontier past anything it failed to retrieve.",
+              "title": "Days Back"
             }
           },
           {
@@ -16244,6 +16509,728 @@
         ]
       }
     },
+    "/scan-policies": {
+      "get": {
+        "operationId": "list_policies_scan_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          },
+          {
+            "description": "Only policies a scan may use now",
+            "in": "query",
+            "name": "usable_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only policies a scan may use now",
+              "title": "Usable Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Policies",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "post": {
+        "operationId": "create_policy_scan_policies_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/settings": {
+      "get": {
+        "description": "The vocabularies this build honours, read from the code that honours them.\n\nA UI building a policy editor needs this, and hardcoding the lists there\nmeans a family added by a later phase is unselectable until somebody\nnotices. Everything below is derived, not restated.",
+        "operationId": "policy_settings_scan_policies_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policy Settings",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/validate": {
+      "post": {
+        "description": "Check a configuration without storing it.\n\nStatic validation only — vocabularies and internal consistency. Whether the\nnamed frameworks are installed for this organisation is checked again at\ndispatch, because an installation removed in June must stop a scan in July\nand a validation cached at authoring time cannot know that.",
+        "operationId": "validate_policy_body_scan_policies_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyValidate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Policy Body",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}": {
+      "delete": {
+        "description": "Delete a policy.\n\nRefused by default while a schedule references it. The foreign key is\n``ON DELETE SET NULL``, so deleting anyway leaves the schedule running\nunder the request defaults — a silent broadening of what it assesses, which\nis the thing this phase exists to prevent. ``force=true`` is the deliberate\nway through, and the response names what it changed.\n\nCompleted scans are never affected: their configuration lives in their own\n``options`` snapshot, which is why the snapshot is stored there rather than\nas a foreign key to this table.",
+        "operationId": "delete_policy_scan_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "description": "Delete even though schedules reference this policy",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Delete even though schedules reference this policy",
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "get": {
+        "operationId": "get_policy_scan_policies__policy_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_scan_policies__policy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/enable": {
+      "post": {
+        "description": "Switch a policy off without retiring it.\n\nDisabling is deliberately **not** silent for anything pointing at it: the\nresponse names the schedules that will now fail to dispatch. A schedule\nrunning unnoticed under the request defaults because its policy was\ndisabled would assess something other than what was authorised, which is\nexactly what this phase exists to stop.",
+        "operationId": "enable_policy_scan_policies__policy_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyEnable"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Enable Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/status": {
+      "post": {
+        "description": "Move a policy through draft → active → archived.\n\nArchiving is this product's soft delete for a policy, and it is what an\noperator should reach for: the row survives, so a completed scan's snapshot\ncan still be matched against a policy a reader can look up, while nothing\nnew can start under it.",
+        "operationId": "set_policy_status_scan_policies__policy_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyStatus"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Policy Status",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/usage": {
+      "get": {
+        "description": "What depends on this policy: schedules now, and how many scans have run.\n\n``scan_count`` counts scans whose *snapshot* names this policy id, read\nfrom ``scans.options``, not a join — the snapshot is the record and a scan\nkeeps it after the policy is deleted.",
+        "operationId": "policy_usage_scan_policies__policy_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policy Usage",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/version": {
+      "post": {
+        "description": "Supersede a policy with a new version of the same family.\n\nThe old row is archived and points at the new one, so a scan that ran under\nversion 2 still resolves to a policy a reader can look up, while everything\nnew runs version 3. That is what the family/version pair is for, and it is\nthe shape ``CompliancePolicy`` already uses.\n\nSchedules are **not** repointed automatically. A schedule is an\nauthorisation to scan unattended, and silently moving one onto a\nconfiguration nobody reviewed is precisely the substitution this phase\nrefuses everywhere else. The response names them so an operator can.",
+        "operationId": "new_policy_version_scan_policies__policy_id__version_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Policy Version",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
     "/scan-schedules": {
       "get": {
         "operationId": "list_schedules_scan_schedules_get",
@@ -17980,6 +18967,208 @@
           }
         ],
         "summary": "Archive Scan",
+        "tags": [
+          "Scan History"
+        ]
+      }
+    },
+    "/scans/{scan_id}/comparison": {
+      "get": {
+        "description": "What changed between this scan and a baseline.\n\nBoth scans are fetched through ``_get_scan_or_404``, so the organisation\nscoping and the per-user visibility rule that govern every other scan route\ngovern this one too — a caller cannot compare against a scan they could not\nread, and cannot reach another tenant's findings by naming its id.\n\n``limit`` bounds the returned rows, never the counts: an estate with\nthousands of findings on one host still gets accurate totals, and the list\nis the sample. That split is deliberate — a truncated count would be a\nwrong number rather than a short page.",
+        "operationId": "compare_scan_scans__scan_id__comparison_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scan to compare against. Defaults to the most recent completed scan of the same pipeline_mode in this organisation.",
+            "in": "query",
+            "name": "baseline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan to compare against. Defaults to the most recent completed scan of the same pipeline_mode in this organisation.",
+              "title": "Baseline"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_findings",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Findings",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compare Scan",
+        "tags": [
+          "Scan History"
+        ]
+      }
+    },
+    "/scans/{scan_id}/policy": {
+      "get": {
+        "description": "The assessment configuration this scan actually ran under.\n\nRead from the scan's own immutable snapshot, **not** from the policy row it\nnames. That is the whole point: the policy may have been edited, versioned,\narchived or deleted since, and none of that changes what this scan\nassessed. A question an auditor asks about a scan has to be answerable from\nthe scan.\n\n``recorded: false`` is a real answer for a scan that predates GAP-12, and\nit is not turned into a default policy — inventing a configuration record\nwould put a claim in front of an auditor that nothing supports.\n\nTenant scoping is ``_get_scan_or_404``'s, the same lookup every other scan\nroute uses, so another organisation's scan answers 404 rather than\ndisclosing its configuration.",
+        "operationId": "scan_policy_record_scans__scan_id__policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scan Policy Record",
         "tags": [
           "Scan History"
         ]

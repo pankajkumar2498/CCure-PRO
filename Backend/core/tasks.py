@@ -1950,12 +1950,32 @@ def _apply_credentialed_enrichment(
     # failing an entire scan whose findings are already collected. Without an
     # organisation there is no installed content to resolve, so the audit falls
     # back to the built-in rules and says so.
+    #
+    # GAP-12: the scan's effective policy decides *which* installed content is
+    # resolved and at what severity floor. It is read from the scan's own row
+    # rather than passed in, because that row is the immutable record the
+    # report and the comparison read — so what executed and what is recorded
+    # cannot disagree. A scan with no snapshot resolves everything installed,
+    # which is exactly the pre-policy behaviour.
+    from core.scan_policy import read_policy_snapshot
+
+    _policy = read_policy_snapshot(scan_row)
     _org_id = getattr(scan_row, "org_id", None)
     _benchmark_checks: list = []
     if _org_id:
         from core.benchmarks.selection import benchmark_checks_for_org
 
-        _benchmark_checks = benchmark_checks_for_org(db, str(_org_id))
+        _benchmark_checks = benchmark_checks_for_org(
+            db,
+            str(_org_id),
+            profile=getattr(_policy, "benchmark_profile", None),
+            platforms=list(getattr(_policy, "platforms", ()) or ()) or None,
+            framework_ids=list(getattr(_policy, "framework_ids", ()) or ()) or None,
+            min_severity=getattr(_policy, "min_severity", None),
+            excluded_check_ids=list(getattr(_policy, "excluded_check_ids", ()) or ())
+            or None,
+            excluded_tags=list(getattr(_policy, "excluded_tags", ()) or ()) or None,
+        )
     else:
         log.warning(
             "Credentialed enrichment has no organisation for scan %s; benchmark "
@@ -2045,6 +2065,7 @@ def _apply_credentialed_enrichment(
         try:
             stored_report, system_data, _os_type = audit_credentialed_host(
                 config_checks=_benchmark_checks,
+                policy=_policy,
                 ip=ip,
                 username=material.get("username"),
                 password=material.get("password"),
@@ -2246,12 +2267,43 @@ def run_vulnerability_audit_task(
                 resolved_exclude_ips = scan_row.options.get("exclude_ips")
 
         orch = _new_orchestrator(db, scan_id=scan_id)
-        result = orch.run_vulnerability_audit_only(
-            hosts=hosts,
-            scan_id=scan_id,
-            exclude_ot_from_nmap=resolved_exclude_ot,
-            exclude_ips=resolved_exclude_ips,
-        )
+
+        # GAP-12. Whether a probe may *write* to a scanned host is a per-scan
+        # decision now, not only a deployment-wide one. `core/checks/intrusive`
+        # was built as the seam for exactly this and nothing else moves: the
+        # override is process-wide rather than thread-local, deliberately,
+        # because the vulnerability engine runs its plugins in a thread pool
+        # that does not propagate context.
+        #
+        # The default is still off. A policy that says nothing leaves
+        # `SCAN_ALLOW_INTRUSIVE` in force, so a scan with no policy behaves
+        # exactly as it did — and a policy can only ever turn this *on*
+        # deliberately, never inherit it.
+        from core.checks.intrusive import allow_intrusive_probes
+        from core.scan_policy import read_policy_snapshot
+
+        _policy = read_policy_snapshot(scan_row)
+        if _policy is not None and _policy.allow_intrusive:
+            log.warning(
+                "Scan %s runs under policy %r, which permits intrusive probes: "
+                "a probe may write to a target to establish a finding.",
+                scan_id,
+                _policy.policy_name or _policy.fingerprint()[:16],
+            )
+            with allow_intrusive_probes(True):
+                result = orch.run_vulnerability_audit_only(
+                    hosts=hosts,
+                    scan_id=scan_id,
+                    exclude_ot_from_nmap=resolved_exclude_ot,
+                    exclude_ips=resolved_exclude_ips,
+                )
+        else:
+            result = orch.run_vulnerability_audit_only(
+                hosts=hosts,
+                scan_id=scan_id,
+                exclude_ot_from_nmap=resolved_exclude_ot,
+                exclude_ips=resolved_exclude_ips,
+            )
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after vulnerability audit", scan_id)
@@ -2639,6 +2691,7 @@ def _run_configuration_audit(
     org_id: str | None = None,
     timeout: int = 45,
     extra_checks: list | None = None,
+    policy=None,
 ) -> tuple[dict, list[dict]]:
     """
     Run the Phase 3 configuration audit over the session that is already open.
@@ -2672,10 +2725,62 @@ def _run_configuration_audit(
     # that already governed the built-ins, rather than a second one.
     builtin = builtin_checks()
     _builtin_ids = {c.check_id for c in builtin}
-    candidates = [*builtin, *(extra_checks or [])]
-    checks = select_checks(candidates, platform=platform)
+
+    # GAP-12. The policy narrows the candidate set before the engine sees it;
+    # it never widens it. `policy is None` is the pre-policy path and must stay
+    # byte-identical, so every branch here is guarded on a policy being present
+    # *and* naming the setting.
+    #
+    # The benchmark content in `extra_checks` was already narrowed by
+    # `benchmark_checks_for_org`, which applied the framework, profile,
+    # severity and exclusion settings while it had a database session. What is
+    # left to apply here is what only the built-ins need — because they never
+    # go through that query — plus the family filter, which `select_checks`
+    # owns for both.
+    include_builtin = True
+    families: list[str] = []
+    excluded_ids: set[str] = set()
+    excluded_tags: set[str] = set()
+    min_severity = None
+    if policy is not None:
+        include_builtin = bool(getattr(policy, "include_builtin_checks", True))
+        families = list(getattr(policy, "check_families", ()) or ())
+        excluded_ids = {
+            str(c) for c in (getattr(policy, "excluded_check_ids", ()) or ())
+        }
+        excluded_tags = {
+            str(t).lower() for t in (getattr(policy, "excluded_tags", ()) or ())
+        }
+        min_severity = getattr(policy, "min_severity", None)
+
+    if include_builtin:
+        from core.scan_policy.spec import severity_at_least
+
+        selected_builtin = [
+            c
+            for c in builtin
+            if c.check_id not in excluded_ids
+            and not (excluded_tags & {t.lower() for t in c.tags})
+            and severity_at_least(c.severity, min_severity)
+        ]
+    else:
+        # Excluding the built-ins is only reachable with a framework named —
+        # `validate_policy` refuses the combination that would leave nothing —
+        # so this cannot silently empty the audit.
+        selected_builtin = []
+
+    candidates = [*selected_builtin, *(extra_checks or [])]
+    checks = select_checks(candidates, platform=platform, domains=families or None)
     if not checks:
-        return {"assessed": False, "reason": f"no checks defined for {platform}"}, []
+        # Distinguished from "no checks defined for this platform", because a
+        # policy that selected nothing on this host is a decision an operator
+        # made and needs to see, while an empty platform is a product gap.
+        reason = (
+            f"no checks selected for {platform} under the effective policy"
+            if policy is not None and (families or excluded_ids or not include_builtin)
+            else f"no checks defined for {platform}"
+        )
+        return {"assessed": False, "reason": reason}, []
 
     # The host's own OS string, so a benchmark published for one distribution
     # is not dispatched at another. The collectors merge system info into the
@@ -2776,6 +2881,13 @@ def _run_configuration_audit(
     summary = {
         "assessed": True,
         "platform": platform,
+        # Which configuration governed this audit. Carried on the phase summary
+        # as well as on the scan, because `scan_phases.summary` is what the scan
+        # detail API and the reports read back, and a reader looking at one
+        # host's configuration results should not have to fetch the scan row to
+        # learn what was in scope.
+        "policy_fingerprint": (policy.fingerprint() if policy is not None else None),
+        "policy_name": (getattr(policy, "policy_name", "") or None) if policy else None,
         "checks_run": len(report.results),
         # How many of the checks came from loaded benchmark content rather than
         # the built-in pack. A benchmark that loaded but resolved to nothing
@@ -2798,6 +2910,7 @@ def _sync_configuration_compliance(
     ip: str,
     system_data: dict,
     scan_id: str | None = None,
+    policy=None,
 ) -> dict | None:
     """
     Turn this host's configuration verdicts into compliance findings.
@@ -2843,6 +2956,12 @@ def _sync_configuration_compliance(
             asset_id=str(asset.id),
             results=results,
             scan_run_id=None,
+            # The policy's framework selection. Without it a scan narrowed to
+            # one benchmark still writes verdicts onto every framework a rule
+            # is crosswalked into, from an assessment that covered none of the
+            # rest of them — a score computed over a handful of controls that
+            # reads as a near-complete one.
+            framework_ids=list(getattr(policy, "framework_ids", ()) or ()) or None,
         ).as_dict()
     except Exception:  # noqa: BLE001
         log.exception(
@@ -3079,6 +3198,7 @@ def audit_credentialed_host(
     domain: str | None = None,
     credential_options: dict | None = None,
     config_checks: list | None = None,
+    policy=None,
 ) -> tuple[dict, dict, str]:
     """
     Run the authenticated audit against one host.
@@ -3254,6 +3374,13 @@ def audit_credentialed_host(
                 system_data=system_data,
                 timeout=max(timeout, 45),
                 extra_checks=config_checks,
+                # The scan's effective policy, resolved before dispatch and
+                # read back from the scan row. It narrows the built-in pack and
+                # the check families; the benchmark content in `config_checks`
+                # was already narrowed by `benchmark_checks_for_org`, which had
+                # a database session to do it with. This function deliberately
+                # opens none.
+                policy=policy,
             )
         except Exception as exc:  # noqa: BLE001
             log.exception("Configuration audit failed for %s", ip)
@@ -3774,6 +3901,7 @@ def audit_database_target(
     emit=None,
     credential_options: dict | None = None,
     config_checks: list | None = None,
+    policy=None,
 ) -> tuple[dict, dict, str]:
     """
     Run the authenticated configuration audit against one database instance.
@@ -3850,8 +3978,35 @@ def audit_database_target(
         # os_version_id, so the Phase 4 targeting written for "Ubuntu 22.04
         # versus RHEL 9" applies unchanged to "PostgreSQL 16 versus MySQL 8".
         # There is deliberately no second targeting mechanism.
+        # GAP-12: the policy narrows the candidate set before the engine sees
+        # it, never widens it. `policy is None` is the pre-policy path and is
+        # byte-identical to what it was.
+        _families = list(getattr(policy, "check_families", ()) or ()) if policy else []
+        _builtin = builtin_checks()
+        if policy is not None:
+            from core.scan_policy.spec import severity_at_least
+
+            _excluded = {
+                str(c) for c in (getattr(policy, "excluded_check_ids", ()) or ())
+            }
+            _excluded_tags = {
+                str(t).lower() for t in (getattr(policy, "excluded_tags", ()) or ())
+            }
+            _floor = getattr(policy, "min_severity", None)
+            if not getattr(policy, "include_builtin_checks", True):
+                _builtin = []
+            else:
+                _builtin = [
+                    c
+                    for c in _builtin
+                    if c.check_id not in _excluded
+                    and not (_excluded_tags & {t.lower() for t in c.tags})
+                    and severity_at_least(c.severity, _floor)
+                ]
         checks = select_checks(
-            [*builtin_checks(), *(config_checks or [])], platform="database"
+            [*_builtin, *(config_checks or [])],
+            platform="database",
+            domains=_families or None,
         )
         _emit(f"Assessing {len(checks)} configuration checks...", 40, "configuration")
 
@@ -4148,12 +4303,32 @@ def run_credentialed_scan_task(
     # Resolved here because `audit_credentialed_host` deliberately opens no
     # database session: it runs on the host worker while a WinRM connection is
     # held open, and a round trip inside that window is a round trip too many.
+    #
+    # GAP-12: read the scan's effective policy from its own row — the record
+    # written before dispatch — so the worker, the report and the comparison
+    # all read one source. A scan with no snapshot (an older release's task
+    # still in the queue, or a caller that named no policy) resolves everything
+    # installed, which is the pre-policy behaviour unchanged.
+    from core.scan_policy import read_policy_snapshot
+
+    _scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
+    policy = read_policy_snapshot(_scan_row)
     benchmark_checks: list = []
     _scan_owner = db.query(User).filter(User.id == user_id).first()
     if _scan_owner is not None:
         from core.benchmarks.selection import benchmark_checks_for_org
 
-        benchmark_checks = benchmark_checks_for_org(db, str(_scan_owner.org_id))
+        benchmark_checks = benchmark_checks_for_org(
+            db,
+            str(_scan_owner.org_id),
+            profile=getattr(policy, "benchmark_profile", None),
+            platforms=list(getattr(policy, "platforms", ()) or ()) or None,
+            framework_ids=list(getattr(policy, "framework_ids", ()) or ()) or None,
+            min_severity=getattr(policy, "min_severity", None),
+            excluded_check_ids=list(getattr(policy, "excluded_check_ids", ()) or ())
+            or None,
+            excluded_tags=list(getattr(policy, "excluded_tags", ()) or ()) or None,
+        )
 
     def emit(status, message, percentage=0, stage=None):
         if not scan_id:
@@ -4240,10 +4415,12 @@ def run_credentialed_scan_task(
                         emit=host_emit,
                         credential_options=credential_options,
                         config_checks=benchmark_checks,
+                        policy=policy,
                     )
                 else:
                     stored_report, system_data, os_type = _audit_host_over_transport(
                         config_checks=benchmark_checks,
+                        policy=policy,
                         ip=host_ip,
                         username=username,
                         password=password,
@@ -4400,6 +4577,27 @@ def run_credentialed_scan_task(
                 ip=stored_report["target"],
                 system_data=system_data,
                 scan_id=str(scan.id),
+                policy=policy,
+            )
+
+        # ── Assessment policy (GAP-12) ──────────────────────────────────
+        # Read back from the scan's own snapshot rather than from the `policy`
+        # local, so the report shows what is *recorded* against the scan. If
+        # those two ever disagree the record is the one an auditor will read,
+        # and a report that showed the other would be describing a scan that
+        # does not exist.
+        try:
+            from core.findings.comparison import policy_context
+
+            _policy_ctx = policy_context(scan)
+            if _policy_ctx.get("recorded"):
+                report_result.setdefault("metadata", {})["scan_policy"] = _policy_ctx
+                summary["scan_policy"] = _policy_ctx
+        except Exception as pol_exc:  # noqa: BLE001
+            log.warning(
+                "Could not attach the policy record to the report for %s: %s",
+                scan.id,
+                pol_exc,
             )
 
         # ── Change since the previous scan ──────────────────────────────

@@ -138,6 +138,7 @@ def sync_config_audit_findings(
     asset_id: str,
     results: Iterable[Any],
     scan_run_id: Optional[str] = None,
+    framework_ids: Optional[Sequence[str]] = None,
 ) -> ConfigComplianceSyncResult:
     """
     Write one compliance finding per (control, rule) for every configuration
@@ -146,6 +147,18 @@ def sync_config_audit_findings(
     Does not commit — the caller owns the transaction, so the findings land in
     the same commit as the asset sync that produced them. A finding committed
     separately from the asset it describes can outlive a rolled-back scan.
+
+    ``framework_ids`` is the scan policy's framework selection (GAP-12), and
+    passing it is **not optional for correctness** when a policy narrowed the
+    scan. A policy that selected the Ubuntu 24.04 STIG resolves only that
+    benchmark's checks — but a rule crosswalked into a second framework would,
+    without this, write a verdict onto the second framework's control too, from
+    a scan that never assessed the rest of it. The resulting score is computed
+    over a handful of controls and reads as a near-complete assessment.
+
+    It **narrows** the enabled set and never extends it. A framework the tenant
+    has not installed cannot acquire findings by being named here, which is the
+    same intersection ``benchmark_checks_for_org`` applies to selection.
     """
     from core.compliance_tasks import (
         _save_finding_for_control,
@@ -157,7 +170,11 @@ def sync_config_audit_findings(
     if not rows:
         return summary
 
-    framework_ids = _enabled_framework_ids(db, org_id)
+    enabled = _enabled_framework_ids(db, org_id)
+    if framework_ids:
+        wanted = {str(f) for f in framework_ids if f}
+        enabled = [f for f in enabled if f in wanted]
+    framework_ids = enabled
     if not framework_ids:
         # Nothing installed and active: the results are still security
         # findings, they simply answer to no framework here.

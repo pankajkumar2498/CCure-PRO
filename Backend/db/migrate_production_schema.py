@@ -179,6 +179,15 @@ PERMISSIONS = [
     ("scan_schedules", "update", "Edit, enable or disable scan schedules"),
     ("scan_schedules", "delete", "Delete scan schedules"),
     ("scan_schedules", "execute", "Trigger a scheduled scan immediately (Run Now)"),
+    # Scan policies (Phase 17). A separate resource for the same reason
+    # scheduling is: "may this person run a scan" and "may this person decide
+    # what every scan in this organisation assesses" are different
+    # authorisations, and the second is the one that can quietly narrow an
+    # audit until it finds nothing.
+    ("scan_policies", "create", "Create reusable scan policies"),
+    ("scan_policies", "read", "View scan policies and their configuration"),
+    ("scan_policies", "update", "Edit, enable, disable or archive scan policies"),
+    ("scan_policies", "delete", "Delete scan policies"),
     # Assets
     ("assets", "create", "Manually add assets to the registry"),
     ("assets", "read", "View asset inventory and details"),
@@ -283,6 +292,10 @@ ROLE_PERMISSIONS = {
         "scan_schedules:update",
         "scan_schedules:delete",
         "scan_schedules:execute",
+        "scan_policies:create",
+        "scan_policies:read",
+        "scan_policies:update",
+        "scan_policies:delete",
         "credentials:create",
         "credentials:read",
         "credentials:update",
@@ -334,6 +347,9 @@ ROLE_PERMISSIONS = {
         "scan_schedules:read",
         "scan_schedules:update",
         "scan_schedules:execute",
+        "scan_policies:create",
+        "scan_policies:read",
+        "scan_policies:update",
         "credentials:create",
         "credentials:read",
         "credentials:update",
@@ -362,6 +378,7 @@ ROLE_PERMISSIONS = {
         # A viewer who can see scans can see what is scheduled to produce them.
         # Read only: no create, update, delete or execute.
         "scan_schedules:read",
+        "scan_policies:read",
         "assets:read",
         "findings:read",
         "reports:read",
@@ -373,6 +390,7 @@ ROLE_PERMISSIONS = {
         "scans:create",
         "scans:read",
         "scans:execute",
+        "scan_policies:read",
         "credentials:read",
     ],
 }

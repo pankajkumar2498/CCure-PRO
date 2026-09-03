@@ -622,5 +622,15 @@ class TestBenchmarkResolutionIsDefensive:
 
         source = inspect.getsource(tasks._apply_credentialed_enrichment)
         plan_at = source.index("plan = _credentialed_plan_for_scan")
-        resolve_at = source.index("benchmark_checks_for_org(db, str(_org_id))")
+        # Anchored on the call, not on its argument list. GAP-12 made this a
+        # multi-line call — it now passes the scan's effective policy — and an
+        # anchor that spelled out the arguments broke on a change that did not
+        # touch the ordering this test exists to pin.
+        resolve_at = source.index("benchmark_checks_for_org(")
         assert plan_at < resolve_at
+
+        # The policy snapshot is read on the same path and must be behind the
+        # same early return, for the same reason: a scan with no credentials
+        # pays for neither.
+        policy_at = source.index("read_policy_snapshot(scan_row)")
+        assert plan_at < policy_at

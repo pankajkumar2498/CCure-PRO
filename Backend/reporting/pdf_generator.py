@@ -585,6 +585,30 @@ def _scan_configuration(
         if value:
             rows.append((label, value))
 
+    # The assessment policy, in the methodology appendix beside the rest of the
+    # scan's parameters. The full section is elsewhere; these three rows are
+    # what a reader skimming the appendix needs to know the scan was scoped.
+    #
+    # Note the row above named "Scan policy" is the scan *type* label and
+    # predates GAP-12. These are deliberately named differently rather than
+    # replacing it: the two answer different questions, and silently changing
+    # what an existing row means is worse than adding one.
+    policy_meta = (meta.get("scan_policy") or {}) if isinstance(meta, dict) else {}
+    if policy_meta.get("recorded"):
+        rows.append(
+            (
+                "Assessment policy",
+                policy_meta.get("policy_name") or "None (scan request defaults)",
+            )
+        )
+        rows.append(
+            ("Configuration ID", str(policy_meta.get("fingerprint") or "")[:16])
+        )
+        _psummary = policy_meta.get("summary") or {}
+        for _label in ("Benchmarks", "Benchmark profile", "Severity threshold"):
+            if _psummary.get(_label):
+                rows.append((_label, str(_psummary[_label])))
+
     exposed = _first_int(meta, summary, "listeners_exposed")
     host_only = _first_int(meta, summary, "listeners_host_only")
     if exposed is not None or host_only is not None:
@@ -1265,6 +1289,93 @@ _COMPARISON_ROWS = (
 )
 
 
+def _policy_label(policy) -> str:
+    """A short human name for a recorded policy, for a sentence in the report."""
+    if not isinstance(policy, dict) or not policy.get("recorded"):
+        return "was not recorded"
+    name = policy.get("policy_name")
+    fingerprint = str(policy.get("fingerprint") or "")[:16]
+    if name:
+        version = policy.get("version_number")
+        suffix = f" v{version}" if version else ""
+        return f"used policy {name}{suffix} ({fingerprint})"
+    return f"used the scan request defaults ({fingerprint})"
+
+
+def _policy_section(policy, styles) -> List[Any]:
+    """
+    The assessment policy section: what this scan was configured to assess.
+
+    **The gap is not closed unless this is in the report.** An auditor reading
+    a finding list has to be able to answer "what was actually assessed" from
+    the artefact in front of them, not by asking somebody to query a database.
+    A report that shows only what was found, with no statement of what was
+    looked for, cannot distinguish a clean estate from a narrow scan.
+
+    Returns an empty list when the scan carries no snapshot, so a report
+    generated for a scan that predates this phase is byte-for-byte what it was
+    before -- the same property ``_comparison_section`` preserves and for the
+    same reason.
+    """
+    if not isinstance(policy, dict) or not policy or not policy.get("recorded"):
+        return []
+
+    story: List[Any] = [_heading("Assessment policy", styles["h1"], 0)]
+
+    source = str(policy.get("source") or "request")
+    if source == "policy":
+        story.append(
+            _p(
+                "This scan ran under a stored assessment policy. The "
+                "configuration below is the one recorded against this scan and "
+                "does not change if the policy is later edited.",
+                styles["body"],
+            )
+        )
+    else:
+        # Stated rather than omitted. "No policy was selected" and "this report
+        # does not show policies" are different facts and only the first is a
+        # fact about the scan.
+        story.append(
+            _p(
+                "No stored policy was selected for this scan. The configuration "
+                "below is the scan request's own parameters, recorded so that "
+                "later scans can be compared against it on equal terms.",
+                styles["body"],
+            )
+        )
+
+    summary = policy.get("summary") or {}
+    rows = [
+        [
+            _p("<b>Setting</b>", styles["th"], escape=False),
+            _p("<b>Value</b>", styles["th"], escape=False),
+        ]
+    ]
+    for label, value in summary.items():
+        rows.append(
+            [
+                _p(str(label), styles["body"]),
+                _p(str(value), styles["body"]),
+            ]
+        )
+    if len(rows) > 1:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_grid(rows, [56 * mm, 105 * mm]))
+
+    story.append(Spacer(1, 3 * mm))
+    story.append(
+        _p(
+            "The <b>Configuration ID</b> above identifies this exact assessment "
+            "configuration. Two scans sharing it were assessed the same way; "
+            "two that do not were not, however similar their findings look.",
+            styles["small"] if "small" in styles else styles["body"],
+            escape=False,
+        )
+    )
+    return story
+
+
 def _comparison_section(comparison, styles) -> List[Any]:
     """
     The change-since-last-scan section.
@@ -1288,6 +1399,46 @@ def _comparison_section(comparison, styles) -> List[Any]:
             escape=False,
         )
     )
+
+    # GAP-12. Two scans of the same host are not equivalent assessments if
+    # they were configured differently, and a delta between them partly
+    # reflects that rather than a change in the estate. Said before the counts,
+    # because a reader who sees "37 new" first has already drawn a conclusion.
+    if comparison.get("current_policy") or comparison.get("baseline_policy"):
+        current_pol = comparison.get("current_policy") or {}
+        baseline_pol = comparison.get("baseline_policy") or {}
+        if comparison.get("policies_match"):
+            story.append(
+                _p(
+                    "Both scans ran under the same assessment configuration "
+                    f"(<b>{escape_for_reportlab(str(current_pol.get('fingerprint') or '')[:16])}</b>), "
+                    "so the changes below are changes in the estate.",
+                    styles["body"],
+                    escape=False,
+                )
+            )
+        elif current_pol.get("recorded") and baseline_pol.get("recorded"):
+            story.append(
+                _p(
+                    "<b>These two scans were assessed under different "
+                    "configurations</b> — this scan "
+                    f"{escape_for_reportlab(_policy_label(current_pol))}, the "
+                    f"baseline {escape_for_reportlab(_policy_label(baseline_pol))}. "
+                    "Some of the differences below reflect what was assessed "
+                    "rather than what changed on the host.",
+                    styles["body"],
+                    escape=False,
+                )
+            )
+        else:
+            story.append(
+                _p(
+                    "The assessment configuration of at least one of these "
+                    "scans was not recorded, so it cannot be confirmed that "
+                    "both assessed the same things.",
+                    styles["body"],
+                )
+            )
 
     if not comparison.get("comparable"):
         # Said plainly rather than shown as zeroes. A table of noughts reads as
@@ -1758,6 +1909,35 @@ class ScanReportGenerator:
                     escape=False,
                 )
             )
+            if _cmp.get("current_policy") and not _cmp.get("policies_match"):
+                # An executive reading "8 fixed" must not conclude the estate
+                # improved when the previous scan simply assessed more.
+                story.append(
+                    _p(
+                        "These two scans used different assessment "
+                        "configurations, so part of this difference reflects "
+                        "what was assessed rather than what changed.",
+                        styles["body"],
+                    )
+                )
+            story.append(Spacer(1, 4 * mm))
+
+        # One line naming the policy. The executive report answers "what did we
+        # assess and what did it find"; a finding count with no statement of
+        # scope answers only half of that.
+        _pol = (result.get("metadata") or {}).get("scan_policy") or {}
+        if _pol.get("recorded") and _pol.get("policy_name"):
+            story.append(
+                _p(
+                    "<b>Assessment policy:</b> "
+                    + escape_for_reportlab(str(_pol["policy_name"]))
+                    + " ("
+                    + escape_for_reportlab(str(_pol.get("fingerprint") or "")[:16])
+                    + ")",
+                    styles["body"],
+                    escape=False,
+                )
+            )
             story.append(Spacer(1, 4 * mm))
 
         counts = findings.severity_counts()
@@ -2152,6 +2332,19 @@ class ScanReportGenerator:
         story.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=6))
         story.append(toc)
         story.append(PageBreak())
+
+        # ── Assessment policy ────────────────────────────────────────────────
+        # What this scan was configured to assess. Absent unless the scan
+        # carried a policy snapshot, so a report for a scan that predates
+        # GAP-12 is unchanged.
+        policy_story = _policy_section(
+            (result.get("metadata") or {}).get("scan_policy")
+            or result.get("scan_policy"),
+            styles,
+        )
+        if policy_story:
+            story.extend(policy_story)
+            story.append(PageBreak())
 
         # ── Change since the previous scan ───────────────────────────────────
         # Absent unless the scan carried a comparison, so a report generated

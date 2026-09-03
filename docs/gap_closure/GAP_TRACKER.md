@@ -83,7 +83,7 @@ were fixed in-phase, and §9N.6 records them.
 | **GAP-09**   | Application/middleware config assessment | Config audit   | 8     | Medium   | ~3% [measured]   | 70%    | **Closed** (66.7% measured, real-target validated)                                | `7520e90` |
 | **GAP-10**   | Database assessment                      | Database       | 7     | High     | 0% [measured]    | 70%    | **Closed** (74.2% measured, real-target validated)                                | `9d74a0c` |
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
-| GAP-12       | Configurable scan policy engine          | Orchestration  | 12    | High     | 20% [measured]   | 85%    | Open                                                                              | —         |
+| **GAP-12**   | Configurable scan policy engine          | Orchestration  | 17    | High     | 20% [measured]   | 85%    | **Partial** (82.1% measured, real-target validated)                               | `PENDING` |
 | **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `3b8ac56` |
 | GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
@@ -4920,6 +4920,290 @@ the route function directly with a real session for exactly this reason.
 
 ---
 
+---
+
+## 9P. Phase 17 — GAP-12: the configurable scan policy engine
+
+Until this phase a scan's scope was whatever the request body said, and nothing
+recorded it. The measured consequence, on this installation's own catalogue:
+**org_default has five STIG benchmarks installed, so every credentialed scan
+resolved all 955 rules regardless of the target** — and on a real Ubuntu 24.04
+host, 792 of them reported NOT_APPLICABLE. The operator had no way to say "this
+scan assesses the Ubuntu benchmark", and no way afterwards to say what any
+scan had assessed.
+
+**No new scan engine, no second policy model, no new finding path.** The
+persistence cost is one table and one nullable column.
+
+### 9P.1 Why not `CompliancePolicy`
+
+Phase 0 recorded `CompliancePolicy` as "the pattern for GAP-12's scan
+policies", and that is exactly how it was used — the _pattern_, not the table.
+
+`compliance_policies.framework_id` is a **NOT NULL** foreign key into
+`compliance_frameworks`. A network scan policy has no framework; a
+configuration policy may name several. Widening that column means a nullable
+framework plus a CHECK reading "a framework is required unless this is a scan
+policy", which is a discriminated union wearing a compliance table's name — the
+same reasoning that gave `scan_schedules` its own table, recorded at both
+places.
+
+Its rule bridge is the second reason. `compliance_policy_rules` enumerates
+"these rule versions are in force"; a scan policy selects by framework,
+profile, platform, family and severity — a _predicate_. Storing the resolved
+set would freeze it, so a benchmark reloaded next month would not reach a
+policy written today, which is the opposite of what somebody who selected "the
+Ubuntu 24.04 STIG" asked for.
+
+What **is** copied is the lifecycle: `policy_family_code` + `version_number`
+under a UNIQUE constraint, `status` in draft/active/archived, and
+`superseded_by_policy_id`. That is what lets a completed scan name the exact
+configuration that produced it while the family goes on being edited.
+
+Two deliberate divergences: `org_id` is **NOT NULL** where
+`compliance_policies.tenant_id` is nullable — a platform-wide scan policy would
+let an edit in one workspace change another workspace's scans — and the UNIQUE
+constraint is scoped to the tenant, so two organisations may each have a
+`linux-baseline` family.
+
+### 9P.2 The design decision the phase turns on
+
+**The snapshot is not a copy of what ran. It is what runs.**
+
+The dispatching side resolves the policy once, writes the resolved
+`EffectivePolicy` into `scans.options["scan_policy"]`, and **the worker reads
+it back from there** rather than being handed it separately in the task
+arguments. So the historical record and the execution cannot disagree, because
+there is only one of them.
+
+The alternative — pass the settings to the task _and_ store a copy for the
+report — is two sources that agree until the day they do not, and the day they
+do not is the day an auditor is reading the report.
+
+`scans.options` rather than a new column, for the reason §9O.2 already
+recorded: it is JSONB, GIN-indexed, already carries `origin`, `schedule_id` and
+GAP-13's `assessment_scope`, and is already the client-visible record of how a
+scan was configured. GAP-13 said "GAP-12's policy record is where this should
+eventually fold in"; this is that fold.
+
+`record_policy_snapshot` **refuses to overwrite** an existing snapshot, and
+logs a warning naming both fingerprints when the incoming one differs. That is
+what makes "editing a policy does not alter Scan A" a property of the code
+rather than of everybody remembering.
+
+### 9P.3 Two rules the whole package rests on
+
+- **A field either changes assessment behaviour or it is not in
+  `EffectivePolicy`.** Every attribute is read by something: benchmark
+  selection, `select_checks`, the section list, the port arguments, the
+  intrusive gate, or validation. A knob nobody honours is worse than a missing
+  one — an operator who sets it believes the scan did something it did not.
+  Seven areas are recorded as unimplemented with reasons rather than accepted
+  and ignored.
+
+- **An empty collection means "no restriction", never "nothing".** `()` for
+  `framework_ids` selects every framework the tenant has installed, which is
+  the pre-policy behaviour. Reading it the other way would let an
+  under-specified policy reduce a scan to zero checks while still reporting
+  success — a clean report on a host nobody assessed, and the single most
+  dangerous defect available in a policy engine. Pinned by
+  `test_an_empty_selection_is_no_restriction_not_nothing`.
+
+### 9P.4 The fingerprint, and what it is deliberately blind to
+
+`policy_fingerprint` hashes the **behavioural** fields only — not the policy's
+id, name, family code, version or provenance. Two scans carrying the same
+fingerprint were assessed the same way, whoever renamed the policy in between;
+two carrying different fingerprints were not.
+
+Both directions matter. Renaming a policy must not make a scan incomparable
+with the one before it — GAP-13 would report the whole delta as though the
+estate had changed. Editing what a policy assesses must, for the same reason.
+
+One property is recorded rather than assumed away: two policies naming the same
+frameworks **in a different order** fingerprint differently. Order is preserved
+because it is shown to a reader, and the cost is that a reordered list reads as
+a different configuration. Pinned as documented behaviour.
+
+### 9P.5 What was already there, and what it cost to use it
+
+The seams this phase needed had all been built and left unused, each with a
+note saying so:
+
+| Seam                                             | Left by      | Cost to use        |
+| ------------------------------------------------ | ------------ | ------------------ |
+| `benchmark_checks_for_org(profile=, platforms=)` | Phase 4      | pass the arguments |
+| `select_checks(domains=, ...)`                   | Phase 3      | pass the argument  |
+| `core/checks/intrusive.allow_intrusive_probes`   | Phase 6a     | wrap the audit     |
+| `run_credentialed_scan_task(sections=)`          | pre-existing | pass the list      |
+| `compliance_controls.profiles`, GIN-indexed      | Phase 4      | nothing            |
+
+Three arguments were genuinely new on `benchmark_checks_for_org` —
+`framework_ids`, `min_severity` and the two exclusion sets — and they are
+twenty lines. The phase's real engineering was the snapshot and the
+precedence, not the filtering.
+
+### 9P.6 Precedence, and why it is reported rather than silent
+
+**Where a policy names a setting, the policy wins**, and the API response's
+`policy.overrides` lists which of the caller's parameters it displaced.
+
+Anything else makes the policy advisory. The frontend sends
+`discovery_intensity: "normal"` on every request because that is the field's
+default, so a request-wins rule would silently override every policy that asked
+for `deep`. And a scan that assessed something other than what was asked for
+must say so at the moment it is accepted, not only in a report generated
+afterwards.
+
+Where a policy says nothing, the request's value is carried through unchanged —
+so a policy that only sets a severity floor does not reset the port range to
+the scanner default.
+
+**A scan with no policy still gets a snapshot**, built from its own request
+parameters, with `source = "request"` and no policy name. That is what lets
+GAP-13 tell two such scans apart when somebody changed the port range between
+them, and no report can imply a policy was chosen when none was.
+
+### 9P.7 Validation refuses; it never falls back
+
+`validate_policy` is **static** — vocabularies and internal consistency, no
+database — and runs when a policy is written, so a typo is caught by the person
+who made it. `validate_for_dispatch` is **contextual** and re-runs at every
+dispatch: a framework uninstalled in June must stop being scanned in July, the
+same rule the schedule dispatcher already applies to scope and quota.
+
+Every refusal names the field and the value, and every problem is reported at
+once — four typos should not cost four round trips.
+
+Three refusals worth recording:
+
+- **A framework that does not exist, is parked in this installation, or is not
+  installed for this tenant produce three different messages.** They need three
+  different actions — a typo, a catalogue this build ships but does not offer,
+  and a marketplace installation somebody has to perform — and collapsing them
+  into "framework not available" is how an operator spends an afternoon on the
+  wrong one.
+- **Excluding the built-in pack while naming no framework is refused**, not
+  warned. That combination resolves nothing at all, and a scan reporting
+  success having assessed no configuration is byte-identical to a clean host.
+- **A policy for the wrong scan kind is refused.** A network policy silently
+  governing a credentialed audit would restrict nothing it was written to
+  restrict.
+
+`allow_intrusive` always produces a warning. It is a legitimate deliberate
+choice and the only setting here that lets the scanner change a host it is
+auditing, so a policy carrying it must never do so silently.
+
+### 9P.8 Two defects the tests found, both real
+
+- **A check family was not a check family.** The first version of
+  `core/scan_policy/spec.py` enumerated its own list of families including
+  `benchmark` and `middleware`, neither of which is a `ConfigCheck.domain`.
+  `ConfigCheck.__post_init__` raises `SpecError` on a domain outside
+  `CHECK_DOMAINS`, so a policy naming one would have validated happily and then
+  selected **zero** checks — a clean report on an unassessed host, which is the
+  exact failure the package's own second rule exists to prevent. The vocabulary
+  is now imported from `core.checks.contract`, never restated. Found by a test
+  that built a check from a rule the policy had already accepted.
+
+- **The schedule dispatcher left an orphan scan.** `create_scan` commits, and
+  the first version resolved the policy _after_ it — so a schedule whose policy
+  had been archived produced a committed scan stuck in `running` that nothing
+  ever dispatched, every night. Resolution now happens before the row exists.
+  The HTTP path had the same shape and deletes the row instead, because there
+  the row has already consumed the scan number and the quota.
+
+### 9P.9 Real-target validation — disposable Ubuntu 24.04, two policies
+
+Built, scanned and destroyed, per the standing rule. The root credential was
+generated at run time, crossed into the container on stdin only, and was
+removed with the container; it never reached source, configuration, a log, a
+Celery argument or Git.
+
+Both policies ran the **real** credentialed audit against the same live host.
+
+|                             | Policy A — no restriction | Policy B — Ubuntu 24.04 STIG, high and above, no built-ins |
+| --------------------------- | ------------------------- | ---------------------------------------------------------- |
+| Benchmark checks resolved   | **955**                   | **8**                                                      |
+| Checks run                  | **843**                   | **8**                                                      |
+| Of those, benchmark content | 757                       | 8                                                          |
+| Reached a verdict           | 39                        | 4                                                          |
+| NOT_APPLICABLE              | **792**                   | **4**                                                      |
+| Errors                      | 3                         | 0                                                          |
+| Fingerprint                 | `0b600d9183e830ce`        | `afd47801c4fef676`                                         |
+
+**792 versus 4 NOT_APPLICABLE is the number this phase exists for.** Under
+Policy A the scan dispatches four other distributions' STIG content plus a
+Windows one at an Ubuntu host and correctly reports almost all of it as not
+applicable; under Policy B it assesses what the operator selected.
+
+Note 955 → 843: `select_checks` drops the Windows benchmark's 198 rules by
+platform before the engine runs, which is the Phase 3 filter doing its job and
+not a policy effect. The policy effect is 843 → 8.
+
+The rest of the chain agreed:
+
+- **API.** `GET /scans/{id}/policy` returned each scan's recorded fingerprint,
+  matching the database exactly, with `matches_snapshot: true` while the
+  policies were untouched.
+- **Report.** `_policy_section` rendered six rows for each scan; A's names
+  _Every framework installed for this organisation_, B's names
+  `cfw_bm_stig_ubuntu2404`. The two reports say different things about scope,
+  which is the requirement.
+- **Immutability.** Policy B was then edited — renamed, `min_severity` widened
+  to `info`, `framework_ids` emptied. Scan B's record still read
+  `min_severity="high"`, `framework_ids=["cfw_bm_stig_ubuntu2404"]`, same
+  fingerprint. The API flipped `matches_snapshot` to false and said _"The
+  policy has been edited since this scan ran. The configuration above is what
+  this scan used."_
+
+Every validation policy, scan and credential was removed afterwards; the live
+database is back to 59 scans, 16 assets, 8,631 findings, 0 scan policies.
+
+### 9P.10 Coverage
+
+`scripts/measure_scan_policy_coverage.py`, denominator frozen at **39 areas**
+before implementation with seven declared unimplemented and five named out of
+scope entirely. **20% → 82.1%** (32/39), implemented _and_ tested _and_
+real-target validated.
+
+Two figures, because they answer different questions. Measured against a
+denominator of _policy-driven_ capability the starting point is **0/39** —
+nothing named a policy. The gap matrix's "20% [measured]" is credit for the
+underlying knobs already existing as request parameters: port selection, both
+intensities, target exclusion, sections, concurrency and the deployment-wide
+intrusive switch. Seven of thirty-nine, which is 18%. Neither figure is wrong;
+the second is the one the matrix has always used and is what 82.1% should be
+read against.
+
+The seven not implemented, each with its reason recorded before the work
+started: a per-tenant default policy, shipped templates, clone, import/export,
+a positive per-check allow-list, network plugin family selection, and
+rate-limit/concurrency — the last because it bounds the _scanner_ rather than
+what is assessed, and this phase's own rule is that a policy field must change
+assessment behaviour or say plainly that it does not.
+
+### 9P.11 Known limitations
+
+- **The main vulnerability-audit pipeline does not sync configuration verdicts
+  to compliance.** `_sync_configuration_compliance` has exactly one caller,
+  `run_credentialed_scan_task`. The policy's framework selection therefore
+  reaches compliance scoring on the standalone credentialed path only. This
+  predates GAP-12 and is recorded rather than fixed here: it is a scoping
+  decision about the enrichment path, not a policy defect.
+- **`pol.select.network_plugins` is unimplemented and the reason is real.**
+  `select_plugins()` maps ports to modules and `VulnerabilityEngine` dispatches
+  them at an arity `test_plugin_contract.py` pins. Filtering the module list is
+  possible; deciding what a "family" is when one plugin emits findings for
+  three of them is not, and a wrong answer silently removes checks from a scan
+  that still reports success.
+- **No UI.** API, scheduling and reports only.
+- **`os_detection` carries no coverage area** even though the field is honoured
+  end to end. It is part of `pol.depth.port_scan`'s area in the frozen list and
+  is not counted twice.
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -5211,6 +5495,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 13d   | `bb8b6ed` | —   | 4606 passed, 2 skipped ✅                       |
 | 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                       |
 | 16    | `3b8ac56` | —   | 4698 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
+| 17    | `PENDING` | —   | 4818 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

@@ -642,6 +642,60 @@ A lighter, separate record of generated report files. Not FK-linked to `scans`.
 
 ---
 
+### `scan_policies`
+
+Reusable assessment configurations. One row per named, versioned policy that a
+scan or a schedule can point at. Added by Phase 17 (GAP-12), migration
+`c7d8e9f0a1b2`.
+
+Deliberately separate from `compliance_policies`, whose `framework_id` is a NOT
+NULL foreign key into the compliance catalogue: a network scan policy has no
+framework and a configuration policy may name several. What _is_ borrowed from
+it is the lifecycle — `policy_family_code` + `version_number` under a UNIQUE
+constraint, `status` in draft/active/archived, and `superseded_by_policy_id` —
+which is what lets a completed scan name the exact configuration that produced
+it while the family goes on being edited.
+
+| Column                    | Type         | Notes                                                   |
+| ------------------------- | ------------ | ------------------------------------------------------- |
+| `id`                      | varchar(100) | `spol_{org_token}_{rand}`                               |
+| `org_id`                  | varchar(100) | **NOT NULL** — there is no global scan policy           |
+| `created_by`              | varchar(150) | FK `users.id`, ON DELETE SET NULL                       |
+| `name`                    | varchar(200) | Unique per tenant, enforced in the router               |
+| `description`             | text         |                                                         |
+| `policy_family_code`      | varchar(100) | Stable across versions                                  |
+| `version_number`          | integer      | `max + 1`; a deleted version is never reissued          |
+| `scan_kind`               | varchar(32)  | `network` \| `credentialed` \| `any`                    |
+| `config`                  | JSONB        | The whole assessment configuration. **Never a secret.** |
+| `status`                  | varchar(20)  | `draft` \| `active` \| `archived`                       |
+| `is_enabled`              | boolean      | Operational switch, separate from `status`              |
+| `superseded_by_policy_id` | varchar(100) | FK self, ON DELETE SET NULL                             |
+| `use_count`               | integer      | Denormalised; warns before an edit. Never decremented   |
+| `created_at`              | timestamptz  |                                                         |
+| `updated_at`              | timestamptz  | `onupdate`                                              |
+
+**Constraints:** `uq_scan_policy_family_version` (org_id,
+policy_family_code, version_number) — scoped to the tenant, unlike
+`compliance_policies`, so two organisations may each have a `linux-baseline`
+family; `ck_scan_policy_status`; `ck_scan_policy_scan_kind`;
+`ck_scan_policy_version_positive`.
+
+**Indexes:** `ix_scan_policies_org_status`, `ix_scan_policies_org_enabled`,
+`ix_scan_policies_policy_family_code`, `ix_scan_policies_scan_kind`.
+
+**Why `config` is one JSONB column** rather than a column per setting: the same
+reason `scan_schedules.scan_options` is. A later phase's scan kind brings its
+own parameters, and a column each means a migration on a table holding customer
+policies every time one is added. The schema that matters is enforced in code —
+`core/scan_policy/validation.py` refuses an unknown key — so a misspelled
+setting is rejected at the API rather than stored and never read.
+
+**A completed scan's configuration is not here.** It is a snapshot inside
+`scans.options["scan_policy"]`, sibling of `options.origin` and GAP-13's
+`options.assessment_scope`. That is deliberate: the record of what produced a
+scan must survive the policy being edited, versioned, archived or deleted, and
+a foreign key to this table would not.
+
 ### `scan_schedules`
 
 One scheduling rule: what to scan, how often, in whose time zone. Added by
@@ -652,31 +706,32 @@ and `policy_id` are NOT NULL foreign keys into the compliance catalogue — a
 network scan has no framework. What is **not** duplicated is execution: a due
 schedule dispatches the same Celery task the manual API route dispatches.
 
-| Column                                     | Type          | Null | Default  | Notes                                                                    |
-| ------------------------------------------ | ------------- | ---- | -------- | ------------------------------------------------------------------------ |
-| `id`                                       | `String(100)` | no   | —        | **PK**, `gen_scan_schedule_id()` — `sch_defa_1a2b_x9v1`                  |
-| `org_id`                                   | `String(100)` | no   | —        | FK `organizations.id` CASCADE                                            |
-| `created_by`                               | `String(150)` | yes  | —        | FK `users.id` SET NULL. The identity scheduled scans run as              |
-| `name`                                     | `String(200)` | no   | —        | Unique per org                                                           |
-| `description`                              | `Text`        | yes  | —        |                                                                          |
-| `scan_kind`                                | `String(32)`  | no   | —        | Indexed. `network` and `credentialed` dispatchable; 4 more reserved      |
-| `targets`                                  | `JSONB`       | no   | `[]`     | Re-validated against org scan scope at every dispatch, never trusted     |
-| `scan_options`                             | `JSONB`       | no   | `{}`     | Whatever the manual route accepts, so a new option needs no migration    |
-| `credential_id`                            | `String(100)` | yes  | —        | FK `compliance_credentials.id` SET NULL. **A reference, never a secret** |
-| `recurrence`                               | `String(20)`  | no   | —        | `once`, `daily`, `weekly`, `monthly`, `custom`                           |
-| `timezone`                                 | `String(64)`  | no   | `UTC`    | IANA name. Not an offset — an offset cannot express daylight saving      |
-| `run_at_minute`                            | `Integer`     | no   | `0`      | Minutes past local midnight, 0–1439                                      |
-| `day_of_week`                              | `Integer`     | yes  | —        | 0 = Monday .. 6 = Sunday, matching `datetime.weekday()`                  |
-| `day_of_month`                             | `Integer`     | yes  | —        | 1–31. A shorter month runs on its last day                               |
-| `cron_expression`                          | `String(120)` | yes  | —        | Permitted **only** when `recurrence = 'custom'`, enforced by CHECK       |
-| `starts_at`                                | `TIMESTAMPTZ` | yes  | —        | The moment, for `once`; the earliest eligible moment otherwise           |
-| `is_enabled`                               | `Boolean`     | no   | `true`   |                                                                          |
-| `next_run_at`                              | `TIMESTAMPTZ` | yes  | —        | NULL means dormant. **Not** treated as due                               |
-| `last_run_at`, `last_status`, `last_error` | mixed         | yes  | —        | Denormalised from the newest run so the list view needs no subquery      |
-| `last_scan_id`                             | `String(100)` | yes  | —        | FK `scans.id` SET NULL                                                   |
-| `consecutive_failures`                     | `Integer`     | no   | `0`      | At 5 the schedule disables itself; any success resets it                 |
-| `total_run_count`                          | `BigInteger`  | no   | `0`      |                                                                          |
-| `created_at`, `updated_at`                 | `TIMESTAMPTZ` | no   | `utcnow` |                                                                          |
+| Column                                     | Type          | Null                                                                             | Default  | Notes                                                                    |
+| ------------------------------------------ | ------------- | -------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `id`                                       | `String(100)` | no                                                                               | —        | **PK**, `gen_scan_schedule_id()` — `sch_defa_1a2b_x9v1`                  |
+| `org_id`                                   | `String(100)` | no                                                                               | —        | FK `organizations.id` CASCADE                                            |
+| `created_by`                               | `String(150)` | yes                                                                              | —        | FK `users.id` SET NULL. The identity scheduled scans run as              |
+| `name`                                     | `String(200)` | no                                                                               | —        | Unique per org                                                           |
+| `description`                              | `Text`        | yes                                                                              | —        |                                                                          |
+| `scan_kind`                                | `String(32)`  | no                                                                               | —        | Indexed. `network` and `credentialed` dispatchable; 4 more reserved      |
+| `targets`                                  | `JSONB`       | no                                                                               | `[]`     | Re-validated against org scan scope at every dispatch, never trusted     |
+| `scan_options`                             | `JSONB`       | no                                                                               | `{}`     | Whatever the manual route accepts, so a new option needs no migration    |
+| `credential_id`                            | `String(100)` | yes                                                                              | —        | FK `compliance_credentials.id` SET NULL. **A reference, never a secret** |
+| `policy_id`                                | varchar(100)  | FK `scan_policies.id`, ON DELETE SET NULL. NULL = the settings in `scan_options` |
+| `recurrence`                               | `String(20)`  | no                                                                               | —        | `once`, `daily`, `weekly`, `monthly`, `custom`                           |
+| `timezone`                                 | `String(64)`  | no                                                                               | `UTC`    | IANA name. Not an offset — an offset cannot express daylight saving      |
+| `run_at_minute`                            | `Integer`     | no                                                                               | `0`      | Minutes past local midnight, 0–1439                                      |
+| `day_of_week`                              | `Integer`     | yes                                                                              | —        | 0 = Monday .. 6 = Sunday, matching `datetime.weekday()`                  |
+| `day_of_month`                             | `Integer`     | yes                                                                              | —        | 1–31. A shorter month runs on its last day                               |
+| `cron_expression`                          | `String(120)` | yes                                                                              | —        | Permitted **only** when `recurrence = 'custom'`, enforced by CHECK       |
+| `starts_at`                                | `TIMESTAMPTZ` | yes                                                                              | —        | The moment, for `once`; the earliest eligible moment otherwise           |
+| `is_enabled`                               | `Boolean`     | no                                                                               | `true`   |                                                                          |
+| `next_run_at`                              | `TIMESTAMPTZ` | yes                                                                              | —        | NULL means dormant. **Not** treated as due                               |
+| `last_run_at`, `last_status`, `last_error` | mixed         | yes                                                                              | —        | Denormalised from the newest run so the list view needs no subquery      |
+| `last_scan_id`                             | `String(100)` | yes                                                                              | —        | FK `scans.id` SET NULL                                                   |
+| `consecutive_failures`                     | `Integer`     | no                                                                               | `0`      | At 5 the schedule disables itself; any success resets it                 |
+| `total_run_count`                          | `BigInteger`  | no                                                                               | `0`      |                                                                          |
+| `created_at`, `updated_at`                 | `TIMESTAMPTZ` | no                                                                               | `utcnow` |                                                                          |
 
 **Indexes:** `ix_scan_schedules_org_enabled` (org_id, is_enabled),
 `ix_scan_schedules_due` (is_enabled, next_run_at) — the beat query —

@@ -24,11 +24,24 @@ the built-ins, so nothing new decides applicability.
 Profile scope
 ─────────────
 ``profile=None`` assesses every control the benchmark defines, which is the
-honest default: nothing in the product yet records which profile an
-organisation has adopted, and assuming Level 1 would silently drop every
-Level 2 control from the score without saying so. Selecting a profile per
-organisation is a scan-policy question and belongs to Phase 12; the filter is
-here and tested so that phase has nothing to build but the setting.
+honest default: assuming Level 1 would silently drop every Level 2 control
+from the score without saying so.
+
+Phase 17 supplies the setting this was written for. ``core/scan_policy``
+resolves a scan's ``EffectivePolicy`` and passes ``framework_ids``,
+``profile``, ``platforms``, ``min_severity`` and the exclusions here. Nothing
+in this module changed shape to accommodate it — the profile and platform
+filters were already here and tested.
+
+Every narrowing argument means "no restriction" when empty
+──────────────────────────────────────────────────────────
+``framework_ids=None`` and ``framework_ids=()`` both resolve **every**
+framework the tenant has installed, which is the pre-policy behaviour and
+therefore what a policy that says nothing about frameworks must do. Reading an
+empty selection as "select nothing" would let an under-specified policy reduce
+a scan to zero checks while still reporting success — a clean report on a host
+nobody assessed. The same reading applies to ``platforms`` and to the two
+exclusion sets.
 """
 
 from __future__ import annotations
@@ -39,6 +52,7 @@ from typing import List, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from core.config_audit.spec import ConfigCheck, SpecError
+from core.scan_policy.spec import severity_at_least
 from db.models.compliance import (
     ComplianceControl,
     ComplianceRule,
@@ -78,6 +92,10 @@ def benchmark_checks_for_org(
     *,
     profile: Optional[str] = None,
     platforms: Optional[Sequence[str]] = None,
+    framework_ids: Optional[Sequence[str]] = None,
+    min_severity: Optional[str] = None,
+    excluded_check_ids: Optional[Sequence[str]] = None,
+    excluded_tags: Optional[Sequence[str]] = None,
 ) -> List[ConfigCheck]:
     """
     Every executable benchmark check in scope for *org_id*.
@@ -89,9 +107,32 @@ def benchmark_checks_for_org(
     as unassessed rather than as passing — which is the direction that
     under-claims rather than over-claims.
     """
-    framework_ids = benchmark_frameworks_for_org(db, org_id)
-    if not framework_ids:
+    installed = benchmark_frameworks_for_org(db, org_id)
+    if not installed:
         return []
+
+    # A policy's selection narrows what is installed; it never adds to it. A
+    # framework the tenant has not installed cannot be scored by naming it in a
+    # policy, and `validate_for_dispatch` has already refused such a policy
+    # with a message saying so — this intersection is the second line of that
+    # defence, so a caller reaching here directly cannot bypass it.
+    if framework_ids:
+        wanted = {str(f) for f in framework_ids if f}
+        selected = [f for f in installed if f in wanted]
+        if not selected:
+            log.warning(
+                "Policy for org %s selected framework(s) %s, none of which are "
+                "installed and active here; no benchmark check resolved",
+                org_id,
+                sorted(wanted),
+            )
+            return []
+    else:
+        selected = installed
+    framework_ids = selected
+
+    excluded_ids = {str(c).strip() for c in (excluded_check_ids or []) if c}
+    excluded_tag_set = {str(t).strip().lower() for t in (excluded_tags or []) if t}
 
     query = (
         db.query(ComplianceRule, ComplianceControl)
@@ -118,6 +159,12 @@ def benchmark_checks_for_org(
             continue
         if not ConfigCheck.is_config_rule(rule):
             continue
+        if rule.id in excluded_ids:
+            # An exclusion is a decision on the record, not a silent drop: the
+            # control it answers for will report as unassessed rather than as
+            # passing, which is the direction that under-claims.
+            log.debug("Rule %s excluded by policy", rule.id)
+            continue
         if profile:
             control_profiles = list(control.profiles or [])
             # An empty profile list means "in scope whatever profile you
@@ -126,7 +173,19 @@ def benchmark_checks_for_org(
             if control_profiles and profile not in control_profiles:
                 continue
         try:
-            checks.append(ConfigCheck.from_rule(rule))
+            check = ConfigCheck.from_rule(rule)
+            # Severity and tags are properties of the *check*, not of the rule
+            # row, so both filters run after the parse rather than in the query.
+            # An unrecognised severity clears every floor — see
+            # `core.scan_policy.spec.severity_at_least`: a check whose severity
+            # this build does not know has not been established to be below the
+            # threshold, and dropping it would remove a check on the strength
+            # of a string nobody defined.
+            if min_severity and not severity_at_least(check.severity, min_severity):
+                continue
+            if excluded_tag_set and excluded_tag_set & {t.lower() for t in check.tags}:
+                continue
+            checks.append(check)
         except (SpecError, ValueError) as exc:
             log.warning(
                 "Benchmark rule %s could not be executed and was skipped: %s",

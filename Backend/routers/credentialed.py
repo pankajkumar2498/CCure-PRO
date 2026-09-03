@@ -106,6 +106,17 @@ class CredentialedScanRequest(BaseModel):
                 seen.append(token)
         return seen
 
+    policy_id: str | None = Field(
+        None,
+        description=(
+            "Reusable scan policy to run this audit under (GAP-12). The "
+            "policy decides which benchmarks, profile, check families, "
+            "severity floor and sections are assessed. Where it names a "
+            "setting it wins over the same parameter in this request, and the "
+            "response lists what it overrode."
+        ),
+    )
+
     @field_validator("key_path")
     @classmethod
     def validate_key_path(cls, v):
@@ -192,6 +203,7 @@ def _detect_os(ssh) -> str:
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
+from scans.policy_binding import resolve_scan_policy as _resolve_scan_policy
 
 
 @router.post("/scan/credentialed")
@@ -335,8 +347,38 @@ async def scan_credentialed(
             pipeline_mode="credentialed",
             org_id=target_org_id,
         )
+        # -- Policy gate (GAP-12) --------------------------------------------
+        # Inside the same session that created the scan, so the snapshot and
+        # the row it describes land in one commit, and before dispatch so the
+        # worker can never read a scan whose configuration is unsettled.
+        #
+        # `has_credential` is True for every path that reaches here: the
+        # request has either named a stored credential or supplied material,
+        # both checked above. A policy with `require_credential` therefore
+        # passes here and does its real work on the *scheduled* path and on the
+        # main pipeline, where an unauthenticated fallback is possible.
+        effective, policy_overrides = _resolve_scan_policy(
+            db,
+            scan=scan,
+            policy_id=req.policy_id,
+            org_id=target_org_id,
+            scan_kind="credentialed",
+            has_credential=True,
+            request_options={"sections": req.sections},
+        )
+        db.commit()
         scan_id = str(scan.id)
         scan_no = scan.scan_no
+        # Read out before the session closes: `effective` is a frozen
+        # dataclass and safe to use afterwards, but the ORM row is not.
+        eff_sections = list(effective.sections) or req.sections
+        policy_summary = {
+            "policy_id": effective.policy_id,
+            "policy_name": effective.policy_name,
+            "fingerprint": effective.fingerprint(),
+            "source": effective.source,
+            "overrides": policy_overrides,
+        }
     finally:
         db.close()
 
@@ -352,7 +394,11 @@ async def scan_credentialed(
         key_path=req.key_path if req.auth_method == "key" else None,
         port=target_port,
         auth_method=req.auth_method,
-        sections=req.sections,
+        # The policy's section list where it names one, the request's
+        # otherwise. The worker reads the rest of the configuration back from
+        # the scan's own snapshot rather than from these arguments -- a
+        # password already travels here and nothing else should join it.
+        sections=eff_sections,
         os_type_req=req.os_type,
         scan_id=scan_id,
         credential_id=req.credential_id,
@@ -373,4 +419,7 @@ async def scan_credentialed(
         "status": "running",
         "targets": hosts,
         "hosts_queued": len(hosts),
+        # Reported at acceptance, not only in the report: an audit that
+        # assessed something other than what was asked for must say so now.
+        "policy": policy_summary,
     }

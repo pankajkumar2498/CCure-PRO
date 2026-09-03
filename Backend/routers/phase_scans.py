@@ -35,6 +35,10 @@ from scan_helpers import (
 from scans.db_helpers import (
     create_scan,
 )
+from scans.policy_binding import (
+    reapply_policy_snapshot as _reapply_policy_snapshot,
+    resolve_scan_policy as _resolve_scan_policy,
+)
 from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["Phase-Selective Scans"])
@@ -210,6 +214,15 @@ class HostDiscoveryRequest(BaseModel):
     exclude_ips: str | None = Field(
         None, description="IPs/subnets to exclude from this scan"
     )
+    policy_id: str | None = Field(
+        None,
+        description=(
+            "Reusable scan policy to run this scan under (GAP-12). Where the "
+            "policy names a setting it wins over the same parameter in this "
+            "request, and the response lists what it overrode. Omitting it "
+            "preserves the pre-policy behaviour exactly."
+        ),
+    )
 
     _check_mode = field_validator("pipeline_mode")(_validate_pipeline_mode)
     _check_intensity = field_validator("discovery_intensity", "port_scan_intensity")(
@@ -356,11 +369,52 @@ async def scan_host_discovery(
         pipeline_mode=req.pipeline_mode,
         org_id=resolved_org,
     )
+    # -- Policy gate (GAP-12) ------------------------------------------------
+    # Resolved *after* the scan row exists so the snapshot lands in the same
+    # commit as the row it describes, and *before* dispatch so the worker can
+    # never read a scan whose configuration has not been settled.
+    #
+    # A policy that cannot be used raises rather than falling back. The scan
+    # row is deleted first: a queued scan that never dispatched is a ghost in
+    # Scan History, and the quota it consumed has not been spent.
+    effective, policy_overrides = _resolve_scan_policy(
+        db,
+        scan=scan,
+        policy_id=req.policy_id,
+        org_id=resolved_org,
+        scan_kind="network",
+        has_credential=bool((req.options or {}).get("credentials")),
+        request_options={
+            "custom_ports": req.custom_ports,
+            "exclude_ports": req.exclude_ports,
+            "discovery_intensity": discovery_intensity,
+            "port_scan_intensity": port_scan_intensity,
+            "os_detection": req.os_detection,
+            "exclude_ips": req.exclude_ips,
+        },
+    )
+
+    # The policy is authoritative for every setting it names. Reading them back
+    # from the resolved configuration -- rather than from `req` -- is what makes
+    # the recorded snapshot and the arguments the task receives the same thing.
+    eff_custom_ports = effective.custom_ports
+    eff_exclude_ports = effective.exclude_ports
+    eff_discovery = effective.discovery_intensity or discovery_intensity
+    eff_port_intensity = effective.port_scan_intensity or port_scan_intensity
+    eff_os_detection = (
+        req.os_detection if effective.os_detection is None else effective.os_detection
+    )
+    eff_exclude_ips = (
+        ",".join(effective.excluded_targets)
+        if effective.excluded_targets
+        else req.exclude_ips
+    )
+
     scan.options = {
         **(scan.options or {}),
         "execution_mode": req.execution_mode or "automatic",
-        **({"custom_ports": req.custom_ports} if req.custom_ports else {}),
-        **({"exclude_ports": req.exclude_ports} if req.exclude_ports else {}),
+        **({"custom_ports": eff_custom_ports} if eff_custom_ports else {}),
+        **({"exclude_ports": eff_exclude_ports} if eff_exclude_ports else {}),
         **(
             {"passive_first": req.passive_first}
             if req.passive_first is not None
@@ -371,9 +425,12 @@ async def scan_host_discovery(
             if req.exclude_ot_from_nmap is not None
             else {}
         ),
-        **({"exclude_ips": req.exclude_ips} if req.exclude_ips else {}),
+        **({"exclude_ips": eff_exclude_ips} if eff_exclude_ips else {}),
         **(req.options or {}),
     }
+    # Re-applied because the dict literal above rebuilds `options` wholesale and
+    # would otherwise drop the snapshot written into it a moment ago.
+    _reapply_policy_snapshot(scan, effective)
     db.commit()
     scan_id = str(scan.id)
     scan_no = scan.scan_no
@@ -384,17 +441,17 @@ async def scan_host_discovery(
         targets=targets,
         scan_type=req.scan_type,
         pipeline_mode=req.pipeline_mode,
-        discovery_intensity=discovery_intensity,
+        discovery_intensity=eff_discovery,
         scan_id=scan_id,
         rate_limit=req.rate_limit,
         max_concurrency=req.max_concurrency,
-        os_detection=req.os_detection,
-        port_scan_intensity=port_scan_intensity,
-        custom_ports=req.custom_ports,
-        exclude_ports=req.exclude_ports,
+        os_detection=eff_os_detection,
+        port_scan_intensity=eff_port_intensity,
+        custom_ports=eff_custom_ports,
+        exclude_ports=eff_exclude_ports,
         passive_first=req.passive_first,
         exclude_ot_from_nmap=req.exclude_ot_from_nmap,
-        exclude_ips=req.exclude_ips,
+        exclude_ips=eff_exclude_ips,
     )
 
     # Store the task ID so it can be revoked if needed
@@ -436,6 +493,17 @@ async def scan_host_discovery(
         "scan_id": scan_id,
         "scan_no": scan_no,
         "status": "running",
+        # What configuration this scan is running under, and which of the
+        # caller's own parameters the policy displaced. Reported at acceptance
+        # rather than only in the report: a scan that assessed something other
+        # than what was asked for must say so now.
+        "policy": {
+            "policy_id": effective.policy_id,
+            "policy_name": effective.policy_name,
+            "fingerprint": effective.fingerprint(),
+            "source": effective.source,
+            "overrides": policy_overrides,
+        },
     }
 
 

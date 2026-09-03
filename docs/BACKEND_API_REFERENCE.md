@@ -394,6 +394,25 @@ Source: `Backend/routers/health.py` — 4 operations.
 | GET    | `/api/pipeline-modes`      | public       | Pipeline modes and their phase lists                                             |
 | GET    | `/api/workflow-example`    | public       | Frontend orchestration example                                                   |
 
+### `GET /scans/{scan_id}/policy`
+
+The assessment configuration a scan actually ran under. `scans:read`, 60/min.
+
+Read from the scan's own immutable snapshot, **not** from the policy row it
+names — the policy may since have been edited, versioned, archived or deleted,
+and none of that changes what the scan assessed. A question an auditor asks
+about a scan has to be answerable from the scan.
+
+| Field                  | Meaning                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `policy`               | Identity, fingerprint and a human-readable summary. `recorded: false` for a scan predating GAP-12.        |
+| `effective`            | The full configuration, field by field, so two scans can be diffed.                                       |
+| `policy_current_state` | Whether the policy still exists and still says the same thing. Reported, never used to change the record. |
+
+`recorded: false` is a real answer and is not turned into a default policy:
+inventing a configuration record would put a claim in front of an auditor that
+nothing supports.
+
 ### `GET /scans/{scan_id}/comparison`
 
 What changed between this scan and a baseline. `scans:read`, 30/minute.
@@ -651,6 +670,113 @@ report instead of blocking the run. The scan row is created with
 **Errors** — `400` missing username/password/key, no valid targets, too many
 hosts, or single unreachable target; `404` stored credential not found;
 `503` paramiko missing; `429`.
+
+---
+
+## 6a. Scan policies — `/scan-policies`
+
+Source: `Backend/routers/scan_policies.py` — 11 operations. Added by Phase 17
+(GAP-12) of the Nessus capability gap-closure programme.
+
+**A policy decides what a scan assesses.** It is a reusable, named, versioned
+configuration — which benchmarks and profile, which check families and
+platforms, a severity floor, exclusions, port and intensity settings — that a
+scan or a schedule points at instead of restating the settings each time.
+
+**A policy never holds a secret.** There is no credential field of any kind.
+`config` is copied into `scans.options`, which is client-visible, and printed
+in the generated report; a credential is referenced by
+`compliance_credentials.id` on the scan or the schedule.
+
+**An unknown setting is refused, not stored.** `config` is JSONB and would
+otherwise accept a misspelled key silently — a setting the operator believes is
+in force and that nothing reads.
+
+| Method | Path                                 | Permission             | Limit  |
+| ------ | ------------------------------------ | ---------------------- | ------ |
+| GET    | `/scan-policies`                     | `scan_policies:read`   | 60/min |
+| POST   | `/scan-policies`                     | `scan_policies:create` | 20/min |
+| GET    | `/scan-policies/settings`            | `scan_policies:read`   | 60/min |
+| POST   | `/scan-policies/validate`            | `scan_policies:read`   | 30/min |
+| GET    | `/scan-policies/{policy_id}`         | `scan_policies:read`   | 60/min |
+| PATCH  | `/scan-policies/{policy_id}`         | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/enable`  | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/status`  | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/version` | `scan_policies:create` | 20/min |
+| GET    | `/scan-policies/{policy_id}/usage`   | `scan_policies:read`   | 60/min |
+| DELETE | `/scan-policies/{policy_id}`         | `scan_policies:delete` | 20/min |
+
+**Body — `ScanPolicyCreate`**: `name`, `description`, `policy_family_code`
+(defaults to a slug of the name), `scan_kind` (`network` | `credentialed` |
+`any`), `config{}`, `status` (`draft` | `active`), `is_enabled`.
+
+**`config` settings**, every one of which changes assessment behaviour:
+
+| Setting                  | Effect                                                      |
+| ------------------------ | ----------------------------------------------------------- |
+| `framework_ids[]`        | Benchmarks to resolve checks from. Empty = every installed. |
+| `benchmark_profile`      | e.g. `stig`. Empty = every control the benchmark defines.   |
+| `check_families[]`       | `ConfigCheck.domain` values. Empty = every domain.          |
+| `platforms[]`            | `windows` / `linux`. Empty = both.                          |
+| `sections[]`             | Credentialed collector sections. Empty = collector default. |
+| `include_builtin_checks` | Whether the 20 built-in checks run. Default true.           |
+| `min_severity`           | Severity floor on checks.                                   |
+| `excluded_check_ids[]`   | Named checks excluded.                                      |
+| `excluded_tags[]`        | Checks excluded by tag.                                     |
+| `excluded_targets[]`     | Addresses, ranges or CIDRs removed from the target set.     |
+| `custom_ports`           | Port expression, e.g. `22,80,8000-8100`.                    |
+| `exclude_ports`          | Ports excluded from the scan.                               |
+| `discovery_intensity`    | `light` / `normal` / `deep`.                                |
+| `port_scan_intensity`    | `light` / `normal` / `deep`.                                |
+| `os_detection`           | Nmap OS fingerprinting on or off.                           |
+| `allow_intrusive`        | Whether a probe may write to a target. Default false.       |
+| `require_credential`     | Refuse to start rather than run unauthenticated.            |
+
+**An empty collection means "no restriction", never "nothing".** `[]` for
+`framework_ids` selects every framework the tenant has installed, which is the
+pre-policy behaviour. Reading it the other way would let an under-specified
+policy reduce a scan to nothing while still reporting success.
+
+Five behaviours worth knowing:
+
+- **Another tenant's policy returns 404, not 403**, on every verb. A 403 would
+  confirm the id exists across a tenant boundary.
+- **Editing a policy never rewrites history.** A completed scan carries its own
+  immutable snapshot in `scans.options`, so what produced it is settled. An
+  edit changes every _future_ run, and `PATCH` returns a warning naming how
+  many scans have already used the policy.
+- **An archived policy cannot be edited.** It is the record of what earlier
+  scans ran under; `POST /{id}/version` is the way to move on.
+- **Archiving or deleting is refused while an enabled schedule uses the
+  policy.** Deleting anyway (`?force=true`) leaves those schedules running
+  under the request defaults, which is a silent broadening of scope, so the
+  response names them.
+- **Validation refuses rather than falling back.** A policy naming a framework
+  that is not installed, is parked in this installation, or does not exist at
+  all produces three different messages, because those need three different
+  actions.
+
+### `POST /scan-policies/validate`
+
+Checks a configuration without storing it. Static validation only —
+vocabularies and internal consistency. Whether the named frameworks are
+installed for this organisation is re-checked at every dispatch, because an
+installation removed in June must stop a scan in July.
+
+### `GET /scan-policies/settings`
+
+The vocabularies this build honours — scan kinds, statuses, config keys, check
+families, severities — read from the code that honours them, so a family added
+by a later phase is selectable without a UI change.
+
+### Selecting a policy for a scan
+
+`POST /scan/host-discovery` and `POST /scan/credentialed` accept an optional
+`policy_id`. Where the policy names a setting it **wins** over the same
+parameter in the request, and the response's `policy.overrides` lists what it
+displaced — silence there would make the policy advisory. Omitting `policy_id`
+preserves the pre-policy behaviour exactly, and still records the request's own
+parameters as the scan's effective configuration.
 
 ---
 

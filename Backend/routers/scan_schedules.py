@@ -101,6 +101,43 @@ def _resolve_org(user: User, requested: Optional[str]) -> str:
     return str(user.org_id)
 
 
+def _validate_policy(
+    db: Session,
+    org_id: str,
+    scan_kind: str,
+    policy_id: Optional[str],
+    credential_id: Optional[str],
+) -> None:
+    """
+    Refuse a schedule that names a policy it cannot run.
+
+    Checked when the schedule is written *as well as* at every dispatch, and
+    the two are not redundant: this one catches a typo while the operator is
+    looking at the form, and the dispatch one catches a policy archived three
+    months later. Only the second is load-bearing for correctness; the first is
+    what stops a schedule being created that can never fire.
+
+    A disabled or draft policy is refused here too. Accepting one would create
+    a schedule that fails every night with an error about a policy nobody
+    remembers choosing.
+    """
+    if not policy_id:
+        return
+
+    from core.scan_policy import ResolvedPolicyError, resolve_policy
+
+    try:
+        resolve_policy(
+            db,
+            policy_id=policy_id,
+            org_id=org_id,
+            scan_kind=scan_kind,
+            has_credential=bool(credential_id),
+        )
+    except ResolvedPolicyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _get_schedule(db: Session, schedule_id: str, org_id: str) -> ScanSchedule:
     """
     Fetch one schedule inside its tenant.
@@ -138,6 +175,8 @@ def _serialize(schedule: ScanSchedule, db: Session) -> Dict[str, Any]:
         "targets": list(schedule.targets or []),
         "scan_options": dict(schedule.scan_options or {}),
         "credential_id": schedule.credential_id,
+        "policy_id": schedule.policy_id,
+        "policy_name": (schedule.policy.name if schedule.policy else None),
         # The name, never the material. A UI needs to show which credential is
         # attached; it has no business receiving anything that could be used.
         "credential_name": credential_name,
@@ -208,6 +247,16 @@ class ScanScheduleBase(BaseModel):
     cron_expression: Optional[str] = Field(None, max_length=120)
     starts_at: Optional[datetime] = None
     is_enabled: bool = True
+    policy_id: Optional[str] = Field(
+        None,
+        description=(
+            "Reusable scan policy this schedule runs under (GAP-12). By "
+            "reference, so editing the policy changes every future run without "
+            "touching this schedule -- and completed scans keep their own "
+            "recorded configuration. Re-resolved and re-validated at every "
+            "dispatch, never inherited from the moment the schedule was written."
+        ),
+    )
 
     @field_validator("recurrence")
     @classmethod
@@ -261,6 +310,7 @@ class ScanScheduleUpdate(BaseModel):
     targets: Optional[List[str]] = None
     scan_options: Optional[Dict[str, Any]] = None
     credential_id: Optional[str] = None
+    policy_id: Optional[str] = None
     recurrence: Optional[str] = None
     timezone: Optional[str] = Field(None, max_length=64)
     run_at: Optional[str] = None
@@ -505,6 +555,9 @@ def create_schedule(
         body.starts_at,
     )
     _validate_credential(db, resolved_org, body.scan_kind, body.credential_id)
+    _validate_policy(
+        db, resolved_org, body.scan_kind, body.policy_id, body.credential_id
+    )
     targets = _validate_targets_now(db, resolved_org, body.targets)
 
     duplicate = (
@@ -529,6 +582,7 @@ def create_schedule(
         targets=targets,
         scan_options=body.scan_options or {},
         credential_id=body.credential_id,
+        policy_id=body.policy_id,
         recurrence=body.recurrence,
         timezone=body.timezone,
         run_at_minute=parse_hhmm(body.run_at),
@@ -617,6 +671,18 @@ def update_schedule(
     if "credential_id" in fields:
         _validate_credential(
             db, resolved_org, schedule.scan_kind, fields["credential_id"]
+        )
+    if "policy_id" in fields or "credential_id" in fields:
+        # Re-validated whenever either changes: a policy with
+        # require_credential becomes unusable the moment the credential is
+        # cleared, and that must be refused while the operator is editing
+        # rather than discovered at 02:00 by a failed run.
+        _validate_policy(
+            db,
+            resolved_org,
+            schedule.scan_kind,
+            fields.get("policy_id", schedule.policy_id),
+            fields.get("credential_id", schedule.credential_id),
         )
     if "targets" in fields:
         fields["targets"] = _validate_targets_now(

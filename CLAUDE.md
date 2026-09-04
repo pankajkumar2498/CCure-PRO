@@ -574,6 +574,66 @@ Two rules the layout depends on, both of which fail loudly if broken:
   origin, and Nginx adds no CORS headers — it cannot know which origins are
   legitimate.
 
+## A scan must always reach a terminal state
+
+On 4 Sep 2026 two Basic Network Scans and a Vulnerability Audit against
+`10.180.5.83` sat in `running` indefinitely, showing "LIVE SCANNING" stuck at
+10%. The host was up the whole time — 33 ms ICMP, ARP-resolved — and the
+discovery engine finds it in **2.2 seconds**. Nothing was ever wrong with the
+scanner.
+
+The worker was started at 00:27, before commit `9c40fe3` added
+`foreign_keys="AssetVulnerability.scan_id"` to `Scan.vulnerabilities`, so it
+held a mapper that could not resolve its join condition. Four things then
+compounded, and each is worth keeping in mind separately:
+
+- **A failure path that shares a dependency with the thing it is recovering
+  from is not a failure path.** The task raised `InvalidRequestError` on its
+  first query; the `except` handler called `mark_scan_failed`, which raised the
+  identical error on *its* first query. Nothing was written.
+  `core.scan_control.force_terminal_status` is the answer: plain SQL against
+  `scans`, no mapper, no relationship, no model attribute. It is deliberately
+  the only helper there written that way. `core.tasks._settle_failure` tries
+  the ORM first (an audit entry and a notification are worth having) and falls
+  back to it. **Never call `mark_scan_failed` directly from an `except` block.**
+
+- **`task_time_limit` in `core/celery_app.py` is inert on this deployment.**
+  Celery's hard limit is delivered by signalling a billiard *process*, so it
+  does nothing under the `--pool=threads` host worker, and it can do nothing at
+  all about a worker that has died or been restarted. The comment beside it
+  ("Kill tasks if they hang") is wrong here. The real timeout is
+  `ccure.tasks.reap_stalled_scans`, on beat every two minutes:
+  `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running scan and
+  `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected — two
+  deadlines because "the scan hung" and "no scanner is running" send the
+  operator to different places. It only ever moves a scan *out of* a
+  non-terminal state; a real outcome always wins.
+
+- **`run_asset_discovery_task` did not settle the scan at all.** Its `except`
+  handler just returned. That is the same defect whose fix is documented in a
+  comment inside the *Vulnerability Audit* handler ("returning the failure
+  without marking it left the scan running for ever") — phase 2 was missed when
+  phase 3 was fixed.
+
+- **The mission view could only end via the WebSocket.** A task that died
+  without publishing a terminal frame left the screen live until a 600 s
+  client-side timeout, which then mapped `timeout` and `unknown` to
+  **`complete`** — reporting a scan as finished when nothing had been heard from
+  it for ten minutes. `startHostPolling` now reads `scan.status` on every tick,
+  so the UI is correct within 2.5 s whatever happened to the socket, and the
+  scan record is authoritative over the socket's word.
+
+`POST /scans/{id}/stop` now publishes a `cancelled` frame, and the progress
+WebSocket sends the *scan-level* status on connect (previously only the last
+phase's, and only when a phase row existed — so a browser reconnecting to a
+finished scan was told it was running).
+
+Two operational notes: the start script's duplicate-worker guard deliberately
+does not count the child `python.exe` a single worker spawns under the venv's
+base interpreter, so two PIDs is normal. And **restart the host worker after
+changing anything under `core/`, `scans/` or `orchestrator/`** — this whole
+episode was a worker running code from before a commit that fixed it.
+
 ## Scan pipeline
 
 `pipeline_mode` selects the phases: `basic` = 1, `asset` = 1+2,

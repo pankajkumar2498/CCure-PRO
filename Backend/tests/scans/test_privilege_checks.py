@@ -372,7 +372,7 @@ class TestProbeConstruction:
         assert "SystemRoot" in body
 
     def test_the_service_acl_probe_ignores_virtual_service_accounts(self):
-        """
+        r"""
         Regression, found by real-target validation.
 
         The first version reported seven services on a stock Windows 11

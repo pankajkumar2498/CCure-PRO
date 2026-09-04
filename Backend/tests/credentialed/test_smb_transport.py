@@ -592,7 +592,7 @@ def test_a_domain_qualified_principal_is_split_for_ntlm():
 
     x = smb_executor.SMBExecutor.__new__(smb_executor.SMBExecutor)
     smb_executor.SMBExecutor.__init__(
-        x, ip="10.0.0.5", username="CORP\svc_scan", password="pw"
+        x, ip="10.0.0.5", username=r"CORP\svc_scan", password="pw"
     )
     assert x.username == "svc_scan"
     assert x.domain == "CORP"

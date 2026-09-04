@@ -85,7 +85,7 @@ were fixed in-phase, and §9N.6 records them.
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
 | **GAP-12**   | Configurable scan policy engine          | Orchestration  | 17    | High     | 20% [measured]   | 85%    | **Partial** (82.1% measured, real-target validated)                               | `9525023` |
 | **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `3b8ac56` |
-| **GAP-14**   | Remediation & SLA management             | Remediation    | 18    | High     | 30% [measured]   | 85%    | **Closed** (91.9% measured, real-target validated)                                | `PENDING` |
+| **GAP-14**   | Remediation & SLA management             | Remediation    | 18    | High     | 30% [measured]   | 85%    | **Closed** (91.9% measured, real-target validated)                                | `9c40fe3` |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
 | **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)                                | `13d6854` |
@@ -5755,7 +5755,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                       |
 | 16    | `3b8ac56` | —   | 4698 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 | 17    | `9525023` | —   | 4817 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
-| 18    | `PENDING` | —   | 4908 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
+| 18    | `9c40fe3` | —   | 4908 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

@@ -593,6 +593,19 @@ def _sync_credentialed_asset_identity(
                 detail={
                     "config_audit_assessed": bool(_config_summary.get("assessed")),
                     "checks_assessed": len(_assessed_checks),
+                    # The set itself, not only its size. The sweep above uses
+                    # it to decide which absent configuration findings are
+                    # genuinely gone; without it recorded, a later comparison
+                    # has only the *family* to go on — and every credentialed
+                    # finding shares one family, so a scan narrowed by a GAP-12
+                    # policy reported the checks it stopped selecting as fixed.
+                    # Measured on a real target: five controls reported
+                    # remediated on a host where nothing had changed, while
+                    # this same sweep had correctly left them open.
+                    #
+                    # Only checks that reached a verdict are in it, so it is
+                    # tens of ids rather than the whole selected set.
+                    "assessed_checks": sorted(_assessed_checks),
                 },
             )
     except Exception as exc:  # never fail a scan over its own bookkeeping

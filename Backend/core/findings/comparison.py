@@ -138,6 +138,59 @@ class AssessmentScope:
             return False
         return family in self.families
 
+    @property
+    def assessed_checks(self) -> frozenset:
+        """
+        The configuration checks this scan reached a PASS or FAIL on.
+
+        Written by ``core.tasks`` from the same set its own fixed-sweep uses,
+        so the sweep and the comparison cannot disagree about what was
+        assessed. Empty when the scan predates the record — which is "we do not
+        know", handled by ``covers_check`` below and never as "nothing".
+        """
+        raw = (self.detail or {}).get("assessed_checks")
+        if not isinstance(raw, (list, tuple, set, frozenset)):
+            return frozenset()
+        return frozenset(str(item) for item in raw if item)
+
+    def covers_check(self, vuln_id: str) -> bool:
+        """
+        Whether this scan actually evaluated the check behind *vuln_id*.
+
+        ``covers`` answers a question about *families*, and every credentialed
+        finding — CVE and configuration alike — carries the family
+        ``credentialed_package``. That is coarse enough to be wrong in a way
+        real targets showed: a scan narrowed by a GAP-12 policy still covers
+        the family, so a configuration finding whose check the policy stopped
+        selecting looked, to the comparison, like a finding the scan had
+        searched for and not found — a **fix**, reported for five controls on
+        a host where nothing had changed and where the scan's own sweep had
+        correctly left them open.
+
+        A CVE is unaffected: the package matcher runs over the whole installed
+        inventory, so a CVE it does not report on a host it inventoried really
+        is gone. Only a check has to have been individually selected.
+
+        A scan that recorded no check set at all returns True — the
+        pre-GAP-15 behaviour — because "we do not know which checks ran" must
+        not silently reclassify every historical comparison.
+        """
+        assessed = self.assessed_checks
+        if not assessed:
+            return True
+
+        from core.checks.definitions import (
+            DEFINITION_TYPE_CVE,
+            definition_type_for_id,
+        )
+
+        identifier = str(vuln_id or "")
+        if not identifier:
+            return True
+        if definition_type_for_id(identifier) == DEFINITION_TYPE_CVE:
+            return True
+        return identifier in assessed
+
     def as_dict(self) -> Dict[str, Any]:
         return {
             "recorded": self.recorded,
@@ -446,7 +499,9 @@ def _classify(
     if open_at_baseline and not seen_by_current:
         # The finding was open and this scan did not report it. Whether that is
         # a fix depends entirely on whether the scan looked.
-        if current_scope.covers(row.asset_id or "", row.source_family or ""):
+        if current_scope.covers(
+            row.asset_id or "", row.source_family or ""
+        ) and current_scope.covers_check(row.vuln_id or ""):
             # It looked, and did not find it. That is a fix — and note the row
             # itself need not say "fixed": the sweep in the sync marks it, but
             # this classification does not depend on that having run.

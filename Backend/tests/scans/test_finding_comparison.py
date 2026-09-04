@@ -895,3 +895,126 @@ class TestComparisonApi:
         ).lower()
         for forbidden in ("password", "secret", "encrypted_password", "private_key"):
             assert forbidden not in body
+
+
+class TestNarrowedScanCannotReportAFix:
+    """
+    Found by GAP-15's real-target export validation, on a live Ubuntu 24.04
+    container scanned twice four minutes apart with nothing changed between.
+
+    The second scan ran under a GAP-12 policy naming one benchmark at severity
+    `medium`, so it selected 203 checks where the first selected 843. Five
+    configuration findings the first scan reported were therefore never
+    evaluated by the second — and the comparison called all five **FIXED**,
+    because `covers()` answers a question about *families* and every
+    credentialed finding, CVE and configuration alike, carries the family
+    `credentialed_package`.
+
+    The scan's own sweep had it right the whole time: those rows were still
+    `status="open"` with `fixed_at` NULL, because the sweep consults the set of
+    checks that actually reached a verdict. The comparison had no access to
+    that set. It does now, and the two mechanisms can no longer disagree.
+    """
+
+    def _narrow(self, world, assessed):
+        record_assessment_scope(
+            world["current"],
+            assets=[world["asset_id"]],
+            families=[FAMILY],
+            detail={"assessed_checks": list(assessed)},
+        )
+
+    def test_a_configuration_check_the_scan_did_not_run_is_not_assessed(
+        self, db_session, world
+    ):
+        db_session.add(
+            _finding(
+                db_session,
+                world,
+                "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING",
+                status="open",
+                first_found=BASELINE_START,
+                last_found=BASELINE_END,
+            )
+        )
+        # The current scan reached a verdict on a different check only.
+        self._narrow(world, ["CCURE-CFG-CCURE-LINUX-SSH-PROTOCOL"])
+        db_session.flush()
+
+        result = _compare(db_session, world)
+        assert result.counts[CLASS_FIXED] == 0
+        assert result.counts[CLASS_NOT_ASSESSED] == 1
+
+    def test_a_configuration_check_the_scan_did_run_is_still_a_fix(
+        self, db_session, world
+    ):
+        """
+        The fix must not cost a real remediation its classification.
+        """
+        db_session.add(
+            _finding(
+                db_session,
+                world,
+                "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING",
+                status="open",
+                first_found=BASELINE_START,
+                last_found=BASELINE_END,
+            )
+        )
+        self._narrow(world, ["CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING"])
+        db_session.flush()
+
+        result = _compare(db_session, world)
+        assert result.counts[CLASS_FIXED] == 1
+        assert result.counts[CLASS_NOT_ASSESSED] == 0
+
+    def test_a_cve_is_unaffected_by_the_check_set(self, db_session, world):
+        """
+        The package matcher runs over the whole installed inventory, so a CVE
+        it does not report on a host it inventoried really is gone. Requiring a
+        CVE to appear in the check set would make every package fix
+        unreportable.
+        """
+        db_session.add(
+            _finding(
+                db_session,
+                world,
+                "CVE-2024-9911",
+                status="open",
+                first_found=BASELINE_START,
+                last_found=BASELINE_END,
+            )
+        )
+        self._narrow(world, ["CCURE-CFG-CCURE-LINUX-SSH-PROTOCOL"])
+        db_session.flush()
+
+        result = _compare(db_session, world)
+        assert result.counts[CLASS_FIXED] == 1
+
+    def test_a_scan_that_recorded_no_check_set_keeps_the_previous_behaviour(
+        self, db_session, world
+    ):
+        """
+        Every scan that ran before this record existed has no check set, and
+        "we do not know which checks ran" must not silently reclassify every
+        historical comparison. The degradation is to the behaviour those
+        comparisons already had.
+        """
+        db_session.add(
+            _finding(
+                db_session,
+                world,
+                "CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING",
+                status="open",
+                first_found=BASELINE_START,
+                last_found=BASELINE_END,
+            )
+        )
+        db_session.flush()
+
+        scope = read_assessment_scope(world["current"])
+        assert scope.assessed_checks == frozenset()
+        assert scope.covers_check("CCURE-CFG-ANYTHING") is True
+
+        result = _compare(db_session, world)
+        assert result.counts[CLASS_FIXED] == 1

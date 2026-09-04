@@ -20,6 +20,25 @@ python-docx==1.1.2                 # DOCX compliance exports (SoA, framework aud
                                    # returned a PDF or downloaded a 29-byte file containing the
                                    # words 'python-docx is not installed.'
 
+openpyxl==3.1.5                    # XLSX export of benchmark verdicts, findings and
+                                   # scan comparison (Phase 19, GAP-15).
+                                   #
+                                   # Pure Python with no compiled extension, which is
+                                   # why it is the spreadsheet library here: the scanner
+                                   # worker runs on the Windows host from Backend/.venv
+                                   # and the API runs in a Linux container, and a library
+                                   # needing a source build would be an installation
+                                   # project on one of them.
+                                   #
+                                   # Same "both environments" rule as pywinrm and the
+                                   # database drivers below: the API container renders
+                                   # the export, and a worker that regenerates a missing
+                                   # report reaches the same code. Installed in only one
+                                   # is how an export succeeds in the UI and fails from
+                                   # the worker. Only ever used with write_only=True, so
+                                   # a large export streams rather than holding every
+                                   # cell object in memory.
+
 # ── Web API server ────────────────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.29.0

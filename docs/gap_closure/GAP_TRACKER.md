@@ -86,7 +86,7 @@ were fixed in-phase, and §9N.6 records them.
 | **GAP-12**   | Configurable scan policy engine          | Orchestration  | 17    | High     | 20% [measured]   | 85%    | **Partial** (82.1% measured, real-target validated)                               | `9525023` |
 | **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `3b8ac56` |
 | **GAP-14**   | Remediation & SLA management             | Remediation    | 18    | High     | 30% [measured]   | 85%    | **Closed** (91.9% measured, real-target validated)                                | `9c40fe3` |
-| GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
+| **GAP-15**   | Reporting & export expansion             | Reporting      | 19    | Medium   | 50% [estimated]  | 85%    | **Closed** (88.6% measured, real-target validated)                                | `PENDING` |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
 | **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)                                | `13d6854` |
 | GAP-18       | Distributed scanner / agent architecture | Architecture   | 18    | Low      | 10% [estimated]  | 60%    | Open                                                                              | —         |
@@ -5463,6 +5463,246 @@ attestation.
 
 ---
 
+## 9R. Phase 19 — GAP-15: reporting and export expansion
+
+**Status: Closed at 88.6% measured (39 of 44 frozen areas), real-target
+validated on Linux and Windows.**
+
+The product could assess 955 benchmark rules and could show almost none of it
+to a machine. A credentialed audit of one Windows host produces 254 per-check
+verdicts and 1,887 findings, and before this phase every one of those verdicts
+existed only inside a JSONB blob on a scan phase row — reachable through no
+API, no file and no report. `?fmt=XLSX` was a 400, because there was no XLSX
+generator anywhere in the tree.
+
+What this phase adds is a way out. What it does **not** add is a second
+reporting architecture: the PDFs, the compliance framework documents, the
+host-inventory CSV and the suppressed-candidate sidecar are untouched, and the
+findings CSV gained nine appended columns and not one reordered one.
+
+**No migration.** The whole persistence cost of the phase is one additional key
+inside a JSONB column that already existed (`assessment_scope.assessed_checks`).
+Nothing was altered on a live table.
+
+### 9R.1 Why the verdicts come from the scan payload, not `compliance_findings`
+
+This is the phase's one significant modelling decision and it goes against the
+obvious answer.
+
+`compliance_findings` is the compliance register — one row per control, with a
+reviewer, a justification and a history. It is what the thirteen framework
+reports read, and it is right for what it is. It is the wrong source for this
+export, because `compliance_findings.status` has no `error` member and must not
+gain one: `error` is a scan-time condition, and storing it as a verdict would
+assert something about a host that nothing established. `compliance_sync`
+therefore maps ERROR onto `manual_review` with the reason in the evidence
+payload.
+
+The export's stated requirement is that the states stay distinct. Read from the
+register, a check that could not run would be indistinguishable from one a human
+is meant to review — and on a Windows host that is not a rounding error, it is
+the difference between "we assessed this" and "we could not".
+
+So the export reads `config_audit.results` — the authoritative per-check record
+the Phase 3 engine returned and the scan stored, one entry per check carrying
+its own `CheckOutcome`. The control and framework mapping is then layered on
+from `compliance_rules` → `compliance_rule_controls` → `compliance_controls`,
+through the same enabled-and-active intersection `compliance_sync` writes
+through, so the export can never name a framework the tenant never installed.
+
+Six states, each with its own label and none of them blank:
+
+| Export label     | Means                                                        |
+| ---------------- | ------------------------------------------------------------ |
+| `PASS`           | the check ran and the host satisfies it                      |
+| `FAIL`           | the check ran and the host does not                          |
+| `NOT_APPLICABLE` | established out of scope, with the reason in `Applicability` |
+| `MANUAL_REVIEW`  | the benchmark wants a human, or absence proves nothing       |
+| `ERROR`          | the check could not be evaluated, with the reason in `Error` |
+| `NOT_ASSESSED`   | the audit did not run on this host at all                    |
+
+`NOT_ASSESSED` is the only one that is not a stored outcome. It exists so that a
+scan whose configuration audit never ran exports one explicit row per host
+carrying the engine's own reason, rather than an empty sheet — which a reader
+takes for a clean host.
+
+### 9R.2 The payload walk, and why it is not a fixed path
+
+`_collect_host_audits` walks the stored payload for `config_audit` records
+rather than reading a known path, and that is deliberate. The same record
+reaches three shapes: the vulnerability-audit pipeline nests it under
+`_phase_data[i].credentialed_report`, the standalone credentialed scan puts the
+whole report in `options["credentialed_report"]`, and a multi-host credentialed
+run carries a list of reports beside a single `report` kept for the consumers
+that predate multi-host support. A fixed path exports one of those and returns
+nothing for the other two — an empty sheet, HTTP 200.
+
+The host is taken from the record's own container, so a walk can never
+attribute one machine's verdicts to another. And `_dedupe_host_audits` exists
+because that same first-host-stored-twice arrangement would otherwise double
+every one of that host's verdicts, which the reconciliation requirement makes a
+correctness question rather than a tidiness one.
+
+### 9R.3 Two defects real-target validation found, both pre-existing
+
+Neither was introduced by this phase. Both are export correctness defects, both
+are exactly what the brief's reconciliation requirement exists to catch, and
+neither is visible without counting rows against the database.
+
+**A credentialed scan's CSV download returned the host inventory.**
+`build_legacy_scan_results` renders the credentialed phase as
+`{"data": [{"ip_address": …}], "report": {…, "cves": […]}}`. The normalizer
+reads findings off the entries in `data`, found an entry carrying nothing but an
+address, and returned zero — so `scan_has_findings` answered False and the CSV
+branch fell through to `generate_host_inventory_csv`. Measured on a real audit:
+**45 findings in the database, 45 in the workbook, 0 in the CSV**, HTTP 200
+either way. On the Windows host it was 1,887 findings against one inventory row.
+
+The PDF path never hit it, because `_load_scan_report_paths` already reshapes
+the payload before generating. `_flatten_credentialed_payload` is the same
+reshape, applied where the CSV branch needs it, and it leaves every other phase
+untouched. It also refuses to merge over a host entry that already carries its
+own findings — the builder synthesises a _stub_ report with an empty `cves`
+list when it can find no stored one, and merging that over a populated entry
+deletes every finding the scan reported. A test pins both directions.
+
+**A narrowed scan reported five controls as remediated.** Two scans of the same
+disposable Ubuntu container, four minutes apart, nothing changed between them.
+The second ran under a GAP-12 policy naming one benchmark at severity `medium`
+and therefore selected 203 checks where the first selected 843. Five
+configuration findings the first reported were never evaluated by the second —
+and GAP-13 classified all five **FIXED**.
+
+`AssessmentScope.covers()` answers a question about _families_, and every
+credentialed finding, CVE and configuration alike, carries the family
+`credentialed_package`. So the narrowed scan "covered" them.
+
+The scan's own fixed-sweep had it right the whole time — those rows were still
+`status="open"` with `fixed_at` NULL, because the sweep consults
+`_assessed_config_definition_ids`, the set of checks that actually reached a
+PASS or FAIL. The comparison had no access to that set. It does now:
+`core/tasks` records it in the assessment scope, and `covers_check()` requires a
+non-CVE finding's identifier to be in it before absence can mean a fix. A CVE is
+deliberately exempt — the package matcher runs over the whole installed
+inventory, so a CVE it does not report on a host it inventoried really is gone.
+
+A scan that recorded no check set returns True, which is the pre-phase
+behaviour: "we do not know which checks ran" must not silently reclassify every
+historical comparison. Measured on the real target after the fix: **fixed 5 → 0,
+not assessed 0 → 5.**
+
+### 9R.4 Real-target reconciliation
+
+Two targets. The Linux one is a disposable Ubuntu 24.04 container, built and
+destroyed, root password generated at run time and never written to source,
+configuration, a log, a Celery argument or Git. Nothing was weakened — the stock
+image fails plenty of STIG rules already, and this phase exports assessment
+results rather than manufacturing them. The Windows one is a real host on the
+network, scanned once with a credential the operator supplied for the purpose,
+stored encrypted, dispatched **by reference**, and deleted afterwards.
+
+**Ubuntu 24.04, policy-scoped (203 of 843 checks):**
+
+| Source              | Verdicts | Findings | Comparison |
+| ------------------- | -------- | -------- | ---------- |
+| Database            | 203      | 45       | —          |
+| JSON export         | 203      | 45       | 50 rows    |
+| XLSX workbook       | 203      | 45       | 50 rows    |
+| Findings CSV        | —        | 45       | —          |
+| PDF generator input | —        | 45       | —          |
+
+Per-outcome, identical across all three exports:
+`FAIL 10 · PASS 25 · ERROR 1 · MANUAL_REVIEW 5 · NOT_APPLICABLE 162`.
+Comparison against the unscoped 843-check scan:
+`0 new · 45 still open · 0 fixed · 0 reappeared · 5 not assessed`.
+
+**Windows 11 STIG, 10.180.6.14 — 198 of 219 DISA rules automated:**
+
+| Source              | Verdicts | Findings |
+| ------------------- | -------- | -------- |
+| Database            | 254      | 1,887    |
+| JSON export         | 254      | 1,887    |
+| XLSX workbook       | 254      | 1,887    |
+| Findings CSV        | —        | 1,896    |
+| PDF generator input | —        | 1,896    |
+
+Per-outcome, identical across all three exports:
+`FAIL 135 · PASS 81 · MANUAL_REVIEW 6 · NOT_APPLICABLE 32 · ERROR 0`. That
+matches the figure §9 already records for this benchmark on this host.
+
+**The nine-row difference is documented, not a drop.** The scan payload carries
+1,896 CVE entries of which 1,887 are distinct — five identifiers appear more
+than once, because a CVE can match through more than one installed package. The
+database holds one row per distinct `(asset, vuln_id)`. Checked in both
+directions: **no identifier is in the payload and absent from the database, and
+none is in the database and absent from the payload.** The CSV and the PDF are a
+point-in-time record of what the scan reported; the workbook and the JSON are
+the deduplicated finding set. Both are correct answers to different questions,
+and the difference is pre-existing behaviour of the CSV and PDF path.
+
+**Performance, on the Windows export** — the largest available here:
+assembling all three datasets including an unbounded comparison over 5,598
+findings took **12.2s**; writing the 800 KB workbook took **2.4s**; writing the
+1.8 MB CSV took **3.1s**. No asynchronous job system was built, and the
+measurement is why: see the recorded reason under `exp.api.async_jobs`.
+
+**Formula injection, over real content:** zero cells in the Windows workbook
+begin with an unescaped formula leader.
+
+### 9R.5 Coverage
+
+`scripts/measure_export_coverage.py`, denominator frozen at 44 areas before
+implementation with **five** declared not planned, each with its reason.
+
+|                                       | Before   | After     |
+| ------------------------------------- | -------- | --------- |
+| implemented                           | 13/44    | **39/44** |
+| tested                                | 0/44     | **39/44** |
+| implemented **and** tested (headline) | **0.0%** | **88.6%** |
+
+The before-headline of 0.0% needs saying plainly rather than being quoted as
+though the product had no exports. Thirteen areas were already implemented —
+both PDFs, three CSV shapes, the framework documents, RBAC, tenant scoping, a
+rate limit and an audit entry. What was zero is areas _named by a test under
+this denominator_, because the denominator did not exist until this phase froze
+it. The honest pair of numbers is **implemented 13 → 39** and **headline
+0.0% → 88.6%**, and the gap matrix's earlier "50% [measured]" was an estimate
+against no written denominator at all.
+
+The five not implemented, all recorded before the work started: SARIF (no source
+location to put in the field it is built around), STIX (a benchmark verdict is
+not intelligence about an adversary), per-control manual attestation in the
+verdict export (it is a governance decision and belongs in the SoA, not beside a
+machine reading), asynchronous export jobs (the measured cost does not need
+one), and scheduled delivery (a connector surface).
+
+### 9R.6 Known limitations
+
+- **No PDF text was read back during reconciliation.** ReportLab subsets its
+  fonts, so the drawn strings are glyph indices and recovering words needs a
+  CMap parser or a PDF dependency, neither of which was worth adding for a
+  validation step. The PDF is reconciled at the level above instead: the payload
+  the generator is handed carries exactly the finding count the CSV and the
+  database agree on. That is a weaker check than reading the file and is
+  recorded as such.
+- **The compliance verdict export is scan-scoped.** There is no "every verdict
+  across every scan in the last quarter" endpoint. The verdicts live in per-scan
+  payloads, so a cross-scan export means iterating scans, and the reconciliation
+  requirement is much easier to state — and to keep true — against one scan and
+  its own immutable policy snapshot.
+- **`reporting/csv_generator.py` does not escape formula leaders.** The XLSX
+  writer and the new export endpoint both do. The existing findings CSV
+  deliberately does not, because changing what it writes would change every
+  findings CSV this product has ever produced, and altering an existing
+  deliverable was not this phase's business. Recorded here as a finding rather
+  than fixed in passing.
+- **No UI.** The export endpoint is API-only; nothing in the frontend calls it
+  yet.
+- **`scope=asset` is implemented and lightly exercised.** The scan-scoped
+  default is what the real-target validation used.
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -5756,6 +5996,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 16    | `3b8ac56` | —   | 4698 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 | 17    | `9525023` | —   | 4817 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 | 18    | `9c40fe3` | —   | 4908 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
+| 19    | `PENDING` | —   | PENDING_REGRESSION                              |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

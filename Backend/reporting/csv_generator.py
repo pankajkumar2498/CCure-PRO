@@ -65,6 +65,46 @@ NETWORK_HEADERS = [
     "Data Quality Notes",
 ]
 
+#: The GAP-14 remediation record, appended to the findings export.
+#:
+#: **Appended, never interleaved.** A consumer that reads this CSV by column
+#: index - which is what a spreadsheet macro and most ETL scripts do - keeps
+#: working, because every column it knows about is still where it was. Inserting
+#: "Remediation State" next to "Status", which reads better, would silently
+#: shift thirty columns under every existing reader.
+#:
+#: The values come from the database rather than from the scan payload, because
+#: that is where the remediation record lives: a scan reports what it found, and
+#: who owns it and when it is due is decided afterwards. `finding_context_map`
+#: in reporting/exports.py is the bridge, and a finding with no remediation
+#: record simply gets empty cells - which is correct, not missing data.
+REMEDIATION_HEADERS = [
+    "Remediation State",
+    "Remediation Owner",
+    "SLA Due",
+    "SLA State",
+    "Overdue",
+    "Verified At",
+    "Verified By Scan",
+    "Risk Accepted At",
+    "Risk Acceptance Expires",
+]
+
+#: The keys `finding_context_map` returns, in the order the columns above
+#: expect them. One list rather than two so a column added to one and forgotten
+#: in the other is impossible.
+REMEDIATION_CONTEXT_KEYS = [
+    "remediation_state",
+    "remediation_owner",
+    "sla_due_at",
+    "sla_state",
+    "overdue",
+    "verified_at",
+    "verified_scan_id",
+    "accepted_at",
+    "exception_expires_at",
+]
+
 #: Columns for the suppressed-candidate sheet. The PDF appendix now samples
 #: these; the complete audit trail lives here, where there is no page budget.
 SUPPRESSED_HEADERS = [
@@ -141,6 +181,43 @@ def _network_row(f: StandardizedFinding) -> List[str]:
         f.last_found_at,
         " | ".join(f.integrity_warnings),
     ]
+
+
+def _remediation_cells(
+    finding: StandardizedFinding,
+    context: Dict[tuple, Dict[str, str]] | None,
+) -> List[str]:
+    """
+    The remediation columns for one finding, or empty cells.
+
+    The scan payload and the database name a finding differently, so several
+    spellings are tried. A CVE finding matches on its CVE. A **configuration**
+    finding matches on its title, and that is the only key it has: the
+    credentialed pipeline puts the minted CCURE-CFG- identifier in `cve_id`,
+    which the normalizer correctly refuses to read as a CVE, so `cve_ids` comes
+    out empty and `plugin_id` falls back to the title. Matching on the CVE
+    alone would have exported an empty remediation record for every benchmark
+    finding in the product - which is most of them.
+
+    A finding that matches nothing gets empty cells rather than being dropped:
+    it is still a finding this scan reported, and an export that quietly lost
+    rows for want of a remediation record would be the silent-drop failure the
+    reconciliation requirement exists to catch.
+    """
+    if not context:
+        return [""] * len(REMEDIATION_HEADERS)
+
+    host = str(finding.host or "").strip().lower()
+    candidates = [*finding.cve_ids, finding.plugin_id, finding.plugin_name]
+    for candidate in candidates:
+        identifier = str(candidate or "").strip().upper()
+        if not identifier:
+            continue
+        record = context.get((host, identifier))
+        if record:
+            return [str(record.get(key, "") or "") for key in REMEDIATION_CONTEXT_KEYS]
+
+    return [""] * len(REMEDIATION_HEADERS)
 
 
 def _web_row(f: StandardizedFinding) -> List[str]:
@@ -321,6 +398,7 @@ def generate_scan_csv(
     scan_type: str = "network",
     include_port_inventory: bool = False,
     write_suppressed: bool = True,
+    remediation_context: Dict[tuple, Dict[str, str]] | None = None,
 ) -> str:
     """
     Write scan findings to a CSV file.
@@ -332,6 +410,17 @@ def generate_scan_csv(
     ``*_suppressed.csv`` sidecar records every one of them. The PDF appendix
     samples that list and refers the reader here for the complete audit trail,
     so the two must be produced together.
+
+    ``remediation_context`` is the GAP-14 record, keyed ``(host, identifier)``
+    and built by ``reporting.exports.finding_context_map``. Passing it appends
+    the remediation columns; omitting it writes the same file this function has
+    always written, minus nothing. That default matters: this generator is
+    called from the scan pipeline as well as from the download endpoint, and the
+    pipeline has no session to look a remediation record up with.
+
+    The network export keeps its full column set either way - the remediation
+    columns are always present, empty where nothing is known - so a consumer
+    parsing by header never sees the shape change between two scans.
     """
     report: ScanFindings = build_scan_report(result_dict)
 
@@ -349,7 +438,10 @@ def generate_scan_csv(
         os.makedirs(directory, exist_ok=True)
 
     is_web = str(scan_type).lower() == "web"
-    headers = WEB_HEADERS if is_web else NETWORK_HEADERS
+    # The web export is deliberately left alone. It is rendered by the
+    # /web-scans path, a remediation record is per host finding rather than per
+    # URL, and altering an existing report was not this phase's business.
+    headers = WEB_HEADERS if is_web else [*NETWORK_HEADERS, *REMEDIATION_HEADERS]
     build_row = _web_row if is_web else _network_row
 
     # utf-8-sig so Excel detects the encoding and renders non-ASCII correctly.
@@ -357,7 +449,10 @@ def generate_scan_csv(
         writer = csv.writer(handle)
         writer.writerow(headers)
         for finding in findings:
-            writer.writerow(build_row(finding))
+            row = build_row(finding)
+            if not is_web:
+                row = [*row, *_remediation_cells(finding, remediation_context)]
+            writer.writerow(row)
 
     if write_suppressed and not is_web and report.excluded:
         with open(

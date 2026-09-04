@@ -1187,13 +1187,14 @@ remove `scan_phases`, `services` and `asset_vulnerabilities`.
 
 ## 8. Reports
 
-Source: `Backend/routers/reports.py` — 2 operations. Both use
+Source: `Backend/routers/reports.py` — 3 operations. All use
 `get_current_user_flexible`, so a browser can download with a `?ticket=` JWT
 instead of a header.
 
 | Method | Path                          | Auth     | Permission gate                              |
 | ------ | ----------------------------- | -------- | -------------------------------------------- |
 | GET    | `/reports/download/{scan_id}` | flexible | `_require_reports_read` → `reports:read`     |
+| GET    | `/reports/export/{scan_id}`   | flexible | `_require_reports_read` → `reports:read`     |
 | DELETE | `/reports/{scan_id}`          | flexible | `_require_reports_delete` → `reports:delete` |
 
 ### `GET /reports/download/{scan_id}`
@@ -1212,19 +1213,75 @@ instead of a header.
 | `JSON`, `EXECUTIVE`, `EXECUTIVE_PDF`, `PDF` | `JSON`      | Executive PDF |
 | `XML`, `TECHNICAL`, `TECHNICAL_PDF`         | `XML`       | Technical PDF |
 | `CSV`                                       | `CSV`       | CSV           |
+| `XLSX`, `EXCEL`, `WORKBOOK`                 | `XLSX`      | XLSX workbook |
 
 Anything else returns **400**, not a PDF.
+
+`XLSX` returns the whole scan as one workbook — a Summary sheet naming the scan
+and its GAP-12 policy snapshot, Compliance Verdicts, Findings with their GAP-14
+remediation record, and the GAP-13 Scan Comparison against the previous scan of
+the same `pipeline_mode`. Media type
+`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. A
+deployment where `openpyxl` is not installed answers **503** naming the
+dependency; it never falls back to another format.
 
 **Behaviour** — `404` when the scan is out of scope, when its status is
 `failed`/`cancelled` (a failed scan has nothing to export, and a 200 with an empty
 file made it look successful), or when the stored PDF is absent. CSV export picks
 the richest available payload in the order `credentialed`, `phase3`, `phase2`,
 `phase1`, then chooses `generate_scan_csv` when the payload has findings and
-`generate_host_inventory_csv` when it does not. PDF downloads serve the stored
+`generate_host_inventory_csv` when it does not. The findings CSV carries nine
+**appended** GAP-14 columns — remediation state, owner, SLA due, SLA state,
+overdue, verified at, verified by scan, risk accepted at, risk acceptance
+expires. Appended, never interleaved, so a consumer reading by column index
+keeps working; a finding with no remediation record gets empty cells. PDF downloads serve the stored
 file at `scans.report_executive_path` / `report_technical_path`, regenerating only
 if missing, and validate the resolved path with `os.path.commonpath` against
 `Backend/reports/` before returning it. Every download writes a
 `REPORT_DOWNLOAD` audit entry.
+
+### `GET /reports/export/{scan_id}`
+
+The filterable, machine-readable export. Same permission and the same
+tenant-scoped scan lookup as the download above — a caller cannot export a scan
+they could not read, and cannot reach another organisation's results by naming
+its id. `10/minute`.
+
+| Parameter            | Type             | Default  | Notes                                                                          |
+| -------------------- | ---------------- | -------- | ------------------------------------------------------------------------------ |
+| `fmt`                | string           | `"xlsx"` | `xlsx` \| `csv` \| `json`. Anything else is **400**, never swapped             |
+| `dataset`            | string           | `"all"`  | `all` \| `compliance` \| `findings` \| `comparison`                            |
+| `asset_id`, `host`   | string \| null   | null     | Narrow to one asset                                                            |
+| `framework_id`       | string \| null   | null     | Narrow the compliance rows to one framework                                    |
+| `profile`            | string \| null   | null     | Benchmark profile, e.g. `L1`                                                   |
+| `severity`           | string[] \| null | null     | Repeatable                                                                     |
+| `verdict`            | string[] \| null | null     | `PASS` \| `FAIL` \| `NOT_APPLICABLE` \| `MANUAL_REVIEW` \| `ERROR`             |
+| `status`             | string[] \| null | null     | Finding detection status                                                       |
+| `remediation_state`  | string[] \| null | null     | GAP-14 workflow state                                                          |
+| `overdue_only`       | bool             | `false`  | SLA breaches only                                                              |
+| `scope`              | string           | `"scan"` | `scan` — what this scan reported; `asset` — everything held against its assets |
+| `baseline`           | string \| null   | null     | Comparison baseline; resolved through the same visibility check                |
+| `include_comparison` | bool             | `true`   |                                                                                |
+
+**What the export represents.** The benchmark verdicts are the per-check
+results the Phase 3 engine produced _during that scan_ and stored, read back
+unchanged — nothing is re-evaluated at export time. The six states stay six
+states: `PASS`, `FAIL`, `NOT_APPLICABLE`, `MANUAL_REVIEW`, `ERROR`, and
+`NOT_ASSESSED` for a host whose configuration audit never ran. That is why the
+rows come from the scan payload rather than from `compliance_findings`, whose
+status vocabulary has no `error` member and maps ERROR onto `manual_review`.
+
+The scan's own immutable GAP-12 policy snapshot travels on every row; the
+current policy row is deliberately not consulted, because it may have been
+edited since and that changes nothing about what the scan assessed. Filters
+only ever narrow — a framework the scan's policy excluded cannot be named back
+in, because the rest of it was never assessed.
+
+`fmt=csv` needs one named dataset; `dataset=all` with `fmt=csv` is **400**
+rather than a silent choice of table. `404` for an unknown or out-of-scope
+scan and for one whose status is `failed`/`cancelled`. Every export writes a
+`report.downloaded` audit entry whose `format` names the dataset and the
+format.
 
 ### `DELETE /reports/{scan_id}`
 

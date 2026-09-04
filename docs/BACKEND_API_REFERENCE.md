@@ -673,6 +673,121 @@ hosts, or single unreachable target; `404` stored credential not found;
 
 ---
 
+## 6c. Remediation and SLA — `/remediation`
+
+Source: `Backend/routers/remediation.py` — 12 operations. Added by Phase 18
+(GAP-14) of the Nessus capability gap-closure programme.
+
+**The workflow around findings that already exist**: who owns one, when it is
+due, what state its remediation is in, and whether a fix was confirmed by a
+_subsequent assessment_ rather than merely claimed by a person.
+
+**No endpoint here can mark a finding verified fixed.** That is the gap's whole
+point. `PATCH /remediation/findings/{id}/state` refuses `verified_fixed` with a
+400 explaining that a scan has to establish it, and pointing at
+`pending_verification` — the claim a person is actually in a position to make.
+Verification happens in `core/remediation/verification.py`, driven by GAP-13's
+comparison, at the end of a scan.
+
+| Method | Path                                                     | Permission             | Limit  |
+| ------ | -------------------------------------------------------- | ---------------------- | ------ |
+| GET    | `/remediation/summary`                                   | `findings:read`        | 60/min |
+| GET    | `/remediation/overdue`                                   | `findings:read`        | 60/min |
+| GET    | `/remediation/pending-verification`                      | `findings:read`        | 60/min |
+| GET    | `/remediation/sla-policy`                                | `findings:read`        | 60/min |
+| PUT    | `/remediation/sla-policy`                                | `settings:update`      | 20/min |
+| POST   | `/remediation/assign`                                    | `findings:update`      | 30/min |
+| GET    | `/remediation/findings/{finding_id}`                     | `findings:read`        | 60/min |
+| PATCH  | `/remediation/findings/{finding_id}/state`               | `findings:update`      | 60/min |
+| POST   | `/remediation/findings/{finding_id}/notes`               | `findings:update`      | 60/min |
+| POST   | `/remediation/findings/{finding_id}/accept-risk`         | `findings:accept_risk` | 20/min |
+| POST   | `/remediation/findings/{finding_id}/withdraw-acceptance` | `findings:accept_risk` | 20/min |
+| GET    | `/remediation/findings/{finding_id}/history`             | `findings:read`        | 60/min |
+
+**Remediation states**: `open` → `assigned` → `in_remediation` →
+`pending_verification` → **`verified_fixed`** (assessment only) → `reopened`
+(assessment only). `risk_accepted` is reachable from any active state through
+its own endpoint, and expiry returns it to the queue.
+
+**`remediation_state` is not `status`.** `status` (open / fixed / accepted)
+answers a _detection_ question — is this finding present on the host — and is
+written by the scan sweeps. `remediation_state` answers a _workflow_ question.
+A finding can be `status = open` while `remediation_state = in_remediation`,
+and `status = fixed` while nobody has yet confirmed the absence was a real fix
+rather than a scan that did not look.
+
+**Accepting a risk is its own permission.** `findings:update` moves work
+through the queue; deciding the organisation will carry a risk indefinitely is
+a different authorisation. Without the split anyone who can edit a finding
+could clear their own overdue list by accepting everything on it. A reason is
+required; an expiry is optional and, when it lapses, the finding returns to the
+remediation queue on beat.
+
+### SLA
+
+Due dates are **calendar days from `first_found_at`**, materialised on the
+finding so "everything overdue" is one indexed predicate rather than a
+per-finding computation over thousands of rows.
+
+| Severity           | Default     | Why                                                                                                 |
+| ------------------ | ----------- | --------------------------------------------------------------------------------------------------- |
+| `critical`         | 15 days     | The shape of CISA BOD 22-01                                                                         |
+| `high`             | 30 days     |                                                                                                     |
+| `medium`           | 90 days     |                                                                                                     |
+| `low`              | 180 days    |                                                                                                     |
+| `none`, `unscored` | no deadline | An unrated finding carries no obligation, and `not_applicable` is reported rather than "within SLA" |
+
+Three rules that are decisions rather than implementation details:
+
+- **Rediscovery does not restart the clock.** If the due date came from
+  `last_found_at` a finding present for a year would be perpetually two weeks
+  from due and could never go overdue.
+- **A regression starts a new clock, from the regression.** `reopened_at`
+  becomes the anchor; dating a returned finding from its original discovery
+  would report an instant, unfixable breach.
+- **CISA KEV wins where it is earlier and never where it is later.** An
+  internal policy may be stricter than the federal mandate; it cannot extend
+  it, and silently relaxing to the federal date would loosen a customer's own
+  policy.
+
+`PUT /remediation/sla-policy` **merges** over the current values — an
+organisation configuring only `critical` keeps its other five deadlines. It does
+not retroactively move existing due dates; they are recomputed on the next
+scan's sync, because rewriting thousands of historical deadlines from a
+settings edit would change what a past report said was overdue.
+
+**SLA states**: `within_sla`, `due_soon` (inside the 7-day window),
+`overdue`, `resolved` (verified or accepted), `pending_verification` (claimed
+and still inside its deadline — past it, `overdue` wins), `not_applicable`.
+
+### Verification
+
+At the end of a scan, GAP-13's comparison is applied to the remediation states
+it justifies. Only two classifications move anything:
+
+| GAP-13 verdict      | Remediation                                                             |
+| ------------------- | ----------------------------------------------------------------------- |
+| `fixed`             | → `verified_fixed`, citing the scan                                     |
+| `reappeared`        | → `reopened`, SLA clock restarts                                        |
+| `not_assessed`      | **nothing** — the scan did not look, so its absence establishes nothing |
+| `new`, `still_open` | nothing — a scan does not reset somebody's work                         |
+
+Verification is also withheld entirely when the comparison is not comparable,
+or when the two scans ran under **different assessment configurations**
+(GAP-12) — a finding absent from the narrower one may be out of its scope
+rather than fixed. Findings that could not be verified are counted and named
+in the response and in the report, never dropped.
+
+### `GET /remediation/findings/{id}/history`
+
+Every remediation event, oldest first, read from `finding_remediation_events`
+— which nothing updates or deletes. A changed owner, a moved due date or a
+withdrawn acceptance is answerable months later even though the finding row
+carries only the current values. A system event (a verification, an expiry)
+carries an `actor_label` such as `system:verification` and no `actor_id`.
+
+---
+
 ## 6a. Scan policies — `/scan-policies`
 
 Source: `Backend/routers/scan_policies.py` — 11 operations. Added by Phase 17

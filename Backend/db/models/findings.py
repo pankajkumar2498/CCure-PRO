@@ -35,6 +35,7 @@ from sqlalchemy import (
     Column,
     Date,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -46,6 +47,67 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Remediation workflow vocabulary  (GAP-14)
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The states a finding's *remediation* can be in — distinct from ``status``,
+#: which answers whether the finding is present on the host. See
+#: ``core/remediation/states.py`` for the transitions and for why these are a
+#: second column rather than more values in ``status``.
+#:
+#: Declared **here**, in the model layer, and imported by ``core`` rather than
+#: the other way round. The models are the lower layer: ``core.remediation``
+#: reads ``core.findings.comparison``, which reads this module, so a vocabulary
+#: owned by ``core`` and imported here is a circular import. Same reasoning and
+#: same shape as ``db.models.compliance.CONTROL_THEMES``, which CLAUDE.md
+#: records for the same reason — and which was previously copied five ways
+#: before it was given one home.
+REMEDIATION_STATE_OPEN = "open"
+REMEDIATION_STATE_ASSIGNED = "assigned"
+REMEDIATION_STATE_IN_REMEDIATION = "in_remediation"
+REMEDIATION_STATE_PENDING_VERIFICATION = "pending_verification"
+REMEDIATION_STATE_VERIFIED_FIXED = "verified_fixed"
+REMEDIATION_STATE_REOPENED = "reopened"
+REMEDIATION_STATE_RISK_ACCEPTED = "risk_accepted"
+
+REMEDIATION_STATES = (
+    REMEDIATION_STATE_OPEN,
+    REMEDIATION_STATE_ASSIGNED,
+    REMEDIATION_STATE_IN_REMEDIATION,
+    REMEDIATION_STATE_PENDING_VERIFICATION,
+    REMEDIATION_STATE_VERIFIED_FIXED,
+    REMEDIATION_STATE_REOPENED,
+    REMEDIATION_STATE_RISK_ACCEPTED,
+)
+
+REMEDIATION_STATE_DEFAULT = REMEDIATION_STATE_OPEN
+
+#: Built from the tuple so the model, the migration and the CHECK constraint
+#: cannot disagree about the vocabulary.
+REMEDIATION_STATE_SQL = (
+    "remediation_state IN (" + ", ".join(f"'{s}'" for s in REMEDIATION_STATES) + ")"
+)
+
+#: What may be written to ``finding_remediation_events.event_type``.
+REMEDIATION_EVENT_TYPES = (
+    "assigned",
+    "unassigned",
+    "state_changed",
+    "note_added",
+    "risk_accepted",
+    "exception_expired",
+    "verified",
+    "reopened",
+    "sla_set",
+    "sla_changed",
+)
+
+REMEDIATION_EVENT_SQL = (
+    "event_type IN (" + ", ".join(f"'{e}'" for e in REMEDIATION_EVENT_TYPES) + ")"
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service  (open port + service fingerprint)
@@ -478,6 +540,20 @@ class AssetVulnerability(Base):
         CheckConstraint(
             SEVERITY_CANONICAL_SQL, name="ck_asset_vuln_severity_canonical"
         ),
+        # Declared here as well as in migration d8e9f0a1b2c3, for the reason
+        # the indexes above give: a fresh install runs
+        # Base.metadata.create_all() and never runs the migration, so a
+        # constraint only the migration knows about exists on upgraded
+        # databases and not on new ones.
+        CheckConstraint(REMEDIATION_STATE_SQL, name="ck_asset_vuln_remediation_state"),
+        Index("ix_asset_vuln_org_remediation", "org_id", "remediation_state"),
+        Index("ix_asset_vuln_org_sla_due", "org_id", "sla_due_at"),
+        Index("ix_asset_vuln_remediation_owner", "remediation_owner"),
+        Index(
+            "ix_asset_vuln_exception_expiry",
+            "exception_expires_at",
+            postgresql_where=text("exception_expires_at IS NOT NULL"),
+        ),
         # {"postgresql_partition_by": "HASH (org_id)"}
     )
 
@@ -604,12 +680,206 @@ class AssetVulnerability(Base):
     last_found_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
 
-    scan = relationship("Scan", back_populates="vulnerabilities")
+    # ── Remediation workflow (GAP-14) ────────────────────────────────────────
+    #
+    # `status` above answers a *detection* question — is this finding present
+    # on the host — and is written by the scan sweeps, read by the dashboard,
+    # the asset risk recompute and GAP-13's comparison, with a dozen call sites
+    # testing `status == "open"`.
+    #
+    # These answer a *workflow* question: what is anybody doing about it. They
+    # are separate columns because adding `in_remediation` to `status` would
+    # have made every one of those queries silently stop counting the finding —
+    # so putting a finding into remediation would remove it from the dashboard,
+    # from the asset's risk score and from the overdue list. A workflow column
+    # that makes findings disappear when you start working on them is the
+    # opposite of what this is for.
+    #
+    # See core/remediation/states.py for the vocabulary and the transitions.
+
+    #: open | assigned | in_remediation | pending_verification | verified_fixed
+    #: | reopened | risk_accepted. Defaults to `open` for every existing row,
+    #: which is honest: they had no owner and no workflow state, and inventing
+    #: one retrospectively would claim work nobody did.
+    remediation_state = Column(
+        String(32), nullable=False, default=REMEDIATION_STATE_DEFAULT, index=True
+    )
+    #: The user accountable for fixing it. A plain FK into `users` — there is
+    #: no team entity in this product and inventing one here would be a second
+    #: identity system.
+    remediation_owner = Column(
+        String(150),
+        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    assigned_at = Column(TIMESTAMPTZ, nullable=True)
+    assigned_by = Column(
+        String(150),
+        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    #: When remediation is due. Materialised rather than computed on read
+    #: because "show me everything overdue" across thousands of findings is a
+    #: WHERE clause on this column, and deriving it per row would be the N+1
+    #: this design exists to avoid. core/remediation/sla.py owns how it is set.
+    sla_due_at = Column(TIMESTAMPTZ, nullable=True, index=True)
+    #: The severity the deadline was computed from, kept so a report can say
+    #: *why* a finding is due when it is — and so re-rating a finding is
+    #: visible as a changed basis rather than a silently moved date.
+    sla_basis = Column(String(32), nullable=True)
+
+    #: Set only by core/remediation/verification.py, and only from a scan that
+    #: actually assessed the relevant check. A user action can never write
+    #: these; that refusal is the point of the whole phase.
+    verified_at = Column(TIMESTAMPTZ, nullable=True)
+    verified_scan_id = Column(
+        String(100),
+        ForeignKey("scans.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    #: When a verified-fixed finding was found again. Becomes the SLA anchor,
+    #: because a regression is new work — dating it from the original
+    #: discovery would report an instant, unfixable breach.
+    reopened_at = Column(TIMESTAMPTZ, nullable=True)
+    #: How many times this finding has come back after being verified fixed.
+    #: A finding on its fourth regression is a different conversation from one
+    #: on its first, and the count is the cheapest way to see it.
+    reopened_count = Column(Integer, nullable=False, default=0)
+
+    #: When an accepted risk stops applying. NULL means the acceptance does not
+    #: expire, which is a legitimate decision and not the same as "never
+    #: reviewed" — `accepted_at` records when it was taken.
+    exception_expires_at = Column(TIMESTAMPTZ, nullable=True)
+    accepted_at = Column(TIMESTAMPTZ, nullable=True)
+
+    scan = relationship(
+        "Scan", back_populates="vulnerabilities", foreign_keys=[scan_id]
+    )
     asset = relationship("Asset", back_populates="vulnerabilities")
     vulnerability = relationship(
         "VulnerabilityDefinition", back_populates="asset_findings"
     )
     service = relationship("Service", back_populates="vulnerabilities")
+    remediation_events = relationship(
+        "FindingRemediationEvent",
+        back_populates="finding",
+        cascade="all, delete-orphan",
+        # Ties broken on the id, which embeds the event type and the
+        # timestamp to the microsecond. Two events written in one
+        # transaction can share `occurred_at`, and an ORDER BY on it
+        # alone leaves their order undefined — which for a timeline
+        # means a reader can be shown "verified" before the state
+        # change that led to it.
+        order_by="(FindingRemediationEvent.occurred_at, FindingRemediationEvent.id)",
+    )
 
     def __repr__(self):
-        return f"<AssetVuln {self.id!r} status={self.status!r}>"
+        return (
+            f"<AssetVuln {self.id!r} status={self.status!r} "
+            f"remediation={self.remediation_state!r}>"
+        )
+
+
+class FindingRemediationEvent(Base):
+    """
+    One thing that happened to a finding's remediation.
+
+    **Append-only by convention, and that convention is what auditability
+    rests on.** Nothing in the product updates or deletes a row here; the
+    workflow writes one on every assignment, state change, note, acceptance
+    and verification. So "who moved this to accepted risk, when, and on whose
+    authority" is answerable months later even though the finding row itself
+    carries only the current state.
+
+    Shaped after ``ComplianceFindingHistory``, which does the same job for
+    compliance controls — same columns, same reasons, deliberately not the same
+    table because the two reference different finding models and merging them
+    would need a nullable foreign key to each plus a discriminator.
+
+    Why a table and not the audit log
+    ─────────────────────────────────
+    ``audit_logs`` records *who did what in the application* and is
+    tamper-evident, partitioned by organisation and subject to retention. It is
+    the right place for "user X called this endpoint" and the workflow writes
+    there too. It is the wrong place to read "show me this finding's
+    remediation timeline": that is a per-finding query against a hash-
+    partitioned table with an append-only trigger, and the audit trail's
+    retention policy would eventually remove the history a finding still needs.
+    """
+
+    __tablename__ = "finding_remediation_events"
+    __table_args__ = (
+        # Composite, because `asset_vulnerabilities`' primary key is
+        # `(id, org_id)`. See the `finding_id` column comment.
+        ForeignKeyConstraint(
+            ["finding_id", "org_id"],
+            ["asset_vulnerabilities.id", "asset_vulnerabilities.org_id"],
+            ondelete="CASCADE",
+            name="fk_finding_rem_event_finding",
+        ),
+        Index("ix_finding_rem_event_finding", "finding_id", "occurred_at"),
+        Index("ix_finding_rem_event_org", "org_id", "occurred_at"),
+        CheckConstraint(REMEDIATION_EVENT_SQL, name="ck_finding_rem_event_type"),
+    )
+
+    id = Column(String(120), primary_key=True)
+    #: The finding this happened to. Part of a **composite** foreign key with
+    #: ``org_id`` — see ``__table_args__`` — because
+    #: ``asset_vulnerabilities``' real primary key is ``(id, org_id)``, not
+    #: ``id``. The model declares only ``id`` as the primary key, but the
+    #: database carries both: a leftover of the HASH-partition-on-org_id design
+    #: the table was built for, where a partitioned table must include the
+    #: partition key in its key. A single-column FK to ``id`` is refused by
+    #: PostgreSQL with "no unique constraint matching given keys".
+    #:
+    #: Which is the better constraint anyway: an event row can only ever
+    #: reference a finding **in its own organisation**, enforced by the
+    #: database rather than by every query remembering to filter.
+    finding_id = Column(String(350), nullable=False, index=True)
+    org_id = Column(
+        String(100),
+        ForeignKey("organizations.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type = Column(String(32), nullable=False)
+    #: The states either side of the change, so a timeline can be read without
+    #: replaying every prior row.
+    from_state = Column(String(32), nullable=True)
+    to_state = Column(String(32), nullable=True)
+    #: NULL for an event the system raised rather than a person — a verification
+    #: from a scan, or an exception expiring on beat. Distinguishable from a
+    #: deleted user because `actor_label` carries what it was.
+    actor_id = Column(
+        String(150),
+        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    )
+    #: A label rather than an identity: "system:verification",
+    #: "system:exception-expiry". No account exists that could be confused with
+    #: one, which is the same reading `log_audit_event`'s `system_actor` takes.
+    actor_label = Column(String(64), nullable=True)
+    note = Column(Text, nullable=True)
+    #: The scan that produced a verification or a reopen. NULL for a human
+    #: action, and its presence is what distinguishes evidence from assertion.
+    scan_id = Column(
+        String(100),
+        ForeignKey("scans.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    )
+    #: Anything structured worth keeping — the comparison classification, the
+    #: SLA basis, the previous owner. Never a secret: this is returned by the
+    #: history API.
+    details = Column(JSONB, nullable=False, default=dict)
+    occurred_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
+
+    finding = relationship("AssetVulnerability", back_populates="remediation_events")
+
+    def __repr__(self):
+        return (
+            f"<FindingRemediationEvent {self.id!r} {self.event_type!r} "
+            f"{self.from_state!r}->{self.to_state!r}>"
+        )

@@ -4580,6 +4580,49 @@ def run_credentialed_scan_task(
                 policy=policy,
             )
 
+        # ── Remediation SLA (GAP-14) ────────────────────────────────────
+        # Due dates are materialised on the finding rather than computed on
+        # read, because "everything overdue in this organisation" is a WHERE
+        # clause over thousands of rows and deriving it per row is the N+1
+        # this column exists to avoid. Recomputed here so a finding whose
+        # severity was re-rated, or whose organisation changed its policy,
+        # picks up the new deadline on the next scan.
+        #
+        # `apply_sla` is idempotent and writes an event only when the deadline
+        # actually moves, so a scan that changes nothing adds no history.
+        try:
+            from core.remediation import apply_sla
+            from db.models.rbac import Organization as _Org
+
+            _org_row = (
+                db.query(_Org).filter(_Org.id == scan.org_id).first()
+                if scan.org_id
+                else None
+            )
+            _sla_rows = (
+                db.query(AssetVulnerability)
+                .filter(
+                    AssetVulnerability.org_id == scan.org_id,
+                    AssetVulnerability.scan_id == scan.id,
+                )
+                .all()
+            )
+            for _finding in _sla_rows:
+                apply_sla(db, _finding, org=_org_row)
+            if _sla_rows:
+                log.info(
+                    "Scan %s: remediation SLA applied to %d finding(s)",
+                    scan.id,
+                    len(_sla_rows),
+                )
+        except Exception as sla_exc:  # noqa: BLE001
+            log.warning(
+                "Could not apply remediation SLA for scan %s: %s",
+                scan.id,
+                sla_exc,
+                exc_info=True,
+            )
+
         # ── Assessment policy (GAP-12) ──────────────────────────────────
         # Read back from the scan's own snapshot rather than from the `policy`
         # local, so the report shows what is *recorded* against the scan. If
@@ -4623,6 +4666,68 @@ def run_credentialed_scan_task(
                     _baseline.id,
                     _comparison.summary_line(),
                 )
+
+                # ── Remediation verification (GAP-14) ───────────────────
+                # The one path by which a remediation becomes *verified
+                # fixed*, and it consumes the comparison above rather than
+                # deciding for itself. A finding classified NOT_ASSESSED —
+                # open at the baseline and not looked at by this scan —
+                # cannot verify anything, which is the whole reason GAP-13
+                # introduced that class.
+                #
+                # A comparison computed with `limit_findings=200` would
+                # verify only the first 200 rows, so this recomputes
+                # unbounded. The report's copy stays bounded: a report is a
+                # sample, a verification pass must not be.
+                try:
+                    from core.remediation import verify_from_comparison
+
+                    _full = compare_scans(
+                        db, current=scan, baseline=_baseline, limit_findings=None
+                    )
+                    _verification = verify_from_comparison(
+                        db,
+                        _full,
+                        scan_id=str(scan.id),
+                        org_id=str(scan.org_id),
+                    )
+                    summary["remediation_verification"] = _verification.as_dict()
+                    report_result["remediation_verification"] = _verification.as_dict()
+
+                    # The remediation payload the report renders. Built from
+                    # the same aggregates the summary API runs, so a report
+                    # and a dashboard cannot disagree about how many findings
+                    # are overdue.
+                    from core.remediation import remediation_report_payload
+
+                    _rem_payload = remediation_report_payload(
+                        db,
+                        org_id=str(scan.org_id),
+                        verification=_verification.as_dict(),
+                    )
+                    if _rem_payload:
+                        report_result.setdefault("metadata", {})[
+                            "remediation"
+                        ] = _rem_payload
+                        summary["remediation"] = {
+                            k: v for k, v in _rem_payload.items() if k != "findings"
+                        }
+                    log.info(
+                        "Scan %s remediation: %s",
+                        scan.id,
+                        _verification.summary_line(),
+                    )
+                except Exception as ver_exc:  # noqa: BLE001
+                    # A verification failure must not cost the scan its
+                    # findings. Recorded rather than swallowed: a remediation
+                    # that silently stopped being verified would look exactly
+                    # like an estate where nobody fixes anything.
+                    log.warning(
+                        "Remediation verification failed for scan %s: %s",
+                        scan.id,
+                        ver_exc,
+                        exc_info=True,
+                    )
         except Exception as cmp_exc:
             log.warning(
                 "Could not compute the scan comparison for %s: %s", scan.id, cmp_exc
@@ -4871,6 +4976,50 @@ def purge_stale_unverified_accounts() -> dict:
         db.rollback()
         log.error("Failed to purge unverified accounts: %s", exc, exc_info=True)
         return {"success": False, "error": str(exc)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="ccure.tasks.expire_risk_acceptances", queue="default")
+def expire_risk_acceptances() -> dict:
+    """
+    Return findings whose risk acceptance has run out to the remediation queue.
+
+    GAP-14. An acceptance with an expiry is a decision with a shelf life: when
+    it lapses the finding is outstanding again, and it goes back to
+    ``assigned`` if it still has an owner or ``open`` if it does not. Not to
+    ``verified_fixed`` and not to an "expired" state of its own — the finding
+    is simply un-dealt-with, and the remediation queue is where un-dealt-with
+    findings belong.
+
+    ``status`` returns to ``open`` alongside ``remediation_state``, so the
+    dashboard and the asset risk score stop treating it as handled. Those two
+    disagreeing is the confusion the two-column split exists to avoid.
+
+    An acceptance with **no** expiry is untouched. That is a legitimate
+    decision for a permanent compensating control, and expiring it because
+    nobody set a date would silently overrule somebody's judgement.
+
+    Every expiry writes a ``FindingRemediationEvent`` carrying the original
+    reason and the date it lapsed, so the trail shows what the acceptance was
+    for and that it ended on its own rather than being withdrawn.
+    """
+    from core.remediation import expire_due_exceptions
+
+    db = SessionLocal()
+    try:
+        expired = expire_due_exceptions(db)
+        db.commit()
+        if expired:
+            log.info("Expired %d risk acceptance(s)", expired)
+        return {"success": True, "expired": expired}
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        # Recorded with its traceback rather than swallowed. A silently failing
+        # expiry leaves lapsed acceptances suppressing findings indefinitely,
+        # which looks exactly like an estate with nothing outstanding.
+        log.exception("Risk-acceptance expiry failed")
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
     finally:
         db.close()
 

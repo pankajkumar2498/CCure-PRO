@@ -124,11 +124,12 @@ Each row is one `(resource, action, description)` tuple, in source order. The
 
 ### `findings` — 3 atoms
 
-| Atom              | Seeded description                                  | Enforced at                                                                                                            |
-| ----------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `findings:read`   | View vulnerability findings                         | `GET /findings`, `GET /findings/grouped/by-component`, `GET /findings/{finding_id}`, `GET /assets/{asset_id}/findings` |
-| `findings:update` | Update finding status (accept, suppress, remediate) | `PATCH /findings/{finding_id}/status`, `PATCH /findings/{finding_id}/notes`                                            |
-| `findings:export` | Export findings to CSV/JSON/PDF                     | _(granted; CSV/PDF export runs through `/reports/download/{scan_id}`, gated on `reports:read`)_                        |
+| Atom                   | Seeded description                                          | Enforced at                                                                                                            |
+| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `findings:read`        | View vulnerability findings                                 | `GET /findings`, `GET /findings/grouped/by-component`, `GET /findings/{finding_id}`, `GET /assets/{asset_id}/findings` |
+| `findings:update`      | Update finding status (accept, suppress, remediate)         | `PATCH /findings/{finding_id}/status`, `PATCH /findings/{finding_id}/notes`                                            |
+| `findings:export`      | Export findings to CSV/JSON/PDF                             | _(granted; CSV/PDF export runs through `/reports/download/{scan_id}`, gated on `reports:read`)_                        |
+| `findings:accept_risk` | Accept the risk on a finding, with a reason and an approver | `POST /remediation/findings/{finding_id}/accept-risk`, `POST /remediation/findings/{finding_id}/withdraw-acceptance`   |
 
 ### `reports` — 3 atoms
 
@@ -297,6 +298,7 @@ opposite of `/admin/email-domains`, whose rules are platform-wide.
 | `findings:read`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
 | `findings:update`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
 | `findings:export`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `findings:accept_risk`           |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
 | `reports:create`                 |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
 | `reports:read`                   |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
 | `reports:delete`                 |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |

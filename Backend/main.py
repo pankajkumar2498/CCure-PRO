@@ -51,6 +51,7 @@ from scans.schema_bootstrap import ensure_scan_schema
 from routers.scan_history import router as scans_router
 from routers.config_audit import router as config_audit_router
 from routers.credentials import router as credentials_router
+from routers.remediation import router as remediation_router
 from routers.scan_policies import router as scan_policies_router
 from routers.scan_schedules import router as scan_schedules_router
 
@@ -955,6 +956,7 @@ app.include_router(health_router)
 app.include_router(traditional_scans_router)
 app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
+app.include_router(remediation_router)
 app.include_router(scan_policies_router)
 app.include_router(scan_schedules_router)
 app.include_router(credentials_router)

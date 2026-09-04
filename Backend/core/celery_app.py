@@ -79,6 +79,17 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.purge_expired_refresh_sessions",
         "schedule": crontab(hour=4, minute=0),
     },
+    # Phase 18 (GAP-14). An accepted risk with an expiry date is a decision
+    # with a shelf life; when it runs out the finding is simply outstanding
+    # again and belongs back in the remediation queue. Hourly rather than
+    # daily because an expiry is a compliance boundary — an acceptance that
+    # lapsed at 09:00 should not still be suppressing a critical finding at
+    # 23:59 — and the query is one indexed predicate matching a handful of
+    # rows.
+    "expire-risk-acceptances-hourly": {
+        "task": "ccure.tasks.expire_risk_acceptances",
+        "schedule": crontab(minute=5),
+    },
     "sync-disposable-email-domains-weekly": {
         "task": "ccure.tasks.sync_disposable_domains",
         "schedule": crontab(hour=4, minute=15, day_of_week="mon"),

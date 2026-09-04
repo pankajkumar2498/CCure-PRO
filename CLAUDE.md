@@ -1906,6 +1906,120 @@ is one table (`scan_policies`) and one nullable column
   versioned, archived or deleted, and none of that changes what the scan
   assessed. It reports the divergence rather than resolving it.
 
+## Remediation and SLA (`core/remediation/`)
+
+Who owns a finding, when it is due, and whether it was *really* fixed. GAP-14;
+tracker §9Q. **No parallel finding engine and no parallel lifecycle** — it
+operates on the `AssetVulnerability` rows the scan pipeline already writes and
+consumes GAP-13's comparison for its verdicts.
+
+- **`remediation_state` is a second column, not more `status` values.**
+  `status` (open/fixed/accepted) answers a *detection* question — is this
+  finding present on the host — and is written by both scan sweeps and read by
+  the dashboard, the asset risk recompute, the findings list and GAP-13, with
+  roughly a dozen call sites testing `status == "open"`. Adding
+  `in_remediation` to it would have made every one of those silently stop
+  counting the finding, so **putting a finding into remediation would remove it
+  from the dashboard, from the asset's risk score and from the overdue list.**
+
+- **No human action can reach `verified_fixed`, and the transition table says
+  so by omission.** `_HUMAN_TRANSITIONS` has no edge into it from any state;
+  `core/remediation/verification.py` is the only caller permitted to pass
+  `by_assessment=True`. What a person can say is `pending_verification` — "the
+  fix is applied and ready to be checked", which is a much weaker claim and the
+  only one they are in a position to make. The method is `claim_fixed`, not
+  `mark_fixed`, for the same reason.
+
+- **The defect this phase exists to fix.** `PATCH /findings/{id}/status` with
+  `status="fixed"` used to stamp `fixed_at = utcnow()` from any user holding
+  `findings:update` — and `fixed_at` is the column GAP-13 reconstructs its
+  baseline from. A person clicking a button was writing into the evidence
+  timeline the comparison, the reports and every remediation figure trust. The
+  endpoint still records the caller's own triage status; it no longer writes
+  `fixed_at`, routes the finding to `pending_verification`, and says so in the
+  response.
+
+- **Verification consumes GAP-13; it does not re-decide.** `fixed` →
+  `verified_fixed` citing the scan, `reappeared` → `reopened`, and **nothing
+  else moves anything**. Four refusals, each of which would otherwise be a
+  false claim of remediation: `not_assessed` never verifies (GAP-13's word for
+  "this scan did not look"), a non-comparable comparison verifies nothing, a
+  GAP-12 policy mismatch verifies nothing (a finding absent from a narrower
+  scan may be out of scope rather than fixed), and an accepted risk is not
+  overridden by a scan in either direction. Withheld findings are **counted and
+  named**, never dropped.
+
+- **Two unrecorded policies are not a mismatch.** That is the common case for
+  scans predating GAP-12, and refusing it would make verification impossible on
+  any existing installation.
+
+- **The SLA clock starts at `first_found_at` and rediscovery does not restart
+  it.** `last_found_at` moves on every scan; a due date derived from it would
+  slide forward for as long as the finding persisted and the finding could
+  never go overdue. `sla_anchor` is the one place that decides it. A
+  *regression* does start a new clock, from `reopened_at` — dating a returned
+  finding from its original discovery would report an instant, unfixable
+  breach.
+
+- **CISA KEV wins where it is earlier and never where it is later.** BOD 22-01
+  is a deadline an internal policy cannot extend, and may be stricter than —
+  so relaxing to the federal date would be the product loosening a customer's
+  own policy.
+
+- **An unrated finding gets `not_applicable`, never `within_sla`.**
+  "Comfortably inside its deadline" and "has no deadline" are different, and
+  folding them inflates every figure built on this.
+
+- **`sla_due_at` is materialised, and `apply_sla` is idempotent.** "Everything
+  overdue" is then one indexed predicate over `(org_id, sla_due_at)`; deriving
+  it per row would be the N+1 the column exists to avoid, on the endpoint a
+  dashboard calls on every load. An unchanged deadline writes no event —
+  otherwise the history would record that nothing happened several thousand
+  times a day.
+
+- **`finding_remediation_events` is append-only and is not the audit log.** The
+  workflow writes to `audit_logs` too, but that table is tamper-evident,
+  HASH-partitioned and subject to retention — right for "user X called this
+  endpoint", wrong for "show me this finding's timeline", because retention
+  would eventually remove history the finding still needs. Shaped after
+  `compliance_finding_history`.
+
+- **`asset_vulnerabilities`' primary key is `(id, org_id)`, not `id`** — a
+  leftover of the HASH-partition-on-`org_id` design, invisible from the Python
+  side because the model declares only `id`. PostgreSQL refuses a single-column
+  foreign key to it. The composite key the event table therefore uses is the
+  stronger constraint anyway: an event can only reference a finding **in its
+  own organisation**, enforced by the database.
+
+- **`verified_scan_id` is a second FK path between `scans` and
+  `asset_vulnerabilities`**, so `Scan.vulnerabilities` needs
+  `foreign_keys="AssetVulnerability.scan_id"` or SQLAlchemy raises
+  `AmbiguousForeignKeysError`. The cascade stays on `scan_id`: deleting a scan
+  removes the findings it reported, but must not remove a finding because the
+  scan that *verified* it was deleted.
+
+- **The event id carries a random tail and it is not decoration.** The first
+  version was `fre_<digest>_<type>_<timestamp>` and collided — two events of
+  the same type on one finding in the same microsecond produced the same
+  primary key, and because every workflow call shares a transaction the
+  duplicate took the *whole lifecycle* down. Not a rare race: a claim-then-
+  verify or a bulk assignment runs inside one flush.
+
+- **Accepting a risk is its own permission**, `findings:accept_risk`.
+  `findings:update` moves work through the queue; deciding the organisation
+  will carry a risk is a different authorisation, and without the split anyone
+  who can edit a finding could clear their own overdue list by accepting
+  everything on it. A reason is required. An expiry is optional — an
+  indefinite acceptance is legitimate for a permanent compensating control and
+  is different from nobody having set a date, which `accepted_at` records
+  either way.
+
+- **API**: `/remediation` (12 operations), plus the remediation section in both
+  reports. The executive line is
+  `Open: 120 | In remediation: 35 | Pending verification: 8 | Overdue: 17 | Verified fixed: 42`,
+  assembled in one place so a report and a dashboard cannot render it
+  differently.
+
 ## Scan comparison and finding lifecycle (`core/findings/`)
 
 What changed between two scans. GAP-13; tracker §9O. **No new finding model, no
@@ -1971,6 +2085,14 @@ everything needed.
   `_get_scan_or_404`, so tenant scoping and per-user visibility are the same
   rules every other scan route uses. `limit` bounds the rows and never the
   counts — a truncated count is a wrong number, a short list is a sample.
+
+- **GAP-14 consumes this and must keep consuming it.** The remediation layer's
+  only route to `verified_fixed` is a `FIXED` classification from here, and its
+  only route to `reopened` is `REAPPEARED`. `NOT_ASSESSED` verifies nothing —
+  which is the class this phase introduced, now load-bearing for a second
+  feature. Note the verification pass recomputes the comparison with
+  `limit_findings=None`: the report's copy is bounded at 200, and verifying
+  only the first 200 findings would silently leave the rest unverified.
 
 - **Do not test this through `TestClient` with `auth_headers`.** The login
   commits, and because the app shares the test session every uncommitted fixture

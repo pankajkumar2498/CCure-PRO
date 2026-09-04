@@ -651,7 +651,46 @@ def update_finding_status(
         finding.accepted_risk_reason = body.accepted_risk_reason
 
     if body.status == "fixed":
-        finding.fixed_at = utcnow()
+        # **`fixed_at` is deliberately not written here.** (GAP-14.)
+        #
+        # That column is the evidence timeline GAP-13 reconstructs a baseline
+        # from — "was this finding open at time T" is answered by
+        # `first_found_at <= T and (fixed_at is null or fixed_at > T)`. It is
+        # written by the two scan sweeps, from an assessment that actually
+        # looked at the host.
+        #
+        # This endpoint previously stamped it from a user's click, which put
+        # an unverified assertion into that timeline: every later comparison,
+        # every report built on one, and every remediation figure downstream
+        # then treated a person's opinion as an observation. A finding marked
+        # fixed by hand that was never actually fixed would read as fixed for
+        # ever, because no scan writes `fixed_at` for a finding it still sees.
+        #
+        # What a person *can* say is "I have applied the fix", which is a
+        # claim that it is ready to be checked rather than a claim that it
+        # works. That is `pending_verification`, and the finding stays there
+        # until a scan agrees — at which point
+        # `core.remediation.verification` sets `verified_fixed`, and only
+        # then, and only if the scan assessed the relevant check.
+        try:
+            from core.remediation import STATE_VERIFIED_FIXED, claim_fixed
+
+            if finding.remediation_state != STATE_VERIFIED_FIXED:
+                claim_fixed(
+                    db,
+                    finding,
+                    actor_id=str(user.id),
+                    note=body.remediation_notes,
+                )
+        except Exception:  # noqa: BLE001
+            # The triage status is the caller's own and must still be
+            # recorded; a workflow bookkeeping failure is not a reason to
+            # refuse it. Logged with its traceback so it is fixable.
+            log.warning(
+                "Could not move finding %s to pending verification",
+                finding_id,
+                exc_info=True,
+            )
 
     if body.remediation_notes:
         finding.remediation_notes = body.remediation_notes
@@ -723,7 +762,28 @@ def update_finding_status(
     except Exception:
         db.rollback()
 
-    return {"success": True, "id": finding_id, "status": body.status}
+    return {
+        "success": True,
+        "id": finding_id,
+        "status": body.status,
+        "remediation_state": finding.remediation_state,
+        # Said out loud rather than implied. A caller who set "fixed" needs to
+        # know the product has recorded a claim awaiting confirmation, not a
+        # confirmed fix — otherwise the distinction exists only in the
+        # database and never reaches anybody.
+        "verified": finding.remediation_state == "verified_fixed",
+        **(
+            {
+                "note": (
+                    "Recorded as pending verification. A finding is reported "
+                    "as verified fixed only after a subsequent scan assesses "
+                    "the relevant check and finds it gone."
+                )
+            }
+            if body.status == "fixed" and finding.remediation_state != "verified_fixed"
+            else {}
+        ),
+    }
 
 
 # ── Update Remediation Notes ──────────────────────────────────────────────────

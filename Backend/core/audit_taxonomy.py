@@ -151,6 +151,21 @@ SEVERITY_BY_ACTION: dict[str, str] = {
     "finding_false_positive": MEDIUM,
     "finding_accepted": HIGH,
     "finding_ignored": HIGH,
+    # ── Remediation (GAP-14) ────────────────────────────────────────────────
+    # Ownership and workflow are routine bookkeeping. Accepting a risk is not:
+    # it is a decision to live with a finding, and it is the remediation action
+    # an auditor comes looking for — the same reading `finding_accepted` above
+    # already gets. Withdrawing one is HIGH for the mirror reason: it is the
+    # record of a decision being reversed.
+    "remediation.assigned": INFO,
+    "remediation.unassigned": LOW,
+    "remediation.state_changed": LOW,
+    "remediation.note_added": INFO,
+    "remediation.risk_accepted": HIGH,
+    "remediation.acceptance_withdrawn": HIGH,
+    # Changing the SLA changes when every future finding is reported overdue,
+    # across the whole organisation, from one settings edit.
+    "remediation.sla_policy_updated": HIGH,
     # ── Compliance ──────────────────────────────────────────────────────────
     "install_framework": MEDIUM,
     "uninstall_framework": HIGH,

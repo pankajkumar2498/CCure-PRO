@@ -85,7 +85,7 @@ were fixed in-phase, and §9N.6 records them.
 | GAP-11       | Network device assessment                | Network device | 11    | Medium   | 15% [estimated]  | 65%    | Open                                                                              | —         |
 | **GAP-12**   | Configurable scan policy engine          | Orchestration  | 17    | High     | 20% [measured]   | 85%    | **Partial** (82.1% measured, real-target validated)                               | `9525023` |
 | **GAP-13**   | Scan comparison & finding lifecycle      | Findings       | 16    | High     | 25% [measured]   | 90%    | **Partial** (71.4% measured, real-target validated)                               | `3b8ac56` |
-| GAP-14       | Remediation & SLA management             | Remediation    | 14    | High     | 30% [measured]   | 85%    | Open                                                                              | —         |
+| **GAP-14**   | Remediation & SLA management             | Remediation    | 18    | High     | 30% [measured]   | 85%    | **Closed** (91.9% measured, real-target validated)                                | `PENDING` |
 | GAP-15       | Reporting & export expansion             | Reporting      | 15    | Medium   | 50% [measured]   | 85%    | Open                                                                              | —         |
 | GAP-16       | Cloud security assessment                | Cloud          | 16    | Low      | 0% [measured]    | 60%    | Open                                                                              | —         |
 | **GAP-17**   | Virtualization / container / Kubernetes  | Container      | 9     | Low      | ~4% [measured]   | 60%    | **Closed** (57.1% measured, real-target validated)                                | `13d6854` |
@@ -5204,6 +5204,265 @@ assessment behaviour or say plainly that it does not.
 
 ---
 
+## 9Q. Phase 18 — GAP-14: remediation and SLA management
+
+GAP-13 made the product able to say what changed. GAP-12 made it able to say
+what was assessed. Neither could answer the question an operator actually
+lives with: **who owns this, when is it due, and was it really fixed?**
+
+The last part is the phase. Before it, `PATCH /findings/{id}/status` accepted
+`status="fixed"` from anybody holding `findings:update` and stamped
+`fixed_at = utcnow()` — **and `fixed_at` is the column GAP-13 reconstructs its
+baseline from.** A person clicking a button was writing into the evidence
+timeline that the comparison, the reports and every figure built on them
+trust. That is fixed here, and it is the reason the gap could not simply be a
+CRUD layer over a new column.
+
+**No parallel finding engine and no parallel lifecycle.** Everything operates
+on the `AssetVulnerability` rows the scan pipeline already writes, consumes
+GAP-13's comparison for its verdicts, and reuses the five columns that already
+existed — `status`, `remediation_notes`, `fixed_at`, `accepted_risk_reason`,
+`accepted_by`.
+
+### 9Q.1 Why the workflow is a second column, not more `status` values
+
+`status` has three values — `open`, `fixed`, `accepted` — and answers a
+**detection** question: _is this finding present on the host?_ It is written by
+both scan sweeps and read by the dashboard, the asset risk recompute, the
+findings list and GAP-13's comparison, with roughly a dozen call sites testing
+`status == "open"`.
+
+`remediation_state` answers a **workflow** question: _what is anybody doing
+about it?_ Adding `in_remediation` to `status` would have been a smaller
+migration and much worse — every one of those queries would silently stop
+counting the finding, so **putting a finding into remediation would remove it
+from the dashboard, from the asset's risk score and from the overdue list.** A
+workflow column that makes findings disappear when you start working on them is
+the opposite of what this gap is for.
+
+The two are genuinely independent. A finding can be present on the host while
+its fix is half-built; a finding can be absent from the latest scan while
+nobody has yet confirmed the absence was a real fix rather than a scan that did
+not look. `verified_fixed` is where they meet, and it needs **both**.
+
+### 9Q.2 The control the phase exists for
+
+**No human action can reach `verified_fixed`, and the transition table says so
+by omission rather than by a comment.** `_HUMAN_TRANSITIONS` contains no edge
+into it from any state; `assert_transition` refuses with a message naming the
+alternative, and `core/remediation/verification.py` is the only caller
+permitted to pass `by_assessment=True`.
+
+What a person _can_ say is `pending_verification` — "the fix has been applied
+and is ready to be checked". That is a much weaker statement than "it is
+fixed", and the only one they are in a position to make. The method is called
+`claim_fixed` rather than `mark_fixed` for the same reason.
+
+`tests/scans/test_remediation_sla.py::test_no_human_transition_reaches_verified_fixed`
+asserts it over **every** state rather than a sample, so a table edit that
+opened one of them fails there.
+
+### 9Q.3 Verification consumes GAP-13 rather than deciding for itself
+
+GAP-13 already answers the hard question — was this finding open at the
+baseline, is it open now, and **did this scan actually assess the check it
+belongs to?** — and answers it from the assessment scope the scan recorded.
+Reimplementing that judgement would give the product two answers to one
+question, and the day they disagree is the day a customer is told a control was
+remediated when it was not.
+
+So the module contains no lifecycle logic. It maps classifications onto states,
+and the mapping is the whole module:
+
+| GAP-13 verdict      | Remediation                                         |
+| ------------------- | --------------------------------------------------- |
+| `fixed`             | → `verified_fixed`, citing the scan id              |
+| `reappeared`        | → `reopened`, SLA clock restarts                    |
+| `not_assessed`      | **nothing**, and the finding is named in `withheld` |
+| `new`, `still_open` | nothing — a scan does not reset somebody's work     |
+
+Four refusals, each of which would otherwise be a false claim of remediation:
+
+- **NOT_ASSESSED never verifies.** GAP-13's word for "this finding was open and
+  this scan did not look" — the single most dangerous thing to mistake for a
+  fix, and the class GAP-13 introduced precisely because 126 Windows STIG
+  findings are absent from `cve_list` when the audit passes _and_ when the
+  credential expired.
+- **A comparison that is not comparable verifies nothing.**
+- **A policy mismatch verifies nothing.** GAP-12 supplies this: two scans under
+  materially different configurations are not equivalent assessments, so a
+  finding absent from the narrower one may be out of its scope rather than
+  fixed. Two _unrecorded_ policies are not a mismatch — that is the common case
+  for scans predating GAP-12, and refusing it would make verification
+  impossible on any existing installation.
+- **An accepted risk is not overridden by a scan, in either direction.** The
+  organisation made a decision somebody is accountable for; a scan no longer
+  seeing the finding does not retract it, and a scan seeing it again is not new
+  information.
+
+Findings that could not be verified are **counted and named**, never dropped —
+the same position GAP-13 takes on its own NOT_ASSESSED class. A reader told "8
+verified" and not told "40 could not be" has a number implying progress the
+scan did not establish.
+
+### 9Q.4 SLA: four decisions, not four settings
+
+- **The clock starts at discovery.** `first_found_at` is when the organisation
+  _could_ have known. Anchoring on assignment would mean a finding nobody
+  looked at for six months was never late.
+- **Rediscovery does not restart it.** `last_found_at` moves on every scan; a
+  due date derived from it would slide forward for as long as the finding
+  persisted and the finding could never go overdue. `sla_anchor` exists so that
+  decision has exactly one home.
+- **A regression starts a new clock, from the regression.** A returned finding
+  is new work; dating it from the original discovery would report an instant,
+  unfixable breach. `reopened_at` becomes the anchor and `first_found_at` stays
+  on the row.
+- **CISA KEV wins where it is earlier and never where it is later.** BOD 22-01
+  is a legal deadline an internal policy cannot extend — and may be stricter
+  than, so silently relaxing to the federal date would be the product loosening
+  a customer's own policy.
+
+Defaults are 15 / 30 / 90 / 180 calendar days by severity, and an **unrated**
+finding gets _no_ deadline rather than an invented one — `not_applicable`, kept
+distinct from `within_sla`, because "comfortably inside its deadline" and "has
+no deadline" are different and folding them would inflate every figure built on
+this. Per-organisation overrides live in `Organization.settings`, so the policy
+needs no table and no migration, and a partial override **merges** — an
+organisation configuring only `critical` keeps its other five deadlines.
+
+`sla_due_at` is **materialised** on the finding rather than computed on read.
+"Everything overdue in this organisation" is then one indexed predicate over
+`(org_id, sla_due_at)`; deriving it per row would be the N+1 the column exists
+to avoid, on the endpoint a dashboard calls on every load. `apply_sla` is
+idempotent and writes an event only when a deadline actually moves — this runs
+over every finding on every scan, and an event per finding per scan would
+record that nothing happened several thousand times a day.
+
+### 9Q.5 History, and why it is not the audit log
+
+`finding_remediation_events` is append-only by convention and nothing in the
+product updates or deletes a row. The finding row carries the _current_ owner
+and state; the table carries how it got there, so changing an owner or a due
+date cannot erase what the previous one was.
+
+`audit_logs` is the wrong home and the workflow writes there _as well_. It is
+tamper-evident, HASH-partitioned on `org_id` and subject to retention — right
+for "user X called this endpoint", wrong for "show me this finding's
+remediation timeline", because retention would eventually remove history the
+finding still needs. Shaped after `compliance_finding_history`, which does the
+same job for compliance controls.
+
+A system event carries an `actor_label` — `system:verification`,
+`system:sla`, `system:exception-expiry` — and no `actor_id`. Deliberately a
+_label_, not an identity: no account exists that could be confused with one,
+the reading `log_audit_event`'s `system_actor` already takes.
+
+### 9Q.6 Two defects the work found
+
+- **`asset_vulnerabilities`' primary key is `(id, org_id)`, not `id`.** A
+  leftover of the HASH-partition-on-`org_id` design the table was built for,
+  where a partitioned table must carry the partition key in its key. The model
+  declares only `id`, so it is invisible from the Python side; PostgreSQL
+  refused the event table's foreign key with "no unique constraint matching
+  given keys". The composite key is the **stronger** constraint anyway: an
+  event row can only ever reference a finding **in its own organisation**,
+  enforced by the database rather than by every query remembering to filter.
+- **`verified_scan_id` created a second foreign-key path between `scans` and
+  `asset_vulnerabilities`**, and `Scan.vulnerabilities` raised
+  `AmbiguousForeignKeysError` on the first query. Disambiguated to `scan_id`,
+  with the cascade left there deliberately: deleting a scan removes the
+  findings it reported, but must not remove a finding because the scan that
+  _verified_ it was deleted — that one is ON DELETE SET NULL, so the finding
+  survives and loses its citation.
+
+Real-target validation also caught an `sla_set` event labelled
+`system:verification`, which invites a reader of the timeline to think an
+assessment moved a due date. It has its own label now.
+
+### 9Q.7 Real-target validation — the complete workflow
+
+Disposable Ubuntu 24.04 container, built and destroyed; the root credential was
+generated at run time, crossed into the container on stdin only, and went with
+the container. **Nothing was weakened**: the finding chosen was already failing
+on the stock image, and the "regression" step restores exactly what Ubuntu
+ships.
+
+Ten steps, every one against a live host and a real database:
+
+| #   | Step                          | Result                                                                  |
+| --- | ----------------------------- | ----------------------------------------------------------------------- |
+| 1   | Scan                          | 86 checks run, 3 real failures; chose `ccure.linux.password.max_age`    |
+| 2   | Assign + SLA                  | `assigned`, due 2026-10-03, basis `high`                                |
+| 3   | **A person claims the fix**   | `pending_verification` — `verified_at` NULL, **`fixed_at` NULL**        |
+| 4   | Really fix it on the host     | `PASS_MAX_DAYS 99999 → 90`                                              |
+| 5   | Rescan                        | the check goes **fail → pass**                                          |
+| 6   | Verify                        | `verified_fixed`, citing `scn_rem_b_493fd6`; SLA `resolved`             |
+| 7   | Reintroduce                   | `PASS_MAX_DAYS` back to 99999                                           |
+| 8   | Rescan                        | the check goes **pass → fail**                                          |
+| 9   | Verify                        | `reopened`, count 1, verification withdrawn, **due date moved forward** |
+| 10  | A scan that did not assess it | `0 verified, 1 not verified (not assessed)` — state unchanged           |
+
+Step 3 and step 10 are the two that matter. A person's word did not verify the
+remediation and did not touch GAP-13's evidence timeline; and a scan that never
+looked at the check could not verify it either, with the reason recorded rather
+than the finding silently left alone.
+
+The event trail read back complete and in order — `assigned`, `sla_set`,
+`state_changed`, `verified`, `sla_changed`, `reopened` — and the report section
+rendered 16 flowables naming _Reopened_ and _"subsequent assessment"_.
+
+Every validation row was removed afterwards; the live database is back to 59
+scans, 16 assets, 8,631 findings.
+
+### 9Q.8 Coverage
+
+`scripts/measure_remediation_coverage.py`, denominator frozen at **37 areas**
+before implementation with three declared unimplemented and four named out of
+scope entirely. **30% → 91.9%** (34/37), implemented _and_ tested _and_
+real-target validated.
+
+The three not implemented, each with its reason recorded before the work
+started: assignment to a **team** (there is no team entity in this product and
+inventing one would be a second identity system), a **business-day** SLA clock
+(needs a working calendar and a holiday table per organisation; calendar days
+are stated plainly instead), and **pausing the clock** during an accepted risk
+(letting it run keeps the original due date visible when the exception
+expires, which is what an auditor asks for — recorded as a deliberate choice
+rather than implemented both ways).
+
+Four things are out of the denominator entirely rather than unimplemented:
+automated remediation _execution_ (`ComplianceRemediationRequest` already owns
+the maker–checker workflow for pushing a fix over a credential), remediation
+_content_ (`ComplianceRemediation` and `AssetVulnerability.vendor_remediation`
+already hold what the fix is), ticketing integration, and compliance control
+attestation.
+
+### 9Q.9 Known limitations
+
+- **Existing accepted risks were not migrated** to `remediation_state =
+'risk_accepted'`. The old model had no expiry and no approval record, so
+  converting them would present decisions taken under one set of rules as
+  though they had been taken under another. They keep `status = 'accepted'`,
+  which is what they are.
+- **`sla_due_at` is not backfilled.** A due date comes from the organisation's
+  own policy, which no migration should invent; the findings sync sets it on
+  the next scan. Backfilling with the shipped defaults would silently declare
+  thousands of existing findings overdue against a policy the customer never
+  agreed to.
+- **Verification runs on the standalone credentialed path only**, because that
+  is where the GAP-13 comparison is computed. The main vulnerability-audit
+  pipeline computes no comparison of its own, so a finding it fixes is verified
+  on the next credentialed scan rather than immediately.
+- **A person can still set `status = "fixed"`** through the legacy findings
+  endpoint. It no longer writes `fixed_at` and now routes the finding to
+  `pending_verification`, but the triage column itself is the operator's and is
+  left alone — refusing it outright would break the existing UI for no gain the
+  verification control does not already provide.
+- **No UI.** API, scan integration and reports only.
+
+---
+
 ## 10. Definition of Done — Phase 0
 
 | Line                      | GAP-00-A                                  | GAP-00-B                             |
@@ -5496,6 +5755,7 @@ the assertion is testing the right thing, and the generator really can collide.
 | 15    | `d7ec271` | —   | 4670 passed, 2 skipped ✅                       |
 | 16    | `3b8ac56` | —   | 4698 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 | 17    | `9525023` | —   | 4817 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
+| 18    | `PENDING` | —   | 4908 passed, 2 skipped, 1 failed ⚠ (see §9O.9) |
 
 A suffixed row is not a new phase: `s` is a stabilization commit, `f` a
 post-phase fix, `c` a content load against a reader an earlier phase built,

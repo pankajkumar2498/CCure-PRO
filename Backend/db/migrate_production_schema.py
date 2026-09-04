@@ -198,6 +198,16 @@ PERMISSIONS = [
     ("findings", "read", "View vulnerability findings"),
     ("findings", "update", "Update finding status (accept, suppress, remediate)"),
     ("findings", "export", "Export findings to CSV/JSON/PDF"),
+    # Remediation (Phase 18). Its own atom, deliberately: "may this person
+    # move work through the queue" and "may this person decide the
+    # organisation will carry a critical risk" are different
+    # authorisations, and without the split anyone who can edit a finding
+    # could clear their own overdue list by accepting everything on it.
+    (
+        "findings",
+        "accept_risk",
+        "Accept the risk on a finding, with a reason and an approver",
+    ),
     # Reports
     ("reports", "create", "Generate reports"),
     ("reports", "read", "View and download reports"),
@@ -309,6 +319,7 @@ ROLE_PERMISSIONS = {
         "findings:read",
         "findings:update",
         "findings:export",
+        "findings:accept_risk",
         "reports:create",
         "reports:read",
         "reports:delete",
@@ -360,6 +371,7 @@ ROLE_PERMISSIONS = {
         "findings:read",
         "findings:update",
         "findings:export",
+        "findings:accept_risk",
         "reports:create",
         "reports:read",
         "credentials:read",

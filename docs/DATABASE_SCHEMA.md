@@ -642,6 +642,98 @@ A lighter, separate record of generated report files. Not FK-linked to `scans`.
 
 ---
 
+### `finding_remediation_events`
+
+One row per thing that happened to a finding's remediation. Added by Phase 18
+(GAP-14), migration `d8e9f0a1b2c3`.
+
+**Append-only by convention, and that convention is what auditability rests
+on.** Nothing in the product updates or deletes a row here; the workflow writes
+one on every assignment, state change, note, acceptance, expiry and
+verification. So "who moved this to accepted risk, when, and on whose
+authority" is answerable months later even though the finding row itself
+carries only the current state.
+
+Shaped after `compliance_finding_history`, which does the same job for
+compliance controls — same columns, same reasons, deliberately not the same
+table because the two reference different finding models.
+
+| Column        | Type         | Notes                                                                                                                       |
+| ------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | varchar(120) | `fre_<sha256(finding)[:16]>_<type>_<timestamp>`                                                                             |
+| `finding_id`  | varchar(350) | Part of a **composite** FK with `org_id` — see below                                                                        |
+| `org_id`      | varchar(100) | FK `organizations.id`, CASCADE                                                                                              |
+| `event_type`  | varchar(32)  | assigned, unassigned, state_changed, note_added, risk_accepted, exception_expired, verified, reopened, sla_set, sla_changed |
+| `from_state`  | varchar(32)  | So a timeline reads without replaying every prior row                                                                       |
+| `to_state`    | varchar(32)  |                                                                                                                             |
+| `actor_id`    | varchar(150) | FK `users.id`, SET NULL. NULL for a system action                                                                           |
+| `actor_label` | varchar(64)  | `system:verification`, `system:exception-expiry`                                                                            |
+| `note`        | text         |                                                                                                                             |
+| `scan_id`     | varchar(100) | The scan that verified or reopened. Its presence is what distinguishes evidence from assertion                              |
+| `details`     | JSONB        | Classification, SLA basis, previous owner. **Never a secret** — returned by the history API                                 |
+| `occurred_at` | timestamptz  |                                                                                                                             |
+
+**The foreign key to the finding is composite and had to be.**
+`asset_vulnerabilities`' actual primary key is `(id, org_id)`, not `id` — a
+leftover of the HASH-partition-on-`org_id` design the table was built for,
+where a partitioned table must include the partition key in its key. The model
+declares only `id`, so this is invisible from the Python side; PostgreSQL
+refuses a single-column reference with "no unique constraint matching given
+keys". It is the stronger constraint anyway: an event row can only ever point
+at a finding **in its own organisation**, enforced by the database rather than
+by every query remembering to filter.
+
+**Indexes:** `ix_finding_rem_event_finding` (finding_id, occurred_at) — the
+per-finding timeline — and `ix_finding_rem_event_org` (org_id, occurred_at).
+
+**Why not `audit_logs`.** That table is tamper-evident, HASH-partitioned on
+`org_id` and subject to retention. It is the right place for "user X called
+this endpoint" and the workflow writes there too. It is the wrong place to read
+a _finding's_ remediation timeline: retention would eventually remove history
+the finding still needs.
+
+### `asset_vulnerabilities` — remediation columns (GAP-14)
+
+Twelve columns added by migration `d8e9f0a1b2c3`, alongside the `status`,
+`remediation_notes`, `fixed_at`, `accepted_risk_reason` and `accepted_by` that
+already existed.
+
+| Column                 | Type         | Notes                                                     |
+| ---------------------- | ------------ | --------------------------------------------------------- |
+| `remediation_state`    | varchar(32)  | NOT NULL, default `open`. The workflow — **not** `status` |
+| `remediation_owner`    | varchar(150) | FK `users.id`, SET NULL                                   |
+| `assigned_at`          | timestamptz  |                                                           |
+| `assigned_by`          | varchar(150) | FK `users.id`, SET NULL                                   |
+| `sla_due_at`           | timestamptz  | Materialised, so "overdue" is one predicate               |
+| `sla_basis`            | varchar(32)  | The severity the deadline came from                       |
+| `verified_at`          | timestamptz  | Written **only** by the verification path                 |
+| `verified_scan_id`     | varchar(100) | FK `scans.id`, SET NULL. The citation                     |
+| `reopened_at`          | timestamptz  | Becomes the SLA anchor for a regression                   |
+| `reopened_count`       | integer      | NOT NULL, default 0                                       |
+| `exception_expires_at` | timestamptz  | NULL = the acceptance does not expire                     |
+| `accepted_at`          | timestamptz  |                                                           |
+
+**`remediation_state` is a second column and not more `status` values.**
+`status` is written by the scan sweeps and read by the dashboard, the asset
+risk recompute, the findings list and GAP-13's comparison, with roughly a dozen
+call sites testing `status == 'open'`. Adding `in_remediation` to it would have
+made every one of those queries silently stop counting the finding — so putting
+one into remediation would remove it from the dashboard, from the asset's risk
+score and from the overdue list.
+
+**`sla_due_at` is deliberately not backfilled** by the migration. A due date
+comes from the organisation's own policy, which lives in
+`Organization.settings` and which no migration should invent; the findings sync
+sets it on the next scan. Backfilling with the shipped defaults would silently
+declare thousands of existing findings overdue against a policy the customer
+never agreed to.
+
+**Constraint:** `ck_asset_vuln_remediation_state`.
+**Indexes:** `ix_asset_vuln_org_remediation` (the summary's GROUP BY),
+`ix_asset_vuln_org_sla_due` (the overdue query), `ix_asset_vuln_remediation_owner`,
+and `ix_asset_vuln_exception_expiry` — partial, on `exception_expires_at IS NOT NULL`,
+because the hourly expiry sweep only ever matches a handful of rows.
+
 ### `scan_policies`
 
 Reusable assessment configurations. One row per named, versioned policy that a

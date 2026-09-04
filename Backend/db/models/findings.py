@@ -546,6 +546,16 @@ class AssetVulnerability(Base):
         # constraint only the migration knows about exists on upgraded
         # databases and not on new ones.
         CheckConstraint(REMEDIATION_STATE_SQL, name="ck_asset_vuln_remediation_state"),
+        # The two single-column indexes below must be declared with the names
+        # migration d8e9f0a1b2c3 gives them, not left to `index=True`.
+        # SQLAlchemy would name those `ix_asset_vulnerabilities_<column>`, so
+        # a fresh install carried a differently-named index and that
+        # migration's downgrade() — which drops them by the migration's
+        # names — failed with `index does not exist`. That downgrade is what
+        # the CI migration-integrity check runs, against a database built by
+        # exactly this create_all() path.
+        Index("ix_asset_vuln_remediation_state", "remediation_state"),
+        Index("ix_asset_vuln_sla_due", "sla_due_at"),
         Index("ix_asset_vuln_org_remediation", "org_id", "remediation_state"),
         Index("ix_asset_vuln_org_sla_due", "org_id", "sla_due_at"),
         Index("ix_asset_vuln_remediation_owner", "remediation_owner"),
@@ -702,21 +712,30 @@ class AssetVulnerability(Base):
     #: which is honest: they had no owner and no workflow state, and inventing
     #: one retrospectively would claim work nobody did.
     remediation_state = Column(
-        String(32), nullable=False, default=REMEDIATION_STATE_DEFAULT, index=True
+        String(32), nullable=False, default=REMEDIATION_STATE_DEFAULT
     )
     #: The user accountable for fixing it. A plain FK into `users` — there is
     #: no team entity in this product and inventing one here would be a second
     #: identity system.
     remediation_owner = Column(
         String(150),
-        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+            onupdate="CASCADE",
+            name="fk_asset_vuln_remediation_owner",
+        ),
         nullable=True,
-        index=True,
     )
     assigned_at = Column(TIMESTAMPTZ, nullable=True)
     assigned_by = Column(
         String(150),
-        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+            onupdate="CASCADE",
+            name="fk_asset_vuln_assigned_by",
+        ),
         nullable=True,
     )
 
@@ -724,7 +743,7 @@ class AssetVulnerability(Base):
     #: because "show me everything overdue" across thousands of findings is a
     #: WHERE clause on this column, and deriving it per row would be the N+1
     #: this design exists to avoid. core/remediation/sla.py owns how it is set.
-    sla_due_at = Column(TIMESTAMPTZ, nullable=True, index=True)
+    sla_due_at = Column(TIMESTAMPTZ, nullable=True)
     #: The severity the deadline was computed from, kept so a report can say
     #: *why* a finding is due when it is — and so re-rating a finding is
     #: visible as a changed basis rather than a silently moved date.
@@ -736,7 +755,12 @@ class AssetVulnerability(Base):
     verified_at = Column(TIMESTAMPTZ, nullable=True)
     verified_scan_id = Column(
         String(100),
-        ForeignKey("scans.id", ondelete="SET NULL", onupdate="CASCADE"),
+        ForeignKey(
+            "scans.id",
+            ondelete="SET NULL",
+            onupdate="CASCADE",
+            name="fk_asset_vuln_verified_scan",
+        ),
         nullable=True,
     )
 

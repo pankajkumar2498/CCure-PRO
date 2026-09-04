@@ -105,6 +105,23 @@ class ScanConfig:
     NMAP_PROCESS_WAIT_TIMEOUT: int = int(os.getenv("NMAP_PROCESS_WAIT_TIMEOUT", "900"))
     NMAP_CACHE_ENABLED: bool = os.getenv("NMAP_CACHE_ENABLED", "True").lower() == "true"
     NMAP_CACHE_TTL_HOURS: int = int(os.getenv("NMAP_CACHE_TTL_HOURS", "72"))
+    # A scan left in 'running' with nothing working on it. `task_time_limit`
+    # above cannot cover this: Celery's hard time limit is implemented by
+    # signalling a billiard worker process, so it is silently inert under the
+    # `--pool=threads` worker this deployment runs on Windows -- and it can do
+    # nothing at all about a worker that has died, been restarted, or is
+    # failing before it reaches any of the task's own error handling.
+    #
+    # Measured against the deployment's own history: the slowest scan on
+    # record is a /24 vulnerability audit at roughly 25 minutes. 90 minutes is
+    # therefore well clear of a legitimately slow scan while still bounding a
+    # stuck one to something an operator will sit through once, not forever.
+    # Set to 0 to disable the sweep.
+    SCAN_STALL_TIMEOUT_MINUTES: int = int(os.getenv("SCAN_STALL_TIMEOUT_MINUTES", "90"))
+    # A scan that was accepted and queued but that no worker ever picked up.
+    # Separate from the running timeout because it is a different fault with a
+    # different message: "no scanner is running" rather than "the scan hung".
+    SCAN_QUEUE_TIMEOUT_MINUTES: int = int(os.getenv("SCAN_QUEUE_TIMEOUT_MINUTES", "15"))
     SCAN_IP_BLACKLIST: str = os.getenv("SCAN_IP_BLACKLIST", "")
     PASSIVE_FIRST_DEFAULT: bool = (
         os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
@@ -659,6 +676,8 @@ class AppConfig:
     NMAP_PROCESS_WAIT_TIMEOUT = ScanConfig.NMAP_PROCESS_WAIT_TIMEOUT
     NMAP_CACHE_ENABLED = ScanConfig.NMAP_CACHE_ENABLED
     NMAP_CACHE_TTL_HOURS = ScanConfig.NMAP_CACHE_TTL_HOURS
+    SCAN_STALL_TIMEOUT_MINUTES = ScanConfig.SCAN_STALL_TIMEOUT_MINUTES
+    SCAN_QUEUE_TIMEOUT_MINUTES = ScanConfig.SCAN_QUEUE_TIMEOUT_MINUTES
 
     # OT safety config
     PASSIVE_FIRST_DEFAULT = ScanConfig.PASSIVE_FIRST_DEFAULT

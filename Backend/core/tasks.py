@@ -164,6 +164,61 @@ def _finalize_cancelled(
         log.debug("Could not publish cancellation for %s", scan_id, exc_info=True)
 
 
+def _settle_failure(
+    db: SessionLocal,
+    scan_id: str,
+    user_id: str,
+    reason: str,
+    status: str = "failed",
+) -> None:
+    """
+    Record a scan failure, and guarantee that *something* is recorded.
+
+    `mark_scan_failed` goes through the ORM — it loads the `Scan`, writes an
+    audit event and raises a notification. That is the right thing to do and it
+    shares a dependency with the code path that just failed.
+
+    On 4 Sep 2026 a worker holding a stale `Scan` mapper raised
+    `InvalidRequestError` on `run_host_discovery_task`'s first query. The
+    `except` handler called `mark_scan_failed`, whose own first query raised the
+    identical error, so the handler died too and the scan row was never touched.
+    Three scans sat in 'running' forever while the target host was up the whole
+    time — visible in the UI as a live scan stuck at 10%.
+
+    So the ORM attempt is made first, because a proper failure carries the audit
+    entry and the user's notification. If it raises for *any* reason, the scan
+    is still settled through `force_terminal_status`, which issues plain SQL and
+    touches no mapper. A worse-quality record beats no record: an unsettled scan
+    is indistinguishable from a running one, and nothing downstream — the
+    watchdog aside — will ever revisit it.
+    """
+    from core.redis_client import publish_progress_sync
+    from core.scan_control import force_terminal_status
+
+    try:
+        mark_scan_failed(db, scan_id, user_id, reason, status=status)
+    except Exception:
+        log.exception(
+            "mark_scan_failed could not settle scan %s — falling back to SQL",
+            scan_id,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        force_terminal_status(scan_id, status=status, reason=reason)
+
+    # Whichever route settled it, tell anyone watching. Without this a browser
+    # on the live scan screen keeps showing a scan that is over until its own
+    # client-side timeout fires.
+    try:
+        publish_progress_sync(
+            scan_id, 1, {"status": status, "error": reason, "reason": reason}
+        )
+    except Exception:
+        log.debug("Could not publish failure for scan %s", scan_id, exc_info=True)
+
+
 def _check_cancelled(db: SessionLocal, scan_id: str) -> bool:
     """
     Check if the scan has been marked as cancelled in the DB.
@@ -1237,7 +1292,7 @@ def run_host_discovery_task(
             return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
-            mark_scan_failed(
+            _settle_failure(
                 db, scan_id, user_id, result.get("error", "Host Discovery failed")
             )
             return result
@@ -1385,7 +1440,7 @@ def run_host_discovery_task(
         return {"success": False, "cancelled": True, "error": "Scan cancelled"}
     except Exception as exc:
         log.exception("Host Discovery Task Failed")
-        mark_scan_failed(db, scan_id, user_id, str(exc))
+        _settle_failure(db, scan_id, user_id, f"{type(exc).__name__}: {exc}")
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -1480,7 +1535,7 @@ def run_asset_discovery_task(
             return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
-            mark_scan_failed(
+            _settle_failure(
                 db, scan_id, user_id, result.get("error", "Asset Discovery failed")
             )
             return result
@@ -1608,7 +1663,14 @@ def run_asset_discovery_task(
         _finalize_cancelled(db, scan_id, user_id, phase="port_scan")
         return {"success": False, "cancelled": True, "error": "Scan cancelled"}
     except Exception as exc:
+        # The scan row has to be closed out here, for the same reason the
+        # Vulnerability Audit handler below says so: returning the failure
+        # without recording it left the scan 'running' for ever. Phase 2 was
+        # missed when that was fixed for phase 3, so an Asset Discovery or
+        # Vulnerability Audit pipeline that died in its port-scan phase
+        # stranded the scan exactly as phase 3 used to.
         log.exception("Asset Discovery Task Failed")
+        _settle_failure(db, scan_id, user_id, f"{type(exc).__name__}: {exc}")
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -2311,7 +2373,7 @@ def run_vulnerability_audit_task(
             return {"success": False, "cancelled": True, "error": "Scan cancelled"}
 
         if not result.get("success"):
-            mark_scan_failed(
+            _settle_failure(
                 db, scan_id, user_id, result.get("error", "Vulnerability Audit failed")
             )
             return result
@@ -2426,10 +2488,7 @@ def run_vulnerability_audit_task(
         # with no terminal state, the concurrency slot was never released, and
         # nothing told the operator the audit had died.
         log.exception("Vulnerability Audit Task Failed")
-        try:
-            mark_scan_failed(db, scan_id, user_id, str(exc))
-        except Exception:
-            log.exception("Could not mark scan %s failed", scan_id)
+        _settle_failure(db, scan_id, user_id, f"{type(exc).__name__}: {exc}")
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -4461,7 +4520,7 @@ def run_credentialed_scan_task(
             status = failed_hosts[0]["status"] if failed_hosts else "failed"
             emit(status, f"Scan {status}: {reason}", 0, "error")
             if scan_id:
-                mark_scan_failed(db, scan_id, user_id, reason, status=status)
+                _settle_failure(db, scan_id, user_id, reason, status=status)
             db.rollback()
             return {"success": False, "error": reason}
 
@@ -4795,7 +4854,7 @@ def run_credentialed_scan_task(
 
         emit(status, f"Scan {status}: {reason}", 0, "error")
         if scan_id:
-            mark_scan_failed(db, scan_id, user_id, reason, status=status)
+            _settle_failure(db, scan_id, user_id, reason, status=status)
         return {"success": False, "error": reason}
     finally:
         db.close()
@@ -5302,3 +5361,130 @@ def run_due_scan_schedules() -> dict:
         return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
     finally:
         db.close()
+
+
+@celery_app.task(name="ccure.tasks.reap_stalled_scans", queue="default")
+def reap_stalled_scans() -> dict:
+    """
+    Settle scans that are still 'running' or 'queued' with nothing working on
+    them, and tell whoever is watching why.
+
+    This is the deployment's actual scan timeout. `task_time_limit` in
+    `core/celery_app.py` reads like one and is not:
+
+    * Celery's hard time limit is delivered by signalling a **billiard worker
+      process**, so it does nothing under the `--pool=threads` worker this
+      deployment runs on Windows.
+    * Even where it does fire, it acts on a *running task*. It cannot settle a
+      scan whose worker died, was restarted mid-scan, or — the case that
+      produced this task — failed inside its own `except` handler and so never
+      recorded an outcome at all.
+
+    On 4 Sep 2026 a worker holding a stale `Scan` mapper raised
+    `InvalidRequestError` on every scan task's first query, and again inside
+    `mark_scan_failed`. Two scans against a host that was up the whole time sat
+    in 'running' indefinitely, and the UI showed a live scan for both. Nothing
+    in the system would ever have settled them.
+
+    Deliberately conservative in three ways:
+
+    * It only ever moves a scan **out of** a non-terminal state, through
+      `force_terminal_status`, which no-ops on anything already settled. A
+      real outcome written by a task always wins.
+    * It writes plain SQL, so it still works when the fault that stranded the
+      scan is the ORM itself.
+    * A queued scan and a running scan get different deadlines and different
+      messages, because "no scanner is running" and "the scan hung" send the
+      operator to different places.
+    """
+    from datetime import timedelta, timezone
+
+    from config import AppConfig
+    from core.redis_client import publish_progress_sync
+    from core.scan_control import force_terminal_status
+
+    running_minutes = int(getattr(AppConfig, "SCAN_STALL_TIMEOUT_MINUTES", 90) or 0)
+    queued_minutes = int(getattr(AppConfig, "SCAN_QUEUE_TIMEOUT_MINUTES", 15) or 0)
+    if running_minutes <= 0 and queued_minutes <= 0:
+        return {"success": True, "disabled": True, "reaped": 0}
+
+    now = utcnow()
+    reaped: list[dict] = []
+
+    db = SessionLocal()
+    try:
+        # Read with plain SQL for the same reason the writer uses it: a mapper
+        # failure is one of the conditions this task exists to clean up after,
+        # and a reaper that cannot run during that failure is no reaper.
+        rows = db.execute(
+            text(
+                """
+                SELECT id, scan_no, status, started_at, queued_at, created_at
+                  FROM scans
+                 WHERE status IN ('running', 'queued', 'pending', 'cancelling')
+                """
+            )
+        ).fetchall()
+    except Exception as exc:
+        log.exception("reap_stalled_scans could not list scans")
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        db.close()
+
+    for scan_id, scan_no, status, started_at, queued_at, created_at in rows:
+        is_running = (status or "").lower() in ("running", "cancelling")
+        limit_minutes = running_minutes if is_running else queued_minutes
+        if limit_minutes <= 0:
+            continue
+
+        # Fall back down the chain: a scan with no started_at never got that
+        # far, and one with no timestamps at all is old enough to reap on any
+        # reading.
+        anchor = started_at if is_running else (queued_at or created_at)
+        anchor = anchor or created_at or started_at
+        if anchor is None:
+            continue
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+
+        age = now - anchor
+        if age < timedelta(minutes=limit_minutes):
+            continue
+
+        minutes = int(age.total_seconds() // 60)
+        if is_running:
+            reason = (
+                f"Scan timed out: no progress recorded for {minutes} minutes "
+                f"(limit {limit_minutes}). The scanner task stopped responding "
+                f"or the scanner worker is no longer running."
+            )
+        else:
+            reason = (
+                f"Scan was never picked up by a scanner worker after "
+                f"{minutes} minutes (limit {limit_minutes}). Check that the "
+                f"host scanner worker is running."
+            )
+
+        if not force_terminal_status(scan_id, status="failed", reason=reason):
+            continue
+
+        reaped.append({"scan_id": scan_id, "scan_no": scan_no, "reason": reason})
+
+        # Push a terminal frame so a browser sitting on the live scan screen
+        # stops showing a scan that is over. Without this the only thing that
+        # ends that view is its own client-side timeout, which is the symptom
+        # this task was written to remove.
+        try:
+            publish_progress_sync(
+                scan_id, 1, {"status": "failed", "error": reason, "reason": reason}
+            )
+        except Exception:
+            log.debug("Could not publish timeout for scan %s", scan_id, exc_info=True)
+
+    if reaped:
+        log.warning(
+            "reap_stalled_scans settled %d stalled scan(s): %s",
+            len(reaped),
+            ", ".join(str(r["scan_no"]) for r in reaped),
+        )
+    return {"success": True, "reaped": len(reaped), "scans": reaped}

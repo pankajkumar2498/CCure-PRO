@@ -394,6 +394,49 @@ Source: `Backend/routers/health.py` — 4 operations.
 | GET    | `/api/pipeline-modes`      | public       | Pipeline modes and their phase lists                                             |
 | GET    | `/api/workflow-example`    | public       | Frontend orchestration example                                                   |
 
+### `GET /scans/{scan_id}/policy`
+
+The assessment configuration a scan actually ran under. `scans:read`, 60/min.
+
+Read from the scan's own immutable snapshot, **not** from the policy row it
+names — the policy may since have been edited, versioned, archived or deleted,
+and none of that changes what the scan assessed. A question an auditor asks
+about a scan has to be answerable from the scan.
+
+| Field                  | Meaning                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `policy`               | Identity, fingerprint and a human-readable summary. `recorded: false` for a scan predating GAP-12.        |
+| `effective`            | The full configuration, field by field, so two scans can be diffed.                                       |
+| `policy_current_state` | Whether the policy still exists and still says the same thing. Reported, never used to change the record. |
+
+`recorded: false` is a real answer and is not turned into a default policy:
+inventing a configuration record would put a claim in front of an auditor that
+nothing supports.
+
+### `GET /scans/{scan_id}/comparison`
+
+What changed between this scan and a baseline. `scans:read`, 30/minute.
+
+| Query              | Meaning                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `baseline`         | Scan to compare against. Defaults to the previous completed scan of the same `pipeline_mode` in this organisation. |
+| `asset_id`         | Restrict to these assets (repeatable).                                                                             |
+| `severity`         | Restrict to these severities (repeatable).                                                                         |
+| `limit`            | Cap on returned rows, 1–5000, default 500. Bounds the list, **never the counts**.                                  |
+| `include_findings` | Omit the row list for a counts-only call.                                                                          |
+
+Findings are classified `new`, `still_open`, `fixed`, `reappeared` or
+`not_assessed`. The last is the important one: a finding that was open and is
+absent from this scan is only reported **fixed** when the scan actually
+assessed the relevant check. Where it did not — no credential, a collector
+that errored, a scan with no recorded assessment scope — it is
+`not_assessed`, never `fixed`.
+
+Both scans are resolved through the same tenant-scoped lookup as every other
+scan route, so a scan the caller could not read returns 404. A first scan with
+no baseline returns the normal shape with `comparable: false` and a reason
+rather than an error.
+
 ### `GET /scan/progress/{scan_id}`
 
 Reads from PostgreSQL (`scans/progress.py::read_progress`) rather than an
@@ -630,20 +673,411 @@ hosts, or single unreachable target; `404` stored credential not found;
 
 ---
 
+## 6c. Remediation and SLA — `/remediation`
+
+Source: `Backend/routers/remediation.py` — 12 operations. Added by Phase 18
+(GAP-14) of the Nessus capability gap-closure programme.
+
+**The workflow around findings that already exist**: who owns one, when it is
+due, what state its remediation is in, and whether a fix was confirmed by a
+_subsequent assessment_ rather than merely claimed by a person.
+
+**No endpoint here can mark a finding verified fixed.** That is the gap's whole
+point. `PATCH /remediation/findings/{id}/state` refuses `verified_fixed` with a
+400 explaining that a scan has to establish it, and pointing at
+`pending_verification` — the claim a person is actually in a position to make.
+Verification happens in `core/remediation/verification.py`, driven by GAP-13's
+comparison, at the end of a scan.
+
+| Method | Path                                                     | Permission             | Limit  |
+| ------ | -------------------------------------------------------- | ---------------------- | ------ |
+| GET    | `/remediation/summary`                                   | `findings:read`        | 60/min |
+| GET    | `/remediation/overdue`                                   | `findings:read`        | 60/min |
+| GET    | `/remediation/pending-verification`                      | `findings:read`        | 60/min |
+| GET    | `/remediation/sla-policy`                                | `findings:read`        | 60/min |
+| PUT    | `/remediation/sla-policy`                                | `settings:update`      | 20/min |
+| POST   | `/remediation/assign`                                    | `findings:update`      | 30/min |
+| GET    | `/remediation/findings/{finding_id}`                     | `findings:read`        | 60/min |
+| PATCH  | `/remediation/findings/{finding_id}/state`               | `findings:update`      | 60/min |
+| POST   | `/remediation/findings/{finding_id}/notes`               | `findings:update`      | 60/min |
+| POST   | `/remediation/findings/{finding_id}/accept-risk`         | `findings:accept_risk` | 20/min |
+| POST   | `/remediation/findings/{finding_id}/withdraw-acceptance` | `findings:accept_risk` | 20/min |
+| GET    | `/remediation/findings/{finding_id}/history`             | `findings:read`        | 60/min |
+
+**Remediation states**: `open` → `assigned` → `in_remediation` →
+`pending_verification` → **`verified_fixed`** (assessment only) → `reopened`
+(assessment only). `risk_accepted` is reachable from any active state through
+its own endpoint, and expiry returns it to the queue.
+
+**`remediation_state` is not `status`.** `status` (open / fixed / accepted)
+answers a _detection_ question — is this finding present on the host — and is
+written by the scan sweeps. `remediation_state` answers a _workflow_ question.
+A finding can be `status = open` while `remediation_state = in_remediation`,
+and `status = fixed` while nobody has yet confirmed the absence was a real fix
+rather than a scan that did not look.
+
+**Accepting a risk is its own permission.** `findings:update` moves work
+through the queue; deciding the organisation will carry a risk indefinitely is
+a different authorisation. Without the split anyone who can edit a finding
+could clear their own overdue list by accepting everything on it. A reason is
+required; an expiry is optional and, when it lapses, the finding returns to the
+remediation queue on beat.
+
+### SLA
+
+Due dates are **calendar days from `first_found_at`**, materialised on the
+finding so "everything overdue" is one indexed predicate rather than a
+per-finding computation over thousands of rows.
+
+| Severity           | Default     | Why                                                                                                 |
+| ------------------ | ----------- | --------------------------------------------------------------------------------------------------- |
+| `critical`         | 15 days     | The shape of CISA BOD 22-01                                                                         |
+| `high`             | 30 days     |                                                                                                     |
+| `medium`           | 90 days     |                                                                                                     |
+| `low`              | 180 days    |                                                                                                     |
+| `none`, `unscored` | no deadline | An unrated finding carries no obligation, and `not_applicable` is reported rather than "within SLA" |
+
+Three rules that are decisions rather than implementation details:
+
+- **Rediscovery does not restart the clock.** If the due date came from
+  `last_found_at` a finding present for a year would be perpetually two weeks
+  from due and could never go overdue.
+- **A regression starts a new clock, from the regression.** `reopened_at`
+  becomes the anchor; dating a returned finding from its original discovery
+  would report an instant, unfixable breach.
+- **CISA KEV wins where it is earlier and never where it is later.** An
+  internal policy may be stricter than the federal mandate; it cannot extend
+  it, and silently relaxing to the federal date would loosen a customer's own
+  policy.
+
+`PUT /remediation/sla-policy` **merges** over the current values — an
+organisation configuring only `critical` keeps its other five deadlines. It does
+not retroactively move existing due dates; they are recomputed on the next
+scan's sync, because rewriting thousands of historical deadlines from a
+settings edit would change what a past report said was overdue.
+
+**SLA states**: `within_sla`, `due_soon` (inside the 7-day window),
+`overdue`, `resolved` (verified or accepted), `pending_verification` (claimed
+and still inside its deadline — past it, `overdue` wins), `not_applicable`.
+
+### Verification
+
+At the end of a scan, GAP-13's comparison is applied to the remediation states
+it justifies. Only two classifications move anything:
+
+| GAP-13 verdict      | Remediation                                                             |
+| ------------------- | ----------------------------------------------------------------------- |
+| `fixed`             | → `verified_fixed`, citing the scan                                     |
+| `reappeared`        | → `reopened`, SLA clock restarts                                        |
+| `not_assessed`      | **nothing** — the scan did not look, so its absence establishes nothing |
+| `new`, `still_open` | nothing — a scan does not reset somebody's work                         |
+
+Verification is also withheld entirely when the comparison is not comparable,
+or when the two scans ran under **different assessment configurations**
+(GAP-12) — a finding absent from the narrower one may be out of its scope
+rather than fixed. Findings that could not be verified are counted and named
+in the response and in the report, never dropped.
+
+### `GET /remediation/findings/{id}/history`
+
+Every remediation event, oldest first, read from `finding_remediation_events`
+— which nothing updates or deletes. A changed owner, a moved due date or a
+withdrawn acceptance is answerable months later even though the finding row
+carries only the current values. A system event (a verification, an expiry)
+carries an `actor_label` such as `system:verification` and no `actor_id`.
+
+---
+
+## 6a. Scan policies — `/scan-policies`
+
+Source: `Backend/routers/scan_policies.py` — 11 operations. Added by Phase 17
+(GAP-12) of the Nessus capability gap-closure programme.
+
+**A policy decides what a scan assesses.** It is a reusable, named, versioned
+configuration — which benchmarks and profile, which check families and
+platforms, a severity floor, exclusions, port and intensity settings — that a
+scan or a schedule points at instead of restating the settings each time.
+
+**A policy never holds a secret.** There is no credential field of any kind.
+`config` is copied into `scans.options`, which is client-visible, and printed
+in the generated report; a credential is referenced by
+`compliance_credentials.id` on the scan or the schedule.
+
+**An unknown setting is refused, not stored.** `config` is JSONB and would
+otherwise accept a misspelled key silently — a setting the operator believes is
+in force and that nothing reads.
+
+| Method | Path                                 | Permission             | Limit  |
+| ------ | ------------------------------------ | ---------------------- | ------ |
+| GET    | `/scan-policies`                     | `scan_policies:read`   | 60/min |
+| POST   | `/scan-policies`                     | `scan_policies:create` | 20/min |
+| GET    | `/scan-policies/settings`            | `scan_policies:read`   | 60/min |
+| POST   | `/scan-policies/validate`            | `scan_policies:read`   | 30/min |
+| GET    | `/scan-policies/{policy_id}`         | `scan_policies:read`   | 60/min |
+| PATCH  | `/scan-policies/{policy_id}`         | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/enable`  | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/status`  | `scan_policies:update` | 30/min |
+| POST   | `/scan-policies/{policy_id}/version` | `scan_policies:create` | 20/min |
+| GET    | `/scan-policies/{policy_id}/usage`   | `scan_policies:read`   | 60/min |
+| DELETE | `/scan-policies/{policy_id}`         | `scan_policies:delete` | 20/min |
+
+**Body — `ScanPolicyCreate`**: `name`, `description`, `policy_family_code`
+(defaults to a slug of the name), `scan_kind` (`network` | `credentialed` |
+`any`), `config{}`, `status` (`draft` | `active`), `is_enabled`.
+
+**`config` settings**, every one of which changes assessment behaviour:
+
+| Setting                  | Effect                                                      |
+| ------------------------ | ----------------------------------------------------------- |
+| `framework_ids[]`        | Benchmarks to resolve checks from. Empty = every installed. |
+| `benchmark_profile`      | e.g. `stig`. Empty = every control the benchmark defines.   |
+| `check_families[]`       | `ConfigCheck.domain` values. Empty = every domain.          |
+| `platforms[]`            | `windows` / `linux`. Empty = both.                          |
+| `sections[]`             | Credentialed collector sections. Empty = collector default. |
+| `include_builtin_checks` | Whether the 20 built-in checks run. Default true.           |
+| `min_severity`           | Severity floor on checks.                                   |
+| `excluded_check_ids[]`   | Named checks excluded.                                      |
+| `excluded_tags[]`        | Checks excluded by tag.                                     |
+| `excluded_targets[]`     | Addresses, ranges or CIDRs removed from the target set.     |
+| `custom_ports`           | Port expression, e.g. `22,80,8000-8100`.                    |
+| `exclude_ports`          | Ports excluded from the scan.                               |
+| `discovery_intensity`    | `light` / `normal` / `deep`.                                |
+| `port_scan_intensity`    | `light` / `normal` / `deep`.                                |
+| `os_detection`           | Nmap OS fingerprinting on or off.                           |
+| `allow_intrusive`        | Whether a probe may write to a target. Default false.       |
+| `require_credential`     | Refuse to start rather than run unauthenticated.            |
+
+**An empty collection means "no restriction", never "nothing".** `[]` for
+`framework_ids` selects every framework the tenant has installed, which is the
+pre-policy behaviour. Reading it the other way would let an under-specified
+policy reduce a scan to nothing while still reporting success.
+
+Five behaviours worth knowing:
+
+- **Another tenant's policy returns 404, not 403**, on every verb. A 403 would
+  confirm the id exists across a tenant boundary.
+- **Editing a policy never rewrites history.** A completed scan carries its own
+  immutable snapshot in `scans.options`, so what produced it is settled. An
+  edit changes every _future_ run, and `PATCH` returns a warning naming how
+  many scans have already used the policy.
+- **An archived policy cannot be edited.** It is the record of what earlier
+  scans ran under; `POST /{id}/version` is the way to move on.
+- **Archiving or deleting is refused while an enabled schedule uses the
+  policy.** Deleting anyway (`?force=true`) leaves those schedules running
+  under the request defaults, which is a silent broadening of scope, so the
+  response names them.
+- **Validation refuses rather than falling back.** A policy naming a framework
+  that is not installed, is parked in this installation, or does not exist at
+  all produces three different messages, because those need three different
+  actions.
+
+### `POST /scan-policies/validate`
+
+Checks a configuration without storing it. Static validation only —
+vocabularies and internal consistency. Whether the named frameworks are
+installed for this organisation is re-checked at every dispatch, because an
+installation removed in June must stop a scan in July.
+
+### `GET /scan-policies/settings`
+
+The vocabularies this build honours — scan kinds, statuses, config keys, check
+families, severities — read from the code that honours them, so a family added
+by a later phase is selectable without a UI change.
+
+### Selecting a policy for a scan
+
+`POST /scan/host-discovery` and `POST /scan/credentialed` accept an optional
+`policy_id`. Where the policy names a setting it **wins** over the same
+parameter in the request, and the response's `policy.overrides` lists what it
+displaced — silence there would make the policy advisory. Omitting `policy_id`
+preserves the pre-policy behaviour exactly, and still records the request's own
+parameters as the scan's effective configuration.
+
+---
+
+## 6b. Scan schedules — `/scan-schedules`
+
+Source: `Backend/routers/scan_schedules.py` — 10 operations. Added by Phase 1 of
+the Nessus capability gap-closure programme.
+
+**Scheduling does not run scans.** A due schedule dispatches the same Celery
+task the manual route dispatches — `run_host_discovery_task` for
+`scan_kind="network"`, `run_credentialed_scan_task` for `"credentialed"` — so
+there is one scan engine, and a scheduled scan appears in Scan History,
+reports, findings and the dashboard exactly like a manual one. It is marked
+with `options.origin = "schedule"` and `options.schedule_id`.
+
+**A schedule never holds a secret.** The create and update bodies have no
+password or key field, only `credential_id` referencing
+`compliance_credentials`. The worker resolves and decrypts it. Compare
+`POST /scan/credentialed`, which accepts a password and passes it into the task
+arguments.
+
+| Method | Path                                    | Permission               | Limit  |
+| ------ | --------------------------------------- | ------------------------ | ------ |
+| GET    | `/scan-schedules`                       | `scan_schedules:read`    | 60/min |
+| POST   | `/scan-schedules`                       | `scan_schedules:create`  | 20/min |
+| GET    | `/scan-schedules/timezones`             | `scan_schedules:read`    | 30/min |
+| GET    | `/scan-schedules/credentials`           | `scan_schedules:read`    | 60/min |
+| GET    | `/scan-schedules/{schedule_id}`         | `scan_schedules:read`    | 60/min |
+| PATCH  | `/scan-schedules/{schedule_id}`         | `scan_schedules:update`  | 20/min |
+| DELETE | `/scan-schedules/{schedule_id}`         | `scan_schedules:delete`  | 20/min |
+| POST   | `/scan-schedules/{schedule_id}/enable`  | `scan_schedules:update`  | 20/min |
+| POST   | `/scan-schedules/{schedule_id}/run-now` | `scan_schedules:execute` | 10/min |
+| GET    | `/scan-schedules/{schedule_id}/runs`    | `scan_schedules:read`    | 60/min |
+
+**Body — `ScheduleCreate`**: `name`, `description`, `scan_kind`
+(`network` | `credentialed`), `targets[]`, `scan_options{}`, `credential_id`,
+`recurrence` (`once` | `daily` | `weekly` | `monthly` | `custom`), `timezone`
+(IANA name), `run_at` (`"HH:MM"` local), `day_of_week` (0 = Monday),
+`day_of_month` (1-31), `cron_expression`, `starts_at`, `is_enabled`.
+
+`PATCH` takes the same fields, all optional, minus `scan_kind` — changing a
+schedule's kind would change which task it dispatches and which options are
+meaningful, so a new schedule is the honest way to express that.
+
+Three behaviours worth knowing:
+
+- **Another tenant's schedule returns 404, not 403.** The `org_id` filter is
+  part of the query rather than a comparison after the fetch, so the two cases
+  are indistinguishable from outside. A 403 would confirm the id exists.
+- **`run-now` does not advance `next_run_at`.** Testing a schedule at 11:00
+  would otherwise cancel that night's real run. It also works on a _disabled_
+  schedule, which is how an operator confirms a fix before switching it on.
+- **Deleting a schedule does not delete the scans it produced.**
+  `scan_schedule_runs.scan_id` is `ON DELETE SET NULL` from `scans`; a scan is
+  evidence of what was on a network at a moment in time.
+
+Time zones are IANA names, never fixed offsets, and `next_run_at` is computed
+in the schedule's own zone — so "09:00 daily, Europe/London" stays 09:00 across
+a daylight-saving boundary rather than sliding by an hour. See
+`Backend/core/scheduling/recurrence.py`.
+
+---
+
+## 6c. Credentials — `/credentials`
+
+Source: `Backend/routers/credentials.py` — 7 operations. Added by Phase 2.
+
+The `credentials` RBAC resource (`credentials:create`, `:read`, `:delete`) had
+existed in the permission seed since before this phase and was **never wired to
+an API** — the only credential endpoints were under `/compliance`, gated on
+`compliance:read`. That is the wrong authorisation: an analyst who scans
+Windows hosts needs to manage scanning credentials without holding a compliance
+permission. Phase 2 adds `credentials:update` and `credentials:validate` and
+gives the resource the API it was defined for. The `/compliance/credentials`
+endpoints still work; they read the same table.
+
+| Method | Path                                    | Permission             | Limit  |
+| ------ | --------------------------------------- | ---------------------- | ------ |
+| GET    | `/credentials`                          | `credentials:read`     | 60/min |
+| POST   | `/credentials`                          | `credentials:create`   | 20/min |
+| GET    | `/credentials/types`                    | `credentials:read`     | 30/min |
+| GET    | `/credentials/{credential_id}`          | `credentials:read`     | 60/min |
+| PATCH  | `/credentials/{credential_id}`          | `credentials:update`   | 20/min |
+| POST   | `/credentials/{credential_id}/validate` | `credentials:validate` | 10/min |
+| DELETE | `/credentials/{credential_id}`          | `credentials:delete`   | 20/min |
+
+**Body — create**: `name`, `username`, `credential_type` (`ssh` | `windows`),
+`auth_method` (`password` | `key` | `ntlm` | `kerberos`), `password` or
+`private_key`, `domain`, `transport`, `port`, `options`.
+
+**A secret goes in and never comes out.** No response carries
+`encrypted_password` or `encrypted_key_content` — not even redacted. Responses
+carry `has_secret` (boolean) and `principal` (the username in the form the auth
+method expects: `DOMAIN\user` for NTLM, `user@REALM` for Kerberos, bare for
+SSH). `options` is rejected at validation if it contains a key named like a
+secret, because that field _is_ returned to clients.
+
+**PATCH replaces a secret only when one is supplied.** Omitting `password`
+keeps the stored one — otherwise editing a port would blank the password and
+the credential would start failing authentication for a reason nothing
+explains.
+
+**`POST /{id}/validate` authenticates for real** against a named target, and
+the target is re-checked against the organisation's scan scope because this
+makes an outbound authentication attempt at a caller-supplied address. The
+`reason` field is one of `authenticated`, `authentication_failed`,
+`insufficient_privileges`, `unreachable`, `configuration_error`, `failed` —
+distinct because they need distinct actions.
+
+**`GET /types`** reports what this build can authenticate with, including
+whether `pywinrm` is installed. A UI that offered Windows credentials on a
+build without it would collect them and then fail every scan.
+
+---
+
+## 6d. Configuration audit — `/config-audit`
+
+Source: `Backend/routers/config_audit.py` — 4 operations. Added by Phase 3.
+
+The read surface of the generic configuration audit engine
+(`Backend/core/config_audit/`). All four are gated on `scans:read`: they
+describe what a scan can check, and no new permission was introduced for a
+read-only catalogue.
+
+| Method | Path                              | Permission   | Limit  |
+| ------ | --------------------------------- | ------------ | ------ |
+| GET    | `/config-audit/checks`            | `scans:read` | 60/min |
+| GET    | `/config-audit/capabilities`      | `scans:read` | 60/min |
+| GET    | `/config-audit/checks/{check_id}` | `scans:read` | 60/min |
+| POST   | `/config-audit/validate`          | `scans:read` | 30/min |
+
+**There is deliberately no "run a configuration audit" endpoint.**
+Configuration checks run inside the credentialed scan, on the session the
+collectors already opened — `core.tasks.audit_credentialed_host`. A separate
+dispatch endpoint would be a second way to start a scan against a
+caller-named target, needing its own scope check, quota check, rate limit and
+audit entry, and it would produce a scan row Scan History and the reports
+would have to learn about. Phase 1 made the same call for scheduling.
+
+**`GET /checks`** filters on `platform`, `check_type` and `domain`. Platform
+filtering uses the check's own targeting rule, so a check declared for `any`
+is returned for every platform. Each entry carries `expected` (rendered),
+`remediation`, `rationale`, `references` and `absent_policy`.
+
+**`absent_policy`** is the field a reviewer most often needs. It says what a
+successful reading of "the item is not present" means for that check — `pass`
+(SMBv1 not installed), `fail` (auditd not installed), `not_applicable` (a rule
+conditional on a component being present), or `manual_review` (a Windows
+setting absent from the registry is at a platform default that varies by
+build). There is no default: every value is right for some rule and wrong for
+others, so the rule author has to choose.
+
+**`GET /capabilities`** reports which check types actually have a collector,
+per platform, read from the live registry. `check_type` admits `api` and
+`database_query`, and `target_platform` admits `database` and `container`,
+ahead of the phases that implement them — so a rule can be authored today that
+nothing in this build can execute. The engine reports that as an error rather
+than skipping it, but only after a scan has run; `declared_without_collector`
+answers it beforehand.
+
+**`POST /validate`** checks a rule definition and contacts no target. It
+answers 200 with `valid: false` and the reasons rather than 422 — the caller
+asked whether the rule is valid, and the errors are the answer to that
+question, not a fault in the request. A rule targeting a platform with no
+collector yet is `valid: true` **with a warning**: authoring content ahead of
+its collector is legitimate, and reporting it as invalid would block it while
+reporting nothing would let it ship silently unexecutable. A `matches` pattern
+is compiled to check it parses and is never matched against anything.
+
+---
+
 ## 7. Scan history — `/scans`
 
 Source: `Backend/scans/router.py` — 8 HTTP operations + 1 WebSocket.
 
-| Method | Path                       | Permission      | Purpose                              |
-| ------ | -------------------------- | --------------- | ------------------------------------ |
-| GET    | `/scans`                   | `scans:read`    | Filtered, sorted, paginated history  |
-| GET    | `/scans/events`            | `scans:read`    | **SSE** live history stream          |
-| GET    | `/scans/{scan_id}`         | `scans:read`    | Full detail incl. all phase results  |
-| POST   | `/scans/{scan_id}/archive` | `scans:archive` | Move to Archived                     |
-| POST   | `/scans/{scan_id}/stop`    | `scans:execute` | Cancel a running scan                |
-| POST   | `/scans/{scan_id}/restore` | `scans:restore` | Restore from Archived or Recycle Bin |
-| DELETE | `/scans/{scan_id}`         | `scans:recycle` | Move to Recycle Bin (soft delete)    |
-| DELETE | `/scans/{scan_id}/purge`   | `scans:purge`   | Permanent delete                     |
+| Method | Path                          | Permission      | Purpose                              |
+| ------ | ----------------------------- | --------------- | ------------------------------------ |
+| GET    | `/scans`                      | `scans:read`    | Filtered, sorted, paginated history  |
+| GET    | `/scans/events`               | `scans:read`    | **SSE** live history stream          |
+| GET    | `/scans/{scan_id}`            | `scans:read`    | Full detail incl. all phase results  |
+| GET    | `/scans/{scan_id}/comparison` | `scans:read`    | What changed against a baseline scan |
+| POST   | `/scans/{scan_id}/archive`    | `scans:archive` | Move to Archived                     |
+| POST   | `/scans/{scan_id}/stop`       | `scans:execute` | Cancel a running scan                |
+| POST   | `/scans/{scan_id}/restore`    | `scans:restore` | Restore from Archived or Recycle Bin |
+| DELETE | `/scans/{scan_id}`            | `scans:recycle` | Move to Recycle Bin (soft delete)    |
+| DELETE | `/scans/{scan_id}/purge`      | `scans:purge`   | Permanent delete                     |
 
 ### `GET /scans`
 

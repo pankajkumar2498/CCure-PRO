@@ -32,7 +32,14 @@ python-jose[cryptography]==3.3.0   # JWT signing/verification
 passlib[bcrypt]==1.7.4             # password hashing (bcrypt)
 bcrypt==4.0.1                      # passlib 1.7.4 compatibility pin
 argon2-cffi==23.1.0                # argon2 fallback hasher
-cryptography>=41.0.0,<48           # avoid TripleDES deprecation in v48+
+cryptography>=43,<48               # lower bound is sslyze 6.3.1's (>=43): a
+                                   # dependency that caps cryptography below
+                                   # it — impacket 0.12.0 via pyOpenSSL==24.0.0
+                                   # — silently downgrades this and takes sslyze
+                                   # out of contract, reaching paramiko,
+                                   # pysnmpcrypto, pyspnego and requests_ntlm
+                                   # too. Upper bound avoids the TripleDES
+                                   # deprecation in v48+.
 sqlalchemy==2.0.30                 # ORM (scan history, user DB)
 alembic>=1.13.0                    # Database migrations
 psycopg2-binary==2.9.9             # PostgreSQL adapter for SQLAlchemy
@@ -63,7 +70,52 @@ psutil>=5.9.0
 
 # ── Credentialed scanning ─────────────────────────────────────────────────────
 paramiko==4.0.0    # SSH credentialed scan (Linux targets)
-# pywinrm            # Optional: Windows WinRM credentialed scan (uncomment if needed)
+pywinrm==0.4.3     # Windows credentialed scan over native WinRM (Phase 2)
+# Not optional any more. Windows collection previously required OpenSSH Server
+# installed on every target; WinRM is the built-in service every managed
+# Windows estate already runs. Without this the WinRM transport raises
+# WinRMConfigurationError and Windows hosts fall back to needing OpenSSH.
+#
+# Must be present in BOTH environments: the API container (credential
+# validation) and the host scanner worker venv (where credentialed scans
+# actually execute). Installing it in only one is how validation succeeds in
+# the UI and every real scan then fails.
+
+# ── Database assessment (Phase 7, GAP-10) ─────────────────────────────────────
+# Authenticated configuration audit of database instances. PostgreSQL needs no
+# entry here: psycopg2-binary is already a dependency of the application's own
+# database access, above.
+#
+# Both ship prebuilt wheels for Windows (cp312) and manylinux, which is the
+# reason these two engines are supported and Oracle and MongoDB are not: the
+# scanner worker runs on the Windows host, so a driver needing a source build
+# or a vendor client library there is not a dependency, it is an installation
+# project on every deployment.
+#
+# Same "both environments" rule as pywinrm above — the API reports which
+# engines it can assess from the installed drivers (`/credentials/types`), so a
+# driver present in the container and absent from the worker venv offers a
+# credential type that every real scan then fails on.
+PyMySQL==1.1.1     # MySQL and MariaDB — pure Python, no client library
+pymssql==2.3.13    # Microsoft SQL Server — FreeTDS linked into the wheel
+
+# ── Container and Kubernetes assessment (Phase 9, GAP-17) ─────────────────────
+# YAML parsing for kubelet and k3s configuration.
+#
+# Declared explicitly even though it already arrives transitively — today via
+# bandit and pre-commit, which are *development* tooling and are not installed
+# in the API image at all. That is precisely the silent outage CLAUDE.md
+# records for dnspython: the import is reached at scan time, so a build that
+# trimmed the dev dependencies would lose Kubernetes assessment without a
+# single error at install time.
+#
+# TOML needs no entry: containerd's config.toml is read with `tomllib`, which
+# has been in the standard library since Python 3.11.
+#
+# Only `yaml.safe_load` is ever called. The full loader constructs arbitrary
+# Python objects from tags such as `!!python/object/apply`, which would be
+# remote code execution in the scanner reading a file off a host it audits.
+PyYAML>=6.0.1
 
 # ── Task Queue (Celery) ────────────────────────────────────────────────────────
 celery[redis]>=5.4.0
@@ -92,7 +144,51 @@ pytest-asyncio
 # ── Optional enhancements ─────────────────────────────────────────────────────
 # pyOpenSSL          # deeper TLS inspection in tls_scanner plugin
 # python-ldap3       # direct LDAP queries in ldap_probe plugin
-# impacket           # SMB deep inspection (EternalBlue probes) — install separately
+impacket==0.13.1   # Windows credentialed scan over SMB / Remote Registry / WMI.
+                   # Declared, not optional: the import is reached at scan time
+                   # by engines/credentialed/smb_executor.py, which is the
+                   # second Windows transport. It also carries the SMB deep
+                   # inspection this line previously described as "install
+                   # separately", so that arrangement is gone.
+                   #
+                   # ⚠ 0.13.1, NOT 0.12.0, and the reason is a hard conflict
+                   # rather than a preference. 0.12.0 pins `pyOpenSSL==24.0.0`,
+                   # which caps `cryptography<43`; sslyze 6.3.1 requires
+                   # `cryptography>=43,<47`. The two cannot both be satisfied,
+                   # so installing impacket 0.12.0 downgrades cryptography to
+                   # 42.0.8 and leaves sslyze's requirement violated — measured
+                   # with `pip check`, which reports it in those words. That
+                   # matters beyond tidiness: cryptography is also depended on
+                   # by paramiko, pysnmpcrypto, pyspnego and requests_ntlm, so
+                   # the downgrade reaches SSH, SNMPv3 and WinRM NTLM as well.
+                   # 0.13.1 declares `pyOpenSSL` unpinned and resolves against
+                   # cryptography 46 with nothing displaced.
+                   #
+                   # ⚠ It also depends on `pyasn1` WITHOUT an upper bound, and
+                   # an unconstrained install can pull pyasn1 6.x — which breaks
+                   # pysnmp-lextudio and, with it, SNMP topology discovery. The
+                   # failure is not an import error: pyasn1 6 removed
+                   # `pyasn1.compat.octets`, and the FDB table silently decodes
+                   # to one entry instead of three, so a switch's MAC table
+                   # comes back nearly empty and the topology looks sparse
+                   # rather than broken. Keep the `pyasn1` pin above ahead of
+                   # this line and verify both after any upgrade of either.
+                   #
+                   # Installing into an existing environment therefore means
+                   # naming the constraints so pip cannot resolve around them:
+                   #
+                   #   pip install "impacket==0.13.1" \
+                   #       "pyasn1>=0.4.8,<0.6.0" "cryptography>=43,<47"
+                   #
+                   # `pip install -r requirements.txt` does this on its own,
+                   # because both pins are in this file. The failure mode to
+                   # watch for is an environment that was built before this
+                   # line existed and never reinstalled: `Backend/.venv` was in
+                   # exactly that state until 2 Sep 2026 — 44 of 45 declared
+                   # packages present, impacket the only one missing — so the
+                   # SMB transport raised SMBConfigurationError in the worker
+                   # while passing in a developer's global interpreter that had
+                   # been given impacket by hand.
 
 # ── Web Application Scanning (DAST) ──────────────────────────────────────────
 playwright>=1.40.0         # Headless browser for SPA crawling

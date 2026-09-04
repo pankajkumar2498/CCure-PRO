@@ -535,29 +535,17 @@ def seed_system_roles():
 
     with engine.begin() as conn:
         if conn.dialect.name == "postgresql":
-            all_themes = (
-                "'ORG', 'PPL', 'PHY', 'TECH', 'GV', 'ID', 'PR', 'DE', 'RS', 'RC', "
-                "'CIS_01', 'CIS_02', 'CIS_03', 'CIS_04', 'CIS_05', 'CIS_06', 'CIS_07', "
-                "'CIS_08', 'CIS_09', 'CIS_10', 'CIS_11', 'CIS_12', 'CIS_13', 'CIS_14', "
-                "'CIS_15', 'CIS_16', 'CIS_17', 'CIS_18', "
-                "'SOC2_CC', 'SOC2_A', 'SOC2_PI', 'SOC2_C', 'SOC2_P', "
-                "'CERT_IR', 'CERT_LOG', 'CERT_AM', 'CERT_VM', 'CERT_AC', 'CERT_DP', "
-                "'PCI_01', 'PCI_02', 'PCI_03', 'PCI_04', 'PCI_05', 'PCI_06', "
-                "'PCI_07', 'PCI_08', 'PCI_09', 'PCI_10', 'PCI_11', 'PCI_12', "
-                "'DPDP_CN', 'DPDP_PL', 'DPDP_DR', 'DPDP_BN', 'DPDP_PS', 'DPDP_GV', "
-                "'GDPR_LT', 'GDPR_PL', 'GDPR_DM', 'GDPR_AY', 'GDPR_SL', 'GDPR_IC', 'GDPR_AC', "
-                "'SP53_AC', 'SP53_AT', 'SP53_AU', 'SP53_CA', 'SP53_CM', 'SP53_CP', 'SP53_IA', "
-                "'SP53_IR', 'SP53_MA', 'SP53_MP', 'SP53_PE', 'SP53_PL', 'SP53_PM', 'SP53_PS', "
-                "'SP53_PT', 'SP53_RA', 'SP53_SA', 'SP53_SC', 'SP53_SI', 'SP53_SR', "
-                "'IEC_2_1', 'IEC_2_3', 'IEC_2_4', 'FR1_IAC', 'FR2_UC', 'FR3_SI', 'FR4_DC', "
-                "'FR5_RDF', 'FR6_TRE', 'FR7_RA', "
-                "'SP82_AC', 'SP82_AU', 'SP82_CM', 'SP82_IA', 'SP82_IR', 'SP82_SC', "
-                "'SP82_SI', 'SP82_RA', 'SP82_SA', "
-                "'CIP_002', 'CIP_003', 'CIP_004', 'CIP_005', 'CIP_006', 'CIP_007', "
-                "'CIP_008', 'CIP_009', 'CIP_010', 'CIP_011', 'CIP_012', 'CIP_013', 'CIP_014', "
-                "'NIS2_GOV', 'NIS2_INC', 'NIS2_BC', 'NIS2_SUPPLY', 'NIS2_SEC', 'NIS2_AUDIT', "
-                "'NIS2_HYGIENE', 'NIS2_CRYPTO', 'NIS2_IAM', 'NIS2_MFA'"
-            )
+            # The theme list lives in exactly one place —
+            # `db.models.compliance.CONTROL_THEMES` — and is imported here
+            # rather than copied.
+            #
+            # It used to be a fourth hardcoded copy (model, the table's own
+            # migration, every framework migration, and this file), and this
+            # copy silently won: it rewrites the constraint on every session,
+            # so a theme added to the model and its migration was still
+            # rejected by the test database and nothing said why.
+            from db.models.compliance import CONTROL_THEME_SQL
+
             conn.execute(
                 text(
                     "ALTER TABLE compliance_controls DROP CONSTRAINT IF EXISTS ck_control_theme;"
@@ -565,7 +553,7 @@ def seed_system_roles():
             )
             conn.execute(
                 text(
-                    f"ALTER TABLE compliance_controls ADD CONSTRAINT ck_control_theme CHECK (theme IN ({all_themes}));"
+                    f"ALTER TABLE compliance_controls ADD CONSTRAINT ck_control_theme CHECK ({CONTROL_THEME_SQL});"
                 )
             )
             conn.execute(
@@ -575,7 +563,7 @@ def seed_system_roles():
             )
             conn.execute(
                 text(
-                    f"ALTER TABLE compliance_scores ADD CONSTRAINT ck_score_theme CHECK (theme IN ({all_themes}));"
+                    f"ALTER TABLE compliance_scores ADD CONSTRAINT ck_score_theme CHECK ({CONTROL_THEME_SQL});"
                 )
             )
         create_partitions(conn)
@@ -916,6 +904,53 @@ def _purge_test_data():
             {"system_roles": list(_SYSTEM_ROLES)},
         )
 
+        _purge_synthetic_catalogue_rows(conn)
+
+
+#: The identifier prefix every test-created vulnerability-catalogue row must
+#: use. Year 9999 cannot belong to a published CVE, so the pattern can never
+#: match a real advisory and the cleanup below can never delete feed data.
+#:
+#: Tests mint ids under this prefix rather than a plausible one **and the rows
+#: are removed after every test**, because until now neither was true and the
+#: catalogue was the one table the purge did not reach. Findings are cascaded
+#: away with their organisation; the ``vulnerability_definitions`` rows those
+#: findings pointed at simply stayed, run after run, forever.
+#:
+#: On the live application database that produced 24 permanent rows titled
+#: "Test vulnerability" and "Package CVE", dated between 2026-06-19 and
+#: 2026-08-10 — the last of them on the day of the incident recorded in
+#: CLAUDE.md, when a full-suite run inherited the API container's
+#: ``DATABASE_URL``. The three database-name guards above stop that recurring;
+#: this stops a run leaving catalogue residue behind *at all*, on whatever
+#: database it reaches.
+SYNTHETIC_CVE_PREFIX = "CVE-9999-"
+_SYNTHETIC_CVE_LIKE = SYNTHETIC_CVE_PREFIX + "%"
+
+
+def _purge_synthetic_catalogue_rows(conn) -> None:
+    """
+    Remove catalogue rows a test created, and any findings still pointing at
+    them.
+
+    Findings go first and this is not optional: ``asset_vulnerabilities.vuln_id``
+    references ``vulnerability_definitions.id`` **ON DELETE RESTRICT**, so a
+    finding created under a *baseline* organisation — which the organisation
+    purge above deliberately does not delete — would make the catalogue delete
+    raise instead of clean up.
+
+    Both statements are keyed on an indexed prefix of a primary key, so the
+    common case (a test created nothing) costs two index probes.
+    """
+    conn.execute(
+        text("DELETE FROM asset_vulnerabilities WHERE vuln_id LIKE :p"),
+        {"p": _SYNTHETIC_CVE_LIKE},
+    )
+    conn.execute(
+        text("DELETE FROM vulnerability_definitions WHERE id LIKE :p"),
+        {"p": _SYNTHETIC_CVE_LIKE},
+    )
+
 
 @pytest.fixture(scope="function", autouse=True)
 def reset_database(session_client):
@@ -1225,11 +1260,25 @@ def detect_process_leaks():
         ), f"Resource Leak: Active subprocesses left running: {', '.join(leak_details)}"
 
 
+#: The genuine ``SSHScanner.connect``, kept aside whenever the session-wide
+#: mock below replaces it. A test whose subject *is* what connect() does with
+#: key material needs the real function, and CI sets MOCK_SCANNERS=true — so
+#: without a way back to it those tests pass on a developer's machine and fail
+#: only in CI, which is the one place nobody can step through them.
+#: ``real_ssh_connect`` is how a test asks for it.
+_REAL_SSH_CONNECT = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def global_scanner_mocking():
     """Globally mocks scanners if MOCK_SCANNERS=true is set in the environment."""
     if os.getenv("MOCK_SCANNERS") == "true":
         from unittest.mock import MagicMock, patch
+
+        from engines.credentialed.ssh_scanner import SSHScanner
+
+        global _REAL_SSH_CONNECT
+        _REAL_SSH_CONNECT = SSHScanner.connect
 
         # Mock SSH connections
         ssh_patcher = patch(
@@ -1249,3 +1298,33 @@ def global_scanner_mocking():
         nmap_patcher.stop()
     else:
         yield
+
+
+@pytest.fixture
+def real_ssh_connect():
+    """
+    Give one test back the real ``SSHScanner.connect``.
+
+    ``global_scanner_mocking`` replaces it with a stub returning True for the
+    whole session, which is right for the tests that merely need a session to
+    exist and wrong for the handful whose assertion is that connect() *raises*
+    — on a key it cannot parse, or a passphrase that does not fit. Against the
+    stub those never raise, so they fail with DID NOT RAISE under exactly the
+    MOCK_SCANNERS=true that CI passes and nowhere else.
+
+    A no-op when the mock is not installed, so a test using it behaves the same
+    whether or not MOCK_SCANNERS is set. That is the point: a test must not
+    depend on how the machine running it is configured.
+    """
+    if _REAL_SSH_CONNECT is None:
+        yield
+        return
+
+    from engines.credentialed.ssh_scanner import SSHScanner
+
+    stub = SSHScanner.connect
+    SSHScanner.connect = _REAL_SSH_CONNECT
+    try:
+        yield
+    finally:
+        SSHScanner.connect = stub

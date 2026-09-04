@@ -109,7 +109,7 @@ const getSevColor = (sev) => {
   // Try exact match, then title case, then lowercase
   return (
     SEV_COLOR[sev] ||
-    SEV_COLOR[sev.charAt(0).upper() + sev.slice(1).lower()] ||
+    SEV_COLOR[sev.charAt(0).toUpperCase() + sev.slice(1).toLowerCase()] ||
     SEV_COLOR[sev.toLowerCase()] ||
     SEV_COLOR.Info
   );

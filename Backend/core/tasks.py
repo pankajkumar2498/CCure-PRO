@@ -22,11 +22,16 @@ from db.models import (
     User,
     VulnerabilityDefinition,
 )
+from db.models.compliance import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
 from engines.credentialed.coverage import (
     correlate_listeners,
     credentialed_coverage,
     mark_credentialed_confirmed,
 )
+from engines.credentialed.transport_resolver import (
+    DEFAULT_PORT as DEFAULT_TRANSPORT_PORT,
+)
+from engines.credentialed.transport_resolver import resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scan_helpers import (
     carry_scan_coverage,
@@ -41,7 +46,7 @@ from scans.db_helpers import (
     mark_scan_failed,
     update_scan_phase,
 )
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 
 log = logging.getLogger("ccure.tasks")
@@ -234,6 +239,39 @@ def _merge_host_identity(
     return merged
 
 
+def _assessed_config_definition_ids(config_summary) -> set:
+    """
+    Catalogue ids of the configuration checks this scan reached a *verdict* on.
+
+    Only PASS and FAIL count. A check that errored, was not applicable or could
+    not be collected established nothing about the host, and a finding it did
+    not report is not a finding that went away.
+
+    This is what stops the sweep below turning an unreachable session into a
+    page of remediated controls: 126 Windows STIG findings on one measured host
+    are absent from `cve_list` when the audit passes *and* when the audit never
+    ran, and only this set tells the two apart.
+    """
+    ids: set = set()
+    if not isinstance(config_summary, dict) or not config_summary.get("assessed"):
+        return ids
+    from core.config_audit.findings import config_definition_id
+
+    for result in config_summary.get("results") or []:
+        if not isinstance(result, dict):
+            continue
+        if str(result.get("outcome") or "").strip().lower() not in ("pass", "fail"):
+            continue
+        check_id = str(result.get("check_id") or "").strip()
+        if not check_id:
+            continue
+        finding_type = str(
+            (result.get("metadata") or {}).get("finding_type") or "config_check"
+        )
+        ids.add(config_definition_id(check_id, finding_type))
+    return ids
+
+
 def _sync_credentialed_asset_identity(
     db,
     *,
@@ -252,6 +290,7 @@ def _sync_credentialed_asset_identity(
     """
     from core.oui_lookup import lookup_vendor
     from scans.asset_syncer import (
+        CREDENTIALED_STATUS_SUCCESS,
         _confidence_to_percent,
         _finding_family,
         _finding_source_from_record,
@@ -454,15 +493,55 @@ def _sync_credentialed_asset_identity(
         .all()
     )
 
+    # Which configuration checks actually produced a verdict this run, and
+    # therefore which absent configuration findings are genuinely gone.
+    _config_summary = (stored_report or {}).get("config_audit") or {}
+    _assessed_checks = _assessed_config_definition_ids(_config_summary)
+
+    from core.checks.definitions import DEFINITION_TYPE_CVE, definition_type_for_id
+
     for f in current_open:
         if _finding_family(_finding_source_from_record(f)) != "credentialed_package":
             continue
-        if f.vuln_id not in found_cve_ids:
-            f.status = "fixed"
-            f.fixed_at = utcnow()
-            _record_asset_change(
-                db, asset.id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
+        if f.vuln_id in found_cve_ids:
+            continue
+        # A configuration or privilege finding is only fixed if its check ran
+        # and answered. Package findings keep the previous behaviour: the
+        # matcher runs over the whole installed inventory, so a CVE it does not
+        # report on a host it inventoried really is gone.
+        if definition_type_for_id(f.vuln_id) != DEFINITION_TYPE_CVE:
+            if f.vuln_id not in _assessed_checks:
+                # Not assessed is not fixed. Left open, and the scan's recorded
+                # assessment scope is what lets a comparison say so out loud
+                # rather than silently carrying it forward.
+                continue
+        f.status = "fixed"
+        f.fixed_at = utcnow()
+        _record_asset_change(
+            db, asset.id, scan_id, "vulnerability_fixed", f.vuln_id, "fixed"
+        )
+
+    # What this scan looked at, so a later comparison can tell "gone" from
+    # "nobody looked". Smallest clean record: merged into `scans.options`,
+    # which is JSONB and already carries `options.origin`. GAP-12's policy
+    # engine is where this eventually belongs; it is deliberately not built here.
+    try:
+        from core.findings import record_assessment_scope
+        from db.models.scans import Scan as _Scan
+
+        _scan_row = db.query(_Scan).filter(_Scan.id == scan_id).first()
+        if _scan_row is not None:
+            record_assessment_scope(
+                _scan_row,
+                assets=[asset.id],
+                families=["credentialed_package"],
+                detail={
+                    "config_audit_assessed": bool(_config_summary.get("assessed")),
+                    "checks_assessed": len(_assessed_checks),
+                },
             )
+    except Exception as exc:  # never fail a scan over its own bookkeeping
+        log.warning("Could not record assessment scope for scan %s: %s", scan_id, exc)
 
     db.flush()
 
@@ -517,8 +596,10 @@ def _sync_credentialed_asset_identity(
         if value is not None and value != ""
     }
 
-    # Compliance Engine Evidence Mappings
-    attrs["credentialed_status"] = "success"
+    # Compliance Engine Evidence Mappings. The literal used to live here and
+    # only here, which is why the Vulnerability Audit's credentialed pass never
+    # set it — there was nothing to call.
+    attrs["credentialed_status"] = CREDENTIALED_STATUS_SUCCESS
 
     # Password policy is *collected*, never assumed. This used to be a
     # hard-coded {complexity: True, history_length: 24, min_length: 14}
@@ -583,11 +664,17 @@ def _sync_credentialed_asset_identity(
         "rdp_disabled": not rdp_enabled,
         "uac_enabled": not uac_disabled,
         "audit_configured": audit_configured,
-        "smbv1_disabled": system_data.get("smbv1_disabled", False),
-        "netbios_disabled": system_data.get("netbios_disabled", False),
-        "legacy_tls_disabled": system_data.get("legacy_tls_disabled", False),
-        "telnet_disabled": system_data.get("telnet_disabled", False),
-        "rdp_nla_enforced": system_data.get("rdp_nla_enforced", False),
+        # No ``False`` default: an absent key means the collector did not read
+        # the setting, and defaulting it asserts the insecure state as fact —
+        # a FAIL nothing established, which is the same defect as the PASS the
+        # collector used to synthesise, pointing the other way. ``None`` travels
+        # to the evidence adapter, which drops it, and a dropped key routes the
+        # rule to manual review.
+        "smbv1_disabled": system_data.get("smbv1_disabled"),
+        "netbios_disabled": system_data.get("netbios_disabled"),
+        "legacy_tls_disabled": system_data.get("legacy_tls_disabled"),
+        "telnet_disabled": system_data.get("telnet_disabled"),
+        "rdp_nla_enforced": system_data.get("rdp_nla_enforced"),
     }
 
     asset.custom_attributes = attrs
@@ -617,6 +704,23 @@ def _extract_credentialed_identity_names(system_data: dict) -> tuple[str, str, s
         else (raw_hostname_fqdn if "." in raw_hostname_fqdn else "")
     )
     return hostname, fqdn, raw_hostname_fqdn
+
+
+def _unique_lines(text) -> str:
+    """
+    Collapse repeated lines, keeping order and every distinct one.
+
+    A SCAP rule evaluates one object per branch of its criteria and each
+    contributes a line to the raw reading, so a rule with seven registry
+    objects that all found nothing produces the same sentence seven times.
+    The distinct lines are what a reader needs; the repeats push them off
+    the page.
+    """
+    seen = []
+    for line in str(text or "").splitlines():
+        if line not in seen:
+            seen.append(line)
+    return "\n".join(seen)
 
 
 def _clean_text(value) -> str:
@@ -738,13 +842,39 @@ def _sync_credentialed_vulnerabilities(
     scan_id: str,
     cve_list: list[dict],
 ) -> None:
-    from scans.asset_syncer import _resolve_finding_id
+    from core.checks.definitions import (
+        DEFINITION_TYPE_CVE,
+        definition_type_for_id,
+    )
+    from scans.asset_syncer import _catalog_title, _resolve_finding_id
 
     source_family = "credentialed_package"
     for vuln in cve_list or []:
         cve_id = _clean_text(vuln.get("cve_id") or vuln.get("cve") or vuln.get("id"))
         if not cve_id:
             continue
+
+        # What kind of catalogue row this identifier names. `cve_list` carries
+        # configuration and privilege findings alongside package CVEs — that is
+        # deliberate, and `_run_configuration_audit` documents it — so not every
+        # entry here is a CVE. This function assumed they all were: it wrote the
+        # identifier into `cve_id` and let `definition_type` take its 'cve'
+        # default.
+        #
+        # Two consequences, one loud and one silent. `cve_id` is varchar(30) and
+        # a minted id is longer — CCURE-CFG-CCURE-LINUX-AUDITD-RUNNING is 37 —
+        # so the INSERT raised StringDataRightTruncation and **aborted the
+        # finding sync for the entire scan**, losing the package findings with
+        # it. Where the id did fit, the row inherited everything a CVE row
+        # means: KEV lookups, EPSS scores, CVSS bands, and an NVD link that
+        # resolves to nothing.
+        #
+        # Recovered from the identifier rather than trusted from the finding,
+        # exactly as `asset_syncer` does on the network path, because the
+        # finding is built by a plugin and the catalogue's CHECK constraint
+        # `ck_vuln_def_cve_id_matches_type` is what has to hold.
+        definition_type = definition_type_for_id(cve_id)
+        is_real_cve = definition_type == DEFINITION_TYPE_CVE
 
         cvss = float(vuln.get("cvss_score", vuln.get("cvss", 0.0)) or 0.0)
         # Derived from the score and stored in the one canonical (lower) case.
@@ -781,8 +911,8 @@ def _sync_credentialed_vulnerabilities(
         try:
             from core.cve_database import get_cve_database
 
-            cve_db = get_cve_database()
-            if cve_db.db_available:
+            cve_db = get_cve_database() if is_real_cve else None
+            if cve_db is not None and cve_db.db_available:
                 details = cve_db.get_cve_details(cve_id)
                 if details:
                     description = details.get("description") or description
@@ -811,11 +941,17 @@ def _sync_credentialed_vulnerabilities(
         # 1. UPSERT CVE Definition
         cve_insert = insert(VulnerabilityDefinition).values(
             id=cve_id,
-            cve_id=cve_id,
+            # NULL for anything that is not a published CVE. This is the column
+            # every join to the vulnerability feeds runs through, so a check row
+            # carrying a CVE-shaped string here is how a configuration weakness
+            # acquires an exploit record, a KEV due date and a CVSS band that
+            # belong to nothing.
+            cve_id=cve_id if is_real_cve else None,
+            definition_type=definition_type,
             title=(
                 f"{cve_id} in {package_name}"
-                if package_name
-                else f"Vulnerability {cve_id}"
+                if (is_real_cve and package_name)
+                else _catalog_title(vuln, cve_id, description)
             ),
             description=description,
             cvss_vector=cvss_vector,
@@ -831,6 +967,32 @@ def _sync_credentialed_vulnerabilities(
 
         # 2. UPSERT Finding
         finding_id = _resolve_finding_id(db, org_id, asset.id, cve_id, source_family)
+        evidence_text = (
+            (
+                f"Source           : authenticated package query\n"
+                f"Package          : {package_name or 'unknown'}\n"
+                f"Installed version: {installed_ver or 'not reported'}\n"
+                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
+                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
+            )
+            if is_real_cve
+            # A configuration or privilege check has no package and no fixed
+            # version, so three of those lines would read 'unknown' or 'not
+            # reported', and it has no NVD record, so the reference would be
+            # a link to a page that does not exist. The check's own
+            # expected-versus-observed reading is the evidence here.
+            else (
+                "Source           : authenticated configuration check\n"
+                + (
+                    _clean_text(vuln.get("evidence"))
+                    or (
+                        f"Expected: {vuln.get('expected_state') or 'not stated'}\n"
+                        f"Observed: {vuln.get('observed_state') or 'not stated'}"
+                    )
+                )
+            )
+        )
+
         fnd_insert = insert(AssetVulnerability).values(
             id=finding_id,
             org_id=org_id,
@@ -847,13 +1009,7 @@ def _sync_credentialed_vulnerabilities(
             # An authenticated package match is the strongest evidence this
             # product produces: the version came from the host's own package
             # manager, not from a banner.
-            evidence=(
-                f"Source           : authenticated package query\n"
-                f"Package          : {package_name or 'unknown'}\n"
-                f"Installed version: {installed_ver or 'not reported'}\n"
-                f"Fixed in         : {fixed_ver or 'no fixed version published'}\n"
-                f"Reference        : https://nvd.nist.gov/vuln/detail/{cve_id}"
-            ),
+            evidence=evidence_text,
             confidence="Confirmed",
             qod=97,
             detection_method="credentialed_package",
@@ -889,6 +1045,16 @@ def _sync_credentialed_vulnerabilities(
                 "cvss_score": cvss,
                 "source_family": source_family,
                 "evidence_source": "credentialed",
+                # Refreshed for the same reason the version fields below are.
+                # Evidence describes what *this* scan observed; a finding that
+                # stays open otherwise reports the reading from the day it was
+                # first seen. On a configuration check that is the whole
+                # content of the finding — "Observed: 0" survives a partial
+                # remediation to 8 — and the report then argues from a
+                # measurement the host has already moved past.
+                "evidence": func.coalesce(
+                    func.nullif(evidence_text, ""), AssetVulnerability.evidence
+                ),
                 "proof": func.coalesce(
                     func.nullif(proof, ""), AssetVulnerability.proof
                 ),
@@ -1720,6 +1886,7 @@ def _apply_credentialed_enrichment(
     """
     from core.redis_client import publish_progress_sync
     from core.risk import calculate_risk
+    from scans.asset_syncer import CREDENTIALED_STATUS_FAILED
     from scans.finding_normalizer import verify_host_findings
 
     plan = _credentialed_plan_for_scan(db, scan_row)
@@ -1770,6 +1937,52 @@ def _apply_credentialed_enrichment(
     skipped: list[dict] = []
     upgraded_total = 0
 
+    # Benchmark content this organisation has installed, resolved once for the
+    # whole scan rather than per host: the same query per target repeats work
+    # and could disagree between hosts if content were loaded mid-scan.
+    #
+    # Resolved *here* rather than at the top of the function so a scan with no
+    # credentials configured — which returns long before this point — does not
+    # pay for a query whose results it will never use.
+    #
+    # `getattr` rather than `scan_row.org_id`: a caller that hands this a row
+    # with no organisation has a defect worth a warning, but not one worth
+    # failing an entire scan whose findings are already collected. Without an
+    # organisation there is no installed content to resolve, so the audit falls
+    # back to the built-in rules and says so.
+    #
+    # GAP-12: the scan's effective policy decides *which* installed content is
+    # resolved and at what severity floor. It is read from the scan's own row
+    # rather than passed in, because that row is the immutable record the
+    # report and the comparison read — so what executed and what is recorded
+    # cannot disagree. A scan with no snapshot resolves everything installed,
+    # which is exactly the pre-policy behaviour.
+    from core.scan_policy import read_policy_snapshot
+
+    _policy = read_policy_snapshot(scan_row)
+    _org_id = getattr(scan_row, "org_id", None)
+    _benchmark_checks: list = []
+    if _org_id:
+        from core.benchmarks.selection import benchmark_checks_for_org
+
+        _benchmark_checks = benchmark_checks_for_org(
+            db,
+            str(_org_id),
+            profile=getattr(_policy, "benchmark_profile", None),
+            platforms=list(getattr(_policy, "platforms", ()) or ()) or None,
+            framework_ids=list(getattr(_policy, "framework_ids", ()) or ()) or None,
+            min_severity=getattr(_policy, "min_severity", None),
+            excluded_check_ids=list(getattr(_policy, "excluded_check_ids", ()) or ())
+            or None,
+            excluded_tags=list(getattr(_policy, "excluded_tags", ()) or ()) or None,
+        )
+    else:
+        log.warning(
+            "Credentialed enrichment has no organisation for scan %s; benchmark "
+            "content will not be applied and only the built-in rules run.",
+            getattr(scan_row, "id", "?"),
+        )
+
     for index, host in enumerate(active):
         ip = host.get("ip_address") or host.get("ip")
         if not ip:
@@ -1780,22 +1993,62 @@ def _apply_credentialed_enrichment(
             skipped.append({"target": ip, "reason": "No credential in scope"})
             continue
 
-        port = int(material.get("port") or 22)
-        open_ports = host.get("open_ports") or []
-        open_numbers = {
-            p.get("port") for p in open_ports if isinstance(p, dict) and p.get("port")
-        }
-        # The port scan has already established what is reachable. Attempting a
-        # 20-second SSH handshake against a port it found closed would add
-        # minutes to a large scan to learn what is already known.
-        if open_numbers and port not in open_numbers:
+        # A database credential names an instance, not a host. Handing one to
+        # the host auditor opens an SSH session against a database port and
+        # reports the machine as unreachable — the standalone task branches on
+        # this and this path did not, so a scan carrying a mixed credential set
+        # produced a spurious failure for every host the database credential
+        # was in scope for.
+        credential_type = material.get("credential_type") or CREDENTIAL_TYPE_SSH
+        if credential_type == CREDENTIAL_TYPE_DATABASE:
             skipped.append(
                 {
                     "target": ip,
-                    "reason": f"Port {port}/tcp not open — no authenticated session attempted",
+                    "reason": (
+                        "Credential in scope is a database credential; host "
+                        "enrichment needs an SSH or WinRM credential"
+                    ),
                 }
             )
             continue
+
+        transport = material.get("transport") or "ssh"
+        credential_options = dict(material.get("options") or {})
+        open_ports = host.get("open_ports") or []
+
+        # Where to authenticate is resolved from the port scan's own service
+        # identification, not from a constant. This used to be
+        # ``int(material.get("port") or 22)`` — an SSH port for every credential
+        # type — and the host was then skipped whenever the port scan did not
+        # find that exact number open. A host running sshd on 2222 was skipped
+        # on a scan that had already identified sshd on 2222.
+        #
+        # The port scan's view stays authoritative: a candidate it found closed
+        # is still not attempted, because a 20-second handshake per host to
+        # learn what is already known is minutes across a large scan.
+        resolution = resolve_endpoint(
+            ip=ip,
+            transport=transport,
+            stated_port=material.get("port"),
+            use_tls=credential_options.get("use_tls"),
+            open_ports=open_ports,
+        )
+        if not resolution.resolved:
+            skipped.append({"target": ip, "reason": resolution.reason})
+            continue
+
+        endpoint = resolution.endpoint
+        port = endpoint.port
+        if endpoint.use_tls is not None:
+            credential_options["use_tls"] = endpoint.use_tls
+        if endpoint.source != "credential":
+            log.info(
+                "Credentialed enrichment: %s resolved to port %s over %s — %s",
+                ip,
+                port,
+                transport.upper(),
+                endpoint.evidence,
+            )
 
         if scan_id:
             publish_progress_sync(
@@ -1811,19 +2064,37 @@ def _apply_credentialed_enrichment(
 
         try:
             stored_report, system_data, _os_type = audit_credentialed_host(
+                config_checks=_benchmark_checks,
+                policy=_policy,
                 ip=ip,
                 username=material.get("username"),
                 password=material.get("password"),
                 key_content=material.get("key_content"),
+                key_passphrase=material.get("key_passphrase"),
+                nt_hash=material.get("nt_hash"),
                 port=port,
                 os_type_req="auto",
                 network_ports=open_ports,
                 network_scanned=True,
                 scanned_ports=scanned_ports,
+                # Carried through so a Windows credential reaches its host over
+                # WinRM. Without these four this path defaulted every credential
+                # to SSH whatever the stored record said, so a Windows
+                # credential opened an SSH handshake against a WinRM listener
+                # and the host was recorded as a connection failure.
+                transport=transport,
+                auth_method=material.get("auth_method") or "password",
+                domain=material.get("domain"),
+                credential_options=credential_options,
             )
         except Exception as exc:  # noqa: BLE001 — recorded, scan continues
             log.warning("Credentialed enrichment failed for %s: %s", ip, exc)
             skipped.append({"target": ip, "reason": str(exc)})
+            # An attempt that was made and refused is a different fact from one
+            # that was never made, and the asset sync writes both distinctly.
+            # Reading either as "success" would let the compliance engine turn
+            # a host nobody could authenticate to into a passing verdict.
+            host["credentialed_status"] = CREDENTIALED_STATUS_FAILED
             continue
 
         # Resolve each listening process to its installed package here, while
@@ -1862,6 +2133,7 @@ def _apply_credentialed_enrichment(
                 "detected_os",
                 "system_info",
                 "hardening_audits",
+                "config_audit",
                 "security_issues",
                 "package_count",
                 "collection_errors",
@@ -1995,12 +2267,43 @@ def run_vulnerability_audit_task(
                 resolved_exclude_ips = scan_row.options.get("exclude_ips")
 
         orch = _new_orchestrator(db, scan_id=scan_id)
-        result = orch.run_vulnerability_audit_only(
-            hosts=hosts,
-            scan_id=scan_id,
-            exclude_ot_from_nmap=resolved_exclude_ot,
-            exclude_ips=resolved_exclude_ips,
-        )
+
+        # GAP-12. Whether a probe may *write* to a scanned host is a per-scan
+        # decision now, not only a deployment-wide one. `core/checks/intrusive`
+        # was built as the seam for exactly this and nothing else moves: the
+        # override is process-wide rather than thread-local, deliberately,
+        # because the vulnerability engine runs its plugins in a thread pool
+        # that does not propagate context.
+        #
+        # The default is still off. A policy that says nothing leaves
+        # `SCAN_ALLOW_INTRUSIVE` in force, so a scan with no policy behaves
+        # exactly as it did — and a policy can only ever turn this *on*
+        # deliberately, never inherit it.
+        from core.checks.intrusive import allow_intrusive_probes
+        from core.scan_policy import read_policy_snapshot
+
+        _policy = read_policy_snapshot(scan_row)
+        if _policy is not None and _policy.allow_intrusive:
+            log.warning(
+                "Scan %s runs under policy %r, which permits intrusive probes: "
+                "a probe may write to a target to establish a finding.",
+                scan_id,
+                _policy.policy_name or _policy.fingerprint()[:16],
+            )
+            with allow_intrusive_probes(True):
+                result = orch.run_vulnerability_audit_only(
+                    hosts=hosts,
+                    scan_id=scan_id,
+                    exclude_ot_from_nmap=resolved_exclude_ot,
+                    exclude_ips=resolved_exclude_ips,
+                )
+        else:
+            result = orch.run_vulnerability_audit_only(
+                hosts=hosts,
+                scan_id=scan_id,
+                exclude_ot_from_nmap=resolved_exclude_ot,
+                exclude_ips=resolved_exclude_ips,
+            )
 
         if _check_cancelled(db, scan_id):
             log.info("Scan %s cancelled after vulnerability audit", scan_id)
@@ -2378,6 +2681,323 @@ def run_traditional_scan_task(
 MAX_CREDENTIALED_TARGETS = 256
 
 
+def _run_configuration_audit(
+    *,
+    executor,
+    ip: str,
+    os_type: str,
+    system_data: dict,
+    asset_id: str | None = None,
+    org_id: str | None = None,
+    timeout: int = 45,
+    extra_checks: list | None = None,
+    policy=None,
+) -> tuple[dict, list[dict]]:
+    """
+    Run the Phase 3 configuration audit over the session that is already open.
+
+    Returns ``(summary, findings)`` where *findings* are shaped like the other
+    entries in ``cve_list`` so they travel the existing finding → risk →
+    reporting path. There is no second finding list and no second report
+    section for configuration results; that is the point of the phase.
+
+    **Called inside the ``with connection`` block, deliberately.** These checks
+    read the host, so they need a live executor — and running them on the
+    session the collectors just used costs no second authentication. Moving
+    this after the block would leave every check reporting "no authenticated
+    session", which the engine renders as ERROR: correct, and uselessly so.
+
+    ``system_data`` is passed as well as the executor because several
+    collectors answer from the inventory already in hand rather than re-reading
+    it. A benchmark with fifty package rules would otherwise enumerate
+    installed software fifty times.
+    """
+    from core.checks.contract import CheckOutcome
+    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
+    from core.config_audit.builtin import builtin_checks
+    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
+    from core.config_audit.findings import config_definition_id
+
+    platform = "windows" if os_type == "windows" else "linux"
+    # Built-ins plus whatever benchmark content the organisation has loaded.
+    # `select_checks` applies platform targeting to both, so a Windows
+    # benchmark rule cannot be dispatched at a Linux host — the same filter
+    # that already governed the built-ins, rather than a second one.
+    builtin = builtin_checks()
+    _builtin_ids = {c.check_id for c in builtin}
+
+    # GAP-12. The policy narrows the candidate set before the engine sees it;
+    # it never widens it. `policy is None` is the pre-policy path and must stay
+    # byte-identical, so every branch here is guarded on a policy being present
+    # *and* naming the setting.
+    #
+    # The benchmark content in `extra_checks` was already narrowed by
+    # `benchmark_checks_for_org`, which applied the framework, profile,
+    # severity and exclusion settings while it had a database session. What is
+    # left to apply here is what only the built-ins need — because they never
+    # go through that query — plus the family filter, which `select_checks`
+    # owns for both.
+    include_builtin = True
+    families: list[str] = []
+    excluded_ids: set[str] = set()
+    excluded_tags: set[str] = set()
+    min_severity = None
+    if policy is not None:
+        include_builtin = bool(getattr(policy, "include_builtin_checks", True))
+        families = list(getattr(policy, "check_families", ()) or ())
+        excluded_ids = {
+            str(c) for c in (getattr(policy, "excluded_check_ids", ()) or ())
+        }
+        excluded_tags = {
+            str(t).lower() for t in (getattr(policy, "excluded_tags", ()) or ())
+        }
+        min_severity = getattr(policy, "min_severity", None)
+
+    if include_builtin:
+        from core.scan_policy.spec import severity_at_least
+
+        selected_builtin = [
+            c
+            for c in builtin
+            if c.check_id not in excluded_ids
+            and not (excluded_tags & {t.lower() for t in c.tags})
+            and severity_at_least(c.severity, min_severity)
+        ]
+    else:
+        # Excluding the built-ins is only reachable with a framework named —
+        # `validate_policy` refuses the combination that would leave nothing —
+        # so this cannot silently empty the audit.
+        selected_builtin = []
+
+    candidates = [*selected_builtin, *(extra_checks or [])]
+    checks = select_checks(candidates, platform=platform, domains=families or None)
+    if not checks:
+        # Distinguished from "no checks defined for this platform", because a
+        # policy that selected nothing on this host is a decision an operator
+        # made and needs to see, while an empty platform is a product gap.
+        reason = (
+            f"no checks selected for {platform} under the effective policy"
+            if policy is not None and (families or excluded_ids or not include_builtin)
+            else f"no checks defined for {platform}"
+        )
+        return {"assessed": False, "reason": reason}, []
+
+    # The host's own OS string, so a benchmark published for one distribution
+    # is not dispatched at another. The collectors merge system info into the
+    # top level rather than nesting it, so read there first and fall back.
+    _nested = (system_data or {}).get("system_info") or {}
+    context = CollectionContext(
+        target=ip,
+        platform=platform,
+        os_name=str((system_data or {}).get("os_name") or _nested.get("os_name") or ""),
+        os_version_id=str(
+            (system_data or {}).get("os_version_id")
+            or _nested.get("os_version_id")
+            or ""
+        ),
+        executor=executor,
+        system_data=system_data,
+        asset_id=asset_id,
+        org_id=org_id,
+        timeout=timeout,
+    )
+    report = ConfigAuditEngine().run(checks, context)
+
+    findings: list[dict] = []
+    for result in report.results:
+        if result.outcome is not CheckOutcome.FAIL:
+            continue
+        observation = result.evidence[0] if result.evidence else None
+        # The check declares whether its failure is a hardening deviation or a
+        # local privilege condition, and the engine carries that onto the
+        # result. Defaulting instead of reading it would file every privilege
+        # finding as CCURE-CFG- — the wrong pile for a reader triaging a path
+        # to SYSTEM.
+        finding_type = str(
+            result.metadata.get("finding_type") or DEFINITION_TYPE_CONFIG_CHECK
+        )
+        definition_id = config_definition_id(result.check_id, finding_type)
+        findings.append(
+            {
+                # The minted catalogue identifier, not a CVE. The `CCURE-`
+                # prefix tells a reader the id is ours and that NVD has never
+                # heard of it; the segment after it — CFG or PRV — says which
+                # kind of finding it is.
+                "cve_id": definition_id,
+                "cve": definition_id,
+                "definition_type": finding_type,
+                "title": result.title,
+                "severity": result.severity.capitalize(),
+                "description": result.title,
+                "desc": result.title,
+                "detection_method": "config_check",
+                "confidence": "Confirmed",
+                "qod": result.qod,
+                "remediation": result.remediation or "",
+                "evidence": (
+                    (
+                        f"Expected: {observation.expected}\n"
+                        f"Observed: {observation.observed}"
+                        # The reading that makes the finding actionable. For
+                        # a SCAP rule `observed` is only the verdict word —
+                        # "non_compliant" — while `raw` names the OVAL object
+                        # and the existence check it failed, e.g.
+                        # "windows:registry_object: 0 item(s) collected,
+                        # which does not satisfy at_least_one_exists".
+                        # Without it a reader has to re-run the scan by hand
+                        # to learn what was actually wrong.
+                        + (
+                            f"\n{_unique_lines(observation.raw)}"
+                            if observation.raw
+                            else ""
+                        )
+                    )
+                    if observation
+                    else ""
+                ),
+                "expected_state": observation.expected if observation else "",
+                "observed_state": observation.observed if observation else "",
+                "package": "",
+                "installed_ver": "",
+                "fixed_ver": "",
+                "source": "config_audit",
+                "matched_by": result.metadata.get("check_type", ""),
+                "cvss_score": 0.0,
+                "cvss": 0.0,
+                "epss_score": 0.0,
+                "epss_percentile": 0.0,
+                "in_kev": False,
+                "kev_due_date": "",
+                "has_exploit": False,
+                "exploit_sources": [],
+                "cpe_uri": "",
+                "cvss_version": "",
+                "cvss_vector": "",
+                "affected_software": [],
+                "references": list(result.references),
+            }
+        )
+
+    summary = {
+        "assessed": True,
+        "platform": platform,
+        # Which configuration governed this audit. Carried on the phase summary
+        # as well as on the scan, because `scan_phases.summary` is what the scan
+        # detail API and the reports read back, and a reader looking at one
+        # host's configuration results should not have to fetch the scan row to
+        # learn what was in scope.
+        "policy_fingerprint": (policy.fingerprint() if policy is not None else None),
+        "policy_name": (getattr(policy, "policy_name", "") or None) if policy else None,
+        "checks_run": len(report.results),
+        # How many of the checks came from loaded benchmark content rather than
+        # the built-in pack. A benchmark that loaded but resolved to nothing
+        # executable would otherwise look identical to one nobody installed.
+        "benchmark_checks": sum(1 for c in checks if c.check_id not in _builtin_ids),
+        # Verdicts only. A configuration score computed over checks that
+        # errored or did not apply would move when the network did.
+        "checks_assessed": len(report.assessed),
+        "score_pct": report.compliance_score(),
+        "counts": report.counts,
+        "results": [r.as_dict() for r in report.results],
+    }
+    return summary, findings
+
+
+def _sync_configuration_compliance(
+    db,
+    *,
+    org_id: str,
+    ip: str,
+    system_data: dict,
+    scan_id: str | None = None,
+    policy=None,
+) -> dict | None:
+    """
+    Turn this host's configuration verdicts into compliance findings.
+
+    Runs inside the scan's own transaction, immediately after the asset it
+    describes was synced, so a finding cannot outlive a rolled-back scan.
+
+    Returns the sync summary, or None where there was nothing to sync. Failures
+    are logged and swallowed: a compliance-mapping problem must not fail a scan
+    that has already collected its results and written its findings — those are
+    the customer's actual deliverable, and losing them to a benchmark mapping
+    error would be a far worse outcome than a missing compliance row. The
+    exception is logged with its traceback so it is fixable.
+    """
+    from db.models.assets import Asset
+
+    summary = (system_data or {}).get("config_audit") or {}
+    results = summary.get("results") or []
+    if not results:
+        return None
+
+    asset = (
+        db.query(Asset).filter(Asset.org_id == org_id, Asset.ip_address == ip).first()
+    )
+    if asset is None:
+        # The asset sync runs immediately before this and creates the row, so
+        # reaching here means that sync did not produce one. Recorded rather
+        # than guessed at: a finding needs an asset to hang off.
+        log.warning(
+            "Configuration verdicts for %s could not be mapped to compliance: "
+            "no asset row for org %s",
+            ip,
+            org_id,
+        )
+        return None
+
+    try:
+        from core.config_audit.compliance_sync import sync_config_audit_findings
+
+        return sync_config_audit_findings(
+            db,
+            org_id=org_id,
+            asset_id=str(asset.id),
+            results=results,
+            scan_run_id=None,
+            # The policy's framework selection. Without it a scan narrowed to
+            # one benchmark still writes verdicts onto every framework a rule
+            # is crosswalked into, from an assessment that covered none of the
+            # rest of them — a score computed over a handful of controls that
+            # reads as a near-complete one.
+            framework_ids=list(getattr(policy, "framework_ids", ()) or ()) or None,
+        ).as_dict()
+    except Exception:  # noqa: BLE001
+        log.exception(
+            "Configuration compliance sync failed for %s (org %s); the scan's "
+            "own findings are unaffected",
+            ip,
+            org_id,
+        )
+        return None
+
+
+def _hardening_row(label: str, good: bool | None, pass_detail: str, fail_detail: str):
+    """
+    One hardening row, with a third state for "nobody looked".
+
+    ``good is None`` means the collector did not read the setting — the SMB
+    transport serves a subset of the Windows inventory, so this is a normal
+    outcome rather than a fault. It renders as NOT_ASSESSED, never as PASS or
+    FAIL: a report claiming a control passed on evidence it never gathered is
+    the failure mode this whole distinction exists to prevent.
+    """
+    if good is None:
+        return {
+            "label": label,
+            "disabled": None,
+            "status": "NOT_ASSESSED",
+            "detail": "Not assessed — this scan did not read the setting.",
+        }
+    return {
+        "label": label,
+        "disabled": bool(good),
+        "status": "PASS" if good else "FAIL",
+        "detail": pass_detail if good else fail_detail,
+    }
+
+
 def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
     """Host hardening posture, derived from what the authenticated session read."""
     issues = system_data.get("security_issues") or []
@@ -2397,11 +3017,15 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
     else:
         fw_active = not fw_disabled
 
-    smbv1_disabled = system_data.get("smbv1_disabled", False)
-    netbios_disabled = system_data.get("netbios_disabled", False)
-    legacy_tls_disabled = system_data.get("legacy_tls_disabled", False)
-    telnet_disabled = system_data.get("telnet_disabled", False)
-    rdp_nla_enforced = system_data.get("rdp_nla_enforced", False)
+    # ``None`` where the collector did not read the setting. The rows below use
+    # `_hardening_row`, which renders that as NOT ASSESSED — a report that
+    # prints PASS or FAIL for a control nothing examined is worse than one that
+    # says it looked at less.
+    smbv1_disabled = system_data.get("smbv1_disabled")
+    netbios_disabled = system_data.get("netbios_disabled")
+    legacy_tls_disabled = system_data.get("legacy_tls_disabled")
+    telnet_disabled = system_data.get("telnet_disabled")
+    rdp_nla_enforced = system_data.get("rdp_nla_enforced")
 
     hardening_audits = {
         "firewall": {
@@ -2414,46 +3038,31 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
                 else "Host firewall is disabled or ufw/iptables service is inactive."
             ),
         },
-        "smbv1": {
-            "label": "SMBv1 Status",
-            "disabled": smbv1_disabled,
-            "status": "PASS" if smbv1_disabled else "FAIL",
-            "detail": (
-                "Legacy SMBv1 protocol is disabled."
-                if smbv1_disabled
-                else "Legacy SMBv1 protocol is enabled/allowed."
-            ),
-        },
-        "netbios": {
-            "label": "NetBIOS Status",
-            "disabled": netbios_disabled,
-            "status": "PASS" if netbios_disabled else "FAIL",
-            "detail": (
-                "NetBIOS over TCP/IP is disabled."
-                if netbios_disabled
-                else "NetBIOS over TCP/IP is active on one or more network adapters."
-            ),
-        },
-        "legacy_tls": {
-            "label": "Legacy TLS Status",
-            "disabled": legacy_tls_disabled,
-            "status": "PASS" if legacy_tls_disabled else "FAIL",
-            "detail": (
-                "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) are disabled."
-                if legacy_tls_disabled
-                else "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled."
-            ),
-        },
-        "telnet": {
-            "label": "Telnet Status",
-            "disabled": telnet_disabled,
-            "status": "PASS" if telnet_disabled else "FAIL",
-            "detail": (
-                "Telnet service is disabled."
-                if telnet_disabled
-                else "Telnet service/daemon is running or client package is installed."
-            ),
-        },
+        "smbv1": _hardening_row(
+            "SMBv1 Status",
+            smbv1_disabled,
+            "Legacy SMBv1 protocol is disabled.",
+            "Legacy SMBv1 protocol is enabled/allowed.",
+        ),
+        "netbios": _hardening_row(
+            "NetBIOS Status",
+            netbios_disabled,
+            "NetBIOS over TCP/IP is disabled.",
+            "NetBIOS over TCP/IP is active on one or more network adapters.",
+        ),
+        "legacy_tls": _hardening_row(
+            "Legacy TLS Status",
+            legacy_tls_disabled,
+            "Legacy SChannel/OpenSSL protocols (SSLv2, SSLv3, TLS 1.0, TLS 1.1) "
+            "are disabled.",
+            "One or more legacy security protocols (SSL/TLS 1.0/1.1) are enabled.",
+        ),
+        "telnet": _hardening_row(
+            "Telnet Status",
+            telnet_disabled,
+            "Telnet service is disabled.",
+            "Telnet service/daemon is running or client package is installed.",
+        ),
     }
 
     if os_type == "windows":
@@ -2469,20 +3078,17 @@ def _credentialed_hardening_audits(system_data: dict, os_type: str) -> dict:
                         else "Remote Desktop is enabled (requires secure NLA and restricted access)."
                     ),
                 },
-                "rdp_nla": {
-                    "label": "RDP NLA Enforcement",
-                    "disabled": rdp_nla_enforced,
-                    "status": (
-                        "PASS"
-                        if rdp_nla_enforced
-                        else ("FAIL" if rdp_enabled else "PASS")
-                    ),
-                    "detail": (
-                        "Network Level Authentication (NLA) is enforced for RDP."
-                        if rdp_nla_enforced
-                        else "RDP is enabled but Network Level Authentication (NLA) is not enforced."
-                    ),
-                },
+                # A host with RDP switched off passes whatever the NLA setting
+                # says, so that answer needs no reading. Only when RDP *is*
+                # enabled does an unread NLA setting leave the control
+                # unassessed rather than breached.
+                "rdp_nla": _hardening_row(
+                    "RDP NLA Enforcement",
+                    True if not rdp_enabled else rdp_nla_enforced,
+                    "Network Level Authentication (NLA) is enforced for RDP.",
+                    "RDP is enabled but Network Level Authentication (NLA) is "
+                    "not enforced.",
+                ),
             }
         )
 
@@ -2520,17 +3126,53 @@ def _resolve_stored_credential(
             f"Stored credential with ID {credential_id} not found or access denied."
         )
 
+    from db.models.compliance import (
+        AUTH_METHOD_NTLM_HASH,
+        AUTH_REQUIRES_KEY,
+        AUTH_REQUIRES_PASSWORD,
+    )
+
     material = {
-        "username": cred.username,
+        # The username in the form this credential's auth method expects.
+        # NTLM wants DOMAIN\user, Kerberos wants user@REALM, SSH wants the bare
+        # name — `principal()` owns that mapping so the two callers of this
+        # function cannot disagree about it.
+        "username": cred.principal(),
         "port": cred.port,
         "auth_method": cred.auth_method,
+        "credential_type": cred.credential_type,
+        "transport": cred.transport,
+        "domain": cred.domain,
+        "options": dict(cred.options or {}),
         "password": None,
         "key_content": None,
+        #: Unlocks an encrypted private key. Separate from ``password``: the two
+        #: unlock different things and a key credential may carry only this one.
+        "key_passphrase": None,
+        #: Pass-the-Hash material. Kept out of ``password`` deliberately — every
+        #: transport that receives a password would present this as one, and
+        #: only the SMB executor knows how to send a hash.
+        "nt_hash": None,
     }
-    if cred.auth_method == "password" and cred.encrypted_password:
+    # Driven by the shared AUTH_REQUIRES_* sets rather than an if/elif on two
+    # literal method names. The literal form is what made ``ntlm`` and
+    # ``kerberos`` resolve to a credential with no material at all: both
+    # present a password, neither matched ``== "password"``, so the connection
+    # was attempted with None and failed as "authentication rejected" — a
+    # misleading message for a credential that was never actually sent.
+    if cred.auth_method == AUTH_METHOD_NTLM_HASH and cred.encrypted_password:
+        # The hash is stored in the password column and must not leave this
+        # function as one: handing it to a transport that expects a password
+        # would present the hash as plaintext against the account.
+        material["nt_hash"] = decrypt_credential(cred.encrypted_password)
+    elif cred.auth_method in AUTH_REQUIRES_PASSWORD and cred.encrypted_password:
         material["password"] = decrypt_credential(cred.encrypted_password)
-    elif cred.auth_method == "key" and cred.encrypted_key_content:
+    elif cred.auth_method in AUTH_REQUIRES_KEY and cred.encrypted_key_content:
         material["key_content"] = decrypt_credential(cred.encrypted_key_content)
+        if cred.encrypted_key_passphrase:
+            material["key_passphrase"] = decrypt_credential(
+                cred.encrypted_key_passphrase
+            )
     return material
 
 
@@ -2541,7 +3183,9 @@ def audit_credentialed_host(
     password: str | None = None,
     key_path: str | None = None,
     key_content: str | None = None,
-    port: int = 22,
+    key_passphrase: str | None = None,
+    nt_hash: str | None = None,
+    port: int | None = None,
     sections: list[str] | None = None,
     os_type_req: str = "auto",
     emit=None,
@@ -2549,6 +3193,12 @@ def audit_credentialed_host(
     network_scanned: bool = False,
     scanned_ports: list | None = None,
     timeout: int = 20,
+    transport: str = "ssh",
+    auth_method: str = "password",
+    domain: str | None = None,
+    credential_options: dict | None = None,
+    config_checks: list | None = None,
+    policy=None,
 ) -> tuple[dict, dict, str]:
     """
     Run the authenticated audit against one host.
@@ -2562,6 +3212,20 @@ def audit_credentialed_host(
     running into a statement about what is actually exposed, which is the
     finding an authenticated scan exists to produce and which neither view can
     reach alone. Without it, only loopback binds can be settled.
+
+    ``transport`` selects how the commands get there — ``ssh`` (the original
+    path, and still the only one for Linux) or ``winrm`` (native Windows,
+    added in Phase 2). Both satisfy the same ``BaseExecutor`` protocol and both
+    drive the *same* collectors, so nothing downstream of this function knows
+    or cares which was used. That is the point: Windows over WinRM produces
+    findings through the identical evidence → matching → finding → risk →
+    reporting path, not a parallel one.
+
+    ``domain`` and ``auth_method`` are carried through for Windows: the caller
+    resolves them from the stored credential, because the username form NTLM
+    wants (``DOMAIN\\user``) differs from the one Kerberos wants
+    (``user@REALM``) and guessing between them is how a credential silently
+    fails to authenticate.
     """
     from engines.credentialed.linux_collector import LinuxCollector
     from engines.credentialed.ssh_scanner import SSHScanner
@@ -2576,22 +3240,97 @@ def audit_credentialed_host(
 
     host_started = time.time()
 
-    _emit(f"Connecting to {ip}:{port}...", 10, "connecting")
+    resolved_transport = (transport or "ssh").strip().lower()
+    # ``port`` used to default to 22 in this signature, which is an SSH port
+    # standing in for every transport. A WinRM caller that named no port got 22
+    # and opened a WS-Management request against sshd. Each transport now
+    # supplies its own default, and WinRM's is left to the executor because it
+    # is TLS-dependent: 5986 when ``use_tls`` is set, 5985 otherwise.
+    if resolved_transport != "winrm" and not port:
+        port = DEFAULT_TRANSPORT_PORT.get(resolved_transport, 22)
+    _emit(
+        f"Connecting to {ip}:{port or 'default port'} over "
+        f"{resolved_transport.upper()}...",
+        10,
+        "connecting",
+    )
     connect_started = time.perf_counter()
-    with SSHScanner(
-        ip=ip,
-        username=username,
-        password=password,
-        key_path=key_path,
-        key_content=key_content,
-        port=port,
-        timeout=timeout,
-    ) as ssh:
+
+    if resolved_transport == "smb":
+        # The second Windows transport. Same collector, same checks, same
+        # findings — it answers ``WindowsCollector``'s named items from WMI and
+        # the registry instead of from PowerShell. It exists because WinRM is
+        # off by default on Windows client editions, so an estate of
+        # workstations is reachable through this and not through that.
+        from engines.credentialed.smb_executor import SMBExecutor
+
+        connection = SMBExecutor(
+            ip=ip,
+            username=username,
+            password=password,
+            nt_hash=nt_hash,
+            port=port or None,
+            domain=domain,
+            timeout=timeout,
+        )
+    elif resolved_transport == "winrm":
+        from engines.credentialed.winrm_executor import WinRMExecutor
+
+        winrm_options = dict(credential_options or {})
+        connection = WinRMExecutor(
+            ip=ip,
+            username=username,
+            password=password,
+            port=port or None,
+            auth_method=auth_method or "ntlm",
+            use_tls=winrm_options.get("use_tls"),
+            verify_cert=bool(winrm_options.get("verify_cert", False)),
+            timeout=timeout,
+            read_timeout=int(winrm_options.get("read_timeout", 60)),
+            winrm_path=winrm_options.get("winrm_path", "/wsman"),
+            allow_basic_over_http=bool(
+                winrm_options.get("allow_basic_over_http", False)
+            ),
+        )
+    else:
+        connection = SSHScanner(
+            ip=ip,
+            username=username,
+            password=password,
+            key_path=key_path,
+            key_content=key_content,
+            key_passphrase=key_passphrase,
+            port=port,
+            timeout=timeout,
+            # Which program elevates on this host. It lives in ``options``
+            # rather than a column because it is a setting, not a secret, and
+            # ``options`` is already the place for per-credential transport
+            # settings that need no migration to add.
+            elevation_method=str(
+                (credential_options or {}).get("elevation_method") or "sudo"
+            ),
+        )
+
+    with connection as ssh:
         credentialed_response_time_ms = int(
             round((time.perf_counter() - connect_started) * 1000)
         )
-        _emit("Detecting Operating System...", 20, "detection")
-        os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+        if resolved_transport in ("winrm", "smb"):
+            # Both are Windows-only protocols, so the operating system is
+            # established by the fact that the connection succeeded. Running
+            # _detect_os here would spend a round trip re-deriving something
+            # already known, and its probes are written for a POSIX shell — on
+            # the SMB transport they would not run at all, since it executes no
+            # commands, and the host would be misread as Linux.
+            os_type = "windows"
+            _emit(
+                f"Windows confirmed by {resolved_transport.upper()} transport",
+                20,
+                "detection",
+            )
+        else:
+            _emit("Detecting Operating System...", 20, "detection")
+            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
 
         _emit(f"Collecting system data ({os_type})...", 30, "collection")
         collector = (
@@ -2617,6 +3356,40 @@ def audit_credentialed_host(
         )
         system_data["detected_os"] = os_type
         system_data["credentialed_response_time_ms"] = credentialed_response_time_ms
+
+        # Configuration audit, on the session that is still open.
+        #
+        # A wholesale failure here must not read as "the host is correctly
+        # configured". The engine already reports per-check errors rather than
+        # verdicts, so the only way to reach this handler is a defect in our
+        # own code — and the honest result of that is a recorded gap, not an
+        # empty pass list. `config_audit_error` travels into the stored report
+        # so the omission is visible to a reader rather than only to the log.
+        _emit("Auditing host configuration...", 60, "configuration")
+        try:
+            config_summary, config_findings = _run_configuration_audit(
+                executor=ssh,
+                ip=ip,
+                os_type=os_type,
+                system_data=system_data,
+                timeout=max(timeout, 45),
+                extra_checks=config_checks,
+                # The scan's effective policy, resolved before dispatch and
+                # read back from the scan row. It narrows the built-in pack and
+                # the check families; the benchmark content in `config_checks`
+                # was already narrowed by `benchmark_checks_for_org`, which had
+                # a database session to do it with. This function deliberately
+                # opens none.
+                policy=policy,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Configuration audit failed for %s", ip)
+            config_summary = {
+                "assessed": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+            config_findings = []
+        system_data["config_audit"] = config_summary
 
     _emit("Analyzing packages for vulnerabilities...", 70, "analysis")
     packages = system_data.get("packages", [])
@@ -2930,6 +3703,39 @@ def audit_credentialed_host(
             ", ".join(sorted(collection_errors)),
         )
 
+    # Configuration findings join the same list the CVE findings are in, so
+    # they are severity-ranked, risk-scored and reported beside them rather
+    # than in a section of their own. A failing hardening control is a security
+    # finding; splitting the two lists is what produces a second risk model and
+    # a second report generator behind it.
+    cve_list.extend(config_findings)
+    if config_findings:
+        log.info(
+            "Configuration audit produced %d finding(s) on %s",
+            len(config_findings),
+            ip,
+        )
+    if not config_summary.get("assessed"):
+        # Same reasoning as the OS and inventory branches above: a dimension
+        # that could not be assessed must not be indistinguishable from one
+        # assessed and found clean.
+        cve_list.append(
+            {
+                "cve_id": "MISC-CREDENTIALED-CONFIG-NOT-ASSESSED",
+                "detection_method": "active_check",
+                "severity": "Medium",
+                "title": "Host configuration not assessed",
+                "description": (
+                    f"The credentialed session to {ip} succeeded, but the host "
+                    f"configuration audit did not run, so no hardening control "
+                    f"was evaluated. "
+                    f"{config_summary.get('reason', 'No reason was recorded.')} "
+                    f"Configuration weaknesses would not appear in this report."
+                ),
+                "package": "",
+            }
+        )
+
     severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
     for cve in cve_list:
         sev = cve.get("severity", "Info")
@@ -2998,6 +3804,12 @@ def audit_credentialed_host(
             ),
             "serial_number": system_data.get("serial_number", ""),
             "bios_version": system_data.get("bios_version", ""),
+            # What privilege the session held. Windows only, and absent on
+            # Linux, where elevation is per-command through sudo rather than a
+            # property of the whole session. The same Windows check set gives
+            # different answers to an administrator and to a standard user, and
+            # without this the result carries nothing to say which produced it.
+            "privilege_context": system_data.get("privilege_context") or {},
         },
         "packages": packages,
         "package_count": len(packages),
@@ -3013,6 +3825,9 @@ def audit_credentialed_host(
         "suspicious_scheduled_tasks": system_data.get("suspicious_scheduled_tasks", []),
         "cron_info_raw": system_data.get("cron_info_raw", ""),
         "hardening_audits": hardening_audits,
+        # Phase 3 configuration audit: per-check verdicts, the counts
+        # behind them, and the score computed over verdicts only.
+        "config_audit": config_summary,
         "suid_binaries": system_data.get("suid_binaries", []),
         "world_writable_dirs": system_data.get("world_writable_dirs", []),
         "sudo_nopasswd": system_data.get("sudo_nopasswd", False),
@@ -3034,7 +3849,9 @@ def audit_credentialed_host(
         "inventory_complete": bool(packages) and not collection_errors,
         # What this audit could and could not see. Without it, a report with no
         # network findings reads as a host with no network exposure.
-        "coverage": credentialed_coverage(network_scanned=network_scanned),
+        "coverage": credentialed_coverage(
+            network_scanned=network_scanned, transport=resolved_transport
+        ),
         "exposure_summary": exposure_summary,
     }
 
@@ -3072,6 +3889,270 @@ def audit_credentialed_host(
     return stored_report, system_data, os_type
 
 
+def audit_database_target(
+    *,
+    host: str,
+    engine: str,
+    username: str,
+    password: str | None = None,
+    port: int | None = None,
+    database: str | None = None,
+    timeout: int = 20,
+    emit=None,
+    credential_options: dict | None = None,
+    config_checks: list | None = None,
+    policy=None,
+) -> tuple[dict, dict, str]:
+    """
+    Run the authenticated configuration audit against one database instance.
+
+    The database counterpart of :func:`audit_credentialed_host`, and
+    deliberately a sibling of it rather than a branch inside it. That function
+    is host-shaped from end to end — detect the operating system, enumerate
+    packages, resolve listeners, match packages against advisories — and a
+    database instance has none of those. Threading a second meaning through it
+    would leave every one of those steps guarded by ``if not database``.
+
+    What it *does* share is everything downstream: the Phase 3 engine, the
+    ``AbsencePolicy`` semantics, the evidence record, the ``CCURE-CFG-``
+    identifier, and the ``cves`` list every report generator already reads. So
+    a failing database check reaches the executive PDF, the risk score and the
+    findings queue through exactly the path a failing Windows registry check
+    does, with no second finding model behind it.
+
+    Returns ``(stored_report, system_data, "database")``, matching the arity of
+    ``audit_credentialed_host`` so the scan task's per-target loop keeps one
+    shape.
+    """
+    from core.checks.contract import CheckOutcome
+    from core.checks.definitions import DEFINITION_TYPE_CONFIG_CHECK
+    from core.config_audit import CollectionContext, ConfigAuditEngine, select_checks
+    from core.config_audit.builtin import builtin_checks
+    from core.config_audit.collectors import register_builtin_collectors
+    from core.config_audit.findings import config_definition_id
+    from engines.credentialed.database_executor import (
+        DEFAULT_PORTS,
+        DatabaseSession,
+        normalize_engine,
+    )
+
+    register_builtin_collectors()
+
+    resolved_engine = normalize_engine(engine)
+    if not resolved_engine:
+        raise ValueError(f"database engine {engine!r} is not one this build can assess")
+
+    options = dict(credential_options or {})
+    started = time.time()
+
+    def _emit(message, percentage=0, stage=None):
+        if emit:
+            emit("running", message, percentage, stage)
+
+    resolved_port = int(port or DEFAULT_PORTS[resolved_engine])
+    target = f"{host}:{resolved_port}"
+    _emit(f"Connecting to {resolved_engine} at {target}...", 10, "connecting")
+
+    connect_started = time.perf_counter()
+    session = DatabaseSession(
+        engine=resolved_engine,
+        host=host,
+        username=username,
+        password=password,
+        port=resolved_port,
+        database=database or options.get("database"),
+        timeout=timeout,
+        use_tls=options.get("use_tls"),
+        verify_cert=bool(options.get("verify_cert", False)),
+        ca_cert=options.get("ca_cert"),
+    )
+
+    with session as db_session:
+        response_ms = int(round((time.perf_counter() - connect_started) * 1000))
+        product = db_session.product_name
+        version = db_session.server_version
+        tls_in_use = db_session.tls_in_use
+        _emit(f"Authenticated to {product or resolved_engine}", 25, "detection")
+
+        # The instance's own product string and version become os_name and
+        # os_version_id, so the Phase 4 targeting written for "Ubuntu 22.04
+        # versus RHEL 9" applies unchanged to "PostgreSQL 16 versus MySQL 8".
+        # There is deliberately no second targeting mechanism.
+        # GAP-12: the policy narrows the candidate set before the engine sees
+        # it, never widens it. `policy is None` is the pre-policy path and is
+        # byte-identical to what it was.
+        _families = list(getattr(policy, "check_families", ()) or ()) if policy else []
+        _builtin = builtin_checks()
+        if policy is not None:
+            from core.scan_policy.spec import severity_at_least
+
+            _excluded = {
+                str(c) for c in (getattr(policy, "excluded_check_ids", ()) or ())
+            }
+            _excluded_tags = {
+                str(t).lower() for t in (getattr(policy, "excluded_tags", ()) or ())
+            }
+            _floor = getattr(policy, "min_severity", None)
+            if not getattr(policy, "include_builtin_checks", True):
+                _builtin = []
+            else:
+                _builtin = [
+                    c
+                    for c in _builtin
+                    if c.check_id not in _excluded
+                    and not (_excluded_tags & {t.lower() for t in c.tags})
+                    and severity_at_least(c.severity, _floor)
+                ]
+        checks = select_checks(
+            [*_builtin, *(config_checks or [])],
+            platform="database",
+            domains=_families or None,
+        )
+        _emit(f"Assessing {len(checks)} configuration checks...", 40, "configuration")
+
+        context = CollectionContext(
+            target=target,
+            platform="database",
+            os_name=product,
+            os_version_id=version,
+            executor=db_session,
+            timeout=max(timeout, 30),
+        )
+        report = ConfigAuditEngine().run(checks, context)
+
+    cve_list: list[dict] = []
+    for result in report.results:
+        if result.outcome is not CheckOutcome.FAIL:
+            continue
+        observation = result.evidence[0] if result.evidence else None
+        finding_type = str(
+            result.metadata.get("finding_type") or DEFINITION_TYPE_CONFIG_CHECK
+        )
+        definition_id = config_definition_id(result.check_id, finding_type)
+        cve_list.append(
+            {
+                "cve_id": definition_id,
+                "cve": definition_id,
+                "definition_type": finding_type,
+                "title": result.title,
+                "severity": result.severity.capitalize(),
+                "description": result.title,
+                "desc": result.title,
+                "detection_method": "config_check",
+                "confidence": "Confirmed",
+                "qod": result.qod,
+                "remediation": result.remediation or "",
+                "evidence": (
+                    (
+                        f"Expected: {observation.expected}\n"
+                        f"Observed: {observation.observed}"
+                        # The reading that makes the finding actionable. For
+                        # a SCAP rule `observed` is only the verdict word —
+                        # "non_compliant" — while `raw` names the OVAL object
+                        # and the existence check it failed, e.g.
+                        # "windows:registry_object: 0 item(s) collected,
+                        # which does not satisfy at_least_one_exists".
+                        # Without it a reader has to re-run the scan by hand
+                        # to learn what was actually wrong.
+                        + (
+                            f"\n{_unique_lines(observation.raw)}"
+                            if observation.raw
+                            else ""
+                        )
+                    )
+                    if observation
+                    else ""
+                ),
+                "expected_state": observation.expected if observation else "",
+                "observed_state": observation.observed if observation else "",
+                "package": "",
+                "installed_ver": "",
+                "fixed_ver": "",
+                "source": "database_audit",
+                "host": target,
+            }
+        )
+
+    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+    for finding in cve_list:
+        tier = str(finding.get("severity") or "").capitalize()
+        if tier not in severity_counts:
+            tier = "Info"
+        severity_counts[tier] += 1
+
+    counts = report.counts
+    config_summary = {
+        "assessed": True,
+        "platform": "database",
+        "engine": resolved_engine,
+        "counts": counts,
+        "verdicts": len(report.assessed),
+        "compliance_score": report.compliance_score(),
+        "results": [r.as_dict() for r in report.results],
+    }
+
+    system_data = {
+        "detected_os": "database",
+        "db_engine": resolved_engine,
+        "db_product": product,
+        "db_version": version,
+        "credentialed_response_time_ms": response_ms,
+        "config_audit": config_summary,
+    }
+
+    stored_report = {
+        "scan_type": "database",
+        "target": target,
+        "username": username,
+        "detected_os": "database",
+        "system_info": {
+            "os_name": product,
+            "os_family": "database",
+            "os_version_id": version,
+            "hostname": host,
+            "credentialed_response_time_ms": response_ms,
+        },
+        "database": {
+            "engine": resolved_engine,
+            "product": product,
+            "version": version,
+            "host": host,
+            "port": resolved_port,
+            # Whether *this* session was encrypted. None where the instance
+            # could not be asked, which is not the same as plaintext and is
+            # deliberately not rendered as one.
+            "tls_in_use": tls_in_use,
+        },
+        "packages": [],
+        "package_count": 0,
+        "config_audit": config_summary,
+        "cves": cve_list,
+        "cve_count": len(cve_list),
+        "severity_summary": severity_counts,
+        "scan_duration": round(time.time() - started, 2),
+        # A database audit examines the instance's own configuration. It says
+        # nothing about the operating system underneath it, the packages
+        # installed there, or what else that host exposes — and a report which
+        # does not say so reads as a complete audit of the machine.
+        "coverage": {
+            "credentialed": True,
+            "network_scanned": False,
+            "packages_assessed": False,
+            "scope": (
+                f"{resolved_engine} instance configuration only; the host "
+                f"operating system was not assessed"
+            ),
+        },
+        "checks_total": len(report.results),
+        "checks_assessed": len(report.assessed),
+        "checks_errored": counts.get("error", 0),
+        "checks_not_applicable": counts.get("not_applicable", 0),
+    }
+
+    _emit(f"Database audit complete - {len(cve_list)} finding(s)", 90, "analysis")
+    return stored_report, system_data, "database"
+
+
 def _classify_credentialed_failure(reason: str) -> str:
     """Whether a failed host was unreachable or failed for another reason."""
     lowered = reason.lower()
@@ -3083,6 +4164,102 @@ def _classify_credentialed_failure(reason: str) -> str:
     return "failed"
 
 
+def _is_transport_failure(exc: Exception) -> bool:
+    """
+    Did nothing answer, as opposed to something answering and saying no?
+
+    The distinction decides whether another port may be tried. A refused
+    password means the credential reached a listener and was rejected, so
+    repeating it elsewhere adds failed-logon events against an account this
+    product must not lock out; nothing listening means the endpoint was wrong
+    and resolution is exactly the right response.
+
+    WinRM is settled by type, because its executor already separates the four
+    cases. SSH raises ``RuntimeError`` with a message, so it is settled by the
+    same classifier the scan record uses — one vocabulary, not two.
+    """
+    try:
+        from engines.credentialed.winrm_executor import (
+            WinRMAuthenticationError,
+            WinRMConnectionError,
+        )
+
+        if isinstance(exc, WinRMAuthenticationError):
+            return False
+        if isinstance(exc, WinRMConnectionError):
+            return True
+    except ImportError:  # pragma: no cover - pywinrm is optional
+        pass
+
+    reason = str(exc).lower()
+    if "authentication failed" in reason or "credentials were rejected" in reason:
+        return False
+    if "ssh connection error" in reason:
+        return True
+    return _classify_credentialed_failure(reason) == "unreachable"
+
+
+def _audit_host_over_transport(**kwargs):
+    """
+    Audit one host, resolving the endpoint if the stated one does not answer.
+
+    The stated port is attempted directly, so a scan against a conventionally
+    configured host costs exactly what it always did — no probe, one
+    authentication attempt. Resolution engages only after a *transport* failure,
+    and then selects by TCP reachability, so the second attempt is made against
+    a port something is actually listening on.
+
+    **A rejected credential is never retried on another port.** That would turn
+    one failed logon into three against the same account, which is the lockout
+    this product documents as a control it must not trip.
+    """
+    ip = kwargs["ip"]
+    transport = (kwargs.get("transport") or "ssh").strip().lower()
+    stated_port = kwargs.get("port")
+
+    try:
+        return audit_credentialed_host(**kwargs)
+    except Exception as first_exc:  # noqa: BLE001 — re-raised unless resolvable
+        if not _is_transport_failure(first_exc):
+            raise
+        options = dict(kwargs.get("credential_options") or {})
+        # Resolution is a best-effort second look, so it must never become the
+        # error the operator sees. A fault in here would otherwise replace
+        # "Cannot reach 10.0.0.6:22 — host is down" with something about the
+        # resolver, and the scan record's unreachable/failed distinction — which
+        # drives different UI — would be decided by the wrong exception.
+        try:
+            resolution = resolve_endpoint(
+                ip=ip,
+                transport=transport,
+                stated_port=None,
+                use_tls=options.get("use_tls"),
+                include_fallbacks=True,
+                exclude_ports=[stated_port] if stated_port else None,
+            )
+        except Exception:  # noqa: BLE001 — the original failure is the answer
+            log.debug("Endpoint resolution for %s failed", ip, exc_info=True)
+            raise first_exc from None
+        if not resolution.resolved:
+            raise
+        endpoint = resolution.endpoint
+        if endpoint.use_tls is not None:
+            options["use_tls"] = endpoint.use_tls
+        log.info(
+            "Credentialed scan: %s did not answer on port %s; retrying on %s "
+            "over %s — %s",
+            ip,
+            stated_port,
+            endpoint.port,
+            transport.upper(),
+            endpoint.evidence,
+        )
+        retry = dict(kwargs)
+        retry["port"] = endpoint.port
+        retry["credential_options"] = options
+        return audit_credentialed_host(**retry)
+
+
 @celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
 def run_credentialed_scan_task(
     user_id: str,
@@ -3090,7 +4267,7 @@ def run_credentialed_scan_task(
     username: str | None = None,
     password: str | None = None,
     key_path: str | None = None,
-    port: int = 22,
+    port: int | None = None,
     auth_method: str = "password",
     sections: list[str] | None = None,
     os_type_req: str = "auto",
@@ -3120,6 +4297,39 @@ def run_credentialed_scan_task(
     start_time = time.time()
     current_target = {"ip": host_list[0]}
 
+    # Benchmark content this organisation has installed, resolved once for the
+    # whole scan rather than per host — the same query per target would repeat
+    # work and could disagree between hosts if content were loaded mid-scan.
+    # Resolved here because `audit_credentialed_host` deliberately opens no
+    # database session: it runs on the host worker while a WinRM connection is
+    # held open, and a round trip inside that window is a round trip too many.
+    #
+    # GAP-12: read the scan's effective policy from its own row — the record
+    # written before dispatch — so the worker, the report and the comparison
+    # all read one source. A scan with no snapshot (an older release's task
+    # still in the queue, or a caller that named no policy) resolves everything
+    # installed, which is the pre-policy behaviour unchanged.
+    from core.scan_policy import read_policy_snapshot
+
+    _scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
+    policy = read_policy_snapshot(_scan_row)
+    benchmark_checks: list = []
+    _scan_owner = db.query(User).filter(User.id == user_id).first()
+    if _scan_owner is not None:
+        from core.benchmarks.selection import benchmark_checks_for_org
+
+        benchmark_checks = benchmark_checks_for_org(
+            db,
+            str(_scan_owner.org_id),
+            profile=getattr(policy, "benchmark_profile", None),
+            platforms=list(getattr(policy, "platforms", ()) or ()) or None,
+            framework_ids=list(getattr(policy, "framework_ids", ()) or ()) or None,
+            min_severity=getattr(policy, "min_severity", None),
+            excluded_check_ids=list(getattr(policy, "excluded_check_ids", ()) or ())
+            or None,
+            excluded_tags=list(getattr(policy, "excluded_tags", ()) or ()) or None,
+        )
+
     def emit(status, message, percentage=0, stage=None):
         if not scan_id:
             return
@@ -3139,6 +4349,15 @@ def run_credentialed_scan_task(
 
     try:
         key_content = None
+        key_passphrase = None
+        nt_hash = None
+        # Defaults for the direct-material path (a request that supplied a
+        # username and password rather than naming a stored credential). SSH
+        # keeps its existing behaviour: nothing about the ad-hoc path changes.
+        transport = "ssh"
+        domain = None
+        credential_type = CREDENTIAL_TYPE_SSH
+        credential_options: dict = {}
         if credential_id:
             # A stored credential supersedes anything the request supplied.
             # Which of password/key is set is what selects the auth method —
@@ -3149,6 +4368,21 @@ def run_credentialed_scan_task(
             port = material["port"]
             password = material["password"]
             key_content = material["key_content"]
+            key_passphrase = material["key_passphrase"]
+            nt_hash = material["nt_hash"]
+            # A stored credential also decides *how* to reach the host. Without
+            # this the transport stayed "ssh" for every credential, so a
+            # Windows credential on port 5985 attempted SSH against a WinRM
+            # listener and failed as a connection error.
+            transport = material.get("transport") or "ssh"
+            auth_method = material.get("auth_method") or auth_method
+            domain = material.get("domain")
+            credential_options = material.get("options") or {}
+            # What *kind* of target this credential is for. Without it a
+            # database credential would be handed to the host auditor, which
+            # would open an SSH connection to a database port and report the
+            # instance as unreachable.
+            credential_type = material.get("credential_type") or CREDENTIAL_TYPE_SSH
 
         reports: list[dict] = []
         collected: list[tuple[dict, dict, str]] = []
@@ -3167,17 +4401,42 @@ def run_credentialed_scan_task(
                 emit(status, message, int(_base + (percentage / 100.0) * _span), stage)
 
             try:
-                stored_report, system_data, os_type = audit_credentialed_host(
-                    ip=host_ip,
-                    username=username,
-                    password=password,
-                    key_path=key_path,
-                    key_content=key_content,
-                    port=port,
-                    sections=sections,
-                    os_type_req=os_type_req,
-                    emit=host_emit,
-                )
+                if credential_type == CREDENTIAL_TYPE_DATABASE:
+                    # A database credential names an instance, not a host, and
+                    # `transport` carries which engine it speaks. Dispatched to
+                    # the sibling auditor rather than through a flag on the
+                    # host one — see audit_database_target for why.
+                    stored_report, system_data, os_type = audit_database_target(
+                        host=host_ip,
+                        engine=transport,
+                        username=username,
+                        password=password,
+                        port=port,
+                        emit=host_emit,
+                        credential_options=credential_options,
+                        config_checks=benchmark_checks,
+                        policy=policy,
+                    )
+                else:
+                    stored_report, system_data, os_type = _audit_host_over_transport(
+                        config_checks=benchmark_checks,
+                        policy=policy,
+                        ip=host_ip,
+                        username=username,
+                        password=password,
+                        key_path=key_path,
+                        key_content=key_content,
+                        key_passphrase=key_passphrase,
+                        nt_hash=nt_hash,
+                        port=port,
+                        sections=sections,
+                        os_type_req=os_type_req,
+                        emit=host_emit,
+                        transport=transport,
+                        auth_method=auth_method,
+                        domain=domain,
+                        credential_options=credential_options,
+                    )
                 reports.append(stored_report)
                 collected.append((stored_report, system_data, os_type))
             except Exception as host_exc:  # noqa: BLE001 — recorded, not swallowed
@@ -3264,8 +4523,12 @@ def run_credentialed_scan_task(
                 **coverage,
             },
         }
-        orch = _new_orchestrator()
-        report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
+        # The report is generated *after* the findings are synced, further down.
+        # It used to be built here, before a single finding had been written,
+        # which is why it could not carry a comparison against the previous
+        # scan: at this point the current scan's findings do not yet exist to
+        # be compared. The scan row is created first with no report paths and
+        # they are set once the files exist, all inside the same transaction.
         scan = create_completed_scan(
             db=db,
             user_id=user_id,
@@ -3279,14 +4542,24 @@ def run_credentialed_scan_task(
             # Without this the helper's default silently relabelled the scan as
             # a vulnerability_audit — a pipeline none of whose phases ran.
             pipeline_mode="credentialed",
-            report_executive_path=report_paths.get("executive_pdf"),
-            report_technical_path=report_paths.get("technical_pdf"),
+            report_executive_path=None,
+            report_technical_path=None,
             scan_id=scan_id,
             commit=False,  # ENTERPRISE FIX: Do not commit yet
         )
 
-        # Sync to Asset Registry within the same transaction
+        # Sync to Asset Registry within the same transaction.
+        #
+        # Database targets are deliberately excluded. Both helpers below are
+        # host-shaped: they write an operating system, a package inventory,
+        # listener correlation and a MAC-based identity onto an Asset row. A
+        # database instance has none of those, and letting it through would
+        # overwrite the asset record of the machine hosting it with an audit
+        # that never looked at the machine — turning a correctly inventoried
+        # server into one reporting no packages and an OS of "database".
         for stored_report, system_data, os_type in collected:
+            if os_type == "database":
+                continue
             _sync_credentialed_asset_identity(
                 db,
                 user_id=user_id,
@@ -3298,6 +4571,188 @@ def run_credentialed_scan_task(
                 cve_list=stored_report.get("cves") or [],
                 severity_counts=stored_report.get("severity_summary") or {},
             )
+            _sync_configuration_compliance(
+                db,
+                org_id=str(scan.org_id),
+                ip=stored_report["target"],
+                system_data=system_data,
+                scan_id=str(scan.id),
+                policy=policy,
+            )
+
+        # ── Remediation SLA (GAP-14) ────────────────────────────────────
+        # Due dates are materialised on the finding rather than computed on
+        # read, because "everything overdue in this organisation" is a WHERE
+        # clause over thousands of rows and deriving it per row is the N+1
+        # this column exists to avoid. Recomputed here so a finding whose
+        # severity was re-rated, or whose organisation changed its policy,
+        # picks up the new deadline on the next scan.
+        #
+        # `apply_sla` is idempotent and writes an event only when the deadline
+        # actually moves, so a scan that changes nothing adds no history.
+        try:
+            from core.remediation import apply_sla
+            from db.models.rbac import Organization as _Org
+
+            _org_row = (
+                db.query(_Org).filter(_Org.id == scan.org_id).first()
+                if scan.org_id
+                else None
+            )
+            _sla_rows = (
+                db.query(AssetVulnerability)
+                .filter(
+                    AssetVulnerability.org_id == scan.org_id,
+                    AssetVulnerability.scan_id == scan.id,
+                )
+                .all()
+            )
+            for _finding in _sla_rows:
+                apply_sla(db, _finding, org=_org_row)
+            if _sla_rows:
+                log.info(
+                    "Scan %s: remediation SLA applied to %d finding(s)",
+                    scan.id,
+                    len(_sla_rows),
+                )
+        except Exception as sla_exc:  # noqa: BLE001
+            log.warning(
+                "Could not apply remediation SLA for scan %s: %s",
+                scan.id,
+                sla_exc,
+                exc_info=True,
+            )
+
+        # ── Assessment policy (GAP-12) ──────────────────────────────────
+        # Read back from the scan's own snapshot rather than from the `policy`
+        # local, so the report shows what is *recorded* against the scan. If
+        # those two ever disagree the record is the one an auditor will read,
+        # and a report that showed the other would be describing a scan that
+        # does not exist.
+        try:
+            from core.findings.comparison import policy_context
+
+            _policy_ctx = policy_context(scan)
+            if _policy_ctx.get("recorded"):
+                report_result.setdefault("metadata", {})["scan_policy"] = _policy_ctx
+                summary["scan_policy"] = _policy_ctx
+        except Exception as pol_exc:  # noqa: BLE001
+            log.warning(
+                "Could not attach the policy record to the report for %s: %s",
+                scan.id,
+                pol_exc,
+            )
+
+        # ── Change since the previous scan ──────────────────────────────
+        # Computed here because the findings this scan wrote have to exist
+        # before they can be compared, and flushed first so the comparison
+        # reads them. A failure here costs the delta section and nothing else:
+        # the report is still generated, without it.
+        try:
+            db.flush()
+            from core.findings import compare_scans
+            from core.findings.comparison import previous_scan_for
+
+            _baseline = previous_scan_for(db, scan)
+            if _baseline is not None:
+                _comparison = compare_scans(
+                    db, current=scan, baseline=_baseline, limit_findings=200
+                )
+                report_result["scan_comparison"] = _comparison.as_dict()
+                summary["scan_comparison"] = _comparison.as_dict(include_findings=False)
+                log.info(
+                    "Scan %s vs baseline %s: %s",
+                    scan.id,
+                    _baseline.id,
+                    _comparison.summary_line(),
+                )
+
+                # ── Remediation verification (GAP-14) ───────────────────
+                # The one path by which a remediation becomes *verified
+                # fixed*, and it consumes the comparison above rather than
+                # deciding for itself. A finding classified NOT_ASSESSED —
+                # open at the baseline and not looked at by this scan —
+                # cannot verify anything, which is the whole reason GAP-13
+                # introduced that class.
+                #
+                # A comparison computed with `limit_findings=200` would
+                # verify only the first 200 rows, so this recomputes
+                # unbounded. The report's copy stays bounded: a report is a
+                # sample, a verification pass must not be.
+                try:
+                    from core.remediation import verify_from_comparison
+
+                    _full = compare_scans(
+                        db, current=scan, baseline=_baseline, limit_findings=None
+                    )
+                    _verification = verify_from_comparison(
+                        db,
+                        _full,
+                        scan_id=str(scan.id),
+                        org_id=str(scan.org_id),
+                    )
+                    summary["remediation_verification"] = _verification.as_dict()
+                    report_result["remediation_verification"] = _verification.as_dict()
+
+                    # The remediation payload the report renders. Built from
+                    # the same aggregates the summary API runs, so a report
+                    # and a dashboard cannot disagree about how many findings
+                    # are overdue.
+                    from core.remediation import remediation_report_payload
+
+                    _rem_payload = remediation_report_payload(
+                        db,
+                        org_id=str(scan.org_id),
+                        verification=_verification.as_dict(),
+                    )
+                    if _rem_payload:
+                        report_result.setdefault("metadata", {})[
+                            "remediation"
+                        ] = _rem_payload
+                        summary["remediation"] = {
+                            k: v for k, v in _rem_payload.items() if k != "findings"
+                        }
+                    log.info(
+                        "Scan %s remediation: %s",
+                        scan.id,
+                        _verification.summary_line(),
+                    )
+                except Exception as ver_exc:  # noqa: BLE001
+                    # A verification failure must not cost the scan its
+                    # findings. Recorded rather than swallowed: a remediation
+                    # that silently stopped being verified would look exactly
+                    # like an estate where nobody fixes anything.
+                    log.warning(
+                        "Remediation verification failed for scan %s: %s",
+                        scan.id,
+                        ver_exc,
+                        exc_info=True,
+                    )
+        except Exception as cmp_exc:
+            log.warning(
+                "Could not compute the scan comparison for %s: %s", scan.id, cmp_exc
+            )
+
+        orch = _new_orchestrator()
+        report_paths = orch.generate_phase_report(report_result, "credentialed_scan")
+        scan.report_executive_path = report_paths.get("executive_pdf")
+        scan.report_technical_path = report_paths.get("technical_pdf")
+        # Stamped *after* the findings are written, not before.
+        #
+        # `create_completed_scan` sets this when the scan row is built, which is
+        # before the sync runs — so every finding a scan produced carried a
+        # `first_found_at` a second or two *later* than the scan's own
+        # `completed_at`. Measured on a real target: baseline completed 18:48:44,
+        # its earliest finding first seen 18:48:45. A comparison anchored on that
+        # boundary therefore judged every finding the baseline itself wrote to be
+        # newer than the baseline, and reported 50 new / 0 unchanged on two scans
+        # of an almost unchanged host.
+        scan.completed_at = utcnow()
+        # No `db.add`: `create_completed_scan` already put this instance in the
+        # session, so assigning the attributes is enough. Re-adding also breaks
+        # any caller that hands back a stand-in rather than a mapped instance,
+        # which is what `test_an_unreachable_host_does_not_abandon_the_others`
+        # does — and it failed the whole task, not just the bookkeeping.
 
         # Trigger AMT reconciliation now that the asset identity has been fully synced
         try:
@@ -3525,6 +4980,50 @@ def purge_stale_unverified_accounts() -> dict:
         db.close()
 
 
+@celery_app.task(name="ccure.tasks.expire_risk_acceptances", queue="default")
+def expire_risk_acceptances() -> dict:
+    """
+    Return findings whose risk acceptance has run out to the remediation queue.
+
+    GAP-14. An acceptance with an expiry is a decision with a shelf life: when
+    it lapses the finding is outstanding again, and it goes back to
+    ``assigned`` if it still has an owner or ``open`` if it does not. Not to
+    ``verified_fixed`` and not to an "expired" state of its own — the finding
+    is simply un-dealt-with, and the remediation queue is where un-dealt-with
+    findings belong.
+
+    ``status`` returns to ``open`` alongside ``remediation_state``, so the
+    dashboard and the asset risk score stop treating it as handled. Those two
+    disagreeing is the confusion the two-column split exists to avoid.
+
+    An acceptance with **no** expiry is untouched. That is a legitimate
+    decision for a permanent compensating control, and expiring it because
+    nobody set a date would silently overrule somebody's judgement.
+
+    Every expiry writes a ``FindingRemediationEvent`` carrying the original
+    reason and the date it lapsed, so the trail shows what the acceptance was
+    for and that it ended on its own rather than being withdrawn.
+    """
+    from core.remediation import expire_due_exceptions
+
+    db = SessionLocal()
+    try:
+        expired = expire_due_exceptions(db)
+        db.commit()
+        if expired:
+            log.info("Expired %d risk acceptance(s)", expired)
+        return {"success": True, "expired": expired}
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        # Recorded with its traceback rather than swallowed. A silently failing
+        # expiry leaves lapsed acceptances suppressing findings indefinitely,
+        # which looks exactly like an estate with nothing outstanding.
+        log.exception("Risk-acceptance expiry failed")
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="ccure.tasks.purge_expired_refresh_sessions", queue="default")
 def purge_expired_refresh_sessions() -> dict:
     """
@@ -3701,5 +5200,105 @@ def purge_expired_audit_logs() -> dict:
     except Exception as exc:
         log.exception("audit retention task failed")
         return {"success": False, "error": str(exc), "deleted_total": 0}
+    finally:
+        db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scan scheduling (Phase 1 — Nessus capability gap closure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Advisory-lock key for the scheduler. Any 64-bit constant works; this one is
+#: recorded here so a future lock does not collide with it by accident.
+_SCAN_SCHEDULER_LOCK_KEY = 0x5CA45CED
+
+
+@celery_app.task(name="ccure.tasks.run_due_scan_schedules", queue="scanner")
+def run_due_scan_schedules() -> dict:
+    """
+    Dispatch every scan schedule whose next run has arrived.
+
+    Runs on beat every minute. One minute is the resolution of the feature —
+    a schedule set for 09:00 fires between 09:00 and 09:01 — and is cheap
+    because the due query is one indexed lookup that returns nothing on almost
+    every tick.
+
+    **Duplicate execution is prevented by a transaction-scoped advisory lock,
+    not by hope.** Exactly one beat process is supposed to run, but two is the
+    classic operational mistake (CLAUDE.md records that this deployment had
+    *zero* for a long time, which is the same class of error pointed the other
+    way), and a Celery task can also be redelivered after a worker dies
+    mid-execution. ``pg_try_advisory_xact_lock`` returns false rather than
+    waiting, so a second concurrent tick exits immediately instead of queueing
+    up behind the first and dispatching everything twice a minute later.
+
+    Transaction-scoped, never session-scoped: ``pg_advisory_lock`` releases
+    when the *connection* closes, and SQLAlchemy pools connections, so a
+    session-scoped lock leaks onto the next unrelated request that draws the
+    same connection. Same reasoning as ``core/audit_retention.py``.
+
+    Each schedule is committed independently. One tenant's broken schedule must
+    not roll back another tenant's successful dispatch.
+    """
+    from core.scheduling.dispatcher import due_schedules, dispatch_schedule
+    from db.models.scan_schedules import RUN_STATUS_DISPATCHED
+
+    db = SessionLocal()
+    dispatched = 0
+    failed = 0
+    skipped = 0
+    try:
+        got_lock = db.execute(
+            text("SELECT pg_try_advisory_xact_lock(:k)"),
+            {"k": _SCAN_SCHEDULER_LOCK_KEY},
+        ).scalar()
+        if not got_lock:
+            log.info(
+                "run_due_scan_schedules: another scheduler tick holds the lock; "
+                "skipping this one."
+            )
+            db.rollback()
+            return {"success": True, "skipped_locked": True, "dispatched": 0}
+
+        due = due_schedules(db)
+        if not due:
+            db.rollback()
+            return {"success": True, "dispatched": 0, "due": 0}
+
+        # The lock is transaction-scoped, so it is released by the first commit
+        # below. That is acceptable and deliberate: its job is to stop two
+        # ticks *starting* the same sweep, and by the time the first schedule
+        # commits, `next_run_at` has already moved past due for it.
+        for schedule in due:
+            run = dispatch_schedule(db, schedule)
+            db.commit()
+            if run.status == RUN_STATUS_DISPATCHED:
+                dispatched += 1
+            elif run.status == "failed":
+                failed += 1
+            else:
+                skipped += 1
+
+        log.info(
+            "Scan schedules: %d due, %d dispatched, %d failed, %d skipped.",
+            len(due),
+            dispatched,
+            failed,
+            skipped,
+        )
+        return {
+            "success": True,
+            "due": len(due),
+            "dispatched": dispatched,
+            "failed": failed,
+            "skipped": skipped,
+        }
+    except Exception as exc:
+        # Recorded with its traceback, not reduced to success:False with the
+        # reason discarded — the failure mode that hid a TypeError on every
+        # compliance beat tick for months.
+        db.rollback()
+        log.exception("run_due_scan_schedules failed")
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
     finally:
         db.close()

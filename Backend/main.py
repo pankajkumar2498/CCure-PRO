@@ -49,6 +49,11 @@ from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
 from scans.schema_bootstrap import ensure_scan_schema
 from routers.scan_history import router as scans_router
+from routers.config_audit import router as config_audit_router
+from routers.credentials import router as credentials_router
+from routers.remediation import router as remediation_router
+from routers.scan_policies import router as scan_policies_router
+from routers.scan_schedules import router as scan_schedules_router
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -287,6 +292,16 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_nis2")
                 .first()
             )
+            # CIS Critical Security Controls v8.1. Its seed file, its theme
+            # migration and its entry in ALL_FRAMEWORK_IDS have all shipped
+            # since before Phase 4, and nothing here ever loaded it — the
+            # catalogue was parked *and* unseeded, so the omission was
+            # invisible. Phase 4 activates it, which needs it to exist.
+            cis_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_cis_v8_1")
+                .first()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -337,6 +352,11 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceControl.framework_id == "cfw_nerc_cip")
                 .count()
             )
+            cis_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_cis_v8_1")
+                .count()
+            )
             nis2_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nis2")
@@ -383,6 +403,11 @@ async def lifespan(app: FastAPI):
                 or nist82_ctrl_count < 30
                 or nerc_cip_ctrl_count < 52
                 or nis2_ctrl_count < 42
+                or not cis_fw
+                # 153 safeguards. The threshold is below the real count for the
+                # reason CLAUDE.md records: a condition that can never be
+                # satisfied re-runs the whole seeder on every container start.
+                or cis_ctrl_count < 150
                 or rule_count < 20
             ):
                 log.info(
@@ -449,11 +474,16 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nerc_cip_seed):
                         seed_framework_and_controls(db, nerc_cip_seed)
+                    cis_seed = os.path.join(
+                        base_scripts_dir, "cis_v8_1_controls_seed.json"
+                    )
                     nis2_seed = os.path.join(
                         base_scripts_dir, "nis2_controls_seed.json"
                     )
                     if os.path.exists(nis2_seed):
                         seed_framework_and_controls(db, nis2_seed)
+                    if os.path.exists(cis_seed):
+                        seed_framework_and_controls(db, cis_seed)
 
                     seed_and_evaluate()
                     log.info("Compliance catalog auto-seeding completed successfully!")
@@ -552,7 +582,14 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
     async def nvd_auto_sync_loop():
-        """Option A: Background 24-hour automatic NVD live catalog sync into vuln_intel DB."""
+        """
+        Background 24-hour automatic NVD sync into the application catalogue.
+
+        The target is `vulnerability_definitions` in the application database,
+        not the vulnerability-intelligence database — this message used to say
+        the latter, which is where the belief that the two were one store came
+        from. Cadence is unchanged at 24 hours.
+        """
         from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
 
         # Initial delay on startup to allow DB migrations to finish
@@ -562,7 +599,8 @@ async def lifespan(app: FastAPI):
                 status = get_nvd_sync_status()
                 if status.get("status") != "SYNCING":
                     log.info(
-                        "Starting automatic 24-hour live NVD catalog sync into vuln_intel DB..."
+                        "Starting automatic 24-hour incremental NVD catalogue "
+                        "sync into vulnerability_definitions..."
                     )
                     await sync_nvd_to_vuln_intel(days_back=90)
             except Exception as e:
@@ -918,6 +956,11 @@ app.include_router(health_router)
 app.include_router(traditional_scans_router)
 app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
+app.include_router(remediation_router)
+app.include_router(scan_policies_router)
+app.include_router(scan_schedules_router)
+app.include_router(credentials_router)
+app.include_router(config_audit_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_email_domains_router)

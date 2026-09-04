@@ -170,6 +170,24 @@ PERMISSIONS = [
     ("scans", "purge", "Permanently delete recycled scans"),
     ("scans", "execute", "Trigger scan execution via API"),
     ("scans", "cancel", "Cancel an in-progress scan"),
+    # Scan scheduling (Phase 1). A separate resource rather than more actions
+    # on "scans", because the questions are genuinely different: "may this
+    # person start a scan" and "may this person point the platform at a network
+    # unattended, every night, indefinitely" are not the same authorisation.
+    ("scan_schedules", "create", "Create scheduled and recurring scans"),
+    ("scan_schedules", "read", "View scan schedules and their run history"),
+    ("scan_schedules", "update", "Edit, enable or disable scan schedules"),
+    ("scan_schedules", "delete", "Delete scan schedules"),
+    ("scan_schedules", "execute", "Trigger a scheduled scan immediately (Run Now)"),
+    # Scan policies (Phase 17). A separate resource for the same reason
+    # scheduling is: "may this person run a scan" and "may this person decide
+    # what every scan in this organisation assesses" are different
+    # authorisations, and the second is the one that can quietly narrow an
+    # audit until it finds nothing.
+    ("scan_policies", "create", "Create reusable scan policies"),
+    ("scan_policies", "read", "View scan policies and their configuration"),
+    ("scan_policies", "update", "Edit, enable, disable or archive scan policies"),
+    ("scan_policies", "delete", "Delete scan policies"),
     # Assets
     ("assets", "create", "Manually add assets to the registry"),
     ("assets", "read", "View asset inventory and details"),
@@ -180,6 +198,16 @@ PERMISSIONS = [
     ("findings", "read", "View vulnerability findings"),
     ("findings", "update", "Update finding status (accept, suppress, remediate)"),
     ("findings", "export", "Export findings to CSV/JSON/PDF"),
+    # Remediation (Phase 18). Its own atom, deliberately: "may this person
+    # move work through the queue" and "may this person decide the
+    # organisation will carry a critical risk" are different
+    # authorisations, and without the split anyone who can edit a finding
+    # could clear their own overdue list by accepting everything on it.
+    (
+        "findings",
+        "accept_risk",
+        "Accept the risk on a finding, with a reason and an approver",
+    ),
     # Reports
     ("reports", "create", "Generate reports"),
     ("reports", "read", "View and download reports"),
@@ -192,6 +220,8 @@ PERMISSIONS = [
     # Credentials
     ("credentials", "create", "Store scan credentials"),
     ("credentials", "read", "List stored credential profiles (not the secrets)"),
+    ("credentials", "update", "Edit stored credential profiles"),
+    ("credentials", "validate", "Test a stored credential against a target host"),
     ("credentials", "delete", "Remove stored credential profiles"),
     # Settings / Org
     ("settings", "read", "View organization settings"),
@@ -267,6 +297,20 @@ ROLE_PERMISSIONS = {
         "scans:purge",
         "scans:execute",
         "scans:cancel",
+        "scan_schedules:create",
+        "scan_schedules:read",
+        "scan_schedules:update",
+        "scan_schedules:delete",
+        "scan_schedules:execute",
+        "scan_policies:create",
+        "scan_policies:read",
+        "scan_policies:update",
+        "scan_policies:delete",
+        "credentials:create",
+        "credentials:read",
+        "credentials:update",
+        "credentials:validate",
+        "credentials:delete",
         "assets:create",
         "assets:read",
         "assets:update",
@@ -275,6 +319,7 @@ ROLE_PERMISSIONS = {
         "findings:read",
         "findings:update",
         "findings:export",
+        "findings:accept_risk",
         "reports:create",
         "reports:read",
         "reports:delete",
@@ -309,12 +354,24 @@ ROLE_PERMISSIONS = {
         "scans:read_all",
         "scans:execute",
         "scans:cancel",
+        "scan_schedules:create",
+        "scan_schedules:read",
+        "scan_schedules:update",
+        "scan_schedules:execute",
+        "scan_policies:create",
+        "scan_policies:read",
+        "scan_policies:update",
+        "credentials:create",
+        "credentials:read",
+        "credentials:update",
+        "credentials:validate",
         "assets:read",
         "assets:update",
         "assets:export",
         "findings:read",
         "findings:update",
         "findings:export",
+        "findings:accept_risk",
         "reports:create",
         "reports:read",
         "credentials:read",
@@ -330,6 +387,10 @@ ROLE_PERMISSIONS = {
     "viewer": [
         "scans:read",
         "scans:read_all",
+        # A viewer who can see scans can see what is scheduled to produce them.
+        # Read only: no create, update, delete or execute.
+        "scan_schedules:read",
+        "scan_policies:read",
         "assets:read",
         "findings:read",
         "reports:read",
@@ -341,6 +402,7 @@ ROLE_PERMISSIONS = {
         "scans:create",
         "scans:read",
         "scans:execute",
+        "scan_policies:read",
         "credentials:read",
     ],
 }

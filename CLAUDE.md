@@ -590,7 +590,1614 @@ backend auto-chains the later phases.
   NetBIOS-NS are UDP; recording them as TCP claims an open TCP port that is
   usually filtered, and that claim reaches the asset registry and the reports.
 
+## Windows credentialed collection (`engines/credentialed/winrm_executor.py`)
+
+Native WinRM, added in Phase 2. **Windows targets no longer need OpenSSH
+Server installed.**
+
+- **It is a transport, not a collector.** `ssh_scanner.py` already declared a
+  `BaseExecutor` protocol, so `WinRMExecutor` drops in and `WindowsCollector`
+  is unchanged — the same ~970 lines of PowerShell commands and parsers drive
+  either transport, and Windows findings flow through the existing evidence →
+  matching → finding → risk → reporting path. If you add a Windows capability,
+  add a command to the catalogue; do not add a collector.
+
+- **A pywinrm NTLM session is not thread-safe, and `collect_all` is parallel.**
+  Sessions are therefore thread-local. Sharing one corrupts the NTLM security
+  context and fails *every* section with `SpnegoError (6): invalid Message
+  Integrity Check`, HTTP 400, and — most misleadingly — "the specified
+  credentials were rejected by the server" on a credential that just
+  authenticated. Measured against a real host: sequential 10/10, concurrent
+  shared 0/8, concurrent per-thread 8/8. Do not "simplify" this to one session.
+
+- **Errors are classified into four types and must stay that way.** A refused
+  password, an unprivileged account, nothing listening, and a bad certificate
+  need four different actions; collapsing them is how a fixable firewall rule
+  becomes "host unreachable". Note that pywinrm's literal rejection string
+  contains none of `401`, "unauthorized" or "authentication", so it is matched
+  explicitly — without that it classified as a connection error.
+
+- **`shell_type` resolves to "powershell" over WinRM and that matters.**
+  pywinrm's `run_ps` already base64-encodes UTF-16-LE, which is the same trick
+  `_wrap_ps` applies by hand for cmd.exe over SSH. Wrapping twice feeds the
+  encoder its own output.
+
+- **Basic auth over plain HTTP is refused.** NTLM encrypts the payload even on
+  5985, so there is no reason to send a password in base64. The validation host
+  had `AllowUnencrypted=false` and `Basic=false`, which is the normal posture.
+
+- **Nessus's primary Windows transport is SMB + Remote Registry + WMI, not
+  WinRM.** WinRM is on by default on Server 2012+ but **off by default on
+  client SKUs**, so on a workstation estate this product currently reaches
+  fewer hosts out of the box than Nessus does. That is a recorded coverage gap
+  needing a second transport, not a defect in this one.
+
+- **Patch assessment does not read installed KBs**, and the real host confirms
+  why: `Get-HotFix` returned **4** entries on a fully patched Windows 11
+  machine, because cumulative updates supersede one another.
+  `windows_patch.py` compares the host's build — UBR included — against MSRC's
+  published fixed builds. `os_assessed` distinguishes "no missing patches" from
+  "could not assess"; never collapse them.
+
+## Windows over SMB / Remote Registry / WMI (`engines/credentialed/smb_executor.py`)
+
+The second Windows transport, added in Phase 12. **WinRM is off by default on
+Windows client editions**, so an estate of workstations was reachable only where
+somebody had turned it on. SMB is on by default; this closes that reach gap
+without touching WinRM, which remains the default in `_TYPE_DEFAULTS` and is
+still the deeper transport.
+
+- **It is a transport, not a collector, and the seam was already there.**
+  `WindowsCollector` asked for data by *name* (`_run("os_info")`), so `_run`
+  now consults `executor.run_named(key)` first and falls back to PowerShell.
+  Every parser is untouched. If you add a Windows capability, add a command to
+  the catalogue and — if it can be answered from WMI or the registry — a
+  handler to `_NATIVE_HANDLERS`. Do not add a collector.
+
+- **`run()` refuses, deliberately.** Remote execution over SMB means creating a
+  service or a scheduled task, which writes to a host this product only reads
+  and is the elevation mechanism the Windows path may not invent. A
+  command-shaped check therefore reports UNAVAILABLE → ERROR. **Never make this
+  return success**; a test guards it, and `executes_commands` is how the
+  collectors ask.
+
+- **Handles are per-thread and must stay that way.** `collect_all` runs its
+  sections in a thread pool and neither an impacket `SMBConnection` nor a bound
+  DCE/RPC handle is thread-safe. Sharing one made the target reset the
+  connection mid-run and cost the software inventory, the share list and the OS
+  revision — and **without the UBR every Windows host looks like the day-zero
+  release of its version**. Same trap as the pywinrm session, one protocol over.
+
+- **Remote Registry is trigger-started, so the first bind can lose a race** with
+  the service's own startup and return `STATUS_PIPE_NOT_AVAILABLE`. It is
+  retried. **The service is never started by this code**, and its state is read
+  over SCMR *before* the pipe is bound: binding can trigger-start it, and this
+  product's own `ccure.win.remote_registry.not_running` check treats a running
+  one as a finding — so without measuring first the scan could report a
+  condition it created.
+
+- **Packages come from the registry uninstall hives, never `Win32_Product`.**
+  Querying that class triggers an MSI reconfiguration of every installed
+  product: a write to the host, and notoriously slow.
+
+- **DCOM needs more than 445.** WMI negotiates a dynamic high port after the
+  endpoint mapper on 135, so a firewall permitting SMB alone yields SMB and
+  Remote Registry and no WMI. Each subsystem is opened lazily and independently
+  so losing one does not lose the others.
+
+- **An item this transport does not serve must not become a security fact.**
+  `_run_json` returns `{}` both for "the host answered with nothing" and for
+  "nobody asked", and the posture code used to read `{}` as data: an absent
+  `telnet_status` became `telnet_disabled = True`, an unearned PASS that reached
+  a compliance control, while an absent `netbios_status` and `tls_status` each
+  raised a finding on every SMB host. Use `WindowsCollector._reading(key)`,
+  which returns `None` when the item was not collected, and **omit the derived
+  key** — absence is how this codebase says "not assessed". Do not restore a
+  `False` default anywhere on that path (`registry_hardening`, the evidence
+  adapter): `False` asserts the insecure state, which is the same defect
+  pointing at a FAIL. `_hardening_row()` renders the third state.
+
+- **Registry values arrive as text, and the posture handlers need numbers.**
+  `read_registry_value` returns a string because the configuration-audit
+  collector compares against the string the WinRM path yields. The posture
+  handlers must coerce with `_as_int`: the collector tests
+  `smb1_raw.get("SMB1", 0) == 1`, and `"1" == 1` is False, so a host with SMBv1
+  genuinely enabled read as SMBv1 disabled.
+
+- **Four error types, as on every other transport** — rejected credential,
+  insufficient privilege, nothing listening, subsystem switched off. impacket's
+  rejection text contains none of "401", "unauthorized" or "authentication", so
+  it is matched explicitly; without that a refused password classifies as a
+  connection error and the operator goes looking at the firewall.
+
+- **`query_service` falls back to SCMR, like `_services` does.** It did not, and
+  on a host permitting 445 alone — the firewall shape the fallback exists for —
+  every service *check* reported ERROR while the service *inventory* succeeded.
+  Both sources failing is an exception, never "the service is not installed",
+  which for a telnet rule would be a pass.
+
+- **`UNSERVED_KEYS` is the honest account of what this transport does not
+  collect**, and every entry carries a reason. 18 of 31 collector items are
+  served natively; the rest fall through and are recorded in
+  `collection_errors` under an `item:` prefix rather than left to look like an
+  empty reading from the host.
+
+- **The config-audit `registry` and `service` collectors prefer a native
+  answer**, through `_native(ctx, "read_registry_value")` and
+  `query_service`. WinRM has neither method and keeps running its PowerShell.
+  Rule parameters are bound into WQL with quotes doubled — the rules are
+  administrator-editable, so that is an injection boundary inside the product.
+
+## Credential authentication methods
+
+- **`USABLE_AUTH_METHODS` is to `auth_method` what `USABLE_TRANSPORTS` is to
+  `transport`.** The column admits a reserved value so a later phase adds a
+  mechanism rather than a migration; the API validates against the *usable* set
+  so nobody saves a credential that cannot authenticate. `auth_method` had no
+  such split, which is how `kerberos` came to be accepted by the API, the model
+  and `WinRMExecutor` while the runtime had none — pywinrm raises
+  `requested auth method is kerberos, but pykerberos is not installed` at the
+  **first command**, so the credential failed on the customer's network rather
+  than when it was saved. It is refused at construction now, and stays in the
+  CHECK constraint deliberately.
+
+- **`ntlm_hash` is Pass-the-Hash, and the password is never sent with it.**
+  `login(user, "", domain, lmhash=…, nthash=…)` — passing both would let
+  impacket fall back to the password when the hash is refused, which is two
+  failed logons instead of one and hides which material the target rejected. The
+  hash is stored in `encrypted_password` but **must not leave
+  `_resolve_stored_credential` as `material["password"]`**: every transport
+  would present it as plaintext against the account. A value that is not 32 hex
+  characters is refused rather than sent — an unparsed one produces a failed
+  logon against a real account, which is a lockout caused by a typo.
+
+- **`paramiko.pkey.load_private_key` does not exist in paramiko 4**, and calling
+  it is what made every key-content credential fail as "Failed to parse private
+  key content" — a fault that reads as a malformed key from the operator rather
+  than a missing function. `_load_private_key` tries Ed25519, RSA then ECDSA,
+  because paramiko has no auto-detecting loader for a string. An encrypted key
+  with no passphrase says exactly that, which is different from "not a key".
+
+- **Elevation is `sudo`, `dzdo` or `pfexec`; `su`, `pbrun` and `ksu` are
+  refused with reasons in `UNSUPPORTED_ELEVATION`.** `pfexec` takes **no
+  password** — Solaris RBAC authorises from the account's profile, and writing
+  one would leave it unread in the command's stdin where the command could
+  consume it. An unsupported method elevates nothing rather than guessing at its
+  option syntax. `dzdo` and `pfexec` are implemented and **not target-validated**;
+  say so rather than implying otherwise.
+
+## Credentialed transport and port resolution (`engines/credentialed/transport_resolver.py`)
+
+Where an authenticated session is opened. Until this existed the answer was
+`compliance_credentials.port`, which is **NOT NULL with a model default of 22** —
+so "the operator chose 22" and "nobody said anything" are the same row.
+
+- **The port scan's service identification is evidence, and the resolver reads
+  it.** Candidates are the stated port plus every open TCP port positively
+  identified as that transport's service. A host running sshd on 2222 used to be
+  skipped with "Port 22/tcp not open" on a scan that had already identified sshd
+  on 2222 — the evidence was in the same dictionary the guard was reading.
+
+- **A credential is only ever offered a port that is stated on it or identified
+  as that transport.** Walking every open port until something authenticates is
+  credential spraying against the customer's own estate, and it is what a "try
+  harder" resolver becomes the moment identification is dropped. `ssh` is
+  matched by service *token* (so `SSH-Alt` qualifies and `ssl` does not), by the
+  RFC 4253 banner, or by product; WinRM by `wsman`/`winrm` or the
+  `Microsoft HTTPAPI` product string — which is the only thing identifying a
+  listener moved off 5985.
+
+- **Selection is by TCP reachability, never by attempting authentication.** Both
+  executors already expose `test_connectivity`. Exactly one authentication
+  attempt is made however many candidates were considered. A **rejected**
+  credential is never retried on another port; only a transport failure —
+  nothing answered — advances, which is what `_is_transport_failure` in
+  `core/tasks.py` decides. Retrying a rejection turns one failed logon into
+  three against an account the lockout control must not trip.
+
+- **Discovery is authoritative where it exists; a TCP probe is the fallback
+  where it does not.** The phase-3.5 enrichment path has the port scan's view
+  and opens no socket — a 5-second connect per host is minutes across a large
+  scan. The standalone `/scan/credentialed` runs no discovery, so it attempts
+  the stated port directly and probes the conventional alternates *only after a
+  transport failure*. `FALLBACK_PORTS` is deliberately two entries per
+  transport, not a port scan.
+
+- **`use_tls` is carried, not re-derived.** `WinRMExecutor` infers TLS from
+  `port == 5986` when it is not told, which is right for the conventional layout
+  and wrong for every other one. 5985/5986 are settled by convention; anything
+  else carries `None`, because nmap keeps the TLS fact in a `tunnel` attribute
+  this product does not parse and a guess addresses an HTTPS listener as
+  `http://`.
+
+- **The stated port leads, except when discovery contradicts it.** Since 22 can
+  sit on a Windows credential without anyone having chosen it, a stated port the
+  scan identified as *some other* service goes second. It is never dropped —
+  service detection can be wrong. Validated against a real host running sshd on
+  22 **and** WinRM on 5985 at once.
+
+- **`_apply_credentialed_enrichment` must pass `transport`, `auth_method`,
+  `domain` and `credential_options`.** It resolved all four from the stored
+  credential and then called the auditor with none of them, so the auditor's
+  `transport="ssh"` default applied to every credential on the main scan path
+  and a Windows credential opened an SSH handshake against a WinRM listener. The
+  standalone route passed them correctly, which is why the defect was invisible
+  to anyone testing that route.
+
+- **That path must also skip `credential_type == database`.** A database
+  credential names an instance, not a host; the standalone task branches on this
+  and the enrichment path did not.
+
+## Elevation on the credentialed path
+
+- **The sudo password goes on the remote command's stdin, never in the
+  command.** `SSHScanner.run_sudo()` owns this and the secret never leaves that
+  class. `LinuxCollector._run` previously built
+  ``echo 'PASSWORD' | sudo -S …`` and passed it to `exec_command`, which puts
+  the customer's password in the argv of the shell sshd spawns — visible in
+  `ps` to every local user on the target, captured permanently by any `execve`
+  audit rule, and from there into this scanner's own debug log, which logged
+  the full command string on failure.
+
+  `run_sudo` rewrites each `sudo` to `sudo -S -p ''` and writes **one password
+  line per invocation**. `-S` reads the password from stdin and `-p ''`
+  suppresses the prompt, which would otherwise land in stderr and be read as
+  command output. `-n` is stripped wherever it appears, bundled forms such as
+  `-ln` included: it means "never prompt" and sudo honours it over `-S`, so
+  leaving it makes sudo refuse the password and the failure reads on the target
+  as a permissions problem rather than as a scanner bug. One line *per
+  invocation* because `sudo -l || sudo -l` runs at most one of them but which
+  is decided on the target, and relying on sudo's credential cache instead
+  breaks wherever `timestamp_timeout=0` is set.
+
+  A collector must never read `ssh._password`. `has_password` answers whether
+  elevation is worth attempting without exposing the secret, and
+  `tests/credentialed/test_sudo_password_safety.py` pins both — including a
+  source-level guard against the `echo … | sudo` shape returning.
+
+- **`SSHScanner._redact()` masks the session password in anything logged.**
+  With the stdin fix the command no longer carries it, so this is defence in
+  depth: a log line is the one place a regression here would be written to disk
+  and kept.
+
+- **The configuration-audit collectors do not elevate at all.** `ShellRunner`
+  has no sudo path, so every Phase 3+ Linux check reads what the scanning
+  account can read. That is a recorded limitation, not an oversight — adding
+  elevation there widens what a compromised scanner credential can do on every
+  host in the estate, and it needs its own decision.
+
+- **There is no elevation mechanism on the Windows path and none may be
+  invented.** WinRM and OpenSSH both run as whoever authenticated; escalating
+  by creating a service or a scheduled task changes a host this product is only
+  meant to read. `test_windows_privilege_context.py` guards the absence by
+  name (`New-Service`, `Register-ScheduledTask`, `schtasks`, `psexec`,
+  `runas`, …).
+
+  What is recorded instead is **which token the session held** —
+  `system_data["privilege_context"]` carries `account`, `is_administrator` and
+  `is_system`, read via `WindowsBuiltInRole.Administrator` (which resolves to
+  S-1-5-32-544, so it works on a non-English install where matching the group
+  *name* fails). A probe that could not be read yields `None`, not `False`:
+  reading it as "not an administrator" would attribute a complete audit's
+  findings to a partial one.
+
+  **Measured, not assumed:** against a real Windows 11 Pro host over WinRM as a
+  member of Administrators, all 20 Windows built-in checks completed with
+  **zero errors** and no check in the current set needs SYSTEM. The three empty
+  fields in the Windows collector — `arp_table_raw`, `env_vars_summary`,
+  `login_history_raw` — are hardcoded placeholders in `_collect_network` and
+  `_collect_login_history`, not privilege failures.
+
+- **`credentialed_status` has one writer**, `asset_syncer.set_credentialed_status`.
+  The standalone audit set the literal inline and the Vulnerability Audit's
+  credentialed pass did not, so a host that was authenticated to, collected
+  from and configuration-audited still read as `unknown` — and
+  `core/compliance_tasks.py` routes every rule in
+  `CREDENTIALED_EVIDENCE_SOURCES` to `manual_review` unless it says `success`.
+  Measured on the live database: **zero** assets carried the attribute despite
+  that path having written eight configuration and privilege findings against a
+  real Windows host. `success` and `failed` are both written; a host nothing
+  was attempted against is left **unset**, because "no credential was in scope"
+  and "the credential was refused" are different facts.
+
+## Scan scheduling (`core/scheduling/`)
+
+Recurring network and credentialed scans. Phase 1 of the gap-closure
+programme; tracker in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+- **Scheduling adds no scan engine.** `core/scheduling/dispatcher.py` calls
+  `run_host_discovery_task.delay(...)` and `run_credentialed_scan_task.delay(...)`
+  — the same tasks the manual routes call. A scheduled run is an ordinary
+  `Scan` row and shows up in Scan History, reports and the dashboard like any
+  other, marked `options.origin = "schedule"`. If you add a scan kind, add a
+  dispatch branch; do not add a pipeline.
+
+- **`scan_schedules` is deliberately not `compliance_scan_schedules`.** That
+  table's `framework_id` and `policy_id` are NOT NULL FKs into the compliance
+  catalogue and a network scan has no framework. Six of its behaviours are
+  defects this table does not repeat, each documented at the point of the
+  decision: no time zones, `monthly` as a 30-day `timedelta`, a
+  `cron_expression` nothing reads, no duplicate-execution guard, no execution
+  history, and a bare `except` reporting `success: False`.
+
+- **A schedule stores a credential *reference*, never a secret.**
+  `run_credentialed_scan_task` already resolved `credential_id` worker-side, so
+  nothing had to change to make this true. `POST /scan/credentialed` still
+  accepts a plaintext password and puts it in the task arguments; a schedule
+  doing that would put it in the database, in every backup, and in the broker
+  payload on every run.
+
+- **Scope and quota are re-checked at every dispatch, never inherited.** A
+  schedule written in March and firing in November is a stored intent, not a
+  standing authorisation — narrowing an org's `scan_scope_cidrs` must take
+  effect on the next run.
+
+- **`next_run_at IS NULL` means dormant, not due.** The compliance scheduler
+  treats NULL as due (`or_(next_run_at.is_(None), ...)`), so any row written
+  without a computed next run fires on the very next tick regardless of the
+  time the user chose. Here NULL is a one-time schedule that has fired, or a
+  custom recurrence nothing can place yet.
+
+- **Wall-clock time is preserved across DST, and the awkward hours have
+  defined answers.** `core/scheduling/recurrence.py` computes in the schedule's
+  IANA zone: a skipped hour (spring forward) is pushed to the first instant
+  that exists rather than skipping the day; a repeated hour (autumn back) fires
+  once, at the earlier instant; day 31 clamps to the month's last day. Zones
+  are IANA names only — a fixed offset cannot express daylight saving and is
+  refused.
+
+- **Next run is computed from *now*, not from the previous `next_run_at`.** A
+  worker down for a week comes back and runs once, not seven times.
+
+- **Duplicate dispatch is prevented by `pg_try_advisory_xact_lock`**, not by
+  assuming one beat process. Transaction-scoped, never session-scoped —
+  `pg_advisory_lock` releases when the *connection* closes and SQLAlchemy pools
+  connections, so a session-scoped lock leaks onto the next unrelated request.
+
+- **`custom` (cron) is stored but not yet placed.** `compute_next_run` returns
+  None for it, so such a schedule stays dormant rather than firing at an
+  arbitrary time. Parsing cron needs a dependency decision that has not been
+  taken.
+
+- **Body models are prefixed `ScanSchedule` and must stay that way.** FastAPI
+  keys OpenAPI component schemas by class name; a `ScheduleCreate` here
+  silently replaced `routers/compliance.py`'s in the generated contract. The CI
+  contract gate caught it — a regeneration showing *deletions* is the signal.
+
+## Configuration audit engine (`core/config_audit/`)
+
+The generic engine for configuration and hardening assessment. Phase 3 of the
+gap-closure programme; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    Configuration Rule → Collector → Expected State → Actual State
+        → PASS / FAIL / MANUAL / N/A → Finding → Risk → Remediation → Reporting
+
+**No benchmark name appears anywhere in this package, and none may.** CIS
+(Phase 4), STIG (Phase 5), application, database, network-device and cloud
+content are all just sets of `ConfigCheck` records. The moment the engine knows
+which benchmark it is running, adding the next one means editing the engine.
+
+- **Rules live in `compliance_rules`, not a new table.** It already carries
+  `check_type`, a JSONB `check_definition`, `target_platform`, `severity`,
+  versioning and a junction to every framework control. A second rule table
+  would need all of that again, and a second finding table, a second score and
+  a second report generator come along behind it — which is exactly why Phase 0
+  widened `vulnerability_definitions` rather than adding one.
+  `ConfigCheck.to_check_definition()` / `.from_rule()` are the adapter.
+  Migration `b4c5d6e7f8a9` widens the two CHECK constraints; the seven
+  pre-existing `check_type` names are kept verbatim, and the two rule kinds are
+  told apart by `check_definition.config_check`, not by the type name.
+
+- **Four collection states, and collapsing any two is the whole class of bug
+  this engine exists to prevent.** `COLLECTED` (a value was read) → compared.
+  `ABSENT` (the collector ran and the thing is genuinely not there) → the
+  *rule's* policy. `UNSUPPORTED` (out of scope for this target) →
+  NOT_APPLICABLE. `UNAVAILABLE` (collection failed) → **ERROR, never a
+  verdict**. "The registry value does not exist" and "the registry value is
+  empty" routinely mean opposite things, and a collector returning `""` for
+  both has lost the distinction before the engine sees it.
+
+- **`AbsencePolicy` has no default, deliberately.** Absence is a PASS for
+  "SMBv1 must not be installed", a FAIL for "auditd must be installed", and
+  NOT_APPLICABLE for "if IIS is present it must be configured thus". A default
+  would silently pick whichever answer flatters the score, so a rule that does
+  not choose is refused at construction. Most Windows rules are
+  `MANUAL_REVIEW`: a security setting absent from the registry is at a platform
+  default that varies by build and SKU, and neither PASS nor FAIL can be
+  asserted from the absence alone.
+
+- **`ShellRunner` keeps the exit code; the collectors' own `_run` does not.**
+  `WindowsCollector._run` and `LinuxCollector._run` both end
+  `return _clean_output(result.stdout) if result.stdout else ""`. For bulk
+  inventory that is defensible. For a check it means a failed command returns
+  `""`, the comparison reads `""` as the host's setting, and a verdict is
+  reported about a machine that never answered. There is no method on
+  `ShellRunner` that returns a bare string.
+
+- **Commands print a sentinel, and a value runs to the end of the output.**
+  `CCURE::VALUE::` / `CCURE::ABSENT::`, with a non-zero exit meaning the read
+  failed. Only the *first* line carries the prefix — the first parser returned
+  that line alone, so every configuration file was read as its first directive
+  and every other directive reported as absent, which surfaces as a fleet-wide
+  configuration gap rather than as a parser bug. Output carrying no sentinel is
+  UNAVAILABLE, never an empty reading.
+
+- **`grep` exiting 1 is a successful read of "no match", and so is
+  `systemctl is-active` on a stopped unit.** The Linux commands are written to
+  exit 0 for all three normal outcomes. Exit **97** is the reserved sentinel for
+  "the tool I needed is not installed" — a host with no `dpkg-query`, no `rpm`,
+  no `ss` or no `systemctl` reports UNAVAILABLE, not ABSENT: nothing was
+  established about the package, only about the package manager.
+
+- **Rule parameters are data.** Every one goes through `ps_quote` (doubling
+  single quotes) or `shlex.quote`. The rules are administrator-editable, so this
+  is an injection boundary inside the product, not defensive style.
+
+- **A FAIL becomes an ordinary `StandardizedFinding`** in the same `cve_list` as
+  the CVE findings, minted `CCURE-CFG-…` and filed as
+  `definition_type = config_check` with `cve_id` NULL. Only a FAIL: a PASS is a
+  compliance verdict, not a vulnerability, and the other three are not verdicts.
+  `RemediationConfidence.CONFIGURATION_GUIDANCE` exists because
+  `NONE_PUBLISHED` renders as "no published fix — compensating controls only",
+  which is true of an unpatched CVE and false of a hardening control.
+  **Every `RemediationConfidence` member needs a label in
+  `pdf_generator.REMEDIATION_PROVENANCE`**; that lookup used to be a dict
+  subscript and a missing member raised KeyError inside PDF generation.
+
+- **The audit runs inside the credentialed scan**, on the session the collectors
+  already opened — `core/tasks.audit_credentialed_host`, inside the `with
+  connection` block. Moving it after that block leaves every check reporting "no
+  authenticated session". There is deliberately **no HTTP endpoint that runs
+  one**: that would be a second way to start a scan against a caller-named
+  target, needing its own scope check, quota check, rate limit and audit entry.
+  An audit that could not run is recorded as
+  `MISC-CREDENTIALED-CONFIG-NOT-ASSESSED`, because a crashed audit leaves no
+  failing checks and that is byte-identical to a host that passed every one.
+
+- **`core/config_audit/operators.py` is the single comparison vocabulary.**
+  `core/compliance_tasks._evaluate_operator` delegates to it and
+  `_evaluate_operator_legacy` is the pre-Phase-3 implementation, kept as the
+  reference `tests/scans/test_config_audit_operators.py` compares against over
+  a truth table. Do not add a second evaluator. The shared operators' semantics
+  are frozen by the seeded rule catalogue, quirks included. `evaluate_detailed`
+  adds a third state, `UNKNOWN_OPERATOR`: the old bare `return False` meant a
+  misspelled operator evaluated False and was recorded as a **fail** against
+  every host it ran on.
+
+- **`api` is reserved and has no collector.** (`database_query` and the
+  `database` platform were reserved here until Phase 7 implemented them;
+  Phase 8 added `structured_config` for nested and structured
+  configuration files; Phase 9 added `container` for enumerating live
+  runtime state; Phase 10 added `scap_rule` for a compiled OVAL definition
+  — see the database, middleware, container and SCAP sections below. The `container` *platform* is still reserved and unused: the
+  Phase 9 rules target `linux`, because a runtime is assessed over its
+  host's session.) Naming them now means Phases
+  9–17 need no CHECK migration on a table holding customer rules. A rule using
+  one reports ERROR — "this product cannot perform that check" is a product gap,
+  not a property of the host, and must never render as NOT_APPLICABLE or PASS.
+  `GET /config-audit/capabilities` reports the gap from the live registry.
+
+- **The built-in pack (`builtin/`) is 20 rules and is not a benchmark.** It
+  exists so the engine ships exercised. Growing it does not grow capability.
+
+## Benchmark content (`core/benchmarks/`)
+
+Hardening benchmarks as loadable data on top of the Phase 3 engine. Phase 4 of
+the gap-closure programme; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    pack.json → compliance_frameworks/_controls/_rules → ConfigAuditEngine
+      → evidence → verdict → compliance_findings → risk → remediation → report
+
+Format and authoring guide: [`Backend/data/benchmarks/README.md`](Backend/data/benchmarks/README.md).
+
+- **No CIS Benchmark ships in this repository and none may be committed.** CIS
+  Benchmark recommendation text, rationale and remediation are the Center for
+  Internet Security's, distributed under licence. A customer with a SecureSuite
+  membership converts their own export into a pack; nothing in the code changes.
+  **Do not write benchmark content from memory** — a rule labelled `2.3.1.1`
+  carrying a recalled expected value is a false compliance claim in a
+  customer's audit report and is indistinguishable from a correct one until an
+  auditor checks. What *does* ship is `data/benchmarks/*.benchmark.json`, two
+  CCURE-authored baselines generated from `core/config_audit/builtin/`, whose
+  `licence` says in words that they are not CIS Benchmarks.
+
+- **`assessment` is declared, never inferred** — `automated` (has a check),
+  `manual` (the benchmark itself wants a human), `unimplemented` (the benchmark
+  automates it, this product does not yet, and it must say why). Reading "has a
+  check" as "is automated" is the inference the format refuses; it is the same
+  defect as the eighteen ISO controls that claimed `semi_auto` with nothing
+  behind them. `unimplemented` is what keeps the coverage figures honest — a
+  benchmark that omits what it cannot do reports better coverage than it has.
+
+- **A benchmark *is* a framework.** No new table. Recommendations are controls,
+  automated recommendations are rules, and the register, score, findings queue
+  and report all work the moment the rows exist. Framework ids carry the
+  `cfw_bm_` prefix, which is load-bearing: `compliance_frameworks.is_active`
+  uses it to tell loaded content from a *shipped but parked* catalogue. Without
+  it a loaded benchmark can never appear in the hardcoded active tuple and
+  scores nothing. A prefix rather than "anything unknown is active", because
+  that reading would make a misspelled framework id active and the guard could
+  no longer answer 404.
+
+- **`run_scan_task` skips configuration rules, and must keep skipping them.**
+  A benchmark rule has no evidence `key` — it is evaluated against a live host
+  by the configuration audit and synced afterwards by
+  `core/config_audit/compliance_sync.py`. If the compliance scan also evaluated
+  it, it would read the missing key as missing evidence and write
+  `manual_review` **over the real verdict**, silently blanking every benchmark
+  result the last credentialed scan established.
+
+- **`platforms` is windows-or-linux and that is not enough for benchmarks.**
+  A CIS Ubuntu 22.04 benchmark and a CIS RHEL 9 benchmark are both `linux`;
+  running one against the other's host checks paths and package names that
+  distribution does not use and reads their absence as a verdict. A pack
+  declares `applies_to` once (`os_name_contains`, `os_version_prefix`) and it
+  flows onto every check. **An unidentified OS is an ERROR, not
+  NOT_APPLICABLE** — "we could not tell what this host runs" and "this host is
+  not what the benchmark is for" are different facts, and only the second is a
+  legitimate reason for a control to leave the score.
+
+- **Profiles are data on the control**, not engine behaviour:
+  `compliance_controls.profiles` (JSONB, GIN-indexed, migration `c5d6e7f8a9b0`).
+  Empty means in scope whatever profile was selected, which is what every
+  pre-Phase-4 control is. `saq_profiles` expresses the same idea for PCI-DSS
+  and is deliberately left alone — the PCI scoping queries read it — so **new
+  content uses `profiles`**, pinned by a test. Choosing a profile per
+  organisation is a scan-policy question and belongs to Phase 12; the filter
+  exists and is tested.
+
+- **One theme list, in `db/models/compliance.CONTROL_THEMES`.** It was
+  previously copied five ways — the model twice (`ck_control_theme`,
+  `ck_score_theme`), every framework migration, and `tests/conftest.py` — and
+  the conftest copy silently won, because it rewrites the constraint on every
+  session. A theme added to the model and its migration was still rejected by
+  the test database with nothing saying why. Benchmarks use one generic
+  `BENCHMARK` theme; minting one per benchmark section would add ~80 values for
+  four platforms alone. The section travels in `tags`.
+
+- **`_build_test_schema` bootstraps from the models and stamps head**, so a
+  migration written *after* a database was bootstrapped never runs against it.
+  Column changes are gap-filled; **CHECK constraint changes are not**. If a
+  constraint change seems not to have applied, check
+  `SELECT pg_get_constraintdef(...)` before assuming the migration is wrong.
+
+- **CIS Controls v8.1 is active as of Phase 4** and is the framework benchmark
+  crosswalks target. Note it is the *Controls* (153 governance safeguards), not
+  the *Benchmarks* — separate publications. It shipped as a seed file, a theme
+  migration and an `ALL_FRAMEWORK_IDS` entry since before Phase 4 and
+  **`main.py` never seeded it**: parked *and* unseeded, so the omission was
+  invisible. It is in the bootstrap now.
+
+## Local privilege checks (`core/config_audit/collectors/privilege_*.py`)
+
+Local privilege-escalation and host-exposure enumeration. Phase 5 of the
+gap-closure programme, closing GAP-08; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine.** These are Phase 3 `ConfigCheck` records with a new check
+type, `privilege`, executed by the same `ConfigAuditEngine` and reaching the
+same finding, risk, remediation and report paths.
+
+- **The shape is "which items are offending", not "read one value".** A probe
+  returns one offender per line; the rule asserts the list is empty. So a clean
+  host produces an ABSENT reading and `AbsencePolicy.PASS` makes it a pass,
+  while a breached one produces a FAIL naming exactly what to fix. That is why
+  these use `absent = PASS` where the Phase 3 Windows rules use
+  `MANUAL_REVIEW`: a missing registry value tells you nothing, but a *search*
+  that returned nothing is a real result.
+
+- **`privilege` is its own check type, not a `command` rule.** Service-ACL
+  parsing is not a shell one-liner and a rule author should not be pasting one.
+  Migration `d6e7f8a9b0c1` adds the type; the probes live in code, are tested
+  against captured output, and a rule just names one.
+
+- **`ConfigCheck.finding_type` decides the identifier.** `config_check` mints
+  `CCURE-CFG-…`, `privilege_check` mints `CCURE-PRV-…`, and they group into
+  different report families. "Deviates from a baseline" and "has a path to
+  SYSTEM" are different piles to a triager. The engine carries `finding_type`
+  on every result, because `core/tasks._run_configuration_audit` builds findings
+  from the *result* and would otherwise file every privilege finding as CFG.
+  `cve` is refused at construction.
+
+- **Three false positives were found by real-target validation, and each is the
+  reason to do it.** All three would have shipped looking correct:
+
+  - **`NT SERVICE\*` virtual accounts.** The service-ACL probe reported seven
+    services on a stock Windows 11 workstation, because TrustedInstaller
+    (`S-1-5-80-956008885-…`) legitimately holds full control over service
+    configuration and each service's own account holds ChangeConfig over
+    itself. `S-1-5-80-*` is now trusted.
+  - **`stat` does not dereference symlinks.** `/bin`, `/sbin` and `/lib` are
+    symlinks into `/usr` on every modern distribution, and a symlink's own mode
+    is always 777 — so the writable-PATH probe reported them as world-writable
+    on every host. It uses `stat -L` now. **The Phase 3
+    `LinuxPermissionCollector` has the same `stat -c` without `-L`**; it is only
+    pointed at regular files today, so it is not currently wrong, but a symlink
+    target would fool it.
+  - **`ssh-keysign` is legitimately SUID** on Debian and Ubuntu.
+
+- **A count is not a check.** "37 SUID binaries found" says nothing — a stock
+  distribution ships about thirty. `EXPECTED_SUID` is the allow-list and the
+  probe reports the *difference*. The list is deliberately generous: a missing
+  legitimate binary is a false positive, and a check that cries wolf is worse
+  than one that misses, because the reader stops looking.
+
+- **Exit 97 means "the tool I needed is not installed".** A host with no `find`
+  has established nothing about its SUID binaries, and `getcap` is absent on
+  many images. That is UNAVAILABLE → ERROR, never "none found". Proven on a real
+  target, where `file_capabilities` correctly reported not-assessed.
+
+- **These replace prose, and the prose stays.**
+  `LinuxCollector._collect_security_audit` still emits its `security_issues`
+  sentences — the report's posture section reads them and nothing should change
+  what an existing report says. The *finding* is now the authoritative form,
+  because a sentence in a PDF has no severity, no risk score, no remediation, no
+  lifecycle and cannot be triaged or exported.
+
+- **The account-file probe is scoped around the Phase 3 checks.**
+  `ccure.linux.passwd.permissions` and `.shadow.permissions` already assert
+  those two files' modes, so the probe checks *ownership* of all four and the
+  *modes* of `/etc/group` and `/etc/gshadow` only. Repeating them would report
+  one condition twice and make the remediation look twice as large.
+
+- **Coverage is measured by `scripts/measure_privilege_coverage.py`, and its
+  denominator deliberately includes eight areas this build does not implement.**
+  The first version listed twenty areas, all of which the phase then
+  implemented, and reported 100% — a tautology wearing a percentage. The
+  headline figure is *implemented and tested*: an area whose test is deleted
+  loses its coverage credit, because the script reads the test sources rather
+  than a hand-maintained list.
+
+## Middleware configuration assessment (`core/config_audit/structured.py`)
+
+Authenticated assessment of nginx, Apache httpd, Tomcat and the Docker daemon's
+own configuration. Phase 8 of the gap-closure programme, closing GAP-09;
+tracker in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine, no new scan kind, no new route.** These are Phase 3
+`ConfigCheck` records at `platform = linux|windows`, so they run inside the
+credentialed host audit alongside the OS hardening rules — a web server's
+configuration is part of the host's posture, not a separate scan. 40 checks.
+
+- **`config_file` could not have been extended to cover this, and that is the
+  phase's main engineering.** It reads one directive out of a flat
+  `key<separator>value` file. All four products keep their settings inside a
+  structure, and there was no XML or JSON reading anywhere in
+  `core/config_audit/`. The failure a flat reader produces is not "misses the
+  setting" — `AllowOverride None` under `<Directory />` and under a document
+  root are different statements, and a reader that cannot say which it found
+  returns whichever it saw last, confidently.
+
+- **One check type, `structured_config`, with `format` as a parameter.** From
+  the engine's point of view nginx, Apache, XML and JSON are one shape: name a
+  file and an address, get COLLECTED / ABSENT / UNAVAILABLE. Four check types
+  would have been four CHECK-constraint values on a table holding customer
+  rules for a distinction the engine cannot act on. Migration `a9b0c1d2e3f4`.
+
+- **Scope is matched exactly, never by suffix.** `scope: None` means any depth,
+  `[]` means top level only, `["http","server"]` means that exact path. An
+  "ends with" rule would let a directive in `http > server > location` satisfy
+  a rule about `http > server`, and telling those apart is the entire reason to
+  parse structure.
+
+- **A missing configuration file is UNSUPPORTED, not ABSENT.** A Linux host
+  that does not run Apache is not *failing* Apache's rules. Get this wrong and
+  every host in the estate acquires findings about software it does not have,
+  which is how a configuration report gets ignored wholesale.
+
+  **The Docker daemon is the deliberate exception** (`missing_file: absent`).
+  Most installations have no `daemon.json` at all, and that means every setting
+  is at its built-in default — a real state. Those defaults are a mixture, so
+  each rule declares what its own absence means: no `hosts` entry is secure
+  (PASS), no `icc` entry means inter-container traffic is on (MANUAL_REVIEW,
+  because failing it would fire on every Docker host there is).
+
+- **An unresolved include poisons an absence.** nginx and Apache both ship the
+  interesting settings in *included* files, so a directive missing from the
+  named file may be somewhere the collector did not look. Incomplete expansion
+  makes an absent reading UNAVAILABLE; only a *found* value is trusted.
+  Expansion is one level deep, which covers every default layout these products
+  ship.
+
+- **Include globs never reach a shell.** They come out of the *target's own
+  configuration*, so they are attacker-influenced in a way rule parameters are
+  not. Directories are listed and matched with `fnmatch` in Python; a glob
+  handed to a shell for expansion would be command execution on the target
+  during an audit.
+
+- **Any DOCTYPE is refused before the XML parser sees it.** ElementTree *does*
+  expand internal entities — measured, not assumed — and the XML here comes off
+  a host being audited, so an entity bomb in a `server.xml` is a
+  denial-of-service route into the scanner. No configuration file assessed here
+  carries a DTD, so the ban costs nothing.
+
+### Five things real containers settled, each of which had shipped looking right
+
+- **Included files lost their enclosing scope.** nginx ships `server` blocks in
+  `conf.d/*.conf`, included from inside `http`; parsed alone they scope as
+  `server`, so every rule about `http > server` found nothing and reported it
+  as not configured. `rescope()` grafts a child onto the branch its `include`
+  sat on.
+- **Apache resolves a relative `Include` against `ServerRoot`**, not the config
+  file's directory. Assuming the latter left the include unexpanded, which
+  downgraded *every* absent directive in the file to "could not assess". The
+  collector reads `ServerRoot` out of the configuration itself.
+- **A default XML namespace made every Tomcat selection return nothing.**
+  Tomcat 10 declares `xmlns` on `tomcat-users.xml`, so a plain `.//user`
+  matches nothing — the parse succeeds, the selection is empty, the collector
+  reports ABSENT and the rule's `AbsencePolicy.PASS` **declares the server
+  clean**. Namespaces are stripped on parse; pinning rules to the URI would
+  break on the next version, which is the same failure with a longer fuse.
+- **`not_contains` on a list is membership, not substring.** `["apache-coyote"]`
+  against `['Apache-Coyote/1.1']` found no equal element and passed — a server
+  advertising itself, reported clean. Use the scalar path and a regex.
+- **`User` is not a top-level Apache directive.** The stock layout puts it
+  inside `<IfModule unixd_module>`; a rule pinned to the top level reports
+  ABSENT on an entirely normal server.
+
+### Content
+
+**No CIS or STIG content, and none may be added from memory** — same position
+as Phases 4 and 7. These are CCURE-authored rules written from vendor
+documentation, and every directive was read off a live container before its
+rule was written.
+
+**Nothing here duplicates GAP-06.** Missing security headers, dangerous HTTP
+methods, directory listing, banner version disclosure, cookie flags and TLS
+endpoint assessment are observed over the wire and validated there.
+`test_no_rule_duplicates_a_check_gap06_already_makes` enforces the boundary in
+code. GAP-06 answers "what does this server *show* an anonymous client";
+GAP-09 answers "what does its configuration *say*".
+
+**A directive missing from a config file means the compiled-in default**, and
+those differ between builds and distributions — so those rules are
+MANUAL_REVIEW, following the Phase 3 `sshd_config` precedent. Each one must
+name the vendor default in its description, which a test enforces, so the
+reviewer settles it in one step instead of going to look it up.
+
+### Test targets
+
+Disposable containers, destroyed after use:
+
+```powershell
+docker run -d --name ccure-nginx-target   nginx:1.27-alpine
+docker run -d --name ccure-httpd-target   httpd:2.4
+docker run -d --name ccure-tomcat-target  tomcat:10.1-jdk17
+docker run -d --name ccure-dockerd-target --privileged docker:27-dind
+```
+
+Measured weak → hardened: nginx **11 → 0**, Apache **8 → 0**, Tomcat
+**10 → 0**, Docker **10 → 0**. A run returning zero against a *weakened*
+target is a regression, not a clean server.
+
+Two things worth knowing about the stock images:
+
+- **Tomcat's official image is already hardened on two checks.** `webapps/` is
+  empty (the bundled applications live in `webapps.dist/`) and
+  `tomcat-users.xml` defines no users, so proving those checks *fire* needs the
+  applications copied back deliberately.
+- **`shutdown="SHUTDOWN"` on `<Server>` is a real finding on a stock Tomcat.**
+  It is what the image ships and what Tomcat's own documentation tells you to
+  change; anyone who can reach port 8005 and send that word stops the server.
+
+### Coverage
+
+`scripts/measure_middleware_coverage.py`, denominator frozen at 36 areas before
+implementation and including **twelve areas this build does not implement** —
+six of them IIS, which needs a Windows Server target that is not available
+here. **~3% → 66.7%** (24/36), implemented *and* tested. Product breadth is
+reported separately and never folded in.
+
+## Container and Kubernetes assessment (`core/config_audit/containers.py`)
+
+Authenticated assessment of what a container runtime is *running* and what a
+Kubernetes cluster *allows*. Phase 9 of the gap-closure programme, closing
+GAP-17; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine, no new scan kind, no new route.** 24 checks at
+`platform = linux`, running inside the credentialed host audit — a container
+runtime is assessed over the *host's* session.
+
+- **The Docker daemon configuration belongs to GAP-09, not here.**
+  `daemon.json`, the TCP socket, `icc`, `userns-remap`, insecure registries and
+  the log driver are ten checks built and validated in Phase 8. GAP-17 is about
+  what the daemon is *running*. Two tests enforce the boundary in code, because
+  counting them twice would have inflated this phase by a quarter.
+
+- **`container` is its own check type, for the Phase 5 reason.**
+  `structured_config` reads a document and addresses a value; this enumerates
+  live state and filters it. The rule names a probe, the command is fixed in
+  code, and the filtering happens **in Python** — putting a pipeline of
+  `docker inspect` text-munging into administrator-editable rule data is what
+  Phase 5 refused for service-ACL enumeration. Migration `b0c1d2e3f4a5`.
+
+- **The reserved `container` platform is deliberately unused.** These rules
+  target `linux`. That reservation describes a container as a target in its own
+  right, which is a different idea.
+
+- **Two exit statuses where one would have done, and this is the phase's main
+  design decision.** `97` = the tool is not installed → UNSUPPORTED →
+  NOT_APPLICABLE. `96` = installed but not answering → UNAVAILABLE → ERROR.
+
+  This differs deliberately from Phases 3 and 5, where exit 97 is an *error*.
+  Every Linux host has SUID binaries, so failing to list them is a gap; **most
+  hosts run no Kubernetes**, so not finding it is an answer. Treating it as an
+  error would hand every host in an estate eight findings-shaped errors about
+  software it does not have.
+
+  The second status is what keeps that safe: the probes require `docker info`
+  and `kubectl version` to *succeed*, not merely that a binary exists, because
+  `docker ps` against an unreachable daemon returns an empty container list
+  byte-identical to a clean host.
+
+- **`structured_config` gained `yaml` and `toml` rather than a new collector.**
+  kubelet configuration is YAML, containerd's is TOML, and all three mapping
+  formats parse to the same Python shapes — so `navigate()` is one
+  implementation, not three. `tomllib` is stdlib from 3.11; **PyYAML is
+  declared explicitly** in `requirements.txt` even though it arrives
+  transitively via bandit and pre-commit, which are *development* tooling. That
+  is the dnspython trap: the import is reached at scan time.
+
+- **Only `yaml.safe_load` is ever called.** The full loader constructs
+  arbitrary Python objects from tags such as `!!python/object/apply`, which is
+  remote code execution in the scanner reading a file off a host it audits —
+  the same threat the XML DOCTYPE ban addresses, one format over.
+
+- **A dotted pointer cannot address containerd's keys.**
+  `[plugins."io.containerd.grpc.v1.cri"]` parses to a key literally *named*
+  `io.containerd.grpc.v1.cri`; splitting on dots yields five segments matching
+  nothing, and "matches nothing" is ABSENT, which for these rules means "at the
+  product default". `navigate()` therefore accepts a **list** of segments, and
+  the collector must pass it through without `str()` — see below.
+
+### Three things real targets settled
+
+- **`str(pointer)` silently defeated list pointers.** `_from_mapping` called
+  `str()` on the address, turning `["plugins", "io.containerd…"]` into its repr,
+  which then split on dots into nothing. containerd reported **clean however it
+  was configured**. Found only because a deliberately weakened `config.toml`
+  failed to produce the finding it should have.
+- **`cluster-admin` was reported on every cluster.** The wildcard-role probe
+  excluded roles named `system:*`, but `cluster-admin` is not one and is *the*
+  role that legitimately holds `*` on `*`. The filter is now the
+  `kubernetes.io/bootstrapping: rbac-defaults` label, which 65 of the 69
+  ClusterRoles on a stock k3s carry.
+- **Kubernetes' own components are legitimately privileged.** kube-proxy runs
+  privileged and CNI pods share the host network, so the workload probes skip
+  `kube-system`, `kube-public` and `kube-node-lease`. Without that, every
+  cluster produces a page of findings.
+
+### Content
+
+**No CIS Benchmark content** — same licensing position as Phases 4, 7 and 8.
+These are CCURE-authored rules written from vendor documentation, and every
+probe was run against a live Docker host and a live k3s cluster before its rule
+was written.
+
+**Image scanning, registry scanning and managed-cloud Kubernetes are out of the
+denominator entirely**, not merely unimplemented. They are a different product
+shape needing a Trivy/Grype-class toolchain and cloud credentials.
+
+### Test targets
+
+Disposable containers, destroyed after use:
+
+```powershell
+docker run -d --name ccure-ctr-target --privileged docker:27-dind
+docker run -d --name ccure-k3s-target --privileged -e K3S_KUBECONFIG_MODE=644 `
+  rancher/k3s:v1.31.4-k3s1 server --disable=traefik --disable=metrics-server
+```
+
+Measured weak → hardened: Docker **9 → 0**, Kubernetes **7 → 0**, kubelet
+**4 → 0**, containerd **1 → 0**. The hardened Docker run keeps one deliberately
+well-configured container running (`--user 1000 --read-only --security-opt
+no-new-privileges --cap-drop ALL`), so a clean result proves the probes stay
+silent on a real container rather than on an empty host.
+
+Three things worth knowing:
+
+- **k3s bundles `kubectl` at `/bin/kubectl`.** `k3s kubectl` is not a valid
+  invocation *inside* the image; the guard tries `kubectl` first for that
+  reason.
+- **k3s does not use a kubelet configuration file** — it passes flags. The
+  kubelet rules therefore report NOT_APPLICABLE against it and were validated
+  against a kubeadm-shaped `config.yaml` written to the kubeadm path. That
+  proves the rule, path, parser and verdict; it does not prove a kubeadm
+  kubelet reads the file as assumed.
+- **k3s's containerd config lives at
+  `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`**, not `/etc`.
+
+### Coverage
+
+`scripts/measure_container_coverage.py`, denominator frozen at 42 areas before
+implementation and including **eighteen areas this build does not implement** —
+five of them the Kubernetes control plane, which needs a kubeadm-style static
+manifest that k3s does not have. **~4% → 57.1%** (24/42), implemented *and*
+tested. Runtime breadth is reported separately and never folded in.
+
+## STIG and SCAP content (`core/scap/`)
+
+Reading published SCAP content — an XCCDF benchmark and the OVAL definitions
+its rules check through — and evaluating it against a credentialed host.
+Phase 10 of the gap-closure programme, closing GAP-05; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+    datastream → XCCDF rules + OVAL definitions → compiled definition
+      → ConfigCheck(check_type="scap_rule") → BenchmarkPack
+      → compliance_frameworks/_controls/_rules → ConfigAuditEngine
+      → PASS / FAIL / NOT_APPLICABLE / ERROR → finding → risk → report
+
+**No new engine, no new finding model, no new scan kind, no new route.** The
+persistence cost of the whole phase is one value on one CHECK constraint
+(migration `c1d2e3f4a5b6`). A benchmark *is* a framework (Phase 4), a rule *is*
+a `ConfigCheck` (Phase 3), a failed check *is* a finding (Phase 0).
+
+- **What ships is the reader, not the content.** No STIG is committed and none
+  needs to be — this is the one content gap where licensing is not the blocker.
+  DISA publishes its SCAP benchmarks as US Government works; SCAP Security
+  Guide publishes an `xccdf_org.ssgproject.content_profile_stig` profile per OS
+  under **BSD-3-Clause** (verified against the project's `LICENSE`, not
+  recalled). `scripts/benchmarks/load_stig.py` converts and loads it.
+
+  **An SSG result is not a DISA certification.** SSG renders the STIG's
+  requirements as its own automated content. `--publisher` and `--licence` are
+  required with no defaults, and both land on the framework record, because
+  that distinction has to survive into a report.
+
+- **A definition is compiled, not referenced.** The rule row carries the tests,
+  objects, states and *resolved* variables it needs. The datastream is a 28 MB
+  file on an operator's workstation and the rule runs on a Celery worker months
+  later; a rule that had to reach back to its source content would be
+  unevaluable in exactly the situation it exists for.
+
+- **`UnsupportedConstruct` is the phase's whole honesty mechanism.** OVAL 5.11
+  defines well over a hundred tests and this build evaluates ten, chosen by
+  measuring which ones the available content actually uses (five test types are
+  92.2% of 1,318 test elements). Anything else fails to compile and the
+  converter records the control as `unimplemented` **with the reason** — so it
+  appears in the register, counts against coverage, and can never be mistaken
+  for a control that passed.
+
+- **A refusal knowable from the content belongs at load time, not scan time.**
+  Every shape check — unsupported test type, an entity selected by an operation
+  that cannot be resolved, a path pattern with no literal root — was moved from
+  the probe into the compiler as it was found. The result is that a converted
+  benchmark produces **zero scan-time errors** on a real host: a refusal is
+  reported once, in the load tally, instead of on every host the benchmark ever
+  runs against.
+
+- **Namespaces are read, never stripped** — the opposite of Phase 8. `file_test`
+  exists in the OVAL `unix` schema *and* the `windows` schema; stripping merges
+  them and hands a Windows registry rule to a Unix probe. Every element is keyed
+  `schema:local_name`.
+
+- **Polarity is asserted.** A `compliance`-class definition is TRUE when the
+  host is hardened; a `vulnerability`-class one is TRUE when it is *affected*.
+  Scoring the second with the first's polarity reports every vulnerable host as
+  compliant, so anything but `compliance` is refused rather than negated on a
+  guess.
+
+- **Matching happens in Python, not in the shell.** `textfilecontent54` is 68%
+  of the corpus and its object carries a regex with capture groups plus
+  behaviour flags. Handing that to `grep` means translating one regex dialect
+  into another, on the target, with the rule's own text as input.
+
+### Applicability is not optional, and the measurement says so
+
+A STIG rule is frequently conditional: "if PAM is installed", "if this is a
+real system with a kernel rather than a container". Those are XCCDF
+`<platform>` elements resolving to CPE 2.0 logical tests over OVAL *inventory*
+definitions, and `core/scap/evaluate.evaluate_applicability` runs them with the
+same three-valued logic as everything else.
+
+It was originally declared **not planned**, on the reasoning that
+benchmark-level `applies_to` targeting already answered it. Cross-checking
+against `oscap` on the same host proved that wrong: **without applicability,
+128 rules produced verdicts `oscap` correctly skipped, 102 of them failures** —
+findings about a kernel, a display manager and a PAM stack the target does not
+have.
+
+**The nesting is the semantics, and it was wrong twice.** Platforms declared
+side by side are alternatives; platforms inherited from different levels
+(Benchmark → Group → Rule) are cumulative. Reading the second as the first left
+17 rules applicable that `oscap` skipped — each a Group saying "a system with a
+kernel" and a Rule saying "and PAM is installed", which in a container are
+false and true. `XccdfRule.platform_levels` keeps the structure; `platforms`
+is the flat form and is for tags only.
+
+An applicability that cannot be established is **UNKNOWN → ERROR**, never
+"applies". Reading it as applicable puts the verdict back into the
+false-positive class; reading it as not-applicable silently drops a control
+from the score.
+
+### Six defects real content found, and one a warning found
+
+Every one produced a plausible result and none raised.
+
+- **`<Value>` was read only from the Benchmark's direct children.** XCCDF
+  permits it inside a `<Group>` and SSG puts nearly all of them there, so the
+  real RHEL 9 datastream yielded **zero values** — every parameterised rule then
+  failed to compile for want of a binding and loaded as `unimplemented` with a
+  plausible reason.
+- **Reference *values* were discarded in favour of their href.** SSG writes
+  `<reference href="…/cci/">CCI-000366</reference>`; the href names the
+  catalogue and the **text** is the identifier. Keeping only the href throws
+  away every CCI and NIST control in the benchmark.
+- **No SSG rule carries `<version>`**, so control ids fell back to the full
+  XCCDF rule URI and dozens exceeded the catalogue-key ceiling. Stripping the
+  XCCDF 1.2 identifier scaffolding is defined by the specification.
+- **The NIST crosswalk emitted controls that do not exist** — `PR.DS-01`, a
+  CSF identifier, yielded `DS-1`, and its href says "nist" so a source filter
+  let it through. Entries are now validated against the seeded 800-53
+  catalogue, so a dangling crosswalk is structurally impossible.
+- **`seed_path` returns a `str`.** Calling `.read_text()` on it raised into a
+  broad `except` and every crosswalk vanished while the load reported success.
+  Failing open is right; failing open *quietly* is not.
+- **An empty `<filename/>` selects the directory itself.** Dropping it made a
+  rule about `/var/log/journal` collect nothing, and `check_existence="none_exist"`
+  read "no offending directory" off an empty set — a vacuous truth and a false
+  **negative**. It was the only rule `oscap` and this build ever disagreed on.
+- **Python's `re` does not support POSIX bracket expressions and does not say
+  so.** `[[:blank:]]` parses as a set of the literal characters `[ : b l a n k`,
+  so a pattern written to match whitespace matches punctuation. Found only
+  because a `FutureWarning` about a nested set appeared in scan output nobody
+  would normally read. Unknown class names are refused rather than left in
+  place, which would reproduce the same silent mis-parse.
+
+Two dialect differences are translated rather than declined, each to the
+escape's documented meaning: **inline global flags must lead** in Python
+(`^\s*(?i)X` raises), and **`\N` and `\h` do not exist** — `\N` is read as the
+start of a named-Unicode escape. Scoped pairs `(?i)X(?-i)` become `(?i:X)`;
+handling only the opening half would silently widen the match, which is what
+the content wrote `(?-i)` to prevent.
+
+### Validation
+
+Two disposable containers, destroyed after use. The root credential is
+generated at run time and never written to source, configuration, logs, Celery
+arguments or Git.
+
+```powershell
+docker run -d --name ccure-rocky-target  -p 127.0.0.1:2222:22 rockylinux/rockylinux:9 sleep infinity
+docker run -d --name ccure-ubuntu-target -p 127.0.0.1:2223:22 ubuntu:24.04           sleep infinity
+```
+
+RHEL 9 STIG → Rocky 9: **257 automated, 0 errors**. Ubuntu 24.04 STIG →
+Ubuntu: **144 automated, 0 errors**. Nine rules were proven in both directions
+across all four probe families, including a three-state demonstration: the
+`auditd` rules report NOT_APPLICABLE with the `audit` package absent, FAIL with
+a weak `auditd.conf` once installed, PASS when hardened. Writing the config
+file by hand does not make the rule apply, and it did not.
+
+**`oscap` 1.3.9 agrees on 144 of 144 rules** — same datastream, same profile,
+same host, nothing changed in between. No previous phase has had an independent
+implementation of the same standard to check against.
+
+Two things worth knowing before repeating this:
+
+- **`oscap` will not evaluate RHEL content on Rocky.** The first cross-check
+  returned `notapplicable` for all 1,532 rules, correctly: the benchmark's CPE
+  is `cpe:/o:redhat:enterprise_linux:9`. Running the RHEL STIG against a
+  rebuild is a deliberate operator decision, supplied through
+  `--applies-to-name`; nothing in the code infers that two distributions are
+  interchangeable.
+- **A container satisfies few platforms.** Most SSG rules are gated on
+  `system_with_kernel`, so a stock container reports them NOT_APPLICABLE —
+  correctly. Installing `kernel-core` (Rocky) or `linux-base` (Ubuntu) is what
+  makes the rules behind it reachable for validation.
+
+### Coverage
+
+`scripts/measure_scap_coverage.py`, denominator frozen at 52 areas before
+implementation with **nineteen** declared unimplemented. **0% → 63.5%** (33/52),
+implemented *and* tested. Two areas were found after the freeze —
+`systemdunitdependency` and the OpenSCAP Script Check Engine — and are reported
+separately against a corrected denominator of 54, giving **61.1%**; the frozen
+list is what was predicted beforehand and editing it afterwards destroys the
+only thing it is for.
+
+The converter's own tally is the remaining gap list, produced from real content:
+`local_variable` (111 RHEL 9 rules) and object `<set>` (52) are one problem
+wearing two hats — both need a second collection pass whose results feed the
+first. That is the single change that would move the figure most.
+
+
+### The Windows OVAL schema (Phase 15)
+
+Phase 10 excluded Windows deliberately. Six test types are implemented now,
+measured over the **DISA Microsoft Windows 11 STIG V2R10** — `registry` (117 of
+its 219 rules), `auditeventpolicysubcategories` (43), `userright` (25),
+`wmi57` (15), `passwordpolicy` (7), `lockoutpolicy` (3). **198 of 219 rules
+automate; 63 pass / 126 fail / 9 N/A / 0 errors** against a real Windows 11 Pro
+host. `fileeffectiverights53`, `ntuser`, `sid_sid` and `user_sid55` are
+declared unimplemented with reasons in `WINDOWS_NOT_IMPLEMENTED`.
+
+- **The pack's platform is read from OVAL's `<affected family>`, never
+  assumed.** `to_pack` hardcoded `linux`, which was true of every benchmark
+  loaded until the first Windows one. Left alone it files Windows rules against
+  Linux hosts — where none can be evaluated — and withholds them from the hosts
+  they describe. `BenchmarkPack` refuses a check whose platform disagrees with
+  the pack's, which is what caught it.
+
+- **`ScapRuleCollector.platforms` must include `windows`.** It did not, so a
+  Windows context selected no collector and every rule reported ERROR. Correct
+  direction, zero capability.
+
+- **Four things a live host settled, each of which had shipped looking right:**
+
+  - **`auditpol /get /category:* /r` prints a phrase, not a number** —
+    "Success and Failure", not `3`. A table keyed on `"0".."3"` matches no row,
+    empties the policy and turns all 43 audit rules into errors.
+  - **`pnp_activity` is the one subcategory whose OVAL name is not Windows'.**
+    27 of 28 normalise from `auditpol`'s own text; that one is "Plug and Play
+    Events".
+  - **Windows qualifies built-in trustees and the content does not.**
+    `S-1-5-32-544` resolves to `BUILTIN\Administrators`; the STIG compares
+    against bare `Administrators`. Left qualified, *every* user-right rule
+    fails on a correctly configured host. Strip `BUILTIN\` and `NT AUTHORITY\`
+    only — the content writes `RESTRICTED SERVICES\PrintSpoolerService`
+    qualified. Emitting both spellings is not an option: `entity_check`
+    defaults to "all", so the second would have to match too.
+  - **A user right nobody holds is one item with an empty trustee, not zero
+    items.** Every userright rule here uses `at_least_one_exists`, and "must
+    not be assigned" is expressed as `trustee_name equals ''`. Zero items makes
+    those rules fail on hosts that satisfy them — 0 of 25 could pass.
+
+- **`record` is an OVAL datatype, and a missing column is UNKNOWN.**
+  `wmi57_state` compares a WMI row against `<field name=…>` children.
+  `_compare` matches field by field; a column the row does not carry returns
+  None, because "this build did not collect that" is not "the host disagrees".
+
+- **One `secedit` export serves password policy, lockout policy and all 28 user
+  rights**, memoised per audit. It is the only write any probe performs — a
+  GUID-named file in `$env:TEMP`, removed in the same command, the shape
+  `WindowsSecurityPolicyCollector._run_secedit` established. **Ages and windows
+  are converted**: OVAL states them in seconds, `secedit` exports ages in days
+  and lockout figures in minutes, and comparing the raw number reports a 60-day
+  maximum password age as 60 seconds.
+
+- **`SMBExecutor.wmi_query` is bound to `root/cimv2`.** A query against another
+  namespace — BitLocker's `…\security\microsoftvolumeencryption` — falls
+  through to PowerShell rather than being answered about the wrong namespace.
+
+- **The audit probe matches `auditpol`'s subcategory *text*, so a non-English
+  host resolves fewer subcategories.** The entity is then absent from the item
+  and the rule reads UNKNOWN, which is the safe direction but is not coverage.
+  The GUID column is captured and would be the robust key.
+
+### Reporting is part of done
+
+**A gap is not closed until its results appear correctly in the reports** —
+recorded in the tracker as a standing rule for every phase. Two defects on that
+path were found and fixed in Phase 15, and both affect all configuration
+findings rather than only Windows:
+
+- **The OVAL reading must reach the finding.** Evidence carried
+  `Observed: non_compliant` — the verdict word alone. `observation.raw` names
+  the OVAL object and the existence check it failed, and is appended now with
+  duplicate lines collapsed (a rule with seven registry objects that all found
+  nothing printed the same sentence seven times).
+- **Evidence is refreshed on re-detection.** It was absent from the finding
+  upsert's `set_`, so a finding that stayed open kept the text from the day it
+  was first seen — the same staleness the version fields beside it already fix.
+  On a configuration check the evidence *is* the finding.
+
+## Scan policy (`core/scan_policy/`)
+
+What a scan assesses, as a reusable named configuration. GAP-12; tracker §9P.
+**No new scan engine and no second policy model** — the whole persistence cost
+is one table (`scan_policies`) and one nullable column
+(`scan_schedules.policy_id`), migration `c7d8e9f0a1b2`.
+
+- **The snapshot is not a copy of what ran. It is what runs.** The dispatching
+  side resolves the policy once, writes the resolved `EffectivePolicy` into
+  `scans.options["scan_policy"]`, and **the worker reads it back from there**
+  rather than being handed it in the task arguments. So the historical record
+  and the execution cannot disagree, because there is only one of them. Passing
+  the settings to the task *and* storing a copy for the report is two sources
+  that agree until the day they do not, and that is the day an auditor is
+  reading the report.
+
+- **`record_policy_snapshot` refuses to overwrite.** A completed scan's
+  configuration is settled once, at dispatch; a second write with a different
+  fingerprint is logged at WARNING naming both. That is what makes "editing a
+  policy does not alter Scan A" a property of the code. `overwrite=True` exists
+  for exactly one thing: both dispatch paths rebuild `scan.options` from a dict
+  literal, which drops a snapshot written before it, so it is re-applied
+  afterwards. Forget that call and the record is lost invisibly until somebody
+  reads the report.
+
+- **A field either changes assessment behaviour or it is not in
+  `EffectivePolicy`.** Every attribute is read by benchmark selection,
+  `select_checks`, the section list, the port arguments, the intrusive gate or
+  validation. A knob nobody honours is worse than a missing one. Seven areas
+  are recorded unimplemented in the tracker rather than accepted and ignored —
+  including rate limit and concurrency, which bound the *scanner* rather than
+  what is assessed.
+
+- **An empty collection means "no restriction", never "nothing".** `()` for
+  `framework_ids` selects every framework the tenant has installed, which is
+  the pre-policy behaviour. Read the other way, an under-specified policy
+  reduces a scan to zero checks while still reporting success — a clean report
+  on a host nobody assessed. Every call site passes `list(...) or None` for
+  this reason; an empty list would reach the query as `IN ()`.
+
+- **A check family is a `ConfigCheck.domain`, and the vocabulary is imported
+  from `core.checks.contract`, never restated.** The first version enumerated
+  its own list including `benchmark` and `middleware`, neither of which is a
+  domain — so a policy naming one validated happily and then selected zero
+  checks. `ConfigCheck.__post_init__` raises `SpecError` on an unknown domain,
+  which is what caught it.
+
+- **The fingerprint hashes the behavioural fields only** — not id, name, family
+  code, version or provenance. Renaming a policy must not make a scan
+  incomparable with the one before it, and editing what it assesses must. Note
+  the recorded quirk: the same frameworks in a different order fingerprint
+  differently, because order is preserved for the reader.
+
+- **Where a policy names a setting, the policy wins, and the override is
+  reported.** The frontend sends `discovery_intensity: "normal"` on every
+  request because that is the field's default, so a request-wins rule would
+  silently override every policy asking for `deep`. The API response's
+  `policy.overrides` names what was displaced — a scan that assessed something
+  other than what was asked for must say so when it is accepted, not only in a
+  report afterwards. Where the policy says nothing, the request's value is
+  carried through, so a policy setting only a severity floor does not reset the
+  port range.
+
+- **A scan with no policy still gets a snapshot**, built from its own request
+  parameters, `source = "request"`, no policy name. That is what lets GAP-13
+  tell two such scans apart when the port range changed between them, and no
+  report can imply a policy was chosen when none was.
+
+- **Resolution happens before the scan row exists on the scheduled path.**
+  `create_scan` commits, so resolving afterwards and refusing left a committed
+  scan stuck in `running` that nothing dispatched — every night, for a schedule
+  whose policy had been archived. The HTTP path creates the row first (it
+  carries the scan number and the quota) and deletes it on refusal instead.
+
+- **Validation refuses; it never falls back.** Static validation
+  (`validate_policy`) runs at write time; contextual validation
+  (`validate_for_dispatch`) re-runs at **every** dispatch, so a framework
+  uninstalled in June stops being scanned in July — the rule the schedule
+  dispatcher already applies to scope and quota. A framework that does not
+  exist, is parked here, or is not installed for this tenant give three
+  different messages, because they need three different actions. Excluding the
+  built-in pack while naming no framework is **refused**, not warned: it
+  resolves nothing, and a scan reporting success having assessed no
+  configuration is byte-identical to a clean host.
+
+- **`config` never holds a secret**, structurally. It is returned by the policy
+  API, copied into `scans.options` (client-visible) and printed in the report. A
+  credential is referenced by `compliance_credentials.id` on the scan or the
+  schedule. `require_credential` names a credential and holds a *bool* — it
+  says an authenticated session is required, it cannot contain one.
+
+- **`sync_config_audit_findings` takes `framework_ids` and passing it is not
+  optional for correctness.** A policy that selected the Ubuntu 24.04 STIG
+  resolves only that benchmark's checks, but a rule crosswalked into a second
+  framework would otherwise write a verdict onto that framework's control too,
+  from a scan that never assessed the rest of it — a score over a handful of
+  controls that reads as a near-complete assessment.
+
+- **`scan_policies` is deliberately not `compliance_policies`.** That table's
+  `framework_id` is a NOT NULL FK into the compliance catalogue and a network
+  scan has no framework; its rule bridge enumerates rule versions where a scan
+  policy needs a *predicate*, and freezing the resolved set would stop a
+  benchmark reloaded next month reaching a policy written today. The lifecycle
+  *is* copied — family code, version number, draft/active/archived,
+  `superseded_by_policy_id`. Two divergences: `org_id` is NOT NULL (a global
+  scan policy would let one workspace's edit change another's scans) and the
+  UNIQUE constraint is tenant-scoped.
+
+- **Measured on this installation.** `org_default` has five STIG benchmarks
+  installed, so every credentialed scan resolved all **955** rules regardless
+  of target; against a real Ubuntu 24.04 host that is **792 NOT_APPLICABLE**. A
+  policy naming `cfw_bm_stig_ubuntu2404` at severity `high` resolves **8** and
+  reports **4**. That difference is what the phase is for.
+
+- **API**: `/scan-policies` (11 operations, own RBAC atoms — "may this person
+  run a scan" and "may this person decide what every scan assesses" are
+  different authorisations), plus `GET /scans/{id}/policy`, which reads the
+  snapshot and **not** the policy row: the policy may since have been edited,
+  versioned, archived or deleted, and none of that changes what the scan
+  assessed. It reports the divergence rather than resolving it.
+
+## Remediation and SLA (`core/remediation/`)
+
+Who owns a finding, when it is due, and whether it was *really* fixed. GAP-14;
+tracker §9Q. **No parallel finding engine and no parallel lifecycle** — it
+operates on the `AssetVulnerability` rows the scan pipeline already writes and
+consumes GAP-13's comparison for its verdicts.
+
+- **`remediation_state` is a second column, not more `status` values.**
+  `status` (open/fixed/accepted) answers a *detection* question — is this
+  finding present on the host — and is written by both scan sweeps and read by
+  the dashboard, the asset risk recompute, the findings list and GAP-13, with
+  roughly a dozen call sites testing `status == "open"`. Adding
+  `in_remediation` to it would have made every one of those silently stop
+  counting the finding, so **putting a finding into remediation would remove it
+  from the dashboard, from the asset's risk score and from the overdue list.**
+
+- **No human action can reach `verified_fixed`, and the transition table says
+  so by omission.** `_HUMAN_TRANSITIONS` has no edge into it from any state;
+  `core/remediation/verification.py` is the only caller permitted to pass
+  `by_assessment=True`. What a person can say is `pending_verification` — "the
+  fix is applied and ready to be checked", which is a much weaker claim and the
+  only one they are in a position to make. The method is `claim_fixed`, not
+  `mark_fixed`, for the same reason.
+
+- **The defect this phase exists to fix.** `PATCH /findings/{id}/status` with
+  `status="fixed"` used to stamp `fixed_at = utcnow()` from any user holding
+  `findings:update` — and `fixed_at` is the column GAP-13 reconstructs its
+  baseline from. A person clicking a button was writing into the evidence
+  timeline the comparison, the reports and every remediation figure trust. The
+  endpoint still records the caller's own triage status; it no longer writes
+  `fixed_at`, routes the finding to `pending_verification`, and says so in the
+  response.
+
+- **Verification consumes GAP-13; it does not re-decide.** `fixed` →
+  `verified_fixed` citing the scan, `reappeared` → `reopened`, and **nothing
+  else moves anything**. Four refusals, each of which would otherwise be a
+  false claim of remediation: `not_assessed` never verifies (GAP-13's word for
+  "this scan did not look"), a non-comparable comparison verifies nothing, a
+  GAP-12 policy mismatch verifies nothing (a finding absent from a narrower
+  scan may be out of scope rather than fixed), and an accepted risk is not
+  overridden by a scan in either direction. Withheld findings are **counted and
+  named**, never dropped.
+
+- **Two unrecorded policies are not a mismatch.** That is the common case for
+  scans predating GAP-12, and refusing it would make verification impossible on
+  any existing installation.
+
+- **The SLA clock starts at `first_found_at` and rediscovery does not restart
+  it.** `last_found_at` moves on every scan; a due date derived from it would
+  slide forward for as long as the finding persisted and the finding could
+  never go overdue. `sla_anchor` is the one place that decides it. A
+  *regression* does start a new clock, from `reopened_at` — dating a returned
+  finding from its original discovery would report an instant, unfixable
+  breach.
+
+- **CISA KEV wins where it is earlier and never where it is later.** BOD 22-01
+  is a deadline an internal policy cannot extend, and may be stricter than —
+  so relaxing to the federal date would be the product loosening a customer's
+  own policy.
+
+- **An unrated finding gets `not_applicable`, never `within_sla`.**
+  "Comfortably inside its deadline" and "has no deadline" are different, and
+  folding them inflates every figure built on this.
+
+- **`sla_due_at` is materialised, and `apply_sla` is idempotent.** "Everything
+  overdue" is then one indexed predicate over `(org_id, sla_due_at)`; deriving
+  it per row would be the N+1 the column exists to avoid, on the endpoint a
+  dashboard calls on every load. An unchanged deadline writes no event —
+  otherwise the history would record that nothing happened several thousand
+  times a day.
+
+- **`finding_remediation_events` is append-only and is not the audit log.** The
+  workflow writes to `audit_logs` too, but that table is tamper-evident,
+  HASH-partitioned and subject to retention — right for "user X called this
+  endpoint", wrong for "show me this finding's timeline", because retention
+  would eventually remove history the finding still needs. Shaped after
+  `compliance_finding_history`.
+
+- **`asset_vulnerabilities`' primary key is `(id, org_id)`, not `id`** — a
+  leftover of the HASH-partition-on-`org_id` design, invisible from the Python
+  side because the model declares only `id`. PostgreSQL refuses a single-column
+  foreign key to it. The composite key the event table therefore uses is the
+  stronger constraint anyway: an event can only reference a finding **in its
+  own organisation**, enforced by the database.
+
+- **`verified_scan_id` is a second FK path between `scans` and
+  `asset_vulnerabilities`**, so `Scan.vulnerabilities` needs
+  `foreign_keys="AssetVulnerability.scan_id"` or SQLAlchemy raises
+  `AmbiguousForeignKeysError`. The cascade stays on `scan_id`: deleting a scan
+  removes the findings it reported, but must not remove a finding because the
+  scan that *verified* it was deleted.
+
+- **The event id carries a random tail and it is not decoration.** The first
+  version was `fre_<digest>_<type>_<timestamp>` and collided — two events of
+  the same type on one finding in the same microsecond produced the same
+  primary key, and because every workflow call shares a transaction the
+  duplicate took the *whole lifecycle* down. Not a rare race: a claim-then-
+  verify or a bulk assignment runs inside one flush.
+
+- **Accepting a risk is its own permission**, `findings:accept_risk`.
+  `findings:update` moves work through the queue; deciding the organisation
+  will carry a risk is a different authorisation, and without the split anyone
+  who can edit a finding could clear their own overdue list by accepting
+  everything on it. A reason is required. An expiry is optional — an
+  indefinite acceptance is legitimate for a permanent compensating control and
+  is different from nobody having set a date, which `accepted_at` records
+  either way.
+
+- **API**: `/remediation` (12 operations), plus the remediation section in both
+  reports. The executive line is
+  `Open: 120 | In remediation: 35 | Pending verification: 8 | Overdue: 17 | Verified fixed: 42`,
+  assembled in one place so a report and a dashboard cannot render it
+  differently.
+
+## Scan comparison and finding lifecycle (`core/findings/`)
+
+What changed between two scans. GAP-13; tracker §9O. **No new finding model, no
+second store, no migration** — `asset_vulnerabilities` already carried
+everything needed.
+
+- **A baseline is reconstructed from timestamps, not from an occurrence table.**
+  A finding was open at time T iff `first_found_at <= T and (fixed_at is null or
+  fixed_at > T)`, and a baseline scan is just a T. A row per finding per scan
+  would be thousands of rows per host per scan for something the lifecycle
+  columns already answer.
+
+- **Absence is not a fix, and this is the whole point.** Both fixed-sweeps
+  marked every open finding missing from a scan as fixed. For a package finding
+  that is defensible; for a configuration check it is not — 126 Windows STIG
+  findings are absent from `cve_list` when the audit *passes* and when it never
+  *ran*. A scan now records what it assessed, and a configuration finding is
+  marked fixed only if its check reached a verdict (PASS or FAIL — ERROR and
+  NOT_APPLICABLE establish nothing). A scan with no recorded scope can never
+  report a fix; the finding lands in `NOT_ASSESSED`, which is counted and named
+  in the summary rather than quietly dropped.
+
+- **`record_assessment_scope` writes into `scans.options`** — JSONB, already
+  carrying `options.origin`, client-visible, so no secret may go near it. It
+  **merges**, because one scan writes findings from several paths and the
+  configuration audit's record must not erase the package matcher's. It is
+  deliberately not a new column: GAP-12's scan-policy record is where this
+  should fold in, and a migration on a live table for something with no query
+  predicate of its own buys nothing. **That fold has happened** — the policy
+  snapshot is `options["scan_policy"]`, sibling of this key.
+
+- **`completed_at` is stamped after the findings sync, not before.**
+  `create_completed_scan` set it when the row was built — before the sync — so
+  every finding a scan produced carried a `first_found_at` *later* than its own
+  scan's completion. Measured: baseline completed 18:48:44, its earliest finding
+  first seen 18:48:45, and the comparison duly reported **50 new, 0 unchanged**
+  on two scans of an almost unchanged host. Do not move it back.
+
+- **`updated_at` is not a scan boundary.** It carries `onupdate=utcnow`, so it
+  moves whenever the row is touched — the same property that once corrupted the
+  Scan History date. `_scan_window` uses `started_at`/`completed_at` and treats
+  `updated_at` only as a last-resort fallback for rows predating them.
+
+- **A fix predating the baseline's own start reads as unchanged, not as a
+  regression.** `fixed_at` holds only the most recent fix and is not cleared
+  when a finding returns, so without this four curl CVEs were correctly flagged
+  reappeared once and then flagged again on every subsequent comparison. The
+  trade is recorded: a regression between an old fix and the baseline
+  under-reports once, against crying wolf indefinitely.
+
+- **A comparison is accurate while it is the latest scan.** It reads current row
+  state, so once later scans move `fixed_at` and `last_found_at`, an older pair
+  degrades. That is why the report embeds the comparison **at scan time**. The
+  report is therefore generated after the sync, and the scan's report paths are
+  set before the same commit.
+
+- **The report section returns an empty list when there is no comparison**, so a
+  report generated without one is byte-for-byte what it was before. An
+  incomparable pair prints *Not comparable* and the reason rather than a table
+  of zeroes, which would read as "nothing changed".
+
+- **API**: `GET /scans/{scan_id}/comparison`. Both scans go through
+  `_get_scan_or_404`, so tenant scoping and per-user visibility are the same
+  rules every other scan route uses. `limit` bounds the rows and never the
+  counts — a truncated count is a wrong number, a short list is a sample.
+
+- **GAP-14 consumes this and must keep consuming it.** The remediation layer's
+  only route to `verified_fixed` is a `FIXED` classification from here, and its
+  only route to `reopened` is `REAPPEARED`. `NOT_ASSESSED` verifies nothing —
+  which is the class this phase introduced, now load-bearing for a second
+  feature. Note the verification pass recomputes the comparison with
+  `limit_findings=None`: the report's copy is bounded at 200, and verifying
+  only the first 200 findings would silently leave the rest unverified.
+
+- **Do not test this through `TestClient` with `auth_headers`.** The login
+  commits, and because the app shares the test session every uncommitted fixture
+  row is committed with it, survives the per-test rollback and collides with
+  later tests — measured as 13 failures and 19 errors elsewhere in the suite.
+  `tests/scans/test_finding_comparison.py` calls the route function directly
+  with a real session, which exercises the same code including
+  `_get_scan_or_404`.
+
+## Assessment framework (`core/checks/`)
+
+The common contract every new assessment speaks. Added in Phase 0 of the
+Nessus gap-closure programme; the tracker is
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**It does not replace the fifteen vulnerability plugins and is not meant to.**
+Those are stable and produce real findings; rewriting them onto this contract
+would be a large refactor with no capability gained. New capabilities —
+configuration audit, local privilege checks, database and network-device
+assessment — register here. What the plugins gained instead is the guard they
+never had (below).
+
+- **`CheckOutcome` reuses the compliance vocabulary, deliberately.** `pass`,
+  `fail`, `not_applicable`, `manual_review` are spelled exactly as
+  `compliance_findings.status` spells them, so a check result stores as a
+  compliance verdict with no translation table — and a translation table is how
+  two vocabularies for one idea begin. `error` is the one addition, and it is
+  deliberately *not* storable as a verdict: it is a scan-time condition, and
+  writing it as a status would assert something about a host that nothing
+  established.
+
+- **`is_verdict` is True for exactly PASS and FAIL, and every roll-up must gate
+  on it.** Treating NOT_APPLICABLE, MANUAL_REVIEW or ERROR as a pass inflates a
+  compliance score; treating any of them as a fail invents findings on hosts
+  nobody could reach. ISO A.8.2 was once reported as *failed* on hosts the
+  scanner could not authenticate to — that is this bug.
+
+- **A FAIL with no evidence is rejected at construction.** Not a lint, not a
+  review checklist — `CheckResult.__post_init__` raises. It is the mirror image
+  of the synthesised `password_policy` that once made every rule reading it pass
+  unconditionally on every host, and it is the direction that reaches a customer
+  as a false positive.
+
+- **A check that raises yields an ERROR result**, never a swallowed log line and
+  never a FAIL. Swallowing makes a broken check indistinguishable from a clean
+  host; returning FAIL invents a finding out of a bug in our own code.
+
+- **Severity has one vocabulary.** `normalize_severity()` maps
+  `compliance_rules`' `info` onto `scans.cvss.CANONICAL_SEVERITIES`' `none`.
+  Unrecognised input becomes `unscored`, not `none` — no rating published is a
+  different fact from a published rating of zero.
+
+- **`tests/scans/test_plugin_contract.py` is the guard the legacy plugins never
+  had.** `VulnerabilityEngine` calls serial plugins with three arguments and
+  parallel plugins with two, and catches plugin exceptions at DEBUG. A plugin
+  with the wrong arity raises `TypeError` on every host, is swallowed, and stays
+  in `plugin_names()` and `select_plugins()` while producing **zero findings
+  indefinitely**. The test reads `plugin_selector`'s own dispatch tables — not
+  `plugins.__all__`, which is the import list and says nothing about arity — and
+  checks each signature statically. Verified by mutation: reducing
+  `nuclei_probe.run` to two arguments fails it with a message naming the plugin,
+  the arity and the call site.
+
 ## Data model notes
+
+- **`compliance_credentials` is the platform credential store, not a
+  compliance table.** The name is a misnomer kept deliberately — it has been
+  the store for credentialed scans since before Phase 1 and
+  `scan_schedules.credential_id` points at it, so renaming means an ALTER on
+  live encrypted credentials for a cosmetic gain. It is discriminated by
+  `credential_type` (`ssh`, `windows`, `database`; `network_device` and
+  `snmp` reserved) and `transport` (`ssh`, `winrm`, plus one per database
+  engine — `postgresql`, `mysql`, `mssql`, with `oracle` and `mongodb`
+  reserved). `domain` is a column rather than
+  a prefix on `username` because NTLM wants `DOMAIN\user` and Kerberos wants
+  `user@REALM`; `principal()` owns that mapping. Never put a secret in
+  `options` — it is returned to clients and logged.
+
+- **The catalogue holds checks as well as CVEs.** `vulnerability_definitions`
+  gained `definition_type` (`cve` | `config_check` | `plugin_check` |
+  `privilege_check`) in migration `e1f2a3b4c5d6`, and both `id` and
+  `asset_vulnerabilities.vuln_id` widened from 30 to 120 characters. Before
+  that, `vuln_id` was a NOT NULL foreign key into a CVE-only catalogue, so
+  **every finding the product could record had to be a CVE** — and a CIS
+  control, a STIG rule, a weak service ACL or a database privilege finding had
+  nowhere to go except its own findings table, which is where a second finding
+  model, a second risk model and a second report generator come from.
+
+  Mint non-CVE identifiers with `core.checks.definitions.definition_id_for_check`
+  — never by hand. It emits the `CCURE-` vendor prefix (so a reader knows the
+  identifier is ours and that NVD has never heard of it), folds dots and
+  underscores to one spelling (so `2.3.1.1` and `2_3_1_1` cannot become two
+  catalogue rows for one control), and refuses rather than truncating an
+  over-long id, because a truncated key silently merges two sibling controls.
+
+  `ck_vuln_def_cve_id_matches_type` enforces that a `cve` row carries `cve_id`
+  and a check row does not. Without it a check filed as `cve` inherits KEV
+  lookups, EPSS scores, CVSS bands and an NVD link that resolves to nothing.
+
+  The live catalogue used to hold 23 rows keyed `CVE-9999-<hex>` — test residue
+  from `tests/scans/test_scans.py`, predating the conftest database guards.
+  **They are gone**: measured at 0 on 30 Aug 2026, alongside 0 `cve` rows with
+  a NULL `cve_id` and 0 non-CVE rows carrying one, across 263,938 rows. The
+  episode is kept here because it is exactly the confusion the `CCURE-` prefix
+  exists to prevent, and because nothing stops a future test writing more.
 
 - `services` is a **current-state projection**, not per-scan history. The row id
   is `gen_service_id(asset, port, protocol)`, so re-scanning re-points rows
@@ -772,6 +2379,361 @@ theoretical concern — all four produced a confidently clean report:
   predating the columns are NULL and still match, so a partial re-sync degrades
   to the old behaviour rather than dropping ranges.
 
+## Network checks (`engines/vulnerability/network_checks.py`)
+
+The catalogue every unauthenticated network plugin turns an observation into a
+finding through. Phase 6 of the gap-closure programme, closing GAP-06; tracker
+in [`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine.** `VulnerabilityEngine`, `plugin_selector` and the fifteen
+probes' own detection logic are unchanged. What changed is that a probe which
+has established something now has one correct way to say so.
+
+- **`VulnerabilityEngine._merge` promotes a *top-level* `cves` key and nothing
+  else.** This is the single most important fact about writing a network
+  plugin. Six of fifteen returned their findings nested inside `http_audit`,
+  `ftp_info` or `smb_info` and every condition they detected was discarded —
+  weak SSH algorithms, SMBv1, a `public` SNMP community, an expired
+  certificate, anonymous FTP write access. A finding that is not at the top
+  level does not exist.
+
+- **`ssh_probe` is the shape to watch for.** It initialised `info["cves"] = []`,
+  promoted it with `if info.get("cves")`, and nothing ever appended to it: the
+  CVE lookup had been removed and the plumbing left behind. An AST pass over
+  the fifteen modules answers "8 plugins emit"; the truth was 7. That is why
+  `scripts/measure_network_check_coverage.py` reads a catalogue rather than the
+  sources — a measurement fooled by dead plumbing reports the starting point
+  too high and every later number inherits the error.
+
+- **A network condition must never become a fabricated CVE.** `asset_syncer`
+  set neither `definition_type` nor a NULL `cve_id`, so `MISC-FTP-ANON` and its
+  eleven siblings were filed as `cve` rows carrying their own invented string
+  in `cve_id` — inheriting KEV lookups, EPSS scores, CVSS bands and an NVD link
+  that resolves to nothing. `ck_vuln_def_cve_id_matches_type` could not catch
+  it, because the row *did* carry a `cve_id`, just not a real one. The write
+  path now calls `definition_type_for_id`, and `_enrich_findings_with_intel`
+  skips anything that is not a real CVE.
+
+- **`cve_id` is `varchar(30)` and the catalogue insert is not inside a
+  try/except.** So a fabricated identifier longer than thirty characters raised
+  `StringDataRightTruncation` and **aborted the finding sync for the whole
+  scan**. All three `MISC-CREDENTIALED-*` markers are over the limit (33, 37,
+  39) and so are most Nuclei template ids —
+  `MISC-NUCLEI-WORDPRESS-DIRECTORY-LISTING` is 39. Minted identifiers go in
+  `id`, which is `varchar(120)`, and `cve_id` stays NULL, so the limit no
+  longer applies. Do not put a non-CVE string in `cve_id`.
+
+- **A real CVE stays a real CVE.** Heartbleed, Shellshock and EternalBlue keep
+  their published identifiers, `definition_type = cve`, their NVD links and
+  their KEV and EPSS enrichment, because all of it means something for them.
+  `NetworkCheck` refuses a `cve_id` that is not well-formed at construction.
+
+- **Two probes that detect one condition emit one identifier.**
+  `default_creds` and `ftp_checker` both test anonymous FTP; both report
+  `ftp.anonymous_login`, so `deduplicate_cves` collapses them. Promoting the
+  second without matching the first would have started showing the reader the
+  same problem twice.
+
+- **`detection_method` must be `active_check`.** It maps to
+  `DetectionMethod.CONFIG_CHECK` — QoD 99, Confirmed — and is in the
+  normalizer's `AUTHORITATIVE` set, which lets the finding bypass the CPE
+  version-range test. These checks observed the condition rather than inferring
+  it from a version, so there is no version to range-check and anything else
+  would be withheld as unverified.
+
+- **Three detections are deliberately not promoted**, each because it would
+  fire on ordinary hosts. They stay in the metadata, so no existing report
+  changes:
+  - **`smb_probe.null_session`** is the negotiate response's NT status being
+    zero — STATUS_SUCCESS, which every reachable SMB server returns. Nothing
+    attempts a session setup with an empty username.
+  - **`http.admin_interface_exposed`** matches on path plus a 200/401/403
+    status with no body check, and a single-page application answers every
+    unknown route with 200 and its index document, so all thirteen fingerprints
+    match at once.
+  - **SMBv1 as CVE-2017-0144.** EternalBlue needs SMBv1 *and* an unpatched
+    implementation. SMBv1 alone is `smb.v1_enabled`; only the MS17-010
+    fingerprint claims the CVE. The old companion `CVE-2017-0144-ACTIVE` was a
+    CVE-shaped string that is not a CVE.
+
+- **`_http_request` returned an empty body on every request.** It stopped
+  reading at `\r\n\r\n` — the end of the *headers* — so directory-listing
+  detection tested `"index of /"` against `""` and could never fire, and
+  sensitive-path exposure was decided by status code alone. Pass
+  `read_body=True` when you need the body; it stays opt-in because HEAD has no
+  body and the method probe only needs a status.
+
+- **`http.sensitive_path_exposed` requires a body fingerprint.**
+  `_SENSITIVE_PATHS` probes `/login`, `/admin/`, `/dashboard` and `/console`,
+  which an SPA answers with 200 — so a status match alone reports four exposed
+  files on every SPA, this product's own frontend included.
+
+## Database assessment (`engines/credentialed/database_executor.py`)
+
+Authenticated configuration and privilege assessment of database instances.
+Phase 7 of the gap-closure programme, closing GAP-10; tracker in
+[`docs/gap_closure/GAP_TRACKER.md`](docs/gap_closure/GAP_TRACKER.md).
+
+**No new engine, and no new finding model.** A database check is an ordinary
+Phase 3 `ConfigCheck` with `check_type = database_query` and
+`target_platform = database`, run by the same `ConfigAuditEngine`, reaching the
+same evidence → finding → risk → remediation → report path. 49 checks across
+PostgreSQL, MySQL/MariaDB and Microsoft SQL Server.
+
+- **The whole persistence cost was one CHECK constraint.** `credential_type`
+  has admitted `database` since Phase 2 and `compliance_rules` has admitted
+  `database_query` and `target_platform = 'database'` since Phase 3's
+  `b4c5d6e7f8a9`. Migration `f8a9b0c1d2e3` adds five `transport` values and
+  nothing else. That is what the reservations were for — keep making them.
+
+- **Engine targeting reuses `os_match`; do not add a second mechanism.** The
+  instance's product string becomes `os_name` and its version
+  `os_version_id`, so the Phase 4 targeting written for "Ubuntu 22.04 versus
+  RHEL 9" places "PostgreSQL 16 versus MySQL 8" unchanged.
+
+- **`product_name` is not the version banner, and that distinction was load
+  bearing.** `SELECT version()` answers `PostgreSQL 16.15 on x86_64…` on
+  PostgreSQL but a bare `8.0.46` on MySQL. Targeting on the raw banner made
+  **all fifteen MySQL rules NOT_APPLICABLE** — a complete rule set that
+  silently never ran, and which looked perfect on PostgreSQL alone. MariaDB is
+  labelled separately even though PyMySQL drives it and it normalises to the
+  `mysql` engine: its version series is its own, and a "MySQL 8.0 or later"
+  rule would read MariaDB 10.11 as ancient.
+
+- **`sslrootcert` is passed explicitly on every PostgreSQL connection, and
+  must stay that way.** `Backend/.env` sets `PGSSLROOTCERT` to this
+  deployment's private CA for the *application* database; loading config puts
+  it in the environment, and libpq applies it to any connection that does not
+  set it. Every PostgreSQL **target** was therefore verified against our own CA
+  and failed with "certificate verify failed", which reads as a fault on the
+  target. Note the asymmetry that hid it: passing `sslmode` explicitly *does*
+  override `PGSSLMODE`, so the mode was right and only the trust anchor was
+  wrong — and under `prefer` libpq still verifies once a root certificate is
+  configured.
+
+- **TLS is preferred, never required, and both halves matter.** Requiring it
+  makes the scanner unable to assess a correctly hardened MySQL
+  (`require_secure_transport = ON`); refusing to fall back makes it unable to
+  assess the instance whose *missing* TLS is the finding most worth reporting.
+  PyMySQL has no `prefer` mode, so it is implemented by hand — TLS first, then
+  plaintext, and **never a retry after an authentication failure**, which would
+  only produce a second identical rejection and a second entry in the server's
+  failed-login log.
+
+- **Read-only is enforced in three layers, and every shipped rule is tested
+  against the guard.** `assert_read_only` admits one statement beginning
+  SELECT/SHOW/WITH/VALUES with comments and literals stripped first; rule
+  values are bound parameters, never interpolated; and the session itself is
+  opened read-only. A refused statement is UNAVAILABLE → **ERROR**, never a
+  verdict — a defect in a rule must not manufacture a finding about a
+  customer's database. The guard is also why SQL Server login auditing is
+  unassessed: the conventional read is `EXEC xp_instance_regread`, and the
+  guard is worth more than the check.
+
+- **An empty result set is the most dangerous value in this package.** A
+  hardened instance answers "which accounts have an empty password" with no
+  rows; so does a refused query, and so does a catalogue view this engine
+  version does not have. Only `QueryResult.ok` separates them, and there is
+  deliberately no method that returns a bare list of rows. Reading the rows
+  instead reports a clean bill of health for an instance nobody was allowed to
+  inspect.
+
+- **Four error types, and they must stay four.** A refused password, an
+  authenticated account without the privilege, nothing listening, and a driver
+  that is not installed need four different actions. Two collapses were found
+  and fixed: an ordinary SQL error on a *healthy* session was reported as an
+  unreachable database (the classifier's fallback is now context-dependent —
+  only a positive connectivity match becomes a transport error), and
+  PostgreSQL's `no pg_hba.conf entry` was reported as a connection failure when
+  the instance had answered and declined.
+
+- **Findings mint `CCURE-CFG-…`, including the privilege and grant rules.**
+  `privilege_check` was considered and rejected: it files under the report
+  family "Local Privilege", and an over-granted role on a remote database
+  server is not a local privilege-escalation condition on the scanning host.
+
+- **Dispatch adds no route and no task.** `run_credentialed_scan_task` branches
+  on the credential's type and calls `audit_database_target`. So
+  `POST /scan/credentialed` and `core/scheduling/dispatcher.py` are unchanged,
+  and a recurring database audit works today through the existing
+  `credentialed` schedule kind. `SCAN_KIND_DATABASE` stays reserved.
+
+- **A database target is excluded from the asset-registry sync, deliberately.**
+  Both sync helpers write an OS, a package inventory and a MAC-based identity
+  onto an `Asset` row. Letting a database audit through would overwrite the
+  record of the machine hosting it with an audit that never looked at the
+  machine.
+
+- **`coverage.scope` says what was not assessed.** A database audit examines
+  the instance's configuration and says nothing about the operating system
+  underneath it. A report that does not say so reads as a complete audit of the
+  machine.
+
+### Content, and the false positives real targets caught
+
+**No CIS Benchmark content here either** — same licensing position as Phase 4.
+These are CCURE-authored rules written from vendor documentation, and every
+statement was run against a live instance before its rule was written. Five
+conditions were dropped or rescoped because they are *stock defaults* and a
+check that fires on every host is worse than one that misses:
+
+| Would have reported                            | Reality                                            |
+| ---------------------------------------------- | -------------------------------------------------- |
+| PUBLIC holds CONNECT on `postgres`/`template0`  | The default on every PostgreSQL installation       |
+| `trust` on `local` and `127.0.0.1`             | The postgres image default; how `docker exec psql` works |
+| `guest` holds CONNECT in SQL Server             | Mandatory in `master`; cannot be revoked there     |
+| `BUILTIN\*` and `NT AUTHORITY\*` are sysadmin   | Provisioned by SQL Server itself                   |
+| `VIEW ANY DATABASE` granted to `public`         | A default grant on every instance                  |
+
+Two more worth knowing:
+
+- **`information_schema.user_privileges` returns 132 `is_grantable` rows on a
+  stock MySQL**, all root's. That measurement is why `db.priv.grant_option` is
+  excluded from the coverage denominator rather than implemented badly.
+- **`secure_file_priv` inverted its own verdict.** `not_empty` treats SQL NULL
+  as empty, and NULL is the *most* hardened state — file access disabled
+  outright. A locked-down instance and a wide-open one (`''`) failed
+  identically until NULL was folded to a token first.
+
+Three PostgreSQL rules also read `pg_hba_file_rules` with overlapping
+predicates, so one permissive line produced three findings and made the
+remediation look three times larger than it was.
+
+**Version-currency boundaries have a shelf life and say so.** PostgreSQL 14,
+MySQL 8.0 and SQL Server 2017 were the oldest supported releases as at
+29 August 2026; each rule states that date and links the vendor's lifecycle
+page.
+
+### Test targets
+
+Disposable containers only. Credentials are generated at run time and
+destroyed with the container — never in source, configuration, logs, Celery
+arguments or git.
+
+```powershell
+docker run -d --name ccure-pg-target    -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=... postgres:16-alpine
+docker run -d --name ccure-mysql-target -p 127.0.0.1:13306:3306 -e MYSQL_ROOT_PASSWORD=... mysql:8.0
+docker run -d --name ccure-mssql-target -p 127.0.0.1:11433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=... mcr.microsoft.com/mssql/server:2022-latest
+```
+
+Measured weak → hardened: PostgreSQL **12 → 0**, MySQL **11 → 0**, SQL Server
+**12 → 0**. A run returning zero against a *weakened* instance is a regression,
+not a clean database.
+
+Two things that cost time and will again:
+
+- **`mysqladmin ping` succeeds against MySQL's temporary init server**, which
+  then shuts down before the real one starts. Wait for
+  `ready for connections.*port: 3306` in the container log; `port: 0` is the
+  temporary server.
+- **SQL Server on Linux refuses to start if it cannot read its TLS
+  certificate**, and `/etc/ssl/private` is not traversable by the `mssql` user.
+  Put the certificate and key under `/var/opt/mssql/`. `xp_cmdshell` and OLE
+  Automation are also unsupported on Linux, so the dangerous-features rule is
+  exercised through `clr enabled`, `cross db ownership chaining` and
+  `Ad Hoc Distributed Queries`.
+
+### Coverage
+
+`scripts/measure_database_coverage.py`, denominator frozen at 31 areas before
+implementation and including **eight areas this build does not implement**,
+each with a recorded reason. **0% → 74.2%** (23/31), implemented *and* tested.
+Engine breadth is reported separately and never folded in: an area answered on
+one engine is implemented, and answering it on three does not make it three
+areas.
+
+**Oracle and MongoDB are reserved, not shipped.** Drivers exist for both
+(`oracledb` thin mode needs no Instant Client), and the transport vocabulary
+names them so the phase that adds them adds a collector rather than a
+migration. Neither could be stood up as a disposable target here, so neither
+was validated, and `USABLE_TRANSPORTS` stops the API creating such a
+credential.
+
+## Deep TLS on the network path
+
+`engines/vulnerability/plugins/tls_scanner.py` runs the **existing** sslyze
+wrapper (`core/web/sslyze/wrapper.py`), which had driven full TLS audits on the
+`/web-scans` path since before Phase 6 while the main network scan got a
+140-line socket probe. There is one TLS engine; do not add a second.
+
+- **`tls_scanner` used `log` and never imported it.** Four exception handlers
+  called `log.debug(...)`, so any TLS error path raised `NameError` *inside the
+  except block*, and `VulnerabilityEngine` catches plugin exceptions at DEBUG.
+  Same failure mode as `nuclei_probe`'s arity, reached from the other side.
+
+- **It assessed only the first TLS port.** `for port in _TLS_PORTS: if port in
+  open_ports: … return`. A host serving 443 and 8443 was assessed on 443 alone.
+  It now assesses every endpoint, and `_PORT_MAP` names the same ports the
+  plugin does — a port in one list and not the other means the plugin is never
+  selected for a host exposing only that port.
+
+- **`"VULNERABLE" in robot_enum.name` matched `NOT_VULNERABLE_NO_ORACLE`.**
+  sslyze's ROBOT enum has five members and the substring test passed three of
+  them, so **every server sslyze positively cleared was reported vulnerable**,
+  including any TLS 1.3-only listener where RSA key exchange does not exist.
+  It is `startswith("VULNERABLE_")` now, and `UNKNOWN_INCONSISTENT_RESULTS` is
+  deliberately not a finding — "could not determine" is not a verdict.
+
+- **The handshake and the deep engine see different things, and both are
+  needed.** A single handshake reports the suite it negotiated, which on a
+  modern client is the *strongest* the server offers; every weak suite the
+  server would also accept is invisible to it. Measured on a deliberately weak
+  listener: negotiated `ECDHE-RSA-AES256-GCM-SHA384` while the deep engine
+  found three weak suites across TLS 1.0, 1.1 and 1.2. The socket probe is kept
+  because it is fast and produces the `TLSInfo` shape `asset_syncer` and
+  `core/risk.py` already read.
+
+- **Deep assessment is bounded.** It enumerates cipher suites across six
+  protocol versions, so it costs many handshakes per endpoint where the socket
+  probe costs one. `TLS_DEEP_MAX_ENDPOINTS` (4) and `TLS_DEEP_SCAN` exist
+  because this product scans OT segments. Measured at 2.2s per endpoint.
+
+- **STARTTLS is reached through the same wrapper** (Phase 11, GAP-07).
+  `STARTTLS_SERVICES` maps six services to their ports — SMTP, IMAP, POP3,
+  LDAP, PostgreSQL, FTP — and sslyze performs the negotiation, so no second TLS
+  transport exists. The names are looked up against sslyze's own
+  `ProtocolWithOpportunisticTlsEnum`, so a service it cannot negotiate is
+  impossible to add by mistake: MySQL has no handler in 6.3.1 and is declared
+  unimplemented rather than silently producing connection errors.
+
+  **A port in `STARTTLS_SERVICES` must also be in `plugin_selector._PORT_MAP`**,
+  or a host exposing only that port never runs the plugin at all. PostgreSQL hit
+  exactly this: 5432 already had an entry for `default_creds`, and a second dict
+  key for it kept only the last value. A test now asserts selection for every
+  port in the table and refuses any duplicate key in the map.
+
+  **A STARTTLS endpoint never becomes `tls_info`.** That key means the first
+  *implicit*-TLS endpoint that answered; `asset_syncer` and `core/risk.py` read
+  it, and a mail server's certificate appearing there would rewrite an asset's
+  TLS identity with something no browser negotiates. They go to
+  `tls_endpoints` with a `starttls` marker, and one budget covers both kinds.
+
+- **Three sslyze commands were requested and their results discarded.**
+  `TLS_FALLBACK_SCSV` and `SESSION_RENEGOTIATION` since before Phase 6, and
+  `path_validation_results` was parsed into a `chain_trusted` boolean nothing
+  read. Phase 11 reads them, which is why fourteen findings arrived for very
+  little extra time on the wire. Each reading is **tri-state**: True, False, or
+  absent because the command did not complete. Every guard is `is True` /
+  `is False`, never truthiness — an absent command has established nothing, and
+  reading it either way invents a verdict.
+
+- **Classify a public key by type, not by class name.** `_describe_public_key`
+  tested `"EllipticCurve" in type(key).__name__`; this build of `cryptography`
+  returns `ECPublicKey`, so every EC certificate went unclassified and the
+  key-strength check was silently withheld for the whole algorithm. It is
+  `isinstance` against the abstract types now. An algorithm it does not
+  recognise returns `{}` and the check is withheld rather than compared against
+  the wrong floor.
+
+- **`/web-scans` output is deliberately unchanged.** The wrapper's own
+  `findings` list was not extended; that path renders it and altering an
+  existing report was not Phase 11's business. The network path builds its own
+  findings from the structured data the wrapper now returns.
+
+- **`tls_info` keeps its meaning** — the first TLS endpoint that answered.
+  `tls_endpoints` is additive and carries the rest. Nothing downstream should
+  change because a host happens to expose a second TLS port.
+
 ### Active template verification (Nuclei)
 
 `engines/vulnerability/plugins/nuclei_probe.py` runs ProjectDiscovery's
@@ -779,6 +2741,11 @@ templates and produces the only findings in this product that are *proven*
 rather than inferred — a template matched a live response, so the
 vulnerability is present and reachable now. They grade as `active_check` →
 `CONFIG_CHECK`, QoD 99, Confirmed.
+
+A template with no CVE now mints `CCURE-CHK-NUCLEI-<template>` rather than
+`MISC-NUCLEI-<template>` — see the network-checks section above for why the
+old form aborted the finding sync outright on any template id over eighteen
+characters.
 
 Binary and templates are located via `NUCLEI_BINARY` and
 `NUCLEI_TEMPLATES`; the defaults are `nuclei` on PATH and

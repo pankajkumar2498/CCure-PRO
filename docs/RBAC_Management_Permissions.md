@@ -80,18 +80,32 @@ Each row is one `(resource, action, description)` tuple, in source order. The
 
 ### `scans` — 10 atoms
 
-| Atom             | Seeded description                            | Enforced at                                                                                                                                                                                                              |
-| ---------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scans:create`   | Create and start new scan sessions            | _(granted; no endpoint consumes it — see §6)_                                                                                                                                                                            |
-| `scans:read`     | View your own scan history and results        | `GET /scan/quota`, `GET /scan/progress/{scan_id}`, `GET /scans`, `GET /scans/events`, `GET /scans/{scan_id}`, `GET /topology/map`, `GET /topology/map/{scan_id}`; WebSocket ticket check                                 |
-| `scans:read_all` | View all scan history within the organization | Not a dependency — evaluated in code by `_user_can_read_all_scans` (`scans/router.py`) and `_can_read_all_org_scans` (`routers/reports.py`) to widen row visibility beyond `created_by == self`                          |
-| `scans:update`   | Modify scan configuration                     | _(granted; no endpoint consumes it)_                                                                                                                                                                                     |
-| `scans:archive`  | Move scans to the archived area               | `POST /scans/{scan_id}/archive`                                                                                                                                                                                          |
-| `scans:restore`  | Restore archived or recycled scans            | `POST /scans/{scan_id}/restore`                                                                                                                                                                                          |
-| `scans:recycle`  | Move scans to the recycle bin                 | `DELETE /scans/{scan_id}`                                                                                                                                                                                                |
-| `scans:purge`    | Permanently delete recycled scans             | `DELETE /scans/{scan_id}/purge`                                                                                                                                                                                          |
-| `scans:execute`  | Trigger scan execution via API                | `POST /scan/host-discovery`, `/scan/asset-discovery`, `/scan/vulnerability-audit`, `/scan/phases`, `/scan/host`, `/scan/range`, `/scan/subnet`, `/scan/subnets`, `POST /scan/credentialed`, `POST /scans/{scan_id}/stop` |
-| `scans:cancel`   | Cancel an in-progress scan                    | _(granted; `POST /scans/{scan_id}/stop` uses `scans:execute` instead)_                                                                                                                                                   |
+| Atom                     | Seeded description                                     | Enforced at                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `scans:create`           | Create and start new scan sessions                     | _(granted; no endpoint consumes it — see §6)_                                                                                                                                                                            |
+| `scans:read`             | View your own scan history and results                 | `GET /scan/quota`, `GET /scan/progress/{scan_id}`, `GET /scans`, `GET /scans/events`, `GET /scans/{scan_id}`, `GET /topology/map`, `GET /topology/map/{scan_id}`; WebSocket ticket check                                 |
+| `scans:read_all`         | View all scan history within the organization          | Not a dependency — evaluated in code by `_user_can_read_all_scans` (`scans/router.py`) and `_can_read_all_org_scans` (`routers/reports.py`) to widen row visibility beyond `created_by == self`                          |
+| `scans:update`           | Modify scan configuration                              | _(granted; no endpoint consumes it)_                                                                                                                                                                                     |
+| `scans:archive`          | Move scans to the archived area                        | `POST /scans/{scan_id}/archive`                                                                                                                                                                                          |
+| `scans:restore`          | Restore archived or recycled scans                     | `POST /scans/{scan_id}/restore`                                                                                                                                                                                          |
+| `scans:recycle`          | Move scans to the recycle bin                          | `DELETE /scans/{scan_id}`                                                                                                                                                                                                |
+| `scans:purge`            | Permanently delete recycled scans                      | `DELETE /scans/{scan_id}/purge`                                                                                                                                                                                          |
+| `scans:execute`          | Trigger scan execution via API                         | `POST /scan/host-discovery`, `/scan/asset-discovery`, `/scan/vulnerability-audit`, `/scan/phases`, `/scan/host`, `/scan/range`, `/scan/subnet`, `/scan/subnets`, `POST /scan/credentialed`, `POST /scans/{scan_id}/stop` |
+| `scans:cancel`           | Cancel an in-progress scan                             | _(granted; `POST /scans/{scan_id}/stop` uses `scans:execute` instead)_                                                                                                                                                   |
+| `scan_schedules:create`  | Create scheduled and recurring scans                   | `POST /scan-schedules`                                                                                                                                                                                                   |
+| `scan_schedules:read`    | View scan schedules and their run history              | `GET /scan-schedules`, `/scan-schedules/{schedule_id}`, `/scan-schedules/{schedule_id}/runs`, `/scan-schedules/timezones`                                                                                                |
+| `scan_schedules:update`  | Edit, enable or disable scan schedules                 | `PATCH /scan-schedules/{schedule_id}`, `POST /scan-schedules/{schedule_id}/enable`                                                                                                                                       |
+| `scan_schedules:delete`  | Delete scan schedules                                  | `DELETE /scan-schedules/{schedule_id}`                                                                                                                                                                                   |
+| `scan_schedules:execute` | Trigger a scheduled scan immediately (Run Now)         | `POST /scan-schedules/{schedule_id}/run-now`                                                                                                                                                                             |
+| `scan_policies:create`   | Create reusable scan policies                          | `POST /scan-policies`, `POST /scan-policies/{policy_id}/version`                                                                                                                                                         |
+| `scan_policies:read`     | View scan policies and their configuration             | `GET /scan-policies`, `/scan-policies/{policy_id}`, `/scan-policies/settings`, `/scan-policies/{policy_id}/usage`, `POST /scan-policies/validate`                                                                        |
+| `scan_policies:update`   | Edit, enable, disable or archive scan policies         | `PATCH /scan-policies/{policy_id}`, `POST /scan-policies/{policy_id}/enable`, `POST /scan-policies/{policy_id}/status`                                                                                                   |
+| `scan_policies:delete`   | Delete scan policies                                   | `DELETE /scan-policies/{policy_id}`                                                                                                                                                                                      |
+| `credentials:create`     | Store scan credentials (SSH and Windows)               | `POST /credentials`                                                                                                                                                                                                      |
+| `credentials:read`       | List credential profiles — never the secrets           | `GET /credentials`, `/credentials/{credential_id}`, `/credentials/types`                                                                                                                                                 |
+| `credentials:update`     | Edit stored credential profiles                        | `PATCH /credentials/{credential_id}`                                                                                                                                                                                     |
+| `credentials:validate`   | Authenticate a stored credential against a target host | `POST /credentials/{credential_id}/validate`                                                                                                                                                                             |
+| `credentials:delete`     | Remove stored credential profiles                      | `DELETE /credentials/{credential_id}`                                                                                                                                                                                    |
 
 > **NOTE:** `scans:read_all` is real and load-bearing even though it never appears
 > as a route dependency. Without it, `GET /scans` adds
@@ -110,11 +124,12 @@ Each row is one `(resource, action, description)` tuple, in source order. The
 
 ### `findings` — 3 atoms
 
-| Atom              | Seeded description                                  | Enforced at                                                                                                            |
-| ----------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `findings:read`   | View vulnerability findings                         | `GET /findings`, `GET /findings/grouped/by-component`, `GET /findings/{finding_id}`, `GET /assets/{asset_id}/findings` |
-| `findings:update` | Update finding status (accept, suppress, remediate) | `PATCH /findings/{finding_id}/status`, `PATCH /findings/{finding_id}/notes`                                            |
-| `findings:export` | Export findings to CSV/JSON/PDF                     | _(granted; CSV/PDF export runs through `/reports/download/{scan_id}`, gated on `reports:read`)_                        |
+| Atom                   | Seeded description                                          | Enforced at                                                                                                            |
+| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `findings:read`        | View vulnerability findings                                 | `GET /findings`, `GET /findings/grouped/by-component`, `GET /findings/{finding_id}`, `GET /assets/{asset_id}/findings` |
+| `findings:update`      | Update finding status (accept, suppress, remediate)         | `PATCH /findings/{finding_id}/status`, `PATCH /findings/{finding_id}/notes`                                            |
+| `findings:export`      | Export findings to CSV/JSON/PDF                             | _(granted; CSV/PDF export runs through `/reports/download/{scan_id}`, gated on `reports:read`)_                        |
+| `findings:accept_risk` | Accept the risk on a finding, with a reason and an approver | `POST /remediation/findings/{finding_id}/accept-risk`, `POST /remediation/findings/{finding_id}/withdraw-acceptance`   |
 
 ### `reports` — 3 atoms
 
@@ -249,61 +264,76 @@ opposite of `/admin/email-domains`, whose rules are platform-wide.
 `✔` granted · `—` not granted. Superadmin holds all 51 by definition
 (`ROLE_PERMISSIONS["superadmin"] = "*"`).
 
-| Atom                             | superadmin | org_admin | analyst | viewer | scanner |
-| -------------------------------- | :--------: | :-------: | :-----: | :----: | :-----: |
-| `scans:create`                   |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| `scans:read`                     |     ✔     |    ✔     |   ✔    |   ✔   |   ✔    |
-| `scans:read_all`                 |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `scans:update`                   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `scans:archive`                  |     ✔     |    ✔     |    —    |   —    |    —    |
-| `scans:restore`                  |     ✔     |    ✔     |    —    |   —    |    —    |
-| `scans:recycle`                  |     ✔     |    ✔     |    —    |   —    |    —    |
-| `scans:purge`                    |     ✔     |    ✔     |    —    |   —    |    —    |
-| `scans:execute`                  |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| `scans:cancel`                   |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `assets:create`                  |     ✔     |    ✔     |    —    |   —    |    —    |
-| `assets:read`                    |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `assets:update`                  |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `assets:delete`                  |     ✔     |    ✔     |    —    |   —    |    —    |
-| `assets:export`                  |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `findings:read`                  |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `findings:update`                |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `findings:export`                |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `reports:create`                 |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `reports:read`                   |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `reports:delete`                 |     ✔     |    ✔     |    —    |   —    |    —    |
-| `users:create`                   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `users:read`                     |     ✔     |    ✔     |    —    |   —    |    —    |
-| `users:update`                   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `users:delete`                   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `credentials:create`             |     ✔     |    ✔     |    —    |   —    |    —    |
-| `credentials:read`               |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| `credentials:delete`             |     ✔     |    ✔     |    —    |   —    |    —    |
-| `settings:read`                  |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `settings:update`                |     ✔     |    ✔     |    —    |   —    |    —    |
-| `dashboard:read`                 |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `roles:read`                     |     ✔     |    ✔     |    —    |   —    |    —    |
-| `roles:create`                   |     ✔     |     —     |    —    |   —    |    —    |
-| `roles:update`                   |     ✔     |     —     |    —    |   —    |    —    |
-| `roles:delete`                   |     ✔     |     —     |    —    |   —    |    —    |
-| `organizations:read`             |     ✔     |     —     |    —    |   —    |    —    |
-| `organizations:create`           |     ✔     |     —     |    —    |   —    |    —    |
-| `organizations:update`           |     ✔     |     —     |    —    |   —    |    —    |
-| `organizations:delete`           |     ✔     |     —     |    —    |   —    |    —    |
-| `audit:read`                     |     ✔     |    ✔     |    —    |   —    |    —    |
-| `audit:export`                   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:read`                |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| `compliance:scan`                |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `compliance:manage_schedules`    |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `compliance:attest`              |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `compliance:remediate`           |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| `compliance:manage_rules`        |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:manage_frameworks`   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:manage_retention`    |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:manage_integrations` |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:approve_exception`   |     ✔     |    ✔     |    —    |   —    |    —    |
-| `compliance:export_report`       |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| **Total**                        |   **51**   |  **44**   | **22**  | **8**  |  **4**  |
+| Atom                             |                   superadmin                   |                                                         org_admin                                                         | analyst | viewer | scanner |
+| -------------------------------- | :--------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------: | :-----: | :----: | :-----: |
+| `scans:create`                   |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |   ✔    |
+| `scans:read`                     |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |   ✔    |
+| `scans:read_all`                 |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `scans:update`                   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scans:archive`                  |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scans:restore`                  |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scans:recycle`                  |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scans:purge`                    |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scans:execute`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |   ✔    |
+| `scans:cancel`                   |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_schedules:create`          |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_schedules:read`            |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `scan_schedules:update`          |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_schedules:delete`          |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scan_schedules:execute`         |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_policies:create`           |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_policies:read`             |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |   ✔    |
+| `scan_policies:update`           |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `scan_policies:delete`           |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `scan_schedules:create`          |      Create scheduled and recurring scans      |                                                  `POST /scan-schedules`                                                   |
+| `scan_schedules:read`            |   View scan schedules and their run history    | `GET /scan-schedules`, `/scan-schedules/{schedule_id}`, `/scan-schedules/{schedule_id}/runs`, `/scan-schedules/timezones` |
+| `scan_schedules:update`          |     Edit, enable or disable scan schedules     |                    `PATCH /scan-schedules/{schedule_id}`, `POST /scan-schedules/{schedule_id}/enable`                     |
+| `scan_schedules:delete`          |             Delete scan schedules              |                                          `DELETE /scan-schedules/{schedule_id}`                                           |
+| `scan_schedules:execute`         | Trigger a scheduled scan immediately (Run Now) |                                       `POST /scan-schedules/{schedule_id}/run-now`                                        |
+| `assets:create`                  |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `assets:read`                    |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `assets:update`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `assets:delete`                  |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `assets:export`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `findings:read`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `findings:update`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `findings:export`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `findings:accept_risk`           |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `reports:create`                 |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `reports:read`                   |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `reports:delete`                 |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `users:create`                   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `users:read`                     |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `users:update`                   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `users:delete`                   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `credentials:create`             |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `credentials:read`               |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |   ✔    |
+| `credentials:delete`             |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `settings:read`                  |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `settings:update`                |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `dashboard:read`                 |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `roles:read`                     |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `roles:create`                   |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `roles:update`                   |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `roles:delete`                   |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `organizations:read`             |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `organizations:create`           |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `organizations:update`           |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `organizations:delete`           |                       ✔                       |                                                             —                                                             |    —    |   —    |    —    |
+| `audit:read`                     |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `audit:export`                   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:read`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   ✔   |    —    |
+| `compliance:scan`                |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `compliance:manage_schedules`    |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `compliance:attest`              |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `compliance:remediate`           |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| `compliance:manage_rules`        |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:manage_frameworks`   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:manage_retention`    |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:manage_integrations` |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:approve_exception`   |                       ✔                       |                                                            ✔                                                             |    —    |   —    |    —    |
+| `compliance:export_report`       |                       ✔                       |                                                            ✔                                                             |   ✔    |   —    |    —    |
+| **Total**                        |                     **51**                     |                                                          **44**                                                           | **22**  | **8**  |  **4**  |
 
 The seven atoms `org_admin` lacks are exactly the four `organizations:*` and the
 three mutating `roles:*` — the platform-level controls that must stay with the
@@ -361,10 +391,15 @@ account can read the topology graph.
 Seven atoms are defined, seeded and granted but no code path consumes them:
 
 | Atom                          | Why it is unreachable                                      |
-| ----------------------------- | ---------------------------------------------------------- |
+| ----------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `scans:create`                | Scan creation is authorized by `scans:execute`             |
 | `scans:update`                | No endpoint modifies a scan's configuration after creation |
 | `scans:cancel`                | `POST /scans/{scan_id}/stop` uses `scans:execute`          |
+| `scan_schedules:create`       | Create scheduled and recurring scans                       | `POST /scan-schedules`                                                                                                    |
+| `scan_schedules:read`         | View scan schedules and their run history                  | `GET /scan-schedules`, `/scan-schedules/{schedule_id}`, `/scan-schedules/{schedule_id}/runs`, `/scan-schedules/timezones` |
+| `scan_schedules:update`       | Edit, enable or disable scan schedules                     | `PATCH /scan-schedules/{schedule_id}`, `POST /scan-schedules/{schedule_id}/enable`                                        |
+| `scan_schedules:delete`       | Delete scan schedules                                      | `DELETE /scan-schedules/{schedule_id}`                                                                                    |
+| `scan_schedules:execute`      | Trigger a scheduled scan immediately (Run Now)             | `POST /scan-schedules/{schedule_id}/run-now`                                                                              |
 | `assets:create`               | No manual asset-creation endpoint                          |
 | `assets:delete`               | No asset-deletion endpoint                                 |
 | `settings:read`               | No settings-read endpoint                                  |

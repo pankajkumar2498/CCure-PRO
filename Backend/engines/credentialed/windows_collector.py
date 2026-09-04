@@ -19,7 +19,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 
 from core.mac import collector_mac
-from engines.credentialed.ssh_scanner import SSHScanner
+from engines.credentialed.ssh_scanner import BaseExecutor
 
 log = logging.getLogger("ccure.windows_collector")
 
@@ -220,6 +220,24 @@ COMMANDS: dict[str, str] = {
     ),
     "hostname": "hostname",
     "uptime": "((Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss')",
+    # What privilege this session actually holds.
+    #
+    # There is no elevation mechanism on the Windows path and none is invented
+    # here: WinRM and OpenSSH both run as whoever authenticated, and this
+    # product does not create a service or a scheduled task to escalate. So the
+    # honest thing is to record the token, because the same check set produces
+    # different answers under an administrator and under a standard user — a
+    # registry read that returns nothing to one and a value to the other.
+    #
+    # S-1-5-32-544 is the Administrators group SID, which is stable across
+    # locales; matching on the group's *name* fails on a non-English install.
+    "privilege_context": (
+        "$id=[Security.Principal.WindowsIdentity]::GetCurrent();"
+        "@{Name=$id.Name;"
+        "IsAdministrator=(New-Object Security.Principal.WindowsPrincipal($id))"
+        ".IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);"
+        "IsSystem=$id.IsSystem} | ConvertTo-Json"
+    ),
     # Hardware & Identity
     "computer_system": "(Get-CimInstance Win32_ComputerSystem | Select-Object Name, DNSHostName, Domain, PartOfDomain, Manufacturer, Model | ConvertTo-Json)",
     "bios": "(Get-CimInstance Win32_BIOS | Select-Object SerialNumber, SMBIOSBIOSVersion | ConvertTo-Json)",
@@ -316,16 +334,32 @@ COMMANDS: dict[str, str] = {
 
 class WindowsCollector:
     """
-    Runs PowerShell commands over an open SSHScanner connection and parses
-    the output into structured dicts ready for JSON serialisation.
-    Works regardless of whether the SSH default shell is PowerShell or cmd.
+    Runs PowerShell commands over an open executor connection and parses the
+    output into structured dicts ready for JSON serialisation.
+
+    **Transport-agnostic.** The parameter is a ``BaseExecutor``, so this drives
+    either ``SSHScanner`` (OpenSSH on Windows) or ``WinRMExecutor`` (native
+    WinRM, added in Phase 2) without knowing which. Every command below is
+    plain PowerShell and every parser reads its output — none of it depends on
+    how the bytes arrived, which is why native Windows support needed a new
+    transport rather than a second collector.
+
+    ``_detect_shell`` works over both: WinRM answers ``$PSVersionTable`` with a
+    version number, so it reports "powershell" and ``_wrap_ps`` correctly
+    leaves commands alone — pywinrm does its own UTF-16-LE base64 encoding, and
+    wrapping twice would send the encoder its own output.
     """
 
     # Path to PowerShell executable — used when the default shell is cmd.exe
     _PS_EXE = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
-    def __init__(self, ssh: SSHScanner):
+    def __init__(self, ssh: BaseExecutor):
         self._ssh = ssh
+        #: Items this run could not collect, and why. Travels into the report as
+        #: ``collection_errors`` so a transport that serves part of the
+        #: inventory says which part, rather than returning a shorter answer
+        #: that reads as a smaller host.
+        self._unavailable: dict[str, str] = {}
         self.shell_type = self._detect_shell()
         if self.shell_type == "cmd":
             log.warning(
@@ -340,6 +374,11 @@ class WindowsCollector:
 
     def _detect_shell(self) -> str:
         """Returns 'powershell' or 'cmd'."""
+        # A transport that runs no commands has no shell to detect. Probing it
+        # would spend a refusal and then log advice about OpenSSH's DefaultShell
+        # to an operator who is not using OpenSSH.
+        if getattr(self._ssh, "executes_commands", True) is False:
+            return "native"
         result = self._ssh.run("$PSVersionTable.PSVersion.Major", timeout=8)
         cleaned = _clean_output(result.stdout)
         return "powershell" if (result.success and cleaned.isdigit()) else "cmd"
@@ -428,6 +467,14 @@ class WindowsCollector:
                     result.setdefault("collection_errors", {})[name] = str(exc)
 
         result["sections_requested"] = [name for name, _fn in tasks]
+        # Items the transport could not serve. Kept apart from the section
+        # failures above by an ``item:`` prefix: a section that raised is a
+        # defect worth investigating, whereas an item this transport does not
+        # implement is a known and recorded boundary. Both belong in the report;
+        # neither may be left to look like an empty reading from the host.
+        for key, reason in sorted(self._unavailable.items()):
+            result.setdefault("collection_errors", {})[f"item:{key}"] = reason
+        result["transport_collects_by"] = self.shell_type
         return result
 
     def _collect_system_info(self) -> dict[str, Any]:
@@ -483,6 +530,32 @@ class WindowsCollector:
         else:
             data["hostname_fqdn"] = self._run("hostname")
         data["uptime"] = self._run("uptime")
+
+        # Provenance for every Windows reading that follows. A standard user
+        # cannot read the service ACLs, the LSA policy or `net accounts`, and
+        # the checks that depend on them then report ERROR — correctly, but
+        # with nothing to say *why*. Recording the token turns "this check
+        # could not be performed" into "this check could not be performed by a
+        # non-administrator", which is the difference between an unexplained
+        # gap and an actionable one.
+        privilege_raw = self._run_json("privilege_context")
+        if isinstance(privilege_raw, list):
+            privilege_raw = privilege_raw[0] if privilege_raw else {}
+        if isinstance(privilege_raw, dict) and privilege_raw:
+            data["privilege_context"] = {
+                "account": str(privilege_raw.get("Name") or ""),
+                "is_administrator": bool(privilege_raw.get("IsAdministrator")),
+                "is_system": bool(privilege_raw.get("IsSystem")),
+            }
+        else:
+            # Unknown is a third state and must not read as "not an
+            # administrator": that would attribute a complete audit's findings
+            # to a partial one.
+            data["privilege_context"] = {
+                "account": "",
+                "is_administrator": None,
+                "is_system": None,
+            }
 
         bios_raw = self._run_json("bios")
         if isinstance(bios_raw, list):
@@ -797,66 +870,78 @@ class WindowsCollector:
             data["password_policy"] = pwd_policy
 
         # Safe Protocol Hardening Checks
-        smb1_raw = self._run_json("smbv1_status")
-        smbv1_disabled = not (
-            smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False)
-        )
-        data["smbv1_disabled"] = smbv1_disabled
-        if not smbv1_disabled:
-            issues.append("Legacy SMBv1 protocol is enabled")
-
-        netbios_raw = self._run_json("netbios_status")
-        netbios_list = (
-            netbios_raw
-            if isinstance(netbios_raw, list)
-            else [netbios_raw] if isinstance(netbios_raw, dict) else []
-        )
-        netbios_disabled = True
-        if netbios_list:
-            for adapter in netbios_list:
-                # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
-                if adapter.get("NetbiosOptions") != 2:
-                    netbios_disabled = False
-                    break
-        else:
-            netbios_disabled = False
-        data["netbios_disabled"] = netbios_disabled
-        if not netbios_disabled:
-            issues.append(
-                "NetBIOS over TCP/IP is enabled on one or more network adapters"
+        # Each of the three below omits its key when the item was not collected.
+        # Defaulting instead is how an unread input became a security statement:
+        # an absent `telnet_status` read as "Telnet is disabled" and passed a
+        # compliance control, while an absent `netbios_status` and `tls_status`
+        # each raised a finding on every host this transport touched.
+        smb1_raw = self._reading("smbv1_status")
+        if smb1_raw is not None:
+            smbv1_disabled = not (
+                smb1_raw.get("SMB1", 0) == 1 or smb1_raw.get("FeatureEnabled", False)
             )
+            data["smbv1_disabled"] = smbv1_disabled
+            if not smbv1_disabled:
+                issues.append("Legacy SMBv1 protocol is enabled")
 
-        tls_raw = self._run_json("tls_status")
-        tls_list = (
-            tls_raw
-            if isinstance(tls_raw, list)
-            else [tls_raw] if isinstance(tls_raw, dict) else []
-        )
-        legacy_tls_disabled = True
-        for proto in tls_list:
-            if proto.get("Enabled", 1) == 1:
-                legacy_tls_disabled = False
+        netbios_raw = self._reading("netbios_status")
+        if netbios_raw is not None:
+            netbios_list = (
+                netbios_raw
+                if isinstance(netbios_raw, list)
+                else [netbios_raw] if isinstance(netbios_raw, dict) else []
+            )
+            netbios_disabled = True
+            if netbios_list:
+                for adapter in netbios_list:
+                    # NetbiosOptions: 0 = DHCP/Default, 1 = Enabled, 2 = Disabled
+                    if adapter.get("NetbiosOptions") != 2:
+                        netbios_disabled = False
+                        break
+            else:
+                netbios_disabled = False
+            data["netbios_disabled"] = netbios_disabled
+            if not netbios_disabled:
                 issues.append(
-                    f"Legacy SChannel protocol {proto.get('Protocol')} ({proto.get('Type')}) is enabled"
+                    "NetBIOS over TCP/IP is enabled on one or more network adapters"
                 )
-        data["legacy_tls_disabled"] = legacy_tls_disabled
 
-        nla_raw = self._run_json("rdp_nla_status")
-        rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
-        data["rdp_nla_enforced"] = rdp_nla_enforced
-        if not rdp_nla_enforced and rdp_enabled:
-            issues.append(
-                "RDP is enabled but Network Level Authentication (NLA) is not enforced"
+        tls_raw = self._reading("tls_status")
+        if tls_raw is not None:
+            tls_list = (
+                tls_raw
+                if isinstance(tls_raw, list)
+                else [tls_raw] if isinstance(tls_raw, dict) else []
             )
+            legacy_tls_disabled = True
+            for proto in tls_list:
+                if proto.get("Enabled", 1) == 1:
+                    legacy_tls_disabled = False
+                    issues.append(
+                        f"Legacy SChannel protocol {proto.get('Protocol')} "
+                        f"({proto.get('Type')}) is enabled"
+                    )
+            data["legacy_tls_disabled"] = legacy_tls_disabled
 
-        telnet_raw = self._run_json("telnet_status")
-        telnet_disabled = not (
-            telnet_raw.get("ServiceRunning", False)
-            or telnet_raw.get("FeatureEnabled", False)
-        )
-        data["telnet_disabled"] = telnet_disabled
-        if not telnet_disabled:
-            issues.append("Telnet client or server is enabled/running")
+        nla_raw = self._reading("rdp_nla_status")
+        if nla_raw is not None:
+            rdp_nla_enforced = nla_raw.get("UserAuthentication", 0) == 1
+            data["rdp_nla_enforced"] = rdp_nla_enforced
+            if not rdp_nla_enforced and rdp_enabled:
+                issues.append(
+                    "RDP is enabled but Network Level Authentication (NLA) is "
+                    "not enforced"
+                )
+
+        telnet_raw = self._reading("telnet_status")
+        if telnet_raw is not None:
+            telnet_disabled = not (
+                telnet_raw.get("ServiceRunning", False)
+                or telnet_raw.get("FeatureEnabled", False)
+            )
+            data["telnet_disabled"] = telnet_disabled
+            if not telnet_disabled:
+                issues.append("Telnet client or server is enabled/running")
 
         data["security_issues"] = issues
         return data
@@ -905,9 +990,45 @@ class WindowsCollector:
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _run(self, key: str, timeout: int = 45) -> str:
-        """Execute a named command and return cleaned stdout."""
+        """
+        Collect one named item, natively where the transport can, by command
+        otherwise.
+
+        This is the seam that makes the collector transport-independent, and it
+        is the only thing the SMB transport needed. The collector already asked
+        for data by *name* — ``os_info``, ``services`` — so a transport that can
+        answer a name from WMI or the registry answers it, and one that cannot
+        falls through to the PowerShell it has always run. Every parser below is
+        untouched either way, which is what makes SMB a transport rather than a
+        second collector.
+        """
+        native = getattr(self._ssh, "run_named", None)
+        if callable(native):
+            result = native(key, timeout)
+            if result is not None:
+                if result.success:
+                    return _clean_output(result.stdout) if result.stdout else ""
+                # The transport tried and failed. Recorded, and deliberately not
+                # retried as a command: on a transport that cannot execute
+                # commands the retry refuses, and the refusal text would land in
+                # the parser as though the host had answered it.
+                log.debug(
+                    "native collection of '%s' failed on %s: %s",
+                    key,
+                    getattr(self._ssh, "ip", "?"),
+                    (result.stderr or "")[:200],
+                )
+                self._unavailable[key] = (result.stderr or "collection failed")[:300]
+                return ""
+
         cmd = COMMANDS.get(key, "")
         if not cmd:
+            return ""
+        if getattr(self._ssh, "executes_commands", True) is False:
+            # Neither natively answerable nor runnable here. Recording it keeps
+            # "this transport does not collect that" apart from "the host has
+            # none", which a shorter report would otherwise conflate.
+            self._unavailable[key] = "not available over this transport"
             return ""
         final_cmd = self._wrap_ps(cmd)
         result = self._ssh.run(final_cmd, timeout=timeout)
@@ -933,6 +1054,26 @@ class WindowsCollector:
     def _run_json(self, key: str) -> Any:
         """Run a named command and parse its output as JSON."""
         return self._decode_json(self._run(key), key)
+
+    def _reading(self, key: str) -> Any:
+        """
+        The parsed reading for a named item, or ``None`` if it was not collected.
+
+        The distinction ``_run_json`` cannot make. It returns ``{}`` both for "the
+        host answered with nothing" and for "this transport never asked", and the
+        posture code below then reads ``{}`` as data: a missing ``telnet_status``
+        became ``telnet_disabled = True``, which is an unearned security
+        assertion that travelled all the way to a passing compliance control.
+
+        A caller must test ``is None`` and **omit the derived key** rather than
+        default it. Omission is the established signal for "not assessed" — the
+        evidence adapter drops ``None`` values, and a dropped key routes the rule
+        to manual review instead of to a verdict nothing established.
+        """
+        raw = self._run(key)
+        if key in self._unavailable:
+            return None
+        return self._decode_json(raw, key)
 
     def _decode_json(self, raw: str, label: str) -> Any:
         """

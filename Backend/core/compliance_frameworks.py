@@ -51,6 +51,16 @@ import os
 DEFAULT_ACTIVE_FRAMEWORK_IDS: tuple[str, ...] = (
     "cfw_iso27001_2022",
     "cfw_nist_csf_v2",
+    # Activated by Phase 4. CIS Critical Security Controls v8.1 is the
+    # framework a hardening benchmark's findings roll up into: a benchmark
+    # recommendation crosswalks to a v8.1 safeguard, so leaving the safeguards
+    # parked would give benchmark results nowhere to land.
+    #
+    # Note this is the *Controls*, not the *Benchmarks*. They are separate
+    # publications: 153 governance safeguards here, per-platform hardening
+    # recommendations there. Benchmark content is loaded as its own framework
+    # by `core/benchmarks/loader.py` and is not seeded in this repository.
+    "cfw_cis_v8_1",
 )
 
 # Every catalogue that ships, active or parked. Kept so callers can tell
@@ -115,13 +125,47 @@ def active_framework_ids() -> tuple[str, ...]:
     return _configured()
 
 
+#: Framework ids created by ``core/benchmarks/loader.py`` carry this prefix.
+#:
+#: It is what separates *content the operator loaded* from *a catalogue that
+#: ships with the product*. The parked/active mechanism exists because eleven
+#: shipped catalogues are unfinished; it has nothing to say about a benchmark
+#: somebody deliberately installed, and a loaded benchmark can never appear in
+#: a hardcoded tuple anyway.
+#:
+#: A prefix rather than "anything not in ALL_FRAMEWORK_IDS": that reading would
+#: make a misspelled framework id active, and the guard could no longer answer
+#: 404 for one that does not exist.
+BENCHMARK_FRAMEWORK_PREFIX = "cfw_bm_"
+
+
+def is_benchmark_framework(framework_id: str | None) -> bool:
+    """True for a framework created by loading a benchmark pack."""
+    return bool(framework_id) and framework_id.startswith(BENCHMARK_FRAMEWORK_PREFIX)
+
+
 def is_active(framework_id: str | None) -> bool:
-    return bool(framework_id) and framework_id in _configured()
+    if not framework_id:
+        return False
+    if framework_id in _configured():
+        return True
+    # Loading a benchmark *is* the decision to use it. Requiring a second,
+    # separate activation step would mean content that loads cleanly and then
+    # silently scores nothing.
+    return is_benchmark_framework(framework_id)
 
 
 def is_known(framework_id: str | None) -> bool:
-    """True for any catalogue that ships, whether active or parked."""
-    return bool(framework_id) and framework_id in ALL_FRAMEWORK_IDS
+    """
+    True for any catalogue that ships, whether active or parked, and for any
+    loaded benchmark.
+
+    The distinction the caller needs is "exists but is switched off" (403)
+    versus "no such framework" (404), and a benchmark that was loaded exists.
+    """
+    if not framework_id:
+        return False
+    return framework_id in ALL_FRAMEWORK_IDS or is_benchmark_framework(framework_id)
 
 
 def parked_framework_ids() -> tuple[str, ...]:

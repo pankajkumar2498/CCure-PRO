@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +36,18 @@ logger = logging.getLogger(__name__)
 #: exploitation likelihood rather than by relevance to the installed version.
 CPE_MATCH_ROW_CAP = 2000
 NAME_MATCH_ROW_CAP = 200
+
+#: How long a *failed* vulnerability-intel probe is trusted before it is tried
+#: again. It exists because the probe used to be taken exactly once, at
+#: construction, and ``get_cve_database()`` caches the instance for the life of
+#: the process — while ``core/constants.py`` builds that instance at *import*,
+#: which on a worker or an API container is the moment the database is least
+#: likely to be up. ``can_connect_vuln_db()`` gives up after two seconds, so a
+#: single slow start pinned the whole process to a bundled SQLite snapshot
+#: months out of date, and said so in one warning line nobody would see again.
+#: A healthy backend is never re-probed — a live query that fails is already
+#: handled per query, loudly — so this costs nothing except while degraded.
+_BACKEND_PROBE_TTL_SECONDS = 60.0
 
 BEST_CVSS_LATERAL = """
 LEFT JOIN LATERAL (
@@ -69,25 +82,64 @@ class CVEDatabase:
 
         self.db_path = Path(db_path)
         self.sqlite_available = self.db_path.exists()
-        self.postgres_available = can_connect_vuln_db()
-        self.db_available = self.postgres_available or self.sqlite_available
-        self.backend = (
-            "postgresql"
-            if self.postgres_available
-            else ("sqlite" if self.sqlite_available else "fallback")
-        )
+        self._postgres_ok = can_connect_vuln_db()
+        self._probed_at = time.monotonic()
+        self._log_backend(initial=True)
 
-        if self.backend == "postgresql":
-            logger.info("CVE Database: using PostgreSQL vulnerability-intel database")
-        elif self.backend == "sqlite":
+    # ── Backend selection ────────────────────────────────────────────────────
+    #
+    # `backend` is a property rather than a value fixed in __init__. The stale
+    # snapshot under db/ is a legitimate offline and test fallback, but it is
+    # months behind the feed, and a scan served from it reports findings that
+    # look exactly like findings from live data. Deciding once meant one
+    # transient failure demoted the process permanently; re-probing means the
+    # demotion lasts as long as the outage and no longer.
+
+    def _refresh_backend(self) -> None:
+        """Re-probe the intelligence database if the last probe failed and is stale."""
+        if self._postgres_ok:
+            return  # healthy: a failing query is handled per query, not here
+        if (time.monotonic() - self._probed_at) < _BACKEND_PROBE_TTL_SECONDS:
+            return
+        self._probed_at = time.monotonic()
+        if can_connect_vuln_db():
+            self._postgres_ok = True
             logger.warning(
-                "CVE Database: PostgreSQL unavailable, falling back to SQLite at %s",
+                "CVE_DB_RECOVERED — vulnerability-intel database is reachable "
+                "again; leaving the %s fallback.",
+                "SQLite" if self.sqlite_available else "hardcoded-hint",
+            )
+
+    def _log_backend(self, initial: bool = False) -> None:
+        if self._postgres_ok:
+            logger.info("CVE Database: using PostgreSQL vulnerability-intel database")
+        elif self.sqlite_available:
+            logger.warning(
+                "CVE Database: PostgreSQL unavailable, falling back to SQLite at "
+                "%s. This snapshot is not the live feed and will be retried "
+                "every %.0fs.",
                 self.db_path,
+                _BACKEND_PROBE_TTL_SECONDS,
             )
         else:
             logger.warning(
                 "CVE Database: no database available, using hardcoded fallback hints"
             )
+
+    @property
+    def postgres_available(self) -> bool:
+        self._refresh_backend()
+        return self._postgres_ok
+
+    @property
+    def db_available(self) -> bool:
+        return self.postgres_available or self.sqlite_available
+
+    @property
+    def backend(self) -> str:
+        if self.postgres_available:
+            return "postgresql"
+        return "sqlite" if self.sqlite_available else "fallback"
 
     def search_cves_for_service(
         self, service_name: str, version: str = "", cpes: tuple[str, ...] = ()

@@ -15,7 +15,8 @@ from typing import List, Optional
 from auth.rbac import require_permission
 from db.base import SessionLocal
 from db.models import ComplianceCredential, User
-from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE, SSHScanner
+from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
+from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -68,7 +69,11 @@ class CredentialedScanRequest(BaseModel):
     username: str | None = Field(None, examples=["root"])
     password: SecretStr | None = Field(None)
     key_path: str | None = Field(None)
-    port: int = Field(22, ge=1, le=65535)
+    #: ``None`` means "whatever this credential says", not 22. The default used
+    #: to be 22, which is indistinguishable from an operator asking for 22 — so
+    #: a stored credential's port had to overwrite it unconditionally and there
+    #: was no way to run one credential against a host whose listener had moved.
+    port: int | None = Field(None, ge=1, le=65535)
     auth_method: str = Field("password")
     sections: list[str] | None = Field(None)
     os_type: str = Field("auto", description="'linux' | 'windows' | 'auto'")
@@ -100,6 +105,17 @@ class CredentialedScanRequest(BaseModel):
             if token and token not in seen:
                 seen.append(token)
         return seen
+
+    policy_id: str | None = Field(
+        None,
+        description=(
+            "Reusable scan policy to run this audit under (GAP-12). The "
+            "policy decides which benchmarks, profile, check families, "
+            "severity floor and sections are assessed. Where it names a "
+            "setting it wins over the same parameter in this request, and the "
+            "response lists what it overrode."
+        ),
+    )
 
     @field_validator("key_path")
     @classmethod
@@ -187,6 +203,7 @@ def _detect_os(ssh) -> str:
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
+from scans.policy_binding import resolve_scan_policy as _resolve_scan_policy
 
 
 @router.post("/scan/credentialed")
@@ -209,6 +226,8 @@ async def scan_credentialed(
 
     # Validate based on credential input type
     target_port = req.port
+    target_transport = TRANSPORT_SSH
+    credential_use_tls = None
     if not req.credential_id:
         if not req.username:
             raise HTTPException(
@@ -245,7 +264,13 @@ async def scan_credentialed(
                     status_code=404,
                     detail="Stored credential not found or access denied.",
                 )
-            target_port = cred.port
+            # An explicit port on the request wins. Previously the stored
+            # credential's port overwrote it unconditionally, so the field was
+            # dead whenever a credential was named and an operator could not
+            # point one credential at a host whose listener had moved.
+            target_port = req.port or cred.port
+            target_transport = cred.transport or TRANSPORT_SSH
+            credential_use_tls = (cred.options or {}).get("use_tls")
         finally:
             db.close()
 
@@ -279,10 +304,28 @@ async def scan_credentialed(
     # several, one dead host must not block the rest; those are recorded as
     # failed hosts in the report instead.
     if len(hosts) == 1:
-        if not SSHScanner.test_connectivity(hosts[0], target_port, timeout=5):
+        # Resolved rather than probed on one fixed port. A bare
+        # ``test_connectivity`` on the credential's stated port rejected the
+        # scan here — before the worker, which now resolves the endpoint, ever
+        # ran — so a host whose listener had moved could not be scanned at all
+        # however good the resolution downstream was. This probes the same
+        # candidates the worker will, and only refuses when none answers.
+        preflight = resolve_endpoint(
+            ip=hosts[0],
+            transport=target_transport,
+            stated_port=target_port,
+            use_tls=credential_use_tls,
+            include_fallbacks=True,
+            timeout=5,
+        )
+        if not preflight.resolved:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot reach {hosts[0]}:{target_port} — host is down or port is closed.",
+                detail=(
+                    f"Cannot reach {hosts[0]} — host is down or no "
+                    f"{target_transport.upper()} port is open. "
+                    f"{preflight.reason}"
+                ),
             )
 
     target_str = ", ".join(hosts)
@@ -304,8 +347,38 @@ async def scan_credentialed(
             pipeline_mode="credentialed",
             org_id=target_org_id,
         )
+        # -- Policy gate (GAP-12) --------------------------------------------
+        # Inside the same session that created the scan, so the snapshot and
+        # the row it describes land in one commit, and before dispatch so the
+        # worker can never read a scan whose configuration is unsettled.
+        #
+        # `has_credential` is True for every path that reaches here: the
+        # request has either named a stored credential or supplied material,
+        # both checked above. A policy with `require_credential` therefore
+        # passes here and does its real work on the *scheduled* path and on the
+        # main pipeline, where an unauthenticated fallback is possible.
+        effective, policy_overrides = _resolve_scan_policy(
+            db,
+            scan=scan,
+            policy_id=req.policy_id,
+            org_id=target_org_id,
+            scan_kind="credentialed",
+            has_credential=True,
+            request_options={"sections": req.sections},
+        )
+        db.commit()
         scan_id = str(scan.id)
         scan_no = scan.scan_no
+        # Read out before the session closes: `effective` is a frozen
+        # dataclass and safe to use afterwards, but the ORM row is not.
+        eff_sections = list(effective.sections) or req.sections
+        policy_summary = {
+            "policy_id": effective.policy_id,
+            "policy_name": effective.policy_name,
+            "fingerprint": effective.fingerprint(),
+            "source": effective.source,
+            "overrides": policy_overrides,
+        }
     finally:
         db.close()
 
@@ -321,7 +394,11 @@ async def scan_credentialed(
         key_path=req.key_path if req.auth_method == "key" else None,
         port=target_port,
         auth_method=req.auth_method,
-        sections=req.sections,
+        # The policy's section list where it names one, the request's
+        # otherwise. The worker reads the rest of the configuration back from
+        # the scan's own snapshot rather than from these arguments -- a
+        # password already travels here and nothing else should join it.
+        sections=eff_sections,
         os_type_req=req.os_type,
         scan_id=scan_id,
         credential_id=req.credential_id,
@@ -342,4 +419,7 @@ async def scan_credentialed(
         "status": "running",
         "targets": hosts,
         "hosts_queued": len(hosts),
+        # Reported at acceptance, not only in the report: an audit that
+        # assessed something other than what was asked for must say so now.
+        "policy": policy_summary,
     }

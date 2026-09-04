@@ -136,14 +136,82 @@ def write_event(session, user, action="user.login", **kwargs):
 
 
 def newest_event(session, org_id):
-    from db.models import AuditLog
+    """
+    The organisation's most recent **chained** event — the tip of the chain.
 
-    return (
+    Found by following the chain, never by sorting on ``created_at``. Two
+    independent reasons, and the first one bit:
+
+    * ``created_at`` comes from ``AuditLog``'s Python-side ``default=utcnow``,
+      evaluated wherever the application runs, while pre-chain rows in the test
+      fixtures are inserted with SQL ``now()``, evaluated on the database
+      server. Those are two different clocks. Measured on this deployment, the
+      host PostgreSQL clock runs 33-61 ms ahead of the API container's, which
+      is longer than a fixture takes — so a legacy row sorted *newer* than the
+      chained event written after it, and this helper returned an unhashed row
+      as "newest". That is what made
+      ``test_audit_chain_legacy_boundary.py`` fail intermittently: three
+      consecutive runs of identical code gave pass, pass, fail.
+
+    * Even between two chained events on one clock, ``created_at`` has no
+      guaranteed distinct value. Two events in the same microsecond leave the
+      order to whatever the database returns first.
+
+    ``test_audit_chain_legacy_boundary`` states the rule this now follows:
+    *"the boundary is therefore read from ``genesis_event_id``, never derived
+    by sorting"*. The helper it called did exactly the sorting the test
+    forbade.
+
+    The tip is the one chained row whose ``record_hash`` no other row in the
+    same organisation links back to. That is derived from the chain's own
+    structure, so it is deterministic regardless of clocks — and deliberately
+    **not** read from ``audit_chain_heads.last_event_id``, which would make
+    assertions like ``after.last_event_id == event.id`` in
+    ``test_audit_chain_schema_isolation`` compare the head row against itself.
+
+    Legacy rows are excluded outright: they carry no ``record_hash``, are not
+    part of the chain, and no caller here wants one — every call site asserts
+    on the event ``write_event`` just produced.
+
+    Note that :func:`verify_org`, twenty lines below, already states this rule
+    for itself: *"Ordering follows ``prev_hash`` links from genesis, never
+    ``created_at``: that column is set client-side in Python, so it can
+    legitimately be out of order relative to insertion, and a verifier that
+    sorted by it would manufacture false breaks."* The convention was already
+    the house rule; this helper was the one place that broke it.
+    """
+    from db.models import AuditLog
+    from sqlalchemy.orm import aliased
+
+    successor = aliased(AuditLog)
+    tips = (
         session.query(AuditLog)
-        .filter(AuditLog.org_id == org_id)
-        .order_by(AuditLog.created_at.desc())
-        .first()
+        .filter(
+            AuditLog.org_id == org_id,
+            AuditLog.record_hash.isnot(None),
+            ~session.query(successor)
+            .filter(
+                successor.org_id == AuditLog.org_id,
+                successor.prev_hash == AuditLog.record_hash,
+            )
+            .exists(),
+        )
+        .all()
     )
+
+    if not tips:
+        return None
+    if len(tips) > 1:
+        # A well-formed chain has exactly one tip. Several means the chain has
+        # forked, which is precisely what the tamper suite exists to detect —
+        # so say so instead of returning an arbitrary one of them and letting
+        # a downstream assertion fail somewhere confusing.
+        raise AssertionError(
+            f"audit chain for org {org_id!r} has {len(tips)} tips "
+            f"({sorted(t.id for t in tips)}) — the chain has forked, so "
+            "'newest' is not defined."
+        )
+    return tips[0]
 
 
 def head_row(conn, org_id):

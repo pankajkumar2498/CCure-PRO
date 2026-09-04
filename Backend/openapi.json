@@ -318,6 +318,260 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "ConfigAuditCapabilitiesOut": {
+        "properties": {
+          "absence_policies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Absence Policies",
+            "type": "array"
+          },
+          "check_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Check Types",
+            "type": "array"
+          },
+          "declared_without_collector": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Declared Without Collector",
+            "type": "array"
+          },
+          "operators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Operators",
+            "type": "array"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "supported": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Supported",
+            "type": "object"
+          }
+        },
+        "required": [
+          "supported",
+          "declared_without_collector",
+          "check_types",
+          "platforms",
+          "operators",
+          "absence_policies"
+        ],
+        "title": "ConfigAuditCapabilitiesOut",
+        "type": "object"
+      },
+      "ConfigAuditCheckOut": {
+        "properties": {
+          "absent_policy": {
+            "title": "Absent Policy",
+            "type": "string"
+          },
+          "check_id": {
+            "title": "Check Id",
+            "type": "string"
+          },
+          "check_type": {
+            "title": "Check Type",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "string"
+          },
+          "intrusive": {
+            "default": false,
+            "title": "Intrusive",
+            "type": "boolean"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "qod": {
+            "default": 95,
+            "title": "Qod",
+            "type": "integer"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "requires_credentials": {
+            "default": true,
+            "title": "Requires Credentials",
+            "type": "boolean"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id",
+          "title",
+          "check_type",
+          "platforms",
+          "domain",
+          "severity",
+          "absent_policy",
+          "expected"
+        ],
+        "title": "ConfigAuditCheckOut",
+        "type": "object"
+      },
+      "ConfigAuditValidateIn": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "string"
+          },
+          "check_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Check Id",
+            "type": "string"
+          },
+          "check_type": {
+            "title": "Check Type",
+            "type": "string"
+          },
+          "collect": {
+            "title": "Collect",
+            "type": "object"
+          },
+          "domain": {
+            "default": "host_configuration",
+            "title": "Domain",
+            "type": "string"
+          },
+          "expected": {
+            "title": "Expected"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "severity": {
+            "default": "medium",
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id",
+          "title",
+          "check_type",
+          "collect",
+          "operator",
+          "absent"
+        ],
+        "title": "ConfigAuditValidateIn",
+        "type": "object"
+      },
+      "ConfigAuditValidateOut": {
+        "properties": {
+          "check_definition": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Definition"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ConfigAuditValidateOut",
+        "type": "object"
+      },
       "CredentialCreate": {
         "properties": {
           "auth_method": {
@@ -487,12 +741,30 @@
             ],
             "title": "Password"
           },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy to run this audit under (GAP-12). The policy decides which benchmarks, profile, check families, severity floor and sections are assessed. Where it names a setting it wins over the same parameter in this request, and the response lists what it overrode.",
+            "title": "Policy Id"
+          },
           "port": {
-            "default": 22,
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Port",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
           },
           "sections": {
             "anyOf": [
@@ -776,6 +1048,18 @@
               "basic"
             ],
             "title": "Pipeline Mode"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy to run this scan under (GAP-12). Where the policy names a setting it wins over the same parameter in this request, and the response lists what it overrode. Omitting it preserves the pre-policy behaviour exactly.",
+            "title": "Policy Id"
           },
           "port_scan_intensity": {
             "anyOf": [
@@ -1734,6 +2018,33 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "RemediationAcceptRisk": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RemediationAcceptRisk",
+        "type": "object"
+      },
       "RemediationApprovalPayload": {
         "properties": {
           "status": {
@@ -1746,6 +2057,62 @@
           "status"
         ],
         "title": "RemediationApprovalPayload",
+        "type": "object"
+      },
+      "RemediationAssign": {
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          }
+        },
+        "required": [
+          "finding_ids"
+        ],
+        "title": "RemediationAssign",
+        "type": "object"
+      },
+      "RemediationNote": {
+        "properties": {
+          "note": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "RemediationNote",
         "type": "object"
       },
       "RemediationRequest": {
@@ -1786,6 +2153,93 @@
           "action"
         ],
         "title": "RemediationRequest",
+        "type": "object"
+      },
+      "RemediationSlaPolicyUpdate": {
+        "properties": {
+          "days_by_severity": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days By Severity"
+          },
+          "due_soon_window_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Soon Window Days"
+          },
+          "honour_kev_due_date": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Honour Kev Due Date"
+          }
+        },
+        "title": "RemediationSlaPolicyUpdate",
+        "type": "object"
+      },
+      "RemediationStateUpdate": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "RemediationStateUpdate",
+        "type": "object"
+      },
+      "RemediationWithdraw": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "RemediationWithdraw",
         "type": "object"
       },
       "ResendVerificationRequest": {
@@ -1954,6 +2408,767 @@
           "severity_weight"
         ],
         "title": "RuleUpdatePayload",
+        "type": "object"
+      },
+      "ScanCredentialCreate": {
+        "properties": {
+          "auth_method": {
+            "default": "password",
+            "title": "Auth Method",
+            "type": "string"
+          },
+          "credential_type": {
+            "default": "ssh",
+            "title": "Credential Type",
+            "type": "string"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "title": "Options",
+            "type": "object"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "private_key": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Key"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport"
+          },
+          "username": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "username"
+        ],
+        "title": "ScanCredentialCreate",
+        "type": "object"
+      },
+      "ScanCredentialUpdate": {
+        "properties": {
+          "auth_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Method"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "private_key": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Key"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 150,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "title": "ScanCredentialUpdate",
+        "type": "object"
+      },
+      "ScanCredentialValidateRequest": {
+        "properties": {
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "target": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "ScanCredentialValidateRequest",
+        "type": "object"
+      },
+      "ScanPolicyCreate": {
+        "properties": {
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_enabled": {
+            "default": true,
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_family_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Family Code"
+          },
+          "scan_kind": {
+            "default": "any",
+            "description": "network | credentialed | any",
+            "title": "Scan Kind",
+            "type": "string"
+          },
+          "status": {
+            "default": "draft",
+            "description": "draft | active | archived",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ScanPolicyCreate",
+        "type": "object"
+      },
+      "ScanPolicyEnable": {
+        "properties": {
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_enabled"
+        ],
+        "title": "ScanPolicyEnable",
+        "type": "object"
+      },
+      "ScanPolicyStatus": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ScanPolicyStatus",
+        "type": "object"
+      },
+      "ScanPolicyUpdate": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "scan_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Kind"
+          }
+        },
+        "title": "ScanPolicyUpdate",
+        "type": "object"
+      },
+      "ScanPolicyValidate": {
+        "properties": {
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "scan_kind": {
+            "default": "any",
+            "title": "Scan Kind",
+            "type": "string"
+          }
+        },
+        "title": "ScanPolicyValidate",
+        "type": "object"
+      },
+      "ScanPolicyVersion": {
+        "description": "A new version of an existing family, superseding the current one.",
+        "properties": {
+          "activate": {
+            "default": true,
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "config": {
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "ScanPolicyVersion",
+        "type": "object"
+      },
+      "ScanScheduleCreate": {
+        "properties": {
+          "credential_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Id"
+          },
+          "cron_expression": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron Expression"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_enabled": {
+            "default": true,
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reusable scan policy this schedule runs under (GAP-12). By reference, so editing the policy changes every future run without touching this schedule -- and completed scans keep their own recorded configuration. Re-resolved and re-validated at every dispatch, never inherited from the moment the schedule was written.",
+            "title": "Policy Id"
+          },
+          "recurrence": {
+            "title": "Recurrence",
+            "type": "string"
+          },
+          "run_at": {
+            "default": "00:00",
+            "title": "Run At",
+            "type": "string"
+          },
+          "scan_kind": {
+            "title": "Scan Kind",
+            "type": "string"
+          },
+          "scan_options": {
+            "title": "Scan Options",
+            "type": "object"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "recurrence",
+          "scan_kind"
+        ],
+        "title": "ScanScheduleCreate",
+        "type": "object"
+      },
+      "ScanScheduleEnableBody": {
+        "properties": {
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_enabled"
+        ],
+        "title": "ScanScheduleEnableBody",
+        "type": "object"
+      },
+      "ScanScheduleUpdate": {
+        "description": "Every field optional; only what is sent is changed.",
+        "properties": {
+          "credential_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Id"
+          },
+          "cron_expression": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron Expression"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Id"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence"
+          },
+          "run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run At"
+          },
+          "scan_options": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Options"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "ScanScheduleUpdate",
         "type": "object"
       },
       "ScanScopeSchema": {
@@ -7055,7 +8270,7 @@
     },
     "/api/v1/admin/nvd-sync-status": {
       "get": {
-        "description": "Check NVD 2.0 vulnerability sync progress, last sync timestamp, and total CVE count in vuln_intel DB.",
+        "description": "Check NVD 2.0 sync progress, last sync timestamp, and the catalogue count.\n\n``database_total_cves`` is the application catalogue. The intelligence feed\nis reported separately as ``scanner_feed_total_cves`` /\n``scanner_feed_last_modified``; the two are different stores and neither\nnumber stands in for the other.",
         "operationId": "get_sync_status_api_v1_admin_nvd_sync_status_get",
         "parameters": [
           {
@@ -7101,21 +8316,27 @@
     },
     "/api/v1/admin/sync-nvd": {
       "post": {
-        "description": "Manually trigger live NVD 2.0 API vulnerability sync into vuln_intel database.\nRuns asynchronously in the background.",
+        "description": "Trigger a live NVD 2.0 sync into the application vulnerability catalogue.\nRuns asynchronously in the background.\n\n``days_back`` is the mode selector, and deliberately so. It used to be a\nplain int with a default of 90 that the sync read and then discarded,\nbecause the stored checkpoint overrode it on every deployment that had ever\nsynced — an operator could ask for a year of history, receive a 202, and get\nthe last few hours. Presence now means \"backfill this window\"; absence means\n\"carry on from the checkpoint\".",
         "operationId": "trigger_nvd_sync_api_v1_admin_sync_nvd_post",
         "parameters": [
           {
-            "description": "Days of historical CVE modifications to pull",
+            "description": "Historical lookback in days. Omit to run the normal incremental sync, which resumes from the stored checkpoint. Supply a value to backfill exactly that many days: the checkpoint is then ignored and never advanced, so a backfill cannot move the incremental frontier past anything it failed to retrieve.",
             "in": "query",
             "name": "days_back",
             "required": false,
             "schema": {
-              "default": 90,
-              "description": "Days of historical CVE modifications to pull",
-              "maximum": 3650,
-              "minimum": 1,
-              "title": "Days Back",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Historical lookback in days. Omit to run the normal incremental sync, which resumes from the stored checkpoint. Supply a value to backfill exactly that many days: the checkpoint is then ignored and never advanced, so a backfill cannot move the incremental frontier past anything it failed to retrieve.",
+              "title": "Days Back"
             }
           },
           {
@@ -12806,6 +14027,633 @@
         ]
       }
     },
+    "/config-audit/capabilities": {
+      "get": {
+        "description": "Which check types actually have a collector, per platform.\n\nRead from the live registry. A hand-maintained list here would be wrong the\nfirst time a collector was added and nobody would notice, because the\nsymptom is an endpoint under-reporting a capability the product has.",
+        "operationId": "capabilities_config_audit_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditCapabilitiesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Capabilities",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/checks": {
+      "get": {
+        "description": "The configuration checks this build can run.\n\nFiltering by ``platform`` uses the check's own targeting rule, so a check\ndeclared for ``any`` is returned for every platform rather than only for a\nliteral \"any\" query.",
+        "operationId": "list_checks_config_audit_checks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "check_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Check Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Domain"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigAuditCheckOut"
+                  },
+                  "title": "Response List Checks Config Audit Checks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Checks",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/checks/{check_id}": {
+      "get": {
+        "operationId": "get_check_config_audit_checks__check_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "check_id",
+            "required": true,
+            "schema": {
+              "title": "Check Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Check",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/config-audit/validate": {
+      "post": {
+        "description": "Check that a rule definition is executable, without contacting any target.\n\nAnswers 200 with ``valid: false`` rather than 422 for a rule that does not\nvalidate: the caller asked whether it is valid, and the errors are the\nanswer to that question, not a fault in the request.\n\nA ``matches`` pattern is compiled but never executed against anything. That\nis the safe half — compilation is bounded, matching a hostile pattern\nagainst attacker-influenced text is not, and the engine only ever matches\nagainst output it collected from a host the operator chose to scan.",
+        "operationId": "validate_rule_config_audit_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigAuditValidateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAuditValidateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Rule",
+        "tags": [
+          "Configuration Audit"
+        ]
+      }
+    },
+    "/credentials": {
+      "get": {
+        "operationId": "list_credentials_credentials_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "credential_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Credential Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Credentials",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "operationId": "create_credential_credentials_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCredentialCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/credentials/types": {
+      "get": {
+        "description": "What this build can authenticate with — read from the code, not hardcoded\nin the UI, so a build without pywinrm cannot offer Windows credentials it\nwould then fail to use.",
+        "operationId": "credential_types_credentials_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Credential Types",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/credentials/{credential_id}": {
+      "delete": {
+        "description": "Delete a credential.\n\nSchedules referencing it are **not** deleted: ``scan_schedules.credential_id``\nis ON DELETE SET NULL, and the dispatcher fails such a schedule loudly with\n\"no credential is attached\" rather than running an unauthenticated scan that\nwould report the host as clean. Cascading the delete would silently remove\nthe customer's scheduling instead.",
+        "operationId": "delete_credential_credentials__credential_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Credential",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "get": {
+        "operationId": "get_credential_credentials__credential_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Credential",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "patch": {
+        "operationId": "update_credential_credentials__credential_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCredentialUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/credentials/{credential_id}/validate": {
+      "post": {
+        "description": "Authenticate this credential against a host, now, and report exactly what\nhappened.\n\nA real connection is made. There is no \"looks plausible\" answer: the point\nis to find out before a scheduled scan does, at 02:00, with nobody watching.\n\nThe target is re-checked against the organisation's authorised scan scope,\nbecause this makes an outbound authentication attempt at a caller-named\naddress — otherwise it is a way to make this host try credentials against\nanything on the network.",
+        "operationId": "validate_credential_credentials__credential_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCredentialValidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/dashboard/asset-breakdown": {
       "get": {
         "operationId": "get_asset_breakdown_dashboard_asset_breakdown_get",
@@ -14687,6 +16535,858 @@
         ]
       }
     },
+    "/remediation/assign": {
+      "post": {
+        "description": "Assign, reassign or unassign remediation ownership, in bulk.\n\nThe owner must be a user **in the same organisation**. Without that check\na caller could name any user id in the installation and hand another\ntenant's employee a finding they can neither see nor act on.\n\nFindings the caller cannot see are silently absent from the result rather\nthan erroring: a bulk call across a stale selection should not fail\nwholesale, and the response reports how many were actually changed.",
+        "operationId": "assign_remediation_assign_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationAssign"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assign",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}": {
+      "get": {
+        "operationId": "finding_remediation_remediation_findings__finding_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Finding Remediation",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}/accept-risk": {
+      "post": {
+        "description": "Record a decision to carry the risk rather than fix it.\n\nIts own permission, deliberately. ``findings:update`` moves work through\nthe queue; deciding the organisation will live with a critical finding is\na different authorisation, and without the split anyone who can edit a\nfinding could clear their overdue list by accepting everything on it.\n\nA reason is required and an expiry is optional. An acceptance that expires\nreturns the finding to the remediation queue on beat; one that does not is\na legitimate decision for a permanent compensating control, and\n``accepted_at`` records when it was taken either way so it can still be\nfound and reviewed.",
+        "operationId": "accept_finding_risk_remediation_findings__finding_id__accept_risk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationAcceptRisk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept Finding Risk",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}/history": {
+      "get": {
+        "description": "Every remediation event for this finding, oldest first.\n\nRead from ``finding_remediation_events``, which nothing updates or\ndeletes. So a changed owner, a moved due date or a withdrawn acceptance is\nanswerable months later even though the finding row carries only the\ncurrent values.",
+        "operationId": "finding_history_remediation_findings__finding_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Finding History",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}/notes": {
+      "post": {
+        "description": "Append a remediation note.\n\nThe finding keeps the latest note in ``remediation_notes``, which the\nexisting findings API and the reports already read. The event trail keeps\nevery one, so replacing the note does not destroy what it said before.",
+        "operationId": "append_note_remediation_findings__finding_id__notes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationNote"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Append Note",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}/state": {
+      "patch": {
+        "description": "Move a finding through the remediation workflow.\n\n**``verified_fixed`` is refused here and that is the point of the phase.**\nThe human transition table has no edge into it; a caller asking for it\ngets a 400 saying a subsequent scan has to establish it, and pointing at\n``pending_verification`` — which is the claim a person is actually in a\nposition to make.\n\n``risk_accepted`` is refused too, but for a different reason: it needs a\nreason and an approver, so it has its own endpoint and its own permission.",
+        "operationId": "set_state_remediation_findings__finding_id__state_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationStateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set State",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/findings/{finding_id}/withdraw-acceptance": {
+      "post": {
+        "description": "Return an accepted finding to the remediation queue by hand.",
+        "operationId": "withdraw_finding_acceptance_remediation_findings__finding_id__withdraw_acceptance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationWithdraw"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Finding Acceptance",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/overdue": {
+      "get": {
+        "description": "Findings past their due date, soonest-due first.\n\n``total`` counts every overdue finding and is never truncated by ``limit``\n— a bounded count is a wrong number, where a bounded list is a page.",
+        "operationId": "overdue_findings_remediation_overdue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Overdue Findings",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/pending-verification": {
+      "get": {
+        "description": "Findings whose fix has been claimed and which are waiting for a scan.\n\nThis is the queue that makes the verification requirement operable: an\nentry here is somebody's word that the work is done, and it stays here\nuntil an assessment agrees.",
+        "operationId": "pending_verification_remediation_pending_verification_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pending Verification",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/sla-policy": {
+      "get": {
+        "operationId": "get_sla_policy_remediation_sla_policy_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Sla Policy",
+        "tags": [
+          "Remediation"
+        ]
+      },
+      "put": {
+        "description": "Set this organisation's remediation deadlines.\n\nStored in ``Organization.settings`` — JSONB, already carrying per-tenant\nconfiguration, so this needs no table. A partial update **merges** over\nthe current values: an organisation changing only ``critical`` keeps its\nother five deadlines, where a replace would silently remove them and\nreport thousands of findings as carrying no obligation.\n\nChanging the policy does **not** retroactively move existing due dates.\nThey are recomputed on the next scan's sync, and the change is in the\naudit trail — rewriting thousands of historical deadlines from a settings\nedit would alter what a past report said was overdue.",
+        "operationId": "set_sla_policy_remediation_sla_policy_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemediationSlaPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Sla Policy",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
+    "/remediation/summary": {
+      "get": {
+        "description": "Counts by remediation state and SLA position.\n\n**Two aggregate queries, never a loop over findings.** A per-finding SLA\ncomputation over the 4,633 findings one Linux host produces would be the\nN+1 the materialised ``sla_due_at`` column exists to prevent — and this is\nthe endpoint a dashboard calls on every load.\n\nThe overdue count deliberately excludes ``verified_fixed`` and\n``risk_accepted``: nothing further is owed on either, and reporting them\nas late would bury the ones that are.",
+        "operationId": "remediation_summary_remediation_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remediation Summary",
+        "tags": [
+          "Remediation"
+        ]
+      }
+    },
     "/reports/download/{scan_id}": {
       "get": {
         "operationId": "download_report_reports_download__scan_id__get",
@@ -14828,6 +17528,1346 @@
         "summary": "Delete Report",
         "tags": [
           "Reports"
+        ]
+      }
+    },
+    "/scan-policies": {
+      "get": {
+        "operationId": "list_policies_scan_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          },
+          {
+            "description": "Only policies a scan may use now",
+            "in": "query",
+            "name": "usable_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only policies a scan may use now",
+              "title": "Usable Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Policies",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "post": {
+        "operationId": "create_policy_scan_policies_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/settings": {
+      "get": {
+        "description": "The vocabularies this build honours, read from the code that honours them.\n\nA UI building a policy editor needs this, and hardcoding the lists there\nmeans a family added by a later phase is unselectable until somebody\nnotices. Everything below is derived, not restated.",
+        "operationId": "policy_settings_scan_policies_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policy Settings",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/validate": {
+      "post": {
+        "description": "Check a configuration without storing it.\n\nStatic validation only — vocabularies and internal consistency. Whether the\nnamed frameworks are installed for this organisation is checked again at\ndispatch, because an installation removed in June must stop a scan in July\nand a validation cached at authoring time cannot know that.",
+        "operationId": "validate_policy_body_scan_policies_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyValidate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Policy Body",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}": {
+      "delete": {
+        "description": "Delete a policy.\n\nRefused by default while a schedule references it. The foreign key is\n``ON DELETE SET NULL``, so deleting anyway leaves the schedule running\nunder the request defaults — a silent broadening of what it assesses, which\nis the thing this phase exists to prevent. ``force=true`` is the deliberate\nway through, and the response names what it changed.\n\nCompleted scans are never affected: their configuration lives in their own\n``options`` snapshot, which is why the snapshot is stored there rather than\nas a foreign key to this table.",
+        "operationId": "delete_policy_scan_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "description": "Delete even though schedules reference this policy",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Delete even though schedules reference this policy",
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "get": {
+        "operationId": "get_policy_scan_policies__policy_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_scan_policies__policy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/enable": {
+      "post": {
+        "description": "Switch a policy off without retiring it.\n\nDisabling is deliberately **not** silent for anything pointing at it: the\nresponse names the schedules that will now fail to dispatch. A schedule\nrunning unnoticed under the request defaults because its policy was\ndisabled would assess something other than what was authorised, which is\nexactly what this phase exists to stop.",
+        "operationId": "enable_policy_scan_policies__policy_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyEnable"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Enable Policy",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/status": {
+      "post": {
+        "description": "Move a policy through draft → active → archived.\n\nArchiving is this product's soft delete for a policy, and it is what an\noperator should reach for: the row survives, so a completed scan's snapshot\ncan still be matched against a policy a reader can look up, while nothing\nnew can start under it.",
+        "operationId": "set_policy_status_scan_policies__policy_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyStatus"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Policy Status",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/usage": {
+      "get": {
+        "description": "What depends on this policy: schedules now, and how many scans have run.\n\n``scan_count`` counts scans whose *snapshot* names this policy id, read\nfrom ``scans.options``, not a join — the snapshot is the record and a scan\nkeeps it after the policy is deleted.",
+        "operationId": "policy_usage_scan_policies__policy_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policy Usage",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-policies/{policy_id}/version": {
+      "post": {
+        "description": "Supersede a policy with a new version of the same family.\n\nThe old row is archived and points at the new one, so a scan that ran under\nversion 2 still resolves to a policy a reader can look up, while everything\nnew runs version 3. That is what the family/version pair is for, and it is\nthe shape ``CompliancePolicy`` already uses.\n\nSchedules are **not** repointed automatically. A schedule is an\nauthorisation to scan unattended, and silently moving one onto a\nconfiguration nobody reviewed is precisely the substitution this phase\nrefuses everywhere else. The response names them so an operator can.",
+        "operationId": "new_policy_version_scan_policies__policy_id__version_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicyVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "New Policy Version",
+        "tags": [
+          "Scan Policies"
+        ]
+      }
+    },
+    "/scan-schedules": {
+      "get": {
+        "operationId": "list_schedules_scan_schedules_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Schedules",
+        "tags": [
+          "Scan Schedules"
+        ]
+      },
+      "post": {
+        "operationId": "create_schedule_scan_schedules_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanScheduleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Schedule",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/credentials": {
+      "get": {
+        "description": "The stored credentials this organisation can attach to a schedule.\n\nDeliberately served here rather than reusing ``GET /compliance/credentials``,\nwhich is gated on ``compliance:read``. Choosing a credential for a\ncredentialed scan is a scanning task, and requiring a compliance permission\nto do it would either lock out an analyst who has no compliance role or\npush somebody into granting compliance access for the wrong reason.\n\nReturns identifying fields only — no ``encrypted_password``, no\n``encrypted_key_content``. This is a picker, not a credential export.\n\nDeclared above ``/{schedule_id}`` because FastAPI matches in declaration\norder and would otherwise read \"credentials\" as a schedule id.",
+        "operationId": "list_selectable_credentials_scan_schedules_credentials_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Selectable Credentials",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/timezones": {
+      "get": {
+        "description": "The IANA zones this server can resolve.\n\nServed from the server rather than hardcoded in the UI so the list can\nnever claim a zone the scheduler would then fall back to UTC on.",
+        "operationId": "list_timezones_scan_schedules_timezones_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Timezones",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/{schedule_id}": {
+      "delete": {
+        "description": "Delete the schedule and its run history.\n\nThe scans it produced are **not** deleted: ``scan_schedule_runs.scan_id`` is\nON DELETE SET NULL from ``scans``, and the runs cascade from the schedule.\nA scan is evidence of what was found on a network at a moment in time, and\nremoving a schedule is not a reason to destroy it.",
+        "operationId": "delete_schedule_scan_schedules__schedule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Schedule",
+        "tags": [
+          "Scan Schedules"
+        ]
+      },
+      "get": {
+        "operationId": "get_schedule_scan_schedules__schedule_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Schedule",
+        "tags": [
+          "Scan Schedules"
+        ]
+      },
+      "patch": {
+        "operationId": "update_schedule_scan_schedules__schedule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Schedule",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/{schedule_id}/enable": {
+      "post": {
+        "operationId": "set_enabled_scan_schedules__schedule_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanScheduleEnableBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Enabled",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/{schedule_id}/run-now": {
+      "post": {
+        "description": "Dispatch this schedule immediately.\n\nDeliberately does **not** move ``next_run_at``. Somebody testing a schedule\nat 11:00 would otherwise cancel that night's real run, which is a\nsurprising cost for pressing a button labelled \"Run Now\".\n\nWorks on a disabled schedule too: \"disabled\" means the recurrence does not\nfire by itself, not that the definition is unusable — and running one by\nhand is how an operator confirms a fix before switching it back on.",
+        "operationId": "run_now_scan_schedules__schedule_id__run_now_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Now",
+        "tags": [
+          "Scan Schedules"
+        ]
+      }
+    },
+    "/scan-schedules/{schedule_id}/runs": {
+      "get": {
+        "operationId": "list_runs_scan_schedules__schedule_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "Scan Schedules"
         ]
       }
     },
@@ -15949,6 +19989,208 @@
           }
         ],
         "summary": "Archive Scan",
+        "tags": [
+          "Scan History"
+        ]
+      }
+    },
+    "/scans/{scan_id}/comparison": {
+      "get": {
+        "description": "What changed between this scan and a baseline.\n\nBoth scans are fetched through ``_get_scan_or_404``, so the organisation\nscoping and the per-user visibility rule that govern every other scan route\ngovern this one too — a caller cannot compare against a scan they could not\nread, and cannot reach another tenant's findings by naming its id.\n\n``limit`` bounds the returned rows, never the counts: an estate with\nthousands of findings on one host still gets accurate totals, and the list\nis the sample. That split is deliberate — a truncated count would be a\nwrong number rather than a short page.",
+        "operationId": "compare_scan_scans__scan_id__comparison_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scan to compare against. Defaults to the most recent completed scan of the same pipeline_mode in this organisation.",
+            "in": "query",
+            "name": "baseline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan to compare against. Defaults to the most recent completed scan of the same pipeline_mode in this organisation.",
+              "title": "Baseline"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_findings",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Findings",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compare Scan",
+        "tags": [
+          "Scan History"
+        ]
+      }
+    },
+    "/scans/{scan_id}/policy": {
+      "get": {
+        "description": "The assessment configuration this scan actually ran under.\n\nRead from the scan's own immutable snapshot, **not** from the policy row it\nnames. That is the whole point: the policy may have been edited, versioned,\narchived or deleted since, and none of that changes what this scan\nassessed. A question an auditor asks about a scan has to be answerable from\nthe scan.\n\n``recorded: false`` is a real answer for a scan that predates GAP-12, and\nit is not turned into a default policy — inventing a configuration record\nwould put a claim in front of an auditor that nothing supports.\n\nTenant scoping is ``_get_scan_or_404``'s, the same lookup every other scan\nroute uses, so another organisation's scan answers 404 rather than\ndisclosing its configuration.",
+        "operationId": "scan_policy_record_scans__scan_id__policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scan Policy Record",
         "tags": [
           "Scan History"
         ]

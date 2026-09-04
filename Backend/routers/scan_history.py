@@ -25,10 +25,13 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
+
+from scan_helpers import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -669,6 +672,193 @@ def get_scan(
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
     return _scan_to_dict(scan, db=db, include_results=True)
+
+
+@router.get("/{scan_id}/policy")
+@limiter.limit("60/minute")
+def scan_policy_record(
+    # `request` and `response` are required, not decoration -- see the
+    # comparison route below for why a handler returning a dict must declare
+    # them or slowapi raises on every call.
+    request: Request,
+    response: Response,
+    scan_id: str,
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "read")),
+):
+    """
+    The assessment configuration this scan actually ran under.
+
+    Read from the scan's own immutable snapshot, **not** from the policy row it
+    names. That is the whole point: the policy may have been edited, versioned,
+    archived or deleted since, and none of that changes what this scan
+    assessed. A question an auditor asks about a scan has to be answerable from
+    the scan.
+
+    ``recorded: false`` is a real answer for a scan that predates GAP-12, and
+    it is not turned into a default policy — inventing a configuration record
+    would put a claim in front of an auditor that nothing supports.
+
+    Tenant scoping is ``_get_scan_or_404``'s, the same lookup every other scan
+    route uses, so another organisation's scan answers 404 rather than
+    disclosing its configuration.
+    """
+    from core.findings.comparison import policy_context
+
+    scan = _get_scan_or_404(scan_id, user, db, org_id)
+    context = policy_context(scan)
+
+    payload = {
+        "scan_id": str(scan.id),
+        "scan_no": scan.scan_no,
+        "pipeline_mode": scan.pipeline_mode,
+        "started_at": scan.started_at.isoformat() if scan.started_at else None,
+        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+        "policy": context,
+    }
+
+    if context.get("recorded"):
+        from core.scan_policy import read_policy_snapshot
+
+        effective = read_policy_snapshot(scan)
+        # The full effective configuration, field by field, so a client can
+        # diff two scans without re-deriving anything.
+        payload["effective"] = effective.as_dict() if effective else {}
+
+        # Whether the policy that produced this scan still exists and still
+        # says the same thing. Reported, never used to change the record: a
+        # policy edited since is exactly the case the snapshot exists for, and
+        # this is how a reader learns the two have diverged.
+        if effective and effective.policy_id:
+            from db.models.scan_policies import ScanPolicy
+            from core.scan_policy.spec import effective_from_config
+
+            row = (
+                db.query(ScanPolicy)
+                .filter(
+                    ScanPolicy.id == effective.policy_id,
+                    ScanPolicy.org_id == scan.org_id,
+                )
+                .first()
+            )
+            if row is None:
+                payload["policy_current_state"] = {
+                    "exists": False,
+                    "matches_snapshot": False,
+                    "note": (
+                        "The policy that produced this scan has since been "
+                        "deleted. The configuration above is unaffected."
+                    ),
+                }
+            else:
+                live = effective_from_config(
+                    row.config or {},
+                    policy_id=str(row.id),
+                    policy_name=str(row.name or ""),
+                    policy_family_code=str(row.policy_family_code or ""),
+                    version_number=int(row.version_number or 1),
+                    scan_kind=str(row.scan_kind or "any"),
+                )
+                same = live.fingerprint() == effective.fingerprint()
+                payload["policy_current_state"] = {
+                    "exists": True,
+                    "name": row.name,
+                    "status": row.status,
+                    "is_enabled": row.is_enabled,
+                    "version_number": row.version_number,
+                    "fingerprint": live.fingerprint(),
+                    "matches_snapshot": same,
+                    "note": (
+                        None
+                        if same
+                        else (
+                            "The policy has been edited since this scan ran. "
+                            "The configuration above is what this scan used."
+                        )
+                    ),
+                }
+
+    return payload
+
+
+@router.get("/{scan_id}/comparison")
+@limiter.limit("30/minute")
+def compare_scan(
+    # `request` and `response` are required, not decoration. The limiter is
+    # built headers_enabled=True and writes X-RateLimit-* after the handler
+    # returns; with neither a returned Response nor a declared one it hands
+    # slowapi None and every request to this route raises. CLAUDE.md records
+    # twenty-one routes that shipped in exactly that state.
+    request: Request,
+    response: Response,
+    scan_id: str,
+    baseline: str | None = Query(
+        None,
+        description=(
+            "Scan to compare against. Defaults to the most recent completed "
+            "scan of the same pipeline_mode in this organisation."
+        ),
+    ),
+    asset_id: list[str] | None = Query(None),
+    severity: list[str] | None = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    include_findings: bool = Query(True),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("scans", "read")),
+):
+    """
+    What changed between this scan and a baseline.
+
+    Both scans are fetched through ``_get_scan_or_404``, so the organisation
+    scoping and the per-user visibility rule that govern every other scan route
+    govern this one too — a caller cannot compare against a scan they could not
+    read, and cannot reach another tenant's findings by naming its id.
+
+    ``limit`` bounds the returned rows, never the counts: an estate with
+    thousands of findings on one host still gets accurate totals, and the list
+    is the sample. That split is deliberate — a truncated count would be a
+    wrong number rather than a short page.
+    """
+    from core.findings import compare_scans
+    from core.findings.comparison import previous_scan_for
+
+    current = _get_scan_or_404(scan_id, user, db, org_id)
+
+    if baseline:
+        baseline_scan = _get_scan_or_404(baseline, user, db, org_id)
+    else:
+        baseline_scan = previous_scan_for(db, current)
+        if baseline_scan is None:
+            # A first scan has nothing to be compared with. That is an answer,
+            # not an error: the caller gets the shape it expects with the
+            # reason filled in, so a report can render "no baseline" rather
+            # than a failure.
+            return {
+                "current_scan_id": str(current.id),
+                "baseline_scan_id": None,
+                "comparable": False,
+                "reason": (
+                    "no earlier completed scan of the same kind exists for this "
+                    "organisation, so there is nothing to compare against"
+                ),
+                "summary": "",
+                "counts": {},
+                "severity_counts": {},
+                "assets": [],
+                "findings": [],
+            }
+
+    comparison = compare_scans(
+        db,
+        current=current,
+        baseline=baseline_scan,
+        asset_ids=asset_id,
+        severities=severity,
+        limit_findings=limit,
+    )
+    return comparison.as_dict(include_findings=include_findings)
 
 
 @router.post("/{scan_id}/archive")

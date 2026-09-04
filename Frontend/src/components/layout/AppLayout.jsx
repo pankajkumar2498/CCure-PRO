@@ -163,6 +163,35 @@ const SIDEBAR_SECTIONS = [
         badgeColor: "info",
       },
       {
+        id: "scan-schedules",
+        label: "Scan Schedules",
+        Icon: IcoFile,
+        route: "/scan-schedules",
+        // scan_schedules:read, not scans:read. Seeing what is scheduled to
+        // point at a network unattended is its own question, and `viewer`
+        // holds this one deliberately.
+        permission: { resource: "scan_schedules", action: "read" },
+      },
+      {
+        id: "scan-credentials",
+        label: "Scan Credentials",
+        Icon: IcoFile,
+        route: "/scan-credentials",
+        // credentials:read, an existing RBAC resource that had no API until
+        // Phase 2 wired one.
+        permission: { resource: "credentials", action: "read" },
+      },
+      {
+        id: "configuration-checks",
+        label: "Configuration Checks",
+        Icon: IcoFile,
+        route: "/configuration-checks",
+        // scans:read, not a new permission. This is a read-only catalogue of
+        // what a scan checks, and it describes scan capability rather than
+        // granting any.
+        permission: { resource: "scans", action: "read" },
+      },
+      {
         id: "scan-history",
         label: "Scan History",
         Icon: IcoFile,

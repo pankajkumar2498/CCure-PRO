@@ -117,6 +117,18 @@ CONFIDENCE_COLOR: Dict[Confidence, colors.Color] = {
 
 SEVERITY_TIERS = ["Critical", "High", "Medium", "Low", "None", "Unscored"]
 
+#: Where a finding's remediation text came from, printed beneath it so a reader
+#: can weigh advice from a vendor advisory differently from advice inferred
+#: from a version range. Every ``RemediationConfidence`` member must appear
+#: here; ``tests/reports/test_report_integrity.py`` fails if one does not.
+REMEDIATION_PROVENANCE: Dict[RemediationConfidence, str] = {
+    RemediationConfidence.VENDOR_PATCH: "Source: vendor advisory linked below.",
+    RemediationConfidence.VERSION_BOUNDARY: "Source: CPE version range published with this CVE.",
+    RemediationConfidence.FEED_SUPPLIED: "Source: vulnerability feed.",
+    RemediationConfidence.NONE_PUBLISHED: "No published fix — compensating controls only.",
+    RemediationConfidence.CONFIGURATION_GUIDANCE: "Source: configuration rule — apply the change described above.",
+}
+
 #: How many suppressed candidates to sample into the methodology appendix. The
 #: full list goes to the CSV export; printing hundreds of rows here crowds out
 #: the findings the report exists to communicate.
@@ -572,6 +584,30 @@ def _scan_configuration(
         value = first(key, default="")
         if value:
             rows.append((label, value))
+
+    # The assessment policy, in the methodology appendix beside the rest of the
+    # scan's parameters. The full section is elsewhere; these three rows are
+    # what a reader skimming the appendix needs to know the scan was scoped.
+    #
+    # Note the row above named "Scan policy" is the scan *type* label and
+    # predates GAP-12. These are deliberately named differently rather than
+    # replacing it: the two answer different questions, and silently changing
+    # what an existing row means is worse than adding one.
+    policy_meta = (meta.get("scan_policy") or {}) if isinstance(meta, dict) else {}
+    if policy_meta.get("recorded"):
+        rows.append(
+            (
+                "Assessment policy",
+                policy_meta.get("policy_name") or "None (scan request defaults)",
+            )
+        )
+        rows.append(
+            ("Configuration ID", str(policy_meta.get("fingerprint") or "")[:16])
+        )
+        _psummary = policy_meta.get("summary") or {}
+        for _label in ("Benchmarks", "Benchmark profile", "Severity threshold"):
+            if _psummary.get(_label):
+                rows.append((_label, str(_psummary[_label])))
 
     exposed = _first_int(meta, summary, "listeners_exposed")
     host_only = _first_int(meta, summary, "listeners_host_only")
@@ -1236,6 +1272,509 @@ def _finding_group_card(group, styles: dict) -> List[Any]:
     return story
 
 
+#: Order the comparison table lists its classes in. Deliberately not the order
+#: the counts dict happens to iterate: a reader looks for "new" first and
+#: "not assessed" last, and a table whose row order moves between reports is
+#: one nobody can skim.
+_COMPARISON_ROWS = (
+    ("new", "New", "Open now and not open at the baseline"),
+    ("still_open", "Still open", "Open in both scans"),
+    ("fixed", "Fixed", "Was open, this scan looked and did not find it"),
+    ("reappeared", "Reappeared", "Was fixed and has come back"),
+    (
+        "not_assessed",
+        "Not assessed",
+        "Was open; this scan did not assess the check, so it is NOT reported fixed",
+    ),
+)
+
+
+#: How a remediation state reads to somebody who did not design it, and what
+#: it is *not*. The second half of each pair matters more than the first: an
+#: auditor reading "Pending verification" needs to know the product has a
+#: claim, not a confirmation.
+REMEDIATION_STATE_LABELS = {
+    "open": ("Open", "No remediation work has started"),
+    "assigned": ("Assigned", "An owner is accountable; work has not started"),
+    "in_remediation": ("In remediation", "Work is under way"),
+    "pending_verification": (
+        "Pending verification",
+        "A fix has been applied but NO scan has yet confirmed it",
+    ),
+    "verified_fixed": (
+        "Verified fixed",
+        "A subsequent scan assessed the check and found it gone",
+    ),
+    "reopened": (
+        "Reopened",
+        "Was verified fixed; a later scan found it again",
+    ),
+    "risk_accepted": ("Risk accepted", "Carried deliberately, with a reason"),
+}
+
+SLA_STATE_LABELS = {
+    "within_sla": "Within SLA",
+    "due_soon": "Due soon",
+    "overdue": "OVERDUE",
+    "resolved": "Resolved",
+    "pending_verification": "Awaiting verification",
+    "not_applicable": "No deadline applies",
+}
+
+
+def _remediation_summary_line(remediation) -> str:
+    """
+    The one-line executive figure.
+
+    Assembled from counts the API produced, never recomputed here — a report
+    and a dashboard disagreeing about how many findings are overdue is worse
+    than either number being slightly stale.
+    """
+    if not isinstance(remediation, dict) or not remediation:
+        return ""
+    by_state = remediation.get("by_state") or {}
+    return (
+        f"Open: {by_state.get('open', 0)} | "
+        f"In remediation: {by_state.get('in_remediation', 0)} | "
+        f"Pending verification: {by_state.get('pending_verification', 0)} | "
+        f"Overdue: {remediation.get('overdue', 0)} | "
+        f"Verified fixed: {by_state.get('verified_fixed', 0)}"
+    )
+
+
+def _remediation_section(remediation, styles) -> List[Any]:
+    """
+    The remediation and SLA section.
+
+    **The gap is not closed unless this is in the report.** An auditor has to
+    be able to answer, from the artefact in front of them, who owns a finding,
+    when it is due, whether it is late, and — the part that makes the rest
+    mean anything — whether a fix was *confirmed by an assessment* or merely
+    claimed by a person.
+
+    Returns an empty list when the scan carries no remediation data, so a
+    report generated for a scan that predates this phase is byte-for-byte what
+    it was before — the property `_comparison_section` and `_policy_section`
+    both preserve, and for the same reason.
+    """
+    if not isinstance(remediation, dict) or not remediation:
+        return []
+
+    story: List[Any] = [_heading("Remediation and SLA", styles["h1"], 0)]
+
+    line = _remediation_summary_line(remediation)
+    if line:
+        story.append(_p(escape_for_reportlab(line), styles["body"]))
+        story.append(Spacer(1, 3 * mm))
+
+    by_state = remediation.get("by_state") or {}
+    rows = [
+        [
+            _p("<b>State</b>", styles["th"], escape=False),
+            _p("<b>Count</b>", styles["th"], escape=False),
+            _p("<b>What it means</b>", styles["th"], escape=False),
+        ]
+    ]
+    for state, (label, meaning) in REMEDIATION_STATE_LABELS.items():
+        count = int(by_state.get(state, 0) or 0)
+        if not count:
+            continue
+        rows.append(
+            [
+                _p(label, styles["body"]),
+                _p(str(count), styles["body"]),
+                _p(meaning, styles["body"]),
+            ]
+        )
+    if len(rows) > 1:
+        story.append(_grid(rows, [36 * mm, 18 * mm, 107 * mm]))
+        story.append(Spacer(1, 3 * mm))
+
+    overdue = int(remediation.get("overdue", 0) or 0)
+    within = int(remediation.get("within_sla", 0) or 0)
+    no_sla = int(remediation.get("no_sla", 0) or 0)
+    story.append(
+        _p(
+            f"<b>SLA:</b> {overdue} overdue, {within} within their deadline, "
+            f"{no_sla} carrying no deadline. Deadlines are calendar days from "
+            f"the date a finding was first seen; rediscovering a finding does "
+            f"not restart its clock.",
+            styles["body"],
+            escape=False,
+        )
+    )
+
+    # The verification result of this scan, if it ran one. This is the
+    # sentence that distinguishes a report where fixes were confirmed from one
+    # where nothing could be confirmed because the scan did not look.
+    verification = remediation.get("verification") or {}
+    if verification:
+        story.append(Spacer(1, 3 * mm))
+        if not verification.get("comparison_usable", True):
+            story.append(
+                _p(
+                    "<b>No remediation was verified by this scan.</b> "
+                    + escape_for_reportlab(str(verification.get("reason") or "")),
+                    styles["body"],
+                    escape=False,
+                )
+            )
+        else:
+            withheld = int(verification.get("withheld_count", 0) or 0)
+            text = (
+                f"<b>This scan verified {verification.get('verified_count', 0)} "
+                f"remediation(s)</b> and reopened "
+                f"{verification.get('reopened_count', 0)}."
+            )
+            if withheld:
+                # Said out loud rather than omitted. A reader told "8 verified"
+                # and not told "40 could not be" has a number implying progress
+                # the scan did not establish.
+                text += (
+                    f" {withheld} finding(s) could <b>not</b> be verified "
+                    "because this scan did not assess the relevant check; "
+                    "they remain open."
+                )
+            story.append(_p(text, styles["body"], escape=False))
+
+    story.append(Spacer(1, 3 * mm))
+    story.append(
+        _p(
+            "A finding is reported as <b>verified fixed</b> only when a "
+            "subsequent assessment actually examined the relevant check and "
+            "found it gone. A fix reported by a person, with no assessment "
+            "behind it, is shown as <b>pending verification</b> and is not "
+            "counted as remediated.",
+            styles["body"],
+            escape=False,
+        )
+    )
+
+    # Who owns what, where the scan supplied it.
+    owners = remediation.get("by_owner") or []
+    if owners:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_heading("Ownership", styles["h2"], 1))
+        owner_rows = [
+            [
+                _p("<b>Owner</b>", styles["th"], escape=False),
+                _p("<b>Open</b>", styles["th"], escape=False),
+                _p("<b>Overdue</b>", styles["th"], escape=False),
+            ]
+        ]
+        for entry in owners[:20]:
+            owner_rows.append(
+                [
+                    _p(str(entry.get("owner") or "Unassigned"), styles["body"]),
+                    _p(str(entry.get("open", 0)), styles["body"]),
+                    _p(str(entry.get("overdue", 0)), styles["body"]),
+                ]
+            )
+        story.append(_grid(owner_rows, [101 * mm, 30 * mm, 30 * mm]))
+
+    # The findings an auditor would ask about first.
+    rows_detail = remediation.get("findings") or []
+    if rows_detail:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_heading("Findings under remediation", styles["h2"], 1))
+        detail = [
+            [
+                _p("<b>Finding</b>", styles["th"], escape=False),
+                _p("<b>Sev</b>", styles["th"], escape=False),
+                _p("<b>Owner</b>", styles["th"], escape=False),
+                _p("<b>Due</b>", styles["th"], escape=False),
+                _p("<b>SLA</b>", styles["th"], escape=False),
+                _p("<b>Remediation</b>", styles["th"], escape=False),
+            ]
+        ]
+        for entry in rows_detail[:25]:
+            rem = entry.get("remediation") or {}
+            sla = entry.get("sla") or {}
+            state = str(rem.get("state") or "open")
+            detail.append(
+                [
+                    _p(str(entry.get("vuln_id") or ""), styles["body"]),
+                    _p(str(entry.get("severity") or ""), styles["body"]),
+                    _p(str(rem.get("owner") or "—"), styles["body"]),
+                    _p(str(sla.get("due_at") or "—")[:10], styles["body"]),
+                    _p(
+                        SLA_STATE_LABELS.get(
+                            str(sla.get("state") or ""), str(sla.get("state") or "")
+                        ),
+                        styles["body"],
+                    ),
+                    _p(
+                        REMEDIATION_STATE_LABELS.get(state, (state, ""))[0],
+                        styles["body"],
+                    ),
+                ]
+            )
+        story.append(
+            _grid(detail, [42 * mm, 16 * mm, 32 * mm, 22 * mm, 22 * mm, 27 * mm])
+        )
+
+    return story
+
+
+def _policy_label(policy) -> str:
+    """A short human name for a recorded policy, for a sentence in the report."""
+    if not isinstance(policy, dict) or not policy.get("recorded"):
+        return "was not recorded"
+    name = policy.get("policy_name")
+    fingerprint = str(policy.get("fingerprint") or "")[:16]
+    if name:
+        version = policy.get("version_number")
+        suffix = f" v{version}" if version else ""
+        return f"used policy {name}{suffix} ({fingerprint})"
+    return f"used the scan request defaults ({fingerprint})"
+
+
+def _policy_section(policy, styles) -> List[Any]:
+    """
+    The assessment policy section: what this scan was configured to assess.
+
+    **The gap is not closed unless this is in the report.** An auditor reading
+    a finding list has to be able to answer "what was actually assessed" from
+    the artefact in front of them, not by asking somebody to query a database.
+    A report that shows only what was found, with no statement of what was
+    looked for, cannot distinguish a clean estate from a narrow scan.
+
+    Returns an empty list when the scan carries no snapshot, so a report
+    generated for a scan that predates this phase is byte-for-byte what it was
+    before -- the same property ``_comparison_section`` preserves and for the
+    same reason.
+    """
+    if not isinstance(policy, dict) or not policy or not policy.get("recorded"):
+        return []
+
+    story: List[Any] = [_heading("Assessment policy", styles["h1"], 0)]
+
+    source = str(policy.get("source") or "request")
+    if source == "policy":
+        story.append(
+            _p(
+                "This scan ran under a stored assessment policy. The "
+                "configuration below is the one recorded against this scan and "
+                "does not change if the policy is later edited.",
+                styles["body"],
+            )
+        )
+    else:
+        # Stated rather than omitted. "No policy was selected" and "this report
+        # does not show policies" are different facts and only the first is a
+        # fact about the scan.
+        story.append(
+            _p(
+                "No stored policy was selected for this scan. The configuration "
+                "below is the scan request's own parameters, recorded so that "
+                "later scans can be compared against it on equal terms.",
+                styles["body"],
+            )
+        )
+
+    summary = policy.get("summary") or {}
+    rows = [
+        [
+            _p("<b>Setting</b>", styles["th"], escape=False),
+            _p("<b>Value</b>", styles["th"], escape=False),
+        ]
+    ]
+    for label, value in summary.items():
+        rows.append(
+            [
+                _p(str(label), styles["body"]),
+                _p(str(value), styles["body"]),
+            ]
+        )
+    if len(rows) > 1:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_grid(rows, [56 * mm, 105 * mm]))
+
+    story.append(Spacer(1, 3 * mm))
+    story.append(
+        _p(
+            "The <b>Configuration ID</b> above identifies this exact assessment "
+            "configuration. Two scans sharing it were assessed the same way; "
+            "two that do not were not, however similar their findings look.",
+            styles["small"] if "small" in styles else styles["body"],
+            escape=False,
+        )
+    )
+    return story
+
+
+def _comparison_section(comparison, styles) -> List[Any]:
+    """
+    The change-since-last-scan section.
+
+    Returns an empty list when there is no comparison, so a report generated
+    without one is byte-for-byte what it was before this section existed. That
+    is the property to preserve: the delta is an addition, never a rewrite.
+    """
+    if not isinstance(comparison, dict) or not comparison:
+        return []
+
+    story: List[Any] = [_heading("Change since the previous scan", styles["h1"], 0)]
+
+    baseline = comparison.get("baseline_scan_id") or "—"
+    current = comparison.get("current_scan_id") or "—"
+    story.append(
+        _p(
+            f"Comparing scan <b>{escape_for_reportlab(str(current))}</b> against "
+            f"baseline <b>{escape_for_reportlab(str(baseline))}</b>.",
+            styles["body"],
+            escape=False,
+        )
+    )
+
+    # GAP-12. Two scans of the same host are not equivalent assessments if
+    # they were configured differently, and a delta between them partly
+    # reflects that rather than a change in the estate. Said before the counts,
+    # because a reader who sees "37 new" first has already drawn a conclusion.
+    if comparison.get("current_policy") or comparison.get("baseline_policy"):
+        current_pol = comparison.get("current_policy") or {}
+        baseline_pol = comparison.get("baseline_policy") or {}
+        if comparison.get("policies_match"):
+            story.append(
+                _p(
+                    "Both scans ran under the same assessment configuration "
+                    f"(<b>{escape_for_reportlab(str(current_pol.get('fingerprint') or '')[:16])}</b>), "
+                    "so the changes below are changes in the estate.",
+                    styles["body"],
+                    escape=False,
+                )
+            )
+        elif current_pol.get("recorded") and baseline_pol.get("recorded"):
+            story.append(
+                _p(
+                    "<b>These two scans were assessed under different "
+                    "configurations</b> — this scan "
+                    f"{escape_for_reportlab(_policy_label(current_pol))}, the "
+                    f"baseline {escape_for_reportlab(_policy_label(baseline_pol))}. "
+                    "Some of the differences below reflect what was assessed "
+                    "rather than what changed on the host.",
+                    styles["body"],
+                    escape=False,
+                )
+            )
+        else:
+            story.append(
+                _p(
+                    "The assessment configuration of at least one of these "
+                    "scans was not recorded, so it cannot be confirmed that "
+                    "both assessed the same things.",
+                    styles["body"],
+                )
+            )
+
+    if not comparison.get("comparable"):
+        # Said plainly rather than shown as zeroes. A table of noughts reads as
+        # "nothing changed", which is a different and much more reassuring
+        # claim than "these two scans cannot be compared".
+        story.append(
+            _p(
+                "<b>Not comparable.</b> "
+                + escape_for_reportlab(str(comparison.get("reason") or "")),
+                styles["body"],
+                escape=False,
+            )
+        )
+        return story
+
+    summary = str(comparison.get("summary") or "")
+    if summary:
+        story.append(
+            _p(f"<b>{escape_for_reportlab(summary)}</b>", styles["body"], escape=False)
+        )
+    story.append(Spacer(1, 3 * mm))
+
+    counts = comparison.get("counts") or {}
+    severity_counts = comparison.get("severity_counts") or {}
+    rows = [
+        [
+            _p("<b>Change</b>", styles["th"], escape=False),
+            _p("<b>Count</b>", styles["th"], escape=False),
+            _p("<b>Crit</b>", styles["th"], escape=False),
+            _p("<b>High</b>", styles["th"], escape=False),
+            _p("<b>Med</b>", styles["th"], escape=False),
+            _p("<b>Low</b>", styles["th"], escape=False),
+            _p("<b>Meaning</b>", styles["th"], escape=False),
+        ]
+    ]
+    for key, label, meaning in _COMPARISON_ROWS:
+        by_sev = severity_counts.get(key) or {}
+        rows.append(
+            [
+                _p(label, styles["body"]),
+                _p(str(counts.get(key, 0)), styles["body"]),
+                _p(str(by_sev.get("critical", 0)), styles["body"]),
+                _p(str(by_sev.get("high", 0)), styles["body"]),
+                _p(str(by_sev.get("medium", 0)), styles["body"]),
+                _p(str(by_sev.get("low", 0)), styles["body"]),
+                _p(meaning, styles["body"]),
+            ]
+        )
+    story.append(
+        _grid(
+            rows,
+            [26 * mm, 15 * mm, 12 * mm, 12 * mm, 12 * mm, 12 * mm, 72 * mm],
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+
+    scope = comparison.get("current_scope") or {}
+    if scope.get("recorded"):
+        story.append(
+            _p(
+                "Assessment scope for this scan: "
+                + escape_for_reportlab(", ".join(scope.get("families") or []) or "none")
+                + " across "
+                + str(len(scope.get("assets") or []))
+                + " host(s).",
+                styles["body"],
+                escape=False,
+            )
+        )
+    else:
+        story.append(
+            _p(
+                "This scan recorded no assessment scope, so no finding is "
+                "reported as fixed: an absent finding cannot be told apart from "
+                "one that was never looked for.",
+                styles["body"],
+            )
+        )
+
+    # Representative rows. Bounded, and the classes a reader acts on first.
+    interesting = [
+        f
+        for f in (comparison.get("findings") or [])
+        if f.get("classification") in ("new", "reappeared", "fixed")
+    ][:15]
+    if interesting:
+        story.append(Spacer(1, 3 * mm))
+        story.append(_heading("Representative changes", styles["h2"], 1))
+        detail_rows = [
+            [
+                _p("<b>Change</b>", styles["th"], escape=False),
+                _p("<b>Finding</b>", styles["th"], escape=False),
+                _p("<b>Severity</b>", styles["th"], escape=False),
+                _p("<b>Host</b>", styles["th"], escape=False),
+            ]
+        ]
+        for f in interesting:
+            detail_rows.append(
+                [
+                    _p(str(f.get("classification") or ""), styles["body"]),
+                    _p(str(f.get("vuln_id") or ""), styles["body"]),
+                    _p(str(f.get("severity") or ""), styles["body"]),
+                    _p(str(f.get("asset_id") or ""), styles["body"]),
+                ]
+            )
+        story.append(_grid(detail_rows, [24 * mm, 74 * mm, 20 * mm, 43 * mm]))
+    return story
+
+
 def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     fg = SEVERITY_FG.get(finding.severity, MUTED)
 
@@ -1453,12 +1992,15 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     # ── Remediation ──────────────────────────────────────────────────────────
     if finding.remediation:
         remediation = finding.remediation
-        provenance = {
-            RemediationConfidence.VENDOR_PATCH: "Source: vendor advisory linked below.",
-            RemediationConfidence.VERSION_BOUNDARY: "Source: CPE version range published with this CVE.",
-            RemediationConfidence.FEED_SUPPLIED: "Source: vulnerability feed.",
-            RemediationConfidence.NONE_PUBLISHED: "No published fix — compensating controls only.",
-        }[remediation.confidence]
+        # Subscripted, this raised KeyError inside PDF generation for any
+        # confidence value added to the enum later — a whole report lost to a
+        # missing label. `.get` keeps the report renderable; the guarantee that
+        # every member has a *specific* label is enforced in the test suite
+        # instead, where a missing one is a failing assertion rather than a
+        # customer's failed download.
+        provenance = REMEDIATION_PROVENANCE.get(
+            remediation.confidence, "Source: recorded with the finding."
+        )
 
         actionable = remediation.is_actionable
         bg = colors.HexColor("#F0FDF4") if actionable else colors.HexColor("#FEF2F2")
@@ -1579,6 +2121,78 @@ class ScanReportGenerator:
         )
         story.append(_scan_metadata_block(meta, summary, findings, scan_type, styles))
         story.append(Spacer(1, 5 * mm))
+
+        # One line of change since the previous scan. The executive report
+        # answers "is this getting better or worse", and a total with nothing
+        # to compare it against cannot. Absent when there is no comparison, so
+        # a report generated without one is unchanged.
+        _cmp = result.get("scan_comparison") or {}
+        if _cmp.get("comparable") and _cmp.get("summary"):
+            story.append(
+                _p(
+                    "<b>Since the previous scan:</b> "
+                    + escape_for_reportlab(str(_cmp["summary"])),
+                    styles["body"],
+                    escape=False,
+                )
+            )
+            if _cmp.get("current_policy") and not _cmp.get("policies_match"):
+                # An executive reading "8 fixed" must not conclude the estate
+                # improved when the previous scan simply assessed more.
+                story.append(
+                    _p(
+                        "These two scans used different assessment "
+                        "configurations, so part of this difference reflects "
+                        "what was assessed rather than what changed.",
+                        styles["body"],
+                    )
+                )
+            story.append(Spacer(1, 4 * mm))
+
+        # The remediation position, in one line. The executive report answers
+        # "are we getting on top of this", and a finding count alone cannot —
+        # it says how much there is, not how much anybody is doing about it.
+        _rem = (result.get("metadata") or {}).get("remediation") or {}
+        _rem_line = _remediation_summary_line(_rem)
+        if _rem_line:
+            story.append(
+                _p(
+                    "<b>Remediation:</b> " + escape_for_reportlab(_rem_line),
+                    styles["body"],
+                    escape=False,
+                )
+            )
+            _ver = _rem.get("verification") or {}
+            if _ver and int(_ver.get("withheld_count", 0) or 0):
+                # An executive reading "42 verified fixed" must not conclude
+                # the estate is clean when the scan could not check the rest.
+                story.append(
+                    _p(
+                        f"{_ver['withheld_count']} finding(s) could not be "
+                        "verified by this scan because the relevant checks "
+                        "were not assessed.",
+                        styles["body"],
+                    )
+                )
+            story.append(Spacer(1, 4 * mm))
+
+        # One line naming the policy. The executive report answers "what did we
+        # assess and what did it find"; a finding count with no statement of
+        # scope answers only half of that.
+        _pol = (result.get("metadata") or {}).get("scan_policy") or {}
+        if _pol.get("recorded") and _pol.get("policy_name"):
+            story.append(
+                _p(
+                    "<b>Assessment policy:</b> "
+                    + escape_for_reportlab(str(_pol["policy_name"]))
+                    + " ("
+                    + escape_for_reportlab(str(_pol.get("fingerprint") or "")[:16])
+                    + ")",
+                    styles["body"],
+                    escape=False,
+                )
+            )
+            story.append(Spacer(1, 4 * mm))
 
         counts = findings.severity_counts()
         vuln_counts = {t: 0 for t in SEVERITY_TIERS}
@@ -1972,6 +2586,39 @@ class ScanReportGenerator:
         story.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=6))
         story.append(toc)
         story.append(PageBreak())
+
+        # ── Remediation and SLA ──────────────────────────────────────────────
+        # Absent unless the scan carried remediation data, so a report for a
+        # scan that predates GAP-14 is unchanged.
+        remediation_story = _remediation_section(
+            (result.get("metadata") or {}).get("remediation")
+            or result.get("remediation"),
+            styles,
+        )
+        if remediation_story:
+            story.extend(remediation_story)
+            story.append(PageBreak())
+
+        # ── Assessment policy ────────────────────────────────────────────────
+        # What this scan was configured to assess. Absent unless the scan
+        # carried a policy snapshot, so a report for a scan that predates
+        # GAP-12 is unchanged.
+        policy_story = _policy_section(
+            (result.get("metadata") or {}).get("scan_policy")
+            or result.get("scan_policy"),
+            styles,
+        )
+        if policy_story:
+            story.extend(policy_story)
+            story.append(PageBreak())
+
+        # ── Change since the previous scan ───────────────────────────────────
+        # Absent unless the scan carried a comparison, so a report generated
+        # without one is unchanged.
+        comparison_story = _comparison_section(result.get("scan_comparison"), styles)
+        if comparison_story:
+            story.extend(comparison_story)
+            story.append(PageBreak())
 
         # ── Host index ───────────────────────────────────────────────────────
         story.append(_heading("Host index", styles["h1"], 0))

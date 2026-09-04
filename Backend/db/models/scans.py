@@ -151,7 +151,20 @@ class Scan(Base):
         "Service", back_populates="scan", cascade="all, delete-orphan"
     )
     vulnerabilities = relationship(
-        "AssetVulnerability", back_populates="scan", cascade="all, delete-orphan"
+        "AssetVulnerability",
+        back_populates="scan",
+        cascade="all, delete-orphan",
+        # Disambiguated because GAP-14 added a second path between these
+        # tables: `asset_vulnerabilities.verified_scan_id` names the scan that
+        # *confirmed* a remediation, which is a different relationship from
+        # `scan_id`, the scan that last reported the finding. Without this
+        # SQLAlchemy raises AmbiguousForeignKeysError on the first query.
+        #
+        # The cascade stays on this one deliberately: deleting a scan removes
+        # the findings it reported, but must not remove a finding merely
+        # because the scan that verified it was deleted — that one is
+        # ON DELETE SET NULL, so the finding survives and loses its citation.
+        foreign_keys="AssetVulnerability.scan_id",
     )
 
     def __repr__(self):

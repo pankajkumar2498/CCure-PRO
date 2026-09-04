@@ -52,6 +52,8 @@ from .notifications import Notification
 from .rbac import Organization, Permission, Role, RolePermission
 from .scans import Scan, ScanPhase
 from .scan_reports import ScanReport
+from .scan_policies import ScanPolicy
+from .scan_schedules import ScanSchedule, ScanScheduleRun
 from .topology import NetworkLink, ensure_topology_schema
 from .users import (
     AuditLog,
@@ -127,4 +129,8 @@ __all__ = [
     "ComplianceIntegrationConnector",
     "ComplianceCredential",
     "ComplianceRemediationRequest",
+    # Scan scheduling (Phase 1 — gap closure)
+    "ScanPolicy",
+    "ScanSchedule",
+    "ScanScheduleRun",
 ]

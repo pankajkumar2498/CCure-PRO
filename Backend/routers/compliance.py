@@ -501,8 +501,21 @@ def get_marketplace_frameworks(
     # ones. `active_framework_ids()` fixes the display order too; the query
     # above has no ORDER BY, so the card grid was in whatever order Postgres
     # returned.
-    active_ids = compliance_frameworks.active_framework_ids()
+    active_ids = list(compliance_frameworks.active_framework_ids())
     by_id = {fw.id: fw for fw in frameworks}
+
+    # Loaded benchmarks are active but can never appear in a hardcoded tuple —
+    # they arrive by `scripts/benchmarks/load_benchmark.py`, after this module
+    # was written. They are discovered from what is actually in the catalogue
+    # and appended in a stable order, so the shipped catalogues keep their
+    # curated position and a benchmark does not silently fail to be listed
+    # while scoring and producing findings behind the scenes.
+    active_ids += sorted(
+        fw.id
+        for fw in frameworks
+        if compliance_frameworks.is_benchmark_framework(fw.id)
+        and fw.id not in active_ids
+    )
 
     results = []
     for framework_id in active_ids:
@@ -1992,9 +2005,12 @@ def list_scan_runs(
         # otherwise still be listed, and each row carries a framework name and
         # a score the workspace can no longer open. Scoped to the frameworks
         # this installation offers, like every other listing here.
+        # Excluded by what is parked rather than included by what is active:
+        # the active set is a fixed tuple, and a loaded benchmark is active
+        # without being in it. Filtering by the parked list admits both.
         query = query.filter(
-            ComplianceScanRun.framework_id.in_(
-                compliance_frameworks.active_framework_ids()
+            ~ComplianceScanRun.framework_id.in_(
+                compliance_frameworks.parked_framework_ids()
             )
         )
 
@@ -2131,8 +2147,10 @@ def list_scan_schedules(
         db.query(ComplianceScanSchedule)
         .filter(
             ComplianceScanSchedule.tenant_id == user.org_id,
-            ComplianceScanSchedule.framework_id.in_(
-                compliance_frameworks.active_framework_ids()
+            # See the scan-run listing above: parked-exclusion rather than
+            # active-inclusion, so a loaded benchmark's schedules are visible.
+            ~ComplianceScanSchedule.framework_id.in_(
+                compliance_frameworks.parked_framework_ids()
             ),
         )
         .all()

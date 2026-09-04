@@ -26,11 +26,23 @@ repos:
         files: ^Backend/
 
   # Python Linting & Styling (Ruff)
+  #
+  # `--select=E,F,W` is not decoration: it is the selection CI runs, and this
+  # hook must not be weaker than the gate it exists to keep people out of.
+  # Without it the hook takes ruff's *default* selection (E4, E7, E9, F),
+  # which excludes every W rule. Two W605 invalid-escape-sequence errors were
+  # committed cleanly through this hook and then failed the CI lint step,
+  # which does pass --select=E,F,W. The pinned rev compounds it: ruff 0.4.8's
+  # default selection misses W605 where the version CI installs reports it.
+  #
+  # Keep the ignore list identical to .github/workflows/ci.yml. E501 is
+  # ignored here too, because black has already wrapped the line by the time
+  # ruff sees it.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.8
     hooks:
       - id: ruff
-        args: [ --fix, --ignore=E402, --ignore=F401, --ignore=F841, --ignore=E711, --ignore=E712, --ignore=E741, --ignore=F601, --ignore=E722, --ignore=F821 ]
+        args: [ --fix, "--select=E,F,W", --ignore=E402, --ignore=F401, --ignore=F841, --ignore=E711, --ignore=E712, --ignore=E741, --ignore=F601, --ignore=E722, --ignore=F821, --ignore=E501 ]
         files: ^Backend/
 
   # Python Static Security Analysis (Bandit)

@@ -1080,3 +1080,39 @@ def test_grouping_changes_presentation_only():
     assert {f.primary_cve for f in regrouped} == {
         f.primary_cve for f in report.vulnerabilities
     }
+
+
+def test_every_remediation_confidence_has_a_report_label():
+    """
+    ``pdf_generator`` prints a provenance line beneath each remediation so a
+    reader can weigh a vendor advisory differently from a version-range
+    inference.
+
+    That lookup used to be a dict subscript, so a member added to the enum
+    later raised KeyError *inside PDF generation* — a whole report lost to a
+    missing label, and only for findings carrying that confidence. It is a
+    `.get` with a fallback now, which keeps the report renderable; this test is
+    what keeps every member's label specific rather than falling back.
+    """
+    from reporting.pdf_generator import REMEDIATION_PROVENANCE
+
+    missing = [c.name for c in RemediationConfidence if c not in REMEDIATION_PROVENANCE]
+    assert not missing, (
+        f"RemediationConfidence member(s) with no provenance label: {missing}. "
+        f"Add one to REMEDIATION_PROVENANCE in reporting/pdf_generator.py."
+    )
+
+
+def test_configuration_findings_are_actionable_remediations():
+    """
+    A hardening control's fix is known, exact and available now. Grading it
+    NONE_PUBLISHED would render "no published fix — compensating controls
+    only", which is true of an unpatched CVE and false here.
+    """
+    from scans.finding_normalizer import Remediation
+
+    remediation = Remediation(
+        summary="Set EnableLUA to 1.",
+        confidence=RemediationConfidence.CONFIGURATION_GUIDANCE,
+    )
+    assert remediation.is_actionable

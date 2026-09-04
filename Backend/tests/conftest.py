@@ -1260,11 +1260,25 @@ def detect_process_leaks():
         ), f"Resource Leak: Active subprocesses left running: {', '.join(leak_details)}"
 
 
+#: The genuine ``SSHScanner.connect``, kept aside whenever the session-wide
+#: mock below replaces it. A test whose subject *is* what connect() does with
+#: key material needs the real function, and CI sets MOCK_SCANNERS=true — so
+#: without a way back to it those tests pass on a developer's machine and fail
+#: only in CI, which is the one place nobody can step through them.
+#: ``real_ssh_connect`` is how a test asks for it.
+_REAL_SSH_CONNECT = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def global_scanner_mocking():
     """Globally mocks scanners if MOCK_SCANNERS=true is set in the environment."""
     if os.getenv("MOCK_SCANNERS") == "true":
         from unittest.mock import MagicMock, patch
+
+        from engines.credentialed.ssh_scanner import SSHScanner
+
+        global _REAL_SSH_CONNECT
+        _REAL_SSH_CONNECT = SSHScanner.connect
 
         # Mock SSH connections
         ssh_patcher = patch(
@@ -1284,3 +1298,33 @@ def global_scanner_mocking():
         nmap_patcher.stop()
     else:
         yield
+
+
+@pytest.fixture
+def real_ssh_connect():
+    """
+    Give one test back the real ``SSHScanner.connect``.
+
+    ``global_scanner_mocking`` replaces it with a stub returning True for the
+    whole session, which is right for the tests that merely need a session to
+    exist and wrong for the handful whose assertion is that connect() *raises*
+    — on a key it cannot parse, or a passphrase that does not fit. Against the
+    stub those never raise, so they fail with DID NOT RAISE under exactly the
+    MOCK_SCANNERS=true that CI passes and nowhere else.
+
+    A no-op when the mock is not installed, so a test using it behaves the same
+    whether or not MOCK_SCANNERS is set. That is the point: a test must not
+    depend on how the machine running it is configured.
+    """
+    if _REAL_SSH_CONNECT is None:
+        yield
+        return
+
+    from engines.credentialed.ssh_scanner import SSHScanner
+
+    stub = SSHScanner.connect
+    SSHScanner.connect = _REAL_SSH_CONNECT
+    try:
+        yield
+    finally:
+        SSHScanner.connect = stub

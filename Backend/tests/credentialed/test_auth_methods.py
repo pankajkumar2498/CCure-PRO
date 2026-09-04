@@ -224,7 +224,7 @@ def _plain_key():
     )
 
 
-def test_an_encrypted_key_loads_when_the_passphrase_is_supplied():
+def test_an_encrypted_key_loads_when_the_passphrase_is_supplied(real_ssh_connect):
     """
     The capability. Without it paramiko raises "not a valid ... private key
     file", which reads as a malformed key rather than a locked one — so an
@@ -245,7 +245,7 @@ def test_an_encrypted_key_loads_when_the_passphrase_is_supplied():
     assert "private key" not in str(excinfo.value).lower()
 
 
-def test_a_wrong_passphrase_fails_on_the_key_not_the_network():
+def test_a_wrong_passphrase_fails_on_the_key_not_the_network(real_ssh_connect):
     from engines.credentialed.ssh_scanner import SSHScanner
 
     scanner = SSHScanner(
@@ -258,7 +258,7 @@ def test_a_wrong_passphrase_fails_on_the_key_not_the_network():
         scanner.connect()
 
 
-def test_an_unencrypted_key_still_works_with_no_passphrase():
+def test_an_unencrypted_key_still_works_with_no_passphrase(real_ssh_connect):
     """The existing behaviour, untouched."""
     from engines.credentialed.ssh_scanner import SSHScanner
 
@@ -268,7 +268,7 @@ def test_an_unencrypted_key_still_works_with_no_passphrase():
     assert "private key" not in str(excinfo.value).lower()
 
 
-def test_the_passphrase_never_appears_in_an_exception():
+def test_the_passphrase_never_appears_in_an_exception(real_ssh_connect):
     """
     The failure path quotes paramiko's message, and a passphrase in a raised
     exception reaches the scan record and the log.

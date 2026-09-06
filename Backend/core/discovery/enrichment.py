@@ -608,11 +608,32 @@ def _mdns_query(ip: str, result: dict) -> None:
         pkt = IP(dst=ip) / UDP(dport=5353) / DNS(rd=0, qd=DNSQR(qname=rev, qtype="PTR"))
         resp = sr1(pkt, timeout=1, verbose=0)
         if resp and resp.haslayer(DNS) and resp[DNS].ancount > 0:
-            name = resp[DNS].an.rrname
+            # The host's own name is the record's *data*, not its owner name.
+            # ``rrname`` is the question echoed back — for this query that is
+            # always the "…in-addr.arpa" string we just sent, so reading it
+            # stored the query as if it were the answer. That value is not
+            # merely useless: the UI falls back to ``mdns_name`` when PTR and
+            # NetBIOS are both empty, and _extract_dns_identity fed it into
+            # the asset's fqdn, so a reverse-lookup string was displayed and
+            # persisted as a machine's identity.
+            #
+            # Scapy 2.7 made 'an' a PacketListField; reading an attribute off
+            # the field itself still answers but raises a DeprecationWarning
+            # and is slated to stop working. Older builds hand back a bare
+            # packet, which is not indexable this way, so both are handled.
+            answers = resp[DNS].an
+            try:
+                answer = answers[0]
+            except (TypeError, IndexError, AttributeError):
+                answer = answers
+            name = getattr(answer, "rdata", None)
             if isinstance(name, bytes):
                 name = name.decode("utf-8", errors="replace")
-            name = name.rstrip(".")
-            if name:
+            name = (name or "").rstrip(".")
+            # A responder that echoes the question rather than answering it
+            # establishes no name. Storing it would reintroduce the defect
+            # above through a different door.
+            if name and not name.lower().endswith(".in-addr.arpa"):
                 result["mdns_name"] = name
                 _register_open_port(
                     result,

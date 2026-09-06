@@ -748,6 +748,12 @@ def _extract_dns_identity(host_data: dict) -> tuple[str | None, str | None]:
         host_data.get("hostname"),
         host_data.get("hostnames"),
     )
+    # ``mdns_name`` is deliberately not consulted here. An mDNS name is
+    # link-local ("host.local") and is scoped to the segment that answered;
+    # it is not a DNS name and does not resolve anywhere else, so writing it
+    # into fqdn/dns_name asserts a DNS identity the host does not have.
+    # It stays available on the host result for display and is the machine's
+    # own statement of its name, which is a different question from this one.
     fqdn = _first_fqdn(
         dns_name,
         host_data.get("fqdn"),
@@ -755,7 +761,6 @@ def _extract_dns_identity(host_data: dict) -> tuple[str | None, str | None]:
         host_data.get("dns_name"),
         host_data.get("hostname"),
         host_data.get("hostnames"),
-        host_data.get("mdns_name"),
     )
     return dns_name, fqdn
 

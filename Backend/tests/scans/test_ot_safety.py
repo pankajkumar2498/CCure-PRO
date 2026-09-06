@@ -203,9 +203,14 @@ class TestOTSafetyAndStability(unittest.TestCase):
         orchestrator = ScanOrchestrator()
         import asyncio
 
-        loop = asyncio.get_event_loop()
-
-        loop.run_until_complete(
+        # asyncio.run, not get_event_loop().run_until_complete. core/tasks.py
+        # dispatches through asyncio.run, which closes its loop *and* leaves
+        # the thread with no current event loop — so once anything has
+        # exercised that path in the same process, get_event_loop() raises
+        # "There is no current event loop" rather than lazily creating one.
+        # This test then passed alone and failed after tests/scans/test_tasks.py,
+        # which makes its result a property of the collection order.
+        asyncio.run(
             orchestrator.run_asset_discovery_only(
                 hosts=hosts, passive_first=True, exclude_ot_from_nmap=False
             )

@@ -141,3 +141,124 @@ def record_progress(scan_id: str, discovered: int, active: int | None = None) ->
         db.rollback()
     finally:
         db.close()
+
+
+# ── Last-resort finalisation ─────────────────────────────────────────────────
+# Everything above this line goes through the ORM. That is fine while the ORM
+# works — and useless in the one situation a scan most needs settling, which is
+# a task that died *because* the ORM could not be used.
+#
+# On 4 Sep 2026 a stale worker held a pre-GAP-14 `Scan` mapper, so
+# `Scan.vulnerabilities` could not resolve its join condition. Every scan task
+# raised `InvalidRequestError` on its first DB touch, and then the `except`
+# handler's `mark_scan_failed` raised the identical error on its own first
+# query. Nothing recorded an outcome, and scans 60 and 61 sat in 'running'
+# indefinitely with the UI reporting a live scan against a host that was up the
+# whole time. A failure path that shares a dependency with the thing it is
+# recovering from is not a failure path.
+#
+# `force_terminal_status` therefore issues plain SQL against `scans`. It touches
+# no mapper, no relationship and no model attribute, so it survives any ORM
+# configuration error, and it is deliberately the *only* helper here written
+# that way — normal paths should keep using the ORM.
+
+
+def force_terminal_status(
+    scan_id: str,
+    status: str = "failed",
+    reason: str | None = None,
+) -> bool:
+    """
+    Stamp a terminal status on a scan without touching the ORM mappers.
+
+    Returns True when a row was updated. Never raises: this is the handler of
+    last resort, and an exception escaping it would replace a recorded failure
+    with an unrecorded one.
+
+    A scan already in a terminal state is left alone. The first outcome
+    recorded is the true one -- a watchdog must never overwrite the reason a
+    task took the trouble to write.
+    """
+    if not scan_id:
+        return False
+
+    from sqlalchemy import text
+
+    # Interpolated rather than bound because the values are this module's own
+    # frozenset, never caller input, and an expanding bindparam here would be
+    # the only thing in the statement that needed the ORM's dialect machinery.
+    terminal_sql = ", ".join(f"'{s}'" for s in sorted(TERMINAL_STATUSES))
+
+    now = _utcnow()
+    db = SessionLocal()
+    try:
+        # Read first so the duration can be computed in Python. Doing it in SQL
+        # needs EXTRACT(EPOCH ...), which is PostgreSQL-only, and this function
+        # has to work wherever it is called from.
+        row = db.execute(
+            text("SELECT status, started_at FROM scans WHERE id = :scan_id"),
+            {"scan_id": scan_id},
+        ).first()
+        if row is None:
+            log.debug("force_terminal_status: no scan %s", scan_id)
+            return False
+        if (row[0] or "") in TERMINAL_STATUSES:
+            return False
+
+        started_at = row[1]
+        duration = None
+        if started_at is not None:
+            if started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=timezone.utc)
+            duration = (now - started_at).total_seconds()
+
+        result = db.execute(
+            text(
+                f"""
+                UPDATE scans
+                   SET status = :status,
+                       failure_reason = COALESCE(failure_reason, :reason),
+                       completed_at = COALESCE(completed_at, :now),
+                       updated_at = :now,
+                       duration_seconds = COALESCE(duration_seconds, :duration)
+                 WHERE id = :scan_id
+                   AND status NOT IN ({terminal_sql})
+                """
+            ),
+            {
+                "status": status,
+                "reason": reason,
+                "now": now,
+                "duration": duration,
+                "scan_id": scan_id,
+            },
+        )
+        # Any phase still claiming to be running belongs to a task that is gone.
+        db.execute(
+            text(
+                """
+                UPDATE scan_phases
+                   SET status = :status,
+                       completed_at = COALESCE(completed_at, :now)
+                 WHERE scan_id = :scan_id
+                   AND status NOT IN ('complete', 'failed', 'skipped', 'cancelled')
+                """
+            ),
+            {"status": status, "now": now, "scan_id": scan_id},
+        )
+        db.commit()
+        updated = (result.rowcount or 0) > 0
+        if updated:
+            log.warning(
+                "Scan %s force-settled as '%s': %s", scan_id, status, reason or "-"
+            )
+        return updated
+    except Exception:
+        log.exception("Could not force-settle scan %s", scan_id)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        db.close()

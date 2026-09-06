@@ -17477,6 +17477,291 @@
         ]
       }
     },
+    "/reports/export/{scan_id}": {
+      "get": {
+        "description": "Export one scan's assessment results as a workbook, a CSV or JSON.\n\n**What the export represents.** The benchmark verdicts are the per-check\nresults the Phase 3 engine produced during this scan and stored, read back\nunchanged. Nothing is re-evaluated at export time, so a control that was not\nassessed, could not be assessed, or does not apply is never rendered as\npassed or failed — the six states stay six states. The scan's own immutable\nGAP-12 policy snapshot travels on every row, so a reader can tell what was\nin scope; the *current* policy row is deliberately not consulted, because\nthe policy may since have been edited and that changes nothing about what\nthis scan did.\n\n**Filters narrow, never widen.** A framework the scan's policy excluded\ncannot be named back into the export, because the rest of that framework was\nnever assessed and a partial score reads as a complete one.\n\n**``csv`` needs one dataset.** A CSV is one table; ``dataset=all`` with\n``fmt=csv`` is refused rather than silently exporting whichever table\nhappened to be first.",
+        "operationId": "export_scan_dataset_reports_export__scan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "xlsx, csv or json. An unsupported value is refused, never swapped.",
+            "in": "query",
+            "name": "fmt",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "description": "xlsx, csv or json. An unsupported value is refused, never swapped.",
+              "title": "Fmt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "all, compliance, findings or comparison.",
+            "in": "query",
+            "name": "dataset",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "all, compliance, findings or comparison.",
+              "title": "Dataset",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "host",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host"
+            }
+          },
+          {
+            "in": "query",
+            "name": "framework_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Framework Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "remediation_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remediation State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "overdue_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Overdue Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "scan — the findings this scan reported; asset — every finding currently held against the assets it touched.",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "scan",
+              "description": "scan — the findings this scan reported; asset — every finding currently held against the assets it touched.",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scan to compare against for the comparison dataset. Defaults to the most recent completed scan of the same pipeline_mode.",
+            "in": "query",
+            "name": "baseline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Scan to compare against for the comparison dataset. Defaults to the most recent completed scan of the same pipeline_mode.",
+              "title": "Baseline"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_comparison",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Comparison",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Scan Dataset",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/reports/{scan_id}": {
       "delete": {
         "operationId": "delete_report_reports__scan_id__delete",

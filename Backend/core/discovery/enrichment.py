@@ -26,6 +26,7 @@ import struct
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
+from core.discovery.host_identity import forward_confirm, resolve_identity
 
 log = logging.getLogger("ccure.discovery.enrichment")
 
@@ -88,6 +89,11 @@ def enrich_host(
                 fn(ip, result)
             except Exception as exc:
                 log.debug("enrich_host(%s) %s error: %s", ip, fn.__name__, exc)
+
+        # Every probe has recorded its own typed field; one place now decides
+        # which of them names the host. Doing this here rather than inside the
+        # probes is what stops the winner being whichever ran first.
+        resolve_identity(result)
     finally:
         result.pop("_register_ports", None)
 
@@ -301,13 +307,11 @@ def _ot_protocol_probes(ip: str, result: dict) -> None:
                 if "vendor" in info:
                     result["vendor"] = info["vendor"]
                 if "model" in info:
-                    # Avoid clobbering real hostnames and avoid generic protocol/service labels in hostname
-                    current_host = result.get("hostname")
-                    is_unresolved = not current_host or current_host in (
-                        "Unknown",
-                        "N/A",
-                        "",
-                    )
+                    # A model is a product name, not a hostname, so it ranks
+                    # last in HOSTNAME_PRECEDENCE and is recorded as its own
+                    # field rather than written over one. The generic labels
+                    # below are protocol descriptions rather than models and
+                    # must never name a host at all.
                     generic_labels = {
                         "OPC UA Server",
                         "Modbus TCP Controller",
@@ -320,8 +324,8 @@ def _ot_protocol_probes(ip: str, result: dict) -> None:
                         "Omron Sysmac PLC",
                         "S7-Compatible PLC",
                     }
-                    if is_unresolved and info["model"] not in generic_labels:
-                        result["hostname"] = info["model"]
+                    if info["model"] not in generic_labels:
+                        result["ot_model"] = info["model"]
 
                     vendor_part = info.get("vendor", "")
                     proto_part = info.get("protocol", "").upper()
@@ -539,8 +543,10 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
         snmp_hostname = (snmp_info.get("sys_name") or "").strip() or identity.get(
             "hostname"
         )
-        if snmp_hostname and result.get("hostname") in placeholders:
-            result["hostname"] = snmp_hostname
+        if snmp_hostname:
+            # sysName is the device's own statement of its identity, so it
+            # outranks PTR. The ranking is host_identity's to apply; recording
+            # it here as well would reintroduce a second writer.
             result["snmp_sys_name"] = snmp_hostname
 
         if identity.get("os_name"):
@@ -580,17 +586,40 @@ def _snmp_lightweight_probe(ip: str, result: dict) -> None:
 
 def _ptr_lookup(ip: str, result: dict) -> None:
     """
-    Reverse DNS PTR lookup via the OS resolver.
-    Faster and more reliable than Scapy DNS queries for standard PTR records.
+    Reverse DNS PTR lookup via the OS resolver, forward-confirmed.
+
+    Note this is the *resolver*, not DNS specifically: gethostbyaddr goes
+    through the platform's name service, so a hosts-file entry answers here
+    too. On a machine with Docker Desktop installed, 127.0.0.1 comes back as
+    "kubernetes.docker.internal" from that file and no DNS server is involved.
+
+    It records ``ptr_hostname`` and no longer claims ``hostname``: what DNS
+    calls an address is not what a machine calls itself, and
+    ``host_identity.resolve_identity`` decides between the sources afterwards.
     """
     try:
         hostname = socket.gethostbyaddr(ip)[0]
-        if hostname and hostname != ip:
-            result.setdefault("ptr_hostname", hostname)
-            if not result.get("hostname") or result["hostname"] in ("Unknown", ""):
-                result["hostname"] = hostname
-    except (socket.herror, socket.gaierror):
-        pass
+    except (socket.herror, socket.gaierror, OSError):
+        return
+
+    if not hostname or hostname == ip:
+        return
+
+    result.setdefault("ptr_hostname", hostname)
+
+    # Advisory, and tri-state — see forward_confirm. A False here is worth
+    # seeing (the reverse zone disagrees with the forward zone) and is never
+    # a reason to withhold the name.
+    confirmed = forward_confirm(ip, hostname)
+    if confirmed is not None:
+        result["ptr_forward_confirmed"] = confirmed
+        if not confirmed:
+            log.debug(
+                "PTR for %s (%s) is not forward-confirmed: the name resolves "
+                "to a different address",
+                ip,
+                hostname,
+            )
 
 
 def _mdns_query(ip: str, result: dict) -> None:
@@ -608,11 +637,32 @@ def _mdns_query(ip: str, result: dict) -> None:
         pkt = IP(dst=ip) / UDP(dport=5353) / DNS(rd=0, qd=DNSQR(qname=rev, qtype="PTR"))
         resp = sr1(pkt, timeout=1, verbose=0)
         if resp and resp.haslayer(DNS) and resp[DNS].ancount > 0:
-            name = resp[DNS].an.rrname
+            # The host's own name is the record's *data*, not its owner name.
+            # ``rrname`` is the question echoed back — for this query that is
+            # always the "…in-addr.arpa" string we just sent, so reading it
+            # stored the query as if it were the answer. That value is not
+            # merely useless: the UI falls back to ``mdns_name`` when PTR and
+            # NetBIOS are both empty, and _extract_dns_identity fed it into
+            # the asset's fqdn, so a reverse-lookup string was displayed and
+            # persisted as a machine's identity.
+            #
+            # Scapy 2.7 made 'an' a PacketListField; reading an attribute off
+            # the field itself still answers but raises a DeprecationWarning
+            # and is slated to stop working. Older builds hand back a bare
+            # packet, which is not indexable this way, so both are handled.
+            answers = resp[DNS].an
+            try:
+                answer = answers[0]
+            except (TypeError, IndexError, AttributeError):
+                answer = answers
+            name = getattr(answer, "rdata", None)
             if isinstance(name, bytes):
                 name = name.decode("utf-8", errors="replace")
-            name = name.rstrip(".")
-            if name:
+            name = (name or "").rstrip(".")
+            # A responder that echoes the question rather than answering it
+            # establishes no name. Storing it would reintroduce the defect
+            # above through a different door.
+            if name and not name.lower().endswith(".in-addr.arpa"):
                 result["mdns_name"] = name
                 _register_open_port(
                     result,
@@ -718,10 +768,6 @@ def _netbios_query(ip: str, result: dict) -> None:
         result["netbios_names"] = names
         result["netbios_computer"] = computer_name
         result["netbios_workgroup"] = workgroup
-        if computer_name and (
-            not result.get("hostname") or result["hostname"] in ("Unknown", "")
-        ):
-            result["hostname"] = computer_name
         _register_open_port(
             result,
             port=137,

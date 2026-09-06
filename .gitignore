@@ -67,7 +67,17 @@ htmlcov/
 ccure_users.db
 
 # Generated reports
-reports/
+#
+# Anchored to the one directory it means. A bare `reports/` matches every
+# directory of that name at any depth, and `Backend/tests/reports/` is one of
+# them -- so a test file added there was silently untracked while its three
+# older siblings, added before this rule existed, stayed tracked. A test that
+# cannot be committed is worse than no test: it passes locally for whoever
+# wrote it and does not exist for anybody else.
+#
+# Backend/reports/ is the runtime output directory for generated PDFs,
+# bind-mounted into the API container. Code lives in Backend/reporting/.
+/Backend/reports/
 test_reports/
 
 # Test database files

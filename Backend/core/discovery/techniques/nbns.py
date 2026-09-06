@@ -42,12 +42,12 @@ def probe(
             results[ip]["netbios_names"] = names
             for entry in names:
                 if not (entry["flags"] & 0x8000):  # workstation/server name
+                    # Records the typed field only. This technique runs
+                    # before enrichment, so writing "hostname" here made
+                    # NetBIOS beat PTR by running first rather than by being
+                    # the better source. host_identity.resolve_identity ranks
+                    # them afterwards.
                     results[ip].setdefault("netbios_computer", entry["name"])
-                    if (
-                        not results[ip].get("hostname")
-                        or results[ip]["hostname"] == "Unknown"
-                    ):
-                        results[ip]["hostname"] = entry["name"]
                     break
 
         if mac and (results[ip].get("mac", "N/A") == "N/A"):

@@ -574,6 +574,66 @@ Two rules the layout depends on, both of which fail loudly if broken:
   origin, and Nginx adds no CORS headers — it cannot know which origins are
   legitimate.
 
+## A scan must always reach a terminal state
+
+On 4 Sep 2026 two Basic Network Scans and a Vulnerability Audit against
+`10.180.5.83` sat in `running` indefinitely, showing "LIVE SCANNING" stuck at
+10%. The host was up the whole time — 33 ms ICMP, ARP-resolved — and the
+discovery engine finds it in **2.2 seconds**. Nothing was ever wrong with the
+scanner.
+
+The worker was started at 00:27, before commit `9c40fe3` added
+`foreign_keys="AssetVulnerability.scan_id"` to `Scan.vulnerabilities`, so it
+held a mapper that could not resolve its join condition. Four things then
+compounded, and each is worth keeping in mind separately:
+
+- **A failure path that shares a dependency with the thing it is recovering
+  from is not a failure path.** The task raised `InvalidRequestError` on its
+  first query; the `except` handler called `mark_scan_failed`, which raised the
+  identical error on *its* first query. Nothing was written.
+  `core.scan_control.force_terminal_status` is the answer: plain SQL against
+  `scans`, no mapper, no relationship, no model attribute. It is deliberately
+  the only helper there written that way. `core.tasks._settle_failure` tries
+  the ORM first (an audit entry and a notification are worth having) and falls
+  back to it. **Never call `mark_scan_failed` directly from an `except` block.**
+
+- **`task_time_limit` in `core/celery_app.py` is inert on this deployment.**
+  Celery's hard limit is delivered by signalling a billiard *process*, so it
+  does nothing under the `--pool=threads` host worker, and it can do nothing at
+  all about a worker that has died or been restarted. The comment beside it
+  ("Kill tasks if they hang") is wrong here. The real timeout is
+  `ccure.tasks.reap_stalled_scans`, on beat every two minutes:
+  `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running scan and
+  `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected — two
+  deadlines because "the scan hung" and "no scanner is running" send the
+  operator to different places. It only ever moves a scan *out of* a
+  non-terminal state; a real outcome always wins.
+
+- **`run_asset_discovery_task` did not settle the scan at all.** Its `except`
+  handler just returned. That is the same defect whose fix is documented in a
+  comment inside the *Vulnerability Audit* handler ("returning the failure
+  without marking it left the scan running for ever") — phase 2 was missed when
+  phase 3 was fixed.
+
+- **The mission view could only end via the WebSocket.** A task that died
+  without publishing a terminal frame left the screen live until a 600 s
+  client-side timeout, which then mapped `timeout` and `unknown` to
+  **`complete`** — reporting a scan as finished when nothing had been heard from
+  it for ten minutes. `startHostPolling` now reads `scan.status` on every tick,
+  so the UI is correct within 2.5 s whatever happened to the socket, and the
+  scan record is authoritative over the socket's word.
+
+`POST /scans/{id}/stop` now publishes a `cancelled` frame, and the progress
+WebSocket sends the *scan-level* status on connect (previously only the last
+phase's, and only when a phase row existed — so a browser reconnecting to a
+finished scan was told it was running).
+
+Two operational notes: the start script's duplicate-worker guard deliberately
+does not count the child `python.exe` a single worker spawns under the venv's
+base interpreter, so two PIDs is normal. And **restart the host worker after
+changing anything under `core/`, `scans/` or `orchestrator/`** — this whole
+episode was a worker running code from before a commit that fixed it.
+
 ## Scan pipeline
 
 `pipeline_mode` selects the phases: `basic` = 1, `asset` = 1+2,
@@ -2020,6 +2080,121 @@ consumes GAP-13's comparison for its verdicts.
   assembled in one place so a report and a dashboard cannot render it
   differently.
 
+## Exports (`reporting/exports.py`, `reporting/xlsx_generator.py`)
+
+Assessment results in a form something other than a person can read. GAP-15;
+tracker §9R. **No second reporting architecture** — the PDFs, the thirteen
+compliance framework documents, the host-inventory CSV and the
+suppressed-candidate sidecar are untouched, the findings CSV gained nine
+*appended* columns and not one reordered one, and the whole persistence cost is
+one extra key inside a JSONB column that already existed. **No migration.**
+
+- **`exports.py` produces rows; the format layer writes files.** The XLSX, the
+  CSV and the JSON all render the same `export_payload`, so they cannot
+  disagree about a scan — which is what makes the reconciliation requirement
+  satisfiable at all rather than three code paths kept in step by hand.
+
+- **The verdicts come from the scan payload, not `compliance_findings`, and
+  that is the phase's main modelling decision.** `compliance_findings.status`
+  has no `error` member and must not gain one, so `compliance_sync` maps ERROR
+  onto `manual_review` with the reason in the evidence payload — right for a
+  compliance register, wrong for an export whose stated requirement is that the
+  states stay distinct. Read from the register, a check that *could not run* is
+  indistinguishable from one a human is meant to review. The authoritative
+  record is `config_audit.results`, one entry per check carrying its own
+  `CheckOutcome`; the control and framework mapping is layered on afterwards
+  through the same enabled-and-active intersection `compliance_sync` writes
+  through, so an export can never name a framework the tenant never installed.
+
+- **Six labels, none of them blank.** PASS, FAIL, NOT_APPLICABLE,
+  MANUAL_REVIEW, ERROR, and NOT_ASSESSED — the last being the only one that is
+  not a stored outcome. A host whose configuration audit never ran gets one
+  explicit row carrying the engine's own reason, because an empty sheet reads
+  as a clean host.
+
+- **`_collect_host_audits` walks the payload rather than reading a fixed
+  path.** The same record reaches three shapes — nested under
+  `_phase_data[i].credentialed_report` on the vulnerability-audit pipeline, in
+  `options["credentialed_report"]` on the standalone credentialed scan, and as
+  a list beside a single `report` on a multi-host run. A fixed path exports one
+  and returns nothing for the other two. The host is taken from the record's
+  own container, so a walk cannot attribute one machine's verdicts to another,
+  and `_dedupe_host_audits` stops the first-host-stored-twice arrangement
+  doubling that host's verdicts.
+
+- **A check that maps to no installed framework control still gets a row.**
+  Dropping it would silently lose every built-in check and every uncrosswalked
+  benchmark rule — real assessment results. An empty mapping column is not a
+  missing row.
+
+- **`sanitize_cell` is the only place a cell is made safe, and it does three
+  things in order**: strip the C0 control characters openpyxl refuses (one NUL
+  from an SNMP banner otherwise fails the whole export), prefix a formula
+  leader with an apostrophe, then truncate past Excel's 32,767-character
+  ceiling **with a visible marker**. `+`, `-`, `@` and the two whitespace
+  leaders are in the table as well as `=`: a title beginning `-Xmx` is text to
+  whoever wrote it and a formula to whatever opens it, and a leading tab before
+  `=` is the documented bypass for a naive first-character test.
+
+- **openpyxl is always `write_only=True`**, and that is why sheets are built
+  from row *iterables*. Normal mode keeps a `Cell` object per cell for the life
+  of the workbook. Freeze panes and column widths must be set **before** the
+  first `append` — appending flushes the sheet's opening XML, so a pane frozen
+  afterwards is never written — and the autofilter **after**, because its range
+  needs the row count and it is serialised in the tail.
+
+- **`?fmt=XLSX` is a real workbook and every other unknown format is still a
+  400.** It used to fall through to the executive PDF with HTTP 200, so an
+  Excel export looked successful and produced a file Excel refuses to open. A
+  deployment missing openpyxl answers **503 naming the dependency** —
+  `XlsxUnavailable` is its own type for exactly that reason, and it must never
+  degrade into another format.
+
+- **openpyxl belongs in both runtimes.** Same rule as pywinrm and the database
+  drivers: the API container renders the export and a worker regenerating a
+  missing report reaches the same code. Installed in one only is how an export
+  succeeds in the UI and fails from the worker.
+
+- **`_flatten_credentialed_payload` exists because the CSV download returned
+  the host inventory.** `build_legacy_scan_results` renders the credentialed
+  phase as `{"data": [{"ip_address": …}], "report": {…, "cves": […]}}`; the
+  normalizer reads findings off the entries in `data`, found an address and
+  nothing else, and returned zero — so `scan_has_findings` was False and the
+  branch fell through to `generate_host_inventory_csv`. Measured: **1,887
+  findings in the database, 1,887 in the workbook, 0 in the CSV**, HTTP 200
+  either way. It must also refuse to merge over a host entry that already
+  carries findings: the builder synthesises a *stub* report with an empty
+  `cves` when it finds no stored one, and merging that deletes everything the
+  scan reported.
+
+- **The findings CSV's new columns are appended, never interleaved.** A
+  consumer reading by index — a spreadsheet macro, most ETL — keeps working.
+  A configuration finding joins to its remediation record **by title**, and
+  that is not belt and braces: the credentialed pipeline puts the minted
+  `CCURE-CFG-…` identifier in `cve_id`, which the normalizer correctly refuses
+  to read as a CVE, so `cve_ids` is empty and `plugin_id` falls back to the
+  title. Match on the CVE alone and every benchmark finding in the product —
+  which is most of them — exports an empty remediation record.
+
+- **`reporting/csv_generator.py` deliberately does not escape formula
+  leaders.** The XLSX writer and the new export endpoint both do. Changing what
+  the existing findings CSV writes would change every findings CSV this product
+  has produced, and altering an existing deliverable was not that phase's
+  business. It is recorded in the tracker rather than fixed in passing.
+
+- **The export is scan-scoped and reads the scan's own immutable snapshot.**
+  The current policy row is never consulted — it may have been edited since, and
+  that changes nothing about what the scan assessed. Filters only ever narrow: a
+  framework the scan's policy excluded cannot be named back in, because the rest
+  of it was never assessed.
+
+- **API**: `GET /reports/download/{id}?fmt=XLSX` for the whole-scan workbook,
+  and `GET /reports/export/{id}` for the filterable form (`xlsx|csv|json` ×
+  `all|compliance|findings|comparison`). `fmt=csv` with `dataset=all` is
+  refused — a CSV is one table, and picking whichever came first would be a
+  silent choice about what the caller receives. A named comparison baseline goes
+  through the same visibility check as the scan itself.
+
 ## Scan comparison and finding lifecycle (`core/findings/`)
 
 What changed between two scans. GAP-13; tracker §9O. **No new finding model, no
@@ -2085,6 +2260,19 @@ everything needed.
   `_get_scan_or_404`, so tenant scoping and per-user visibility are the same
   rules every other scan route uses. `limit` bounds the rows and never the
   counts — a truncated count is a wrong number, a short list is a sample.
+
+- **A family is too coarse to decide a configuration fix.** `covers()` answers
+  a question about *families*, and every credentialed finding — CVE and
+  configuration alike — carries `credentialed_package`. So a scan narrowed by a
+  GAP-12 policy still "covered" the checks it had stopped selecting, and five
+  controls were reported **fixed** on a host where nothing had changed. The
+  scan's own sweep had it right the whole time, because it consults the set of
+  checks that reached a PASS or FAIL. That set is now recorded in the
+  assessment scope and `covers_check()` requires a non-CVE finding to be in it
+  before absence can mean a fix. A CVE is exempt on purpose: the package
+  matcher runs over the whole installed inventory. A scan that recorded no set
+  keeps the previous behaviour — "we do not know which checks ran" must not
+  silently reclassify every historical comparison.
 
 - **GAP-14 consumes this and must keep consuming it.** The remediation layer's
   only route to `verified_fixed` is a `FIXED` classification from here, and its

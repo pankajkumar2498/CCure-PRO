@@ -660,14 +660,32 @@ def _clean(value, max_len: int | None = None):
     return value
 
 
+# Zones that are never a host's DNS name, however well-formed they look.
+# A reverse-lookup string is the *question* asked about an address, and one
+# reached this predicate — "14.6.180.10.in-addr.arpa" satisfied every test
+# below and, at six labels, then beat every real name in the length tiebreak
+# in _can_update_field, so nothing could ever correct it.
+_NON_DNS_ZONE_SUFFIXES = (".in-addr.arpa", ".ip6.arpa")
+
+
 def _looks_like_fqdn(value) -> bool:
     if not _has_value(value) or not isinstance(value, str):
         return False
     text_value = value.strip().rstrip(".")
     if "." not in text_value:
         return False
+    lowered = text_value.lower()
+    if lowered.endswith(_NON_DNS_ZONE_SUFFIXES):
+        return False
     labels = [label for label in text_value.split(".") if label]
     if len(labels) < 2:
+        return False
+    # "<name>.local" is the mDNS shape and is link-local: it resolves on the
+    # segment that answered and nowhere else, so it is not a DNS name. Note
+    # the label count is what distinguishes it — plenty of Active Directory
+    # estates use .local as a real internal domain, and "pc1.corp.local" is a
+    # legitimate FQDN. Rejecting the suffix outright would break those.
+    if len(labels) == 2 and lowered.endswith(".local"):
         return False
     return not all(label.isdigit() for label in labels)
 
@@ -748,6 +766,12 @@ def _extract_dns_identity(host_data: dict) -> tuple[str | None, str | None]:
         host_data.get("hostname"),
         host_data.get("hostnames"),
     )
+    # ``mdns_name`` is deliberately not consulted here. An mDNS name is
+    # link-local ("host.local") and is scoped to the segment that answered;
+    # it is not a DNS name and does not resolve anywhere else, so writing it
+    # into fqdn/dns_name asserts a DNS identity the host does not have.
+    # It stays available on the host result for display and is the machine's
+    # own statement of its name, which is a different question from this one.
     fqdn = _first_fqdn(
         dns_name,
         host_data.get("fqdn"),
@@ -755,7 +779,6 @@ def _extract_dns_identity(host_data: dict) -> tuple[str | None, str | None]:
         host_data.get("dns_name"),
         host_data.get("hostname"),
         host_data.get("hostnames"),
-        host_data.get("mdns_name"),
     )
     return dns_name, fqdn
 
@@ -902,11 +925,25 @@ def _can_update_field(asset: Asset, field: str, incoming, incoming_source: str) 
         current_is_fqdn = _looks_like_fqdn(str(current))
         if not current_is_fqdn:
             return True
-        if _source_rank(incoming_source) < _source_rank(current_source):
+
+        incoming_rank = _source_rank(incoming_source)
+        current_rank = _source_rank(current_source)
+        if incoming_rank < current_rank:
             return False
-        if _fqdn_label_count(str(incoming)) < _fqdn_label_count(str(current)):
-            return False
-        return True
+        if incoming_rank > current_rank:
+            # A better source wins outright. The length tiebreak below used to
+            # apply here too, so a deeper name from a weaker scan could hold
+            # off a better-sourced one indefinitely — authority is the stronger
+            # signal and must not be overridden by a count of dots.
+            return True
+
+        # Same authority: prefer the more qualified name, since "host.corp
+        # .example.com" says strictly more than "host.example.com". This is a
+        # tiebreak between two names already established as real DNS names,
+        # never a test of whether a value is one — that is _looks_like_fqdn's
+        # job, and the reverse-lookup strings that made this rule notorious
+        # are refused there now.
+        return _fqdn_label_count(str(incoming)) >= _fqdn_label_count(str(current))
     return _source_rank(incoming_source) >= _source_rank(_current_source(asset, field))
 
 

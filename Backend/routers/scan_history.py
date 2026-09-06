@@ -607,19 +607,45 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
                 query = query.filter(Scan.created_by == str(current_user.id))
 
         scan = query.first()
-        if scan and scan.phases:
-            # Send status of the most recent phase
-            latest_phase = sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
-            latest_summary = _public_summary(latest_phase.summary)
+        if scan:
+            # The scan-level status leads, and the phase status only fills in
+            # while the scan is still live.
+            #
+            # Previously this frame was sent *only* when phase rows existed, and
+            # carried only `latest_phase.status`. Both halves stranded clients:
+            # a scan that failed before creating a phase produced no frame at
+            # all, and a scan already settled as failed/cancelled/unreachable
+            # reported its last phase's status instead of its own -- so a
+            # browser reconnecting to a finished scan was told it was running
+            # and sat there until its own client-side timeout.
+            scan_status = (scan.status or "").lower()
+            latest_phase = (
+                sorted(scan.phases, key=lambda p: p.phase_order or 0)[-1]
+                if scan.phases
+                else None
+            )
+            latest_summary = (
+                _public_summary(latest_phase.summary) if latest_phase else {}
+            )
+            status = (
+                scan_status
+                if scan_status in TERMINAL_STATUSES
+                else (latest_phase.status if latest_phase else scan_status)
+            )
             await websocket.send_json(
                 {
                     "scan_id": scan_id,
-                    "phase": latest_phase.phase_order,
+                    "phase": latest_phase.phase_order if latest_phase else 1,
                     "progress": {
-                        "status": latest_phase.status,
+                        "status": status,
+                        "scan_status": scan_status,
+                        "reason": scan.failure_reason or None,
+                        "error": scan.failure_reason or None,
                         "summary": latest_summary,
                         # Include enough data to satisfy frontend checks
-                        "discovered": latest_phase.hosts_processed,
+                        "discovered": (
+                            latest_phase.hosts_processed if latest_phase else 0
+                        ),
                         "total_ips": latest_summary.get("total_hosts", 0),
                     },
                 }
@@ -949,6 +975,27 @@ def stop_scan(
 
     db.add(scan)
     db.commit()
+
+    # Tell anyone watching the live scan screen. `revoke()` cannot reach a
+    # running thread on the `--pool=threads` host worker, so the task may keep
+    # going until its next cooperative cancellation checkpoint -- and until
+    # then nothing else would tell the browser the scan is over. Without this
+    # frame the operator presses Stop, sees the scan carry on, and presses it
+    # again.
+    try:
+        from core.redis_client import publish_progress_sync
+
+        publish_progress_sync(
+            scan_id,
+            1,
+            {
+                "status": "cancelled",
+                "reason": "Scan cancelled by user.",
+            },
+        )
+    except Exception:
+        log.debug("Could not publish cancellation for %s", scan_id, exc_info=True)
+
     log.info("Scan %s stopped by user %s", scan_id, user.id)
     return {"detail": f"Scan {scan_id} stopped", "stopped": True}
 

@@ -4,12 +4,13 @@
  * Scan setup page with "Active Mission" view.
  */
 import "../../styles/NewScan.css";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
+import { stopScan } from "../../api/scans";
 import { can } from "../../auth/permissions";
 import { useAuth } from "../../context/AuthContext";
 import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
@@ -212,6 +213,8 @@ function ActiveMission({
   onRunInBackground,
   onViewResults,
   onNewScan,
+  onCancel,
+  cancelling,
 }) {
   const { target, scanNo, pipelineMode } = scanState;
   const {
@@ -245,45 +248,56 @@ function ActiveMission({
   const offset = RING_C - (pct / 100) * RING_C;
   const isRunning = status === "running";
   const isComplete = status === "complete";
+  const isCancelled = status === "cancelled" || status === "canceled";
   const isFailed = status === "failed";
   const isUnreachable =
     status === "unreachable" || (isComplete && discovered === 0);
 
-  const dotClass = isFailed
-    ? "am-live-dot--failed"
-    : isUnreachable
-      ? "am-live-dot--warning"
-      : isComplete
-        ? "am-live-dot--complete"
+  /* One sentence saying what happened and what to do about it. A live scan
+     screen that ends on a stopped spinner and no words is the single thing
+     this view was worst at: the operator could not tell a host that was down
+     from a scanner that had died. `error` carries the backend's own
+     `failure_reason` where there is one, so a timeout explains itself. */
+  const outcomeMessage = isFailed
+    ? error ||
+      "The scan stopped before it finished. Check that the scanner worker is running."
+    : isCancelled
+      ? error ||
+        "Scan cancelled. Any results collected before you stopped it are kept."
+      : isUnreachable
+        ? `No host responded on ${target || "the requested target"}. The target may be ` +
+          "powered off, on a different network, or blocking discovery probes " +
+          "(ARP, ICMP and TCP connect were all tried)."
         : "";
-  const ringClass = isFailed
-    ? "am-ring-fill--failed"
-    : isUnreachable
-      ? "am-ring-fill--warning"
-      : isComplete
-        ? "am-ring-fill--complete"
-        : "";
-  const badgeClass = isFailed
-    ? "am-status-badge--failed"
-    : isUnreachable
-      ? "am-status-badge--warning"
-      : isComplete
-        ? "am-status-badge--complete"
-        : "am-status-badge--running";
-  const badgeLabel = isFailed
-    ? "Failed"
-    : isUnreachable
-      ? "Unreachable"
-      : isComplete
-        ? "Complete"
-        : "Live Scanning";
-  const stripClass = isFailed
-    ? "am-progress-strip-fill--failed"
-    : isUnreachable
-      ? "am-progress-strip-fill--warning"
-      : isComplete
-        ? "am-progress-strip-fill--complete"
-        : "";
+
+  /* `cancelled` is checked before `failed` everywhere below: a scan the
+     operator stopped is not a fault, and reporting it in red as "Failed" —
+     which is what happened before this branch existed — makes the Stop button
+     look like it broke something. */
+  const variant = isCancelled
+    ? "warning"
+    : isFailed
+      ? "failed"
+      : isUnreachable
+        ? "warning"
+        : isComplete
+          ? "complete"
+          : null;
+  const dotClass = variant ? `am-live-dot--${variant}` : "";
+  const ringClass = variant ? `am-ring-fill--${variant}` : "";
+  const badgeClass = variant
+    ? `am-status-badge--${variant}`
+    : "am-status-badge--running";
+  const badgeLabel = isCancelled
+    ? "Cancelled"
+    : isFailed
+      ? "Failed"
+      : isUnreachable
+        ? "Unreachable"
+        : isComplete
+          ? "Complete"
+          : "Live Scanning";
+  const stripClass = variant ? `am-progress-strip-fill--${variant}` : "";
 
   const pipelineLabel =
     {
@@ -445,12 +459,27 @@ function ActiveMission({
               ? `Elapsed: ${elapsed}`
               : isComplete
                 ? "Scan complete"
-                : "Scan ended"}
+                : isCancelled
+                  ? "Scan cancelled"
+                  : "Scan ended"}
           </span>
           <div className="am-footer-actions">
-            {!isComplete && !isFailed && (
+            {isRunning && (
               <button className="am-btn-bg" onClick={onRunInBackground}>
                 📥 Run in Background
+              </button>
+            )}
+            {/* Stop is only offered while the scan is actually running.
+                Offering it on a settled scan invites a click that answers
+                "already in a terminal state" and reads as a broken button. */}
+            {isRunning && onCancel && (
+              <button
+                className="am-btn-cancel"
+                onClick={onCancel}
+                disabled={cancelling}
+                title="Stop this scan"
+              >
+                {cancelling ? "Stopping…" : "⏹ Stop Scan"}
               </button>
             )}
             {isComplete && (
@@ -458,7 +487,7 @@ function ActiveMission({
                 View Results →
               </button>
             )}
-            {isFailed && (
+            {(isFailed || isCancelled || isUnreachable) && (
               <button className="am-btn-new" onClick={onNewScan}>
                 ↩ Try Again
               </button>
@@ -466,10 +495,14 @@ function ActiveMission({
           </div>
         </div>
       </div>
-      {error && (
-        <div className="am-error-card">
-          <span>⚠️</span>
-          <span>{error}</span>
+      {(outcomeMessage || error) && (
+        <div
+          className={`am-error-card${
+            isFailed ? " am-error-card--failed" : " am-error-card--warning"
+          }`}
+        >
+          <span>{isCancelled ? "⏹" : isUnreachable ? "📡" : "⚠️"}</span>
+          <span>{outcomeMessage || error}</span>
         </div>
       )}
     </div>
@@ -887,58 +920,105 @@ export default function NewScan() {
       ? `Start Discovery · ${discoveryIntensity || "normal"}`
       : "Start Scan";
 
-  const startHostPolling = useCallback((scanId) => {
-    if (pollHostsRef.current) clearInterval(pollHostsRef.current);
-    pollHostsRef.current = setInterval(async () => {
-      try {
-        const { data: scan } = await api.get(`/scans/${scanId}`);
-        const hosts = (scan?.results?.phase1?.data || []).filter(
-          (h) => h.is_active,
-        );
-        if (!hosts.length) return;
-        const now = fmtTime(new Date());
-        hosts.forEach((h) => {
-          if (!hostFirstSeenRef.current.has(h.ip_address))
-            hostFirstSeenRef.current.set(h.ip_address, now);
-        });
-        const enriched = hosts.map((h) => ({
-          ...h,
-          _seenAt: hostFirstSeenRef.current.get(h.ip_address),
-          _enriching_hostname: !h.hostname || h.hostname === "Unknown",
-          _enriching_mac: !h.mac_address || h.mac_address === "N/A",
-        }));
-        latestDiscoveredHostsRef.current = enriched;
-        setMissionState((prev) => {
-          const existingIps = new Set(
-            prev.discoveredHosts.map((x) => x.ip_address),
-          );
-          const newOnes = enriched
-            .filter((h) => !existingIps.has(h.ip_address))
-            .map((h) => h.ip_address);
-          if (newOnes.length > 0)
-            setTimeout(
-              () => setMissionState((p) => ({ ...p, newHostIps: [] })),
-              3000,
-            );
-          return {
-            ...prev,
-            discoveredHosts: enriched,
-            newHostIps: newOnes,
-            discovered: enriched.length,
-          };
-        });
-      } catch {
-        /* ignore */
-      }
-    }, 2500);
-  }, []);
-
   const stopHostPolling = useCallback(() => {
     if (pollHostsRef.current) {
       clearInterval(pollHostsRef.current);
       pollHostsRef.current = null;
     }
   }, []);
+
+  /* Statuses that mean the scan is over, whatever the WebSocket has or has
+     not delivered. */
+  const TERMINAL_SCAN_STATUSES = useMemo(
+    () => [
+      "complete",
+      "completed",
+      "failed",
+      "cancelled",
+      "canceled",
+      "unreachable",
+    ],
+    [],
+  );
+
+  const startHostPolling = useCallback(
+    (scanId) => {
+      if (pollHostsRef.current) clearInterval(pollHostsRef.current);
+      pollHostsRef.current = setInterval(async () => {
+        try {
+          const { data: scan } = await api.get(`/scans/${scanId}`);
+
+          /* The scan's own status is read on every tick, and this is a safety
+           net rather than a duplicate of the WebSocket.
+
+           The mission view used to reach a terminal state *only* through the
+           progress socket. A task that died without publishing a final frame
+           -- a killed worker, a failure inside its own error handler, a
+           dropped socket -- left this screen showing "LIVE SCANNING" until a
+           600s client-side timeout fired, and that timeout then reported the
+           scan as complete. Polling the status means the UI is correct within
+           one tick no matter what happened to the socket. */
+          const st = (scan?.status || "").toLowerCase();
+          if (TERMINAL_SCAN_STATUSES.includes(st)) {
+            stopHostPolling();
+            const finalHosts = (scan?.results?.phase1?.data || []).filter(
+              (h) => h.is_active,
+            );
+            setMissionState((prev) => ({
+              ...prev,
+              status: st === "completed" ? "complete" : st,
+              progress: 100,
+              discovered: finalHosts.length || prev.discovered,
+              discoveredHosts: finalHosts.length
+                ? finalHosts
+                : prev.discoveredHosts,
+              error: scan?.failure_reason || prev.error,
+            }));
+            return;
+          }
+
+          const hosts = (scan?.results?.phase1?.data || []).filter(
+            (h) => h.is_active,
+          );
+          if (!hosts.length) return;
+          const now = fmtTime(new Date());
+          hosts.forEach((h) => {
+            if (!hostFirstSeenRef.current.has(h.ip_address))
+              hostFirstSeenRef.current.set(h.ip_address, now);
+          });
+          const enriched = hosts.map((h) => ({
+            ...h,
+            _seenAt: hostFirstSeenRef.current.get(h.ip_address),
+            _enriching_hostname: !h.hostname || h.hostname === "Unknown",
+            _enriching_mac: !h.mac_address || h.mac_address === "N/A",
+          }));
+          latestDiscoveredHostsRef.current = enriched;
+          setMissionState((prev) => {
+            const existingIps = new Set(
+              prev.discoveredHosts.map((x) => x.ip_address),
+            );
+            const newOnes = enriched
+              .filter((h) => !existingIps.has(h.ip_address))
+              .map((h) => h.ip_address);
+            if (newOnes.length > 0)
+              setTimeout(
+                () => setMissionState((p) => ({ ...p, newHostIps: [] })),
+                3000,
+              );
+            return {
+              ...prev,
+              discoveredHosts: enriched,
+              newHostIps: newOnes,
+              discovered: enriched.length,
+            };
+          });
+        } catch {
+          /* ignore */
+        }
+      }, 2500);
+    },
+    [TERMINAL_SCAN_STATUSES, stopHostPolling],
+  );
 
   const baseURL = api.defaults.baseURL || "";
   const wsPrefix = baseURL.replace(/^http/, "ws");
@@ -1362,6 +1442,37 @@ export default function NewScan() {
     () => navigate("/scan-history"),
     [navigate],
   );
+
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancelScan = useCallback(async () => {
+    const id = missionScanIdRef.current;
+    if (!id || cancelling) return;
+    setCancelling(true);
+    try {
+      await stopScan(id);
+      /* The backend has committed status='cancelled' and published a terminal
+         frame. It does *not* wait for the worker: `revoke(terminate=True)`
+         cannot kill a running thread on the host worker's threads pool, so the
+         task stops at its next cooperative cancellation checkpoint. Reflecting
+         it here immediately is honest -- the scan is cancelled as a matter of
+         record from this moment, whatever the probe in flight does. */
+      setMissionState((prev) => ({
+        ...prev,
+        status: "cancelled",
+        error: "Scan cancelled by user.",
+      }));
+      stopHostPolling();
+    } catch (e) {
+      setMissionState((prev) => ({
+        ...prev,
+        error:
+          e?.response?.data?.detail ||
+          "Could not cancel the scan. It may have already finished.",
+      }));
+    } finally {
+      setCancelling(false);
+    }
+  }, [cancelling, stopHostPolling]);
   const handleViewResults = useCallback(() => {
     if (executionMode === "interactive") {
       navigate("/scan/host-discovery");
@@ -1471,13 +1582,25 @@ export default function NewScan() {
       boot.startHostPolling(effectiveScanId);
       boot.listenForProgress(effectiveScanId).then((res) => {
         boot.stopHostPolling();
-        const fs =
-          res?.status === "failed"
-            ? "failed"
-            : res?.status === "unreachable"
-              ? "unreachable"
-              : "complete";
+        /* `timeout` and `unknown` are what the socket reports when it gave up
+           or errored -- they are not outcomes, and mapping them to "complete"
+           (which is what this did) told the operator a scan had finished
+           successfully when in fact nothing had been heard from it for ten
+           minutes. The scan record is the authority, so those two cases fall
+           through to whatever the API says below. */
+        const wsStatus = res?.status;
+        const KNOWN = ["failed", "unreachable", "cancelled", "canceled"];
         api.get(`/scans/${effectiveScanId}`).then(({ data: f }) => {
+          const apiStatus = (f?.status || "").toLowerCase();
+          const fs = KNOWN.includes(apiStatus)
+            ? apiStatus === "canceled"
+              ? "cancelled"
+              : apiStatus
+            : apiStatus === "complete" || apiStatus === "completed"
+              ? "complete"
+              : KNOWN.includes(wsStatus)
+                ? wsStatus
+                : "complete";
           const d =
               f?.results?.phase1?.data || latestDiscoveredHostsRef.current,
             active = d.filter((h) => h.is_active);
@@ -1488,16 +1611,12 @@ export default function NewScan() {
           setMissionState((prev) => ({
             ...prev,
             status: fs,
-            progress:
-              fs === "failed" || fs === "unreachable" ? prev.progress : 100,
+            progress: fs === "complete" ? 100 : prev.progress,
             discovered: active.length,
             discoveredHosts: active,
+            error: f?.failure_reason || prev.error,
           }));
-          if (
-            fs !== "failed" &&
-            fs !== "unreachable" &&
-            (rm || f?.pipeline_mode) !== "basic"
-          ) {
+          if (fs === "complete" && (rm || f?.pipeline_mode) !== "basic") {
             if (
               ((rm || f?.pipeline_mode) === "advanced" ||
                 (rm || f?.pipeline_mode) === "vulnerability_audit") &&
@@ -1563,6 +1682,8 @@ export default function NewScan() {
           onRunInBackground={handleRunInBackground}
           onViewResults={handleViewResults}
           onNewScan={handleNewScan}
+          onCancel={handleCancelScan}
+          cancelling={cancelling}
         />
       </AppLayout>
     );

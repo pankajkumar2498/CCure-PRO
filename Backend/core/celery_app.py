@@ -117,4 +117,18 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.run_due_scan_schedules",
         "schedule": crontab(minute="*"),
     },
+    # The deployment's real scan timeout. `task_time_limit` above is inert on
+    # the `--pool=threads` host worker -- Celery's hard limit signals a
+    # billiard *process* -- and in any case it can only act on a task that is
+    # still running. It cannot settle a scan whose worker died, was restarted,
+    # or failed inside its own error handling, which is how scans 60-62 came to
+    # sit in 'running' indefinitely on 4 Sep 2026 against a host that was up.
+    #
+    # Every two minutes: the deadlines are measured in tens of minutes, so the
+    # tick only decides how promptly a stuck scan is reported, and the cost of
+    # a tick that finds nothing is one indexed status lookup.
+    "reap-stalled-scans-every-2-min": {
+        "task": "ccure.tasks.reap_stalled_scans",
+        "schedule": crontab(minute="*/2"),
+    },
 }

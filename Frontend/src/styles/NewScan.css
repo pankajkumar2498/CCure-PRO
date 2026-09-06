@@ -1842,6 +1842,48 @@
   animation: amFadeIn 0.3s ease both;
 }
 
+/* Stop button. Amber rather than red: stopping a scan you started is a normal
+   operation, not a destructive one, and red here reads as a warning about the
+   button instead of a description of what it does. */
+.am-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 1.5px solid rgba(217, 119, 6, 0.45);
+  border-radius: 9px;
+  background: rgba(217, 119, 6, 0.07);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #b45309;
+  cursor: pointer;
+  font-family: var(--font);
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    transform 0.12s;
+  white-space: nowrap;
+}
+
+.am-btn-cancel:hover:not(:disabled) {
+  background: rgba(217, 119, 6, 0.14);
+  border-color: rgba(217, 119, 6, 0.75);
+  transform: translateY(-1px);
+}
+
+.am-btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The outcome banner defaults to the red the error card already used; a
+   cancelled or unreachable scan is amber, because neither is a fault. */
+.am-error-card--warning {
+  background: rgba(217, 119, 6, 0.07);
+  border-color: rgba(217, 119, 6, 0.24);
+  color: #b45309;
+}
+
 /* ── Dark-mode tweaks ─────────────────────────────────────────────────────── */
 :root[data-theme="dark"] .am-card {
   border-color: rgba(255, 255, 255, 0.08);
@@ -2990,4 +3032,21 @@ input:checked + .ns-slider:before {
       0 0 0 2px var(--accent),
       0 0 20px rgba(14, 165, 233, 0.25);
   }
+}
+
+:root[data-theme="dark"] .am-btn-cancel {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+:root[data-theme="dark"] .am-btn-cancel:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.7);
+}
+
+:root[data-theme="dark"] .am-error-card--warning {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.08);
 }

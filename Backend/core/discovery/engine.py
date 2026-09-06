@@ -45,6 +45,7 @@ import logging
 from typing import Dict, List, Optional
 
 from core.constants import SCAPY_AVAILABLE
+from core.discovery.host_identity import resolve_identity
 from core.discovery.profiles import BALANCED, DiscoveryProfile, Technique
 from core.discovery.techniques import (
     arp,
@@ -438,12 +439,12 @@ class DiscoveryEngine:
                         if h_mac == mac_clean:
                             host["device_category"] = dev["device_category"]
                             host["device_category_signal"] = "l2_sniffer"
-                            if dev.get("hostname") and host.get("hostname") in (
-                                "Unknown",
-                                "",
-                                None,
-                            ):
-                                host["hostname"] = dev["hostname"]
+                            if dev.get("hostname"):
+                                # CDP/LLDP is the device announcing itself to
+                                # the switch fabric. Recorded as its own field
+                                # and ranked by host_identity, not by having
+                                # found the slot empty.
+                                host.setdefault("lldp_hostname", dev["hostname"])
                             if "L2_Sniff" not in host["confirmations"]:
                                 host["confirmations"].append("L2_Sniff")
                             host["is_active"] = True
@@ -451,6 +452,13 @@ class DiscoveryEngine:
                                 host["method"] = "L2_Sniff"
             except Exception as exc:
                 log.debug("L2 sniffer failed during discovery: %s", exc)
+
+        # Resolve identity for every host before the final publish. This runs
+        # for all profiles, including those with enrichment disabled, so the
+        # precedence is applied even when enrich_host never ran — and it is
+        # idempotent, so running after it is harmless.
+        for _r in results.values():
+            resolve_identity(_r)
 
         # ── Final enrichment publish: send complete hostname/vendor data ─────
         # This fires once after all probing + enrichment, ensuring the frontend

@@ -77,7 +77,14 @@ export default function AuthHeroPanel({ pageType = "login" }) {
         {/* Dynamic Context Section */}
         <div className="auth-hero-context">
           <span className="auth-hero-badge">{content.badge}</span>
-          <h1 className="auth-hero-headline">{content.headline}</h1>
+          {/* h2, not h1. Every auth page renders its own <h1> in the card —
+              the page's actual name — and this panel is decorative marketing
+              copy beside it. Two level-1 headings gave each of the five auth
+              pages two competing document titles, which is what a screen
+              reader announces when the user asks what page they are on.
+              The class carries every visual property and theme.css zeroes UA
+              margins globally, so the change is visually inert. */}
+          <h2 className="auth-hero-headline">{content.headline}</h2>
           <p className="auth-hero-subheadline">{content.subheadline}</p>
         </div>
 

@@ -3,6 +3,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { canAny, canPermission, isSuperAdmin } from "../../auth/permissions";
 import {
+  CcureAppShell,
+  CcureBadge,
+  CcureButton,
+  CcureInput,
+  CcureProgress,
+} from "../../design-system";
+import "../../styles/app-shell.css";
+import {
   getUnreadCount,
   streamNotificationEvents,
 } from "../../api/notifications";
@@ -15,6 +23,8 @@ import NotificationsPanel, { NotificationBell } from "./NotificationsPanel";
 import HelpPanel from "./HelpPanel";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
+// Every icon is decorative — the control's text or aria-label carries the
+// meaning — so they are hidden from assistive technology.
 const Icon = ({ d, size = 16, viewBox = "0 0 24 24", fill = "none" }) => (
   <svg
     width={size}
@@ -25,6 +35,8 @@ const Icon = ({ d, size = 16, viewBox = "0 0 24 24", fill = "none" }) => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
   >
     <path d={d} />
   </svg>
@@ -80,26 +92,8 @@ const IcoSettings = () => (
 const IcoHelp = () => (
   <Icon d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.09 9a3 3 0 1 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
 );
-const IcoChevronLeft = () => <Icon d="M15 18l-6-6 6-6" size={14} />;
-const IcoChevronRight = () => <Icon d="M9 18l6-6-6-6" size={14} />;
 const IcoUser = () => (
   <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-);
-const IcoMenu = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="3" y1="12" x2="21" y2="12"></line>
-    <line x1="3" y1="6" x2="21" y2="6"></line>
-    <line x1="3" y1="18" x2="21" y2="18"></line>
-  </svg>
 );
 const IcoPlus = () => (
   <svg
@@ -114,9 +108,6 @@ const IcoPlus = () => (
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
-);
-const IcoInfo = () => (
-  <Icon d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01" />
 );
 const IcoTopology = () => (
   <Icon d="M12 2a3 3 0 0 0-3 3c0 1.1.6 2 1.5 2.6L9 10l-4 2-2.5-1.5A3 3 0 0 0 0 13a3 3 0 0 0 5 2.2l4-2L12 15l3-1.8 4 2A3 3 0 0 0 24 13a3 3 0 0 0-2.5-2.5L19 12l-4-2-1.5-2.4A3 3 0 0 0 15 5a3 3 0 0 0-3-3z" />
@@ -358,45 +349,181 @@ const canSeeNavItem = (user, item) => {
   return true;
 };
 
-// ── Profile Dropdown ─────────────────────────────────────────────────────────
-function ProfileDropdown({ user, onClose, onLogout, onOpenProfile }) {
-  const ref = useRef(null);
+// ── Header pieces ────────────────────────────────────────────────────────────
+/* Closes on a pointer-down outside `ref` (the legacy behaviour) AND on Escape,
+   restoring focus to `restoreTo` when Escape or an outside click closed it. */
+function useDismiss(ref, open, onClose, restoreTo) {
   useEffect(() => {
-    const handleMouseDown = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) onClose();
+    if (!open) return undefined;
+    const onMouseDown = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        if (restoreTo?.current && restoreTo.current.contains(event.target))
+          return;
+        onClose();
+      }
     };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [onClose]);
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+        restoreTo?.current?.focus?.();
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ref, open, onClose, restoreTo]);
+}
+
+function ProfileMenu({ user, onLogout, onOpenProfile }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(menuRef, open, close, btnRef);
 
   return (
-    <div className="profile-dropdown" ref={ref}>
-      <div className="pd-header">
-        <div className="pd-avatar">
+    <div className="sh-menu-anchor">
+      <button
+        type="button"
+        ref={btnRef}
+        className="sh-user-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="sh-profile-menu"
+        aria-label={`Account menu for ${user?.username || "Profile"}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="sh-avatar" aria-hidden="true">
           <IcoUser />
-        </div>
-        <div className="pd-info">
-          <span className="pd-name">{user?.username || "User"}</span>
-          <span className="pd-email">{user?.email || ""}</span>
-        </div>
-      </div>
-      <div className="pd-body">
-        <button
-          className="pd-btn pd-btn--primary"
-          onClick={() => {
-            onClose();
-            onOpenProfile();
-          }}
+        </span>
+        <span className="sh-user-name hide-on-mobile">
+          {user?.username || "Profile"}
+        </span>
+        <span className="sh-chevron" aria-hidden="true">
+          ▼
+        </span>
+      </button>
+      {open && (
+        <div
+          className="sh-menu sh-menu--profile"
+          ref={menuRef}
+          id="sh-profile-menu"
+          role="menu"
+          aria-label="Account"
         >
-          My Account
-        </button>
-        <button className="pd-btn pd-btn--signout" onClick={onLogout}>
-          Sign Out
-        </button>
-      </div>
+          <div className="sh-menu-head">
+            <span className="sh-avatar sh-avatar--lg" aria-hidden="true">
+              <IcoUser />
+            </span>
+            <span className="sh-menu-head-text">
+              <span className="sh-menu-name">{user?.username || "User"}</span>
+              <span className="sh-menu-email">{user?.email || ""}</span>
+            </span>
+          </div>
+          <div className="sh-menu-body">
+            <button
+              type="button"
+              role="menuitem"
+              className="cc-btn cc-btn--primary cc-btn--sm cc-btn--block"
+              onClick={() => {
+                close();
+                onOpenProfile();
+              }}
+            >
+              My Account
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="cc-btn cc-btn--ghost cc-btn--sm cc-btn--block sh-signout"
+              onClick={onLogout}
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+/* Superadmin only. A real menu button now: the legacy control was a
+   `<div onClick>` with no name, no state and no keyboard path. Selection
+   semantics are unchanged — write activeOrgId, then reload the document. */
+function OrgSwitcher({
+  selectedOrg,
+  orgs,
+  loading,
+  open,
+  onToggle,
+  onClose,
+  onSwitch,
+}) {
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  useDismiss(menuRef, open, onClose, btnRef);
+  return (
+    <div className="sh-menu-anchor">
+      <button
+        type="button"
+        ref={btnRef}
+        className="sh-org-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="sh-org-menu"
+        aria-label={`Switch organization. Current: ${selectedOrg}`}
+        onClick={onToggle}
+      >
+        <span className="sh-org-name">{selectedOrg}</span>
+        <CcureBadge variant="primary" size="sm">
+          ENTERPRISE
+        </CcureBadge>
+        <span className="sh-chevron" aria-hidden="true">
+          ▼
+        </span>
+      </button>
+      {open && (
+        <div
+          className="sh-menu sh-menu--org"
+          ref={menuRef}
+          id="sh-org-menu"
+          role="menu"
+          aria-label="Switch Organization"
+        >
+          <div className="sh-menu-title">Switch Organization</div>
+          {loading ? (
+            <div className="sh-menu-note">Loading...</div>
+          ) : orgs.length === 0 ? (
+            <div className="sh-menu-note">No organizations found</div>
+          ) : (
+            orgs.map((org) => (
+              <button
+                key={org.id}
+                type="button"
+                role="menuitem"
+                className={`sh-menu-item${org.name === selectedOrg ? " sh-menu-item--current" : ""}`}
+                aria-current={org.name === selectedOrg ? "true" : undefined}
+                onClick={() => onSwitch(org)}
+              >
+                <span className="sh-menu-check" aria-hidden="true">
+                  {org.name === selectedOrg ? "✓" : ""}
+                </span>
+                {org.name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const IcoSearch = () => (
+  <Icon d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" size={14} />
+);
 
 // ── Main Layout Component ────────────────────────────────────────────────────
 export default function AppLayout({ children, saveStatus = "", onNewScan }) {
@@ -409,8 +536,6 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
     resource: "scans",
     action: "execute",
   });
-
-  const [profileOpen, setProfileOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -420,9 +545,15 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationEvent, setNotificationEvent] = useState(null);
-
   const [orgs, setOrgs] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
+
+  // Openers, so a panel closed by keyboard hands focus back where it came from.
+  const helpBtnRef = useRef(null);
+  const bellRef = useRef(null);
+  const settingsBtnRef = useRef(null);
+  const notifsRef = useRef(null);
+  const helpRef = useRef(null);
 
   useEffect(() => {
     if (user && isSuperAdmin(user)) {
@@ -492,7 +623,6 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const [localCollapsed, setLocalCollapsed] = useState(
     () => localStorage.getItem("sidebarCollapsed") === "true",
   );
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const sidebarNavRef = useRef(null);
 
@@ -631,6 +761,21 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
     setShowOrgDropdown(false);
   }, []);
 
+  // Panel closers that hand focus back to the control that opened them.
+  const closeNotifs = useCallback(() => {
+    setShowNotifs(false);
+    bellRef.current?.focus?.();
+  }, []);
+  const closeHelp = useCallback(() => {
+    setShowHelp(false);
+    helpBtnRef.current?.focus?.();
+  }, []);
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+    settingsBtnRef.current?.focus?.();
+  }, []);
+  const closeOrg = useCallback(() => setShowOrgDropdown(false), []);
+
   // Determine active nav item
   const activeId = (() => {
     if (pathname === "/" || pathname === "/dashboard")
@@ -663,503 +808,254 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
     return "";
   })();
 
-  const renderNavItem = (item) => {
-    const {
-      id,
-      label,
-      Icon: ItemIcon,
-      route,
-      disabled,
-      badgeKey,
-      badgeColor,
-    } = item;
-    if (!canSeeNavItem(user, item)) return null;
-
-    let badgeVal = 0;
-    if (badgeKey === "runningScans") badgeVal = runningScans;
-    if (badgeKey === "criticalCount") badgeVal = criticalCount;
-
-    return (
-      <button
-        key={id}
-        type="button"
-        className={`sidebar-item ${activeId === id ? "sidebar-item--active" : ""} ${disabled ? "sidebar-item--disabled" : ""}`}
-        onClick={() => {
-          if (!disabled && route) navigate(route);
-          setMobileOpen(false);
-        }}
-        title={localCollapsed && !mobileOpen ? label : ""}
-      >
-        <span className="sidebar-item-icon">
-          <ItemIcon />
-        </span>
-        <span className="sidebar-item-label">{label}</span>
-        {disabled && <span className="sidebar-soon-tag">SOON</span>}
-        {badgeVal > 0 && !disabled && (
-          <span
-            className={`sidebar-badge sidebar-badge--${badgeColor || "neutral"}`}
-          >
-            {badgeVal}
-          </span>
-        )}
-      </button>
-    );
+  /* The sections the shell renders: SIDEBAR_SECTIONS filtered by
+     canSeeNavItem exactly as before, with the badge values and the active
+     item resolved here so the shell stays free of any opinion about them. */
+  const BADGE_VARIANT = {
+    info: "info",
+    danger: "danger",
+    warning: "warning",
+    success: "success",
   };
+  const BADGE_LABEL = { runningScans: "running", criticalCount: "critical" };
+  const sections = SIDEBAR_SECTIONS.map((section) => ({
+    label: section.label,
+    items: section.items
+      .filter((item) => canSeeNavItem(user, item))
+      .map((item) => {
+        const {
+          id,
+          label,
+          Icon: ItemIcon,
+          route,
+          disabled,
+          badgeKey,
+          badgeColor,
+        } = item;
+        let badgeVal = 0;
+        if (badgeKey === "runningScans") badgeVal = runningScans;
+        if (badgeKey === "criticalCount") badgeVal = criticalCount;
+        return {
+          id,
+          label,
+          route,
+          disabled,
+          icon: <ItemIcon />,
+          active: activeId === id,
+          badge: badgeVal,
+          badgeVariant: BADGE_VARIANT[badgeColor] || "neutral",
+          badgeLabel: BADGE_LABEL[badgeKey],
+        };
+      }),
+  })).filter((section) => section.items.length > 0);
 
   // A null limit is an uncapped plan, not a zero-length bar: show the count
   // and leave the meter empty rather than implying a ceiling that isn't there.
   const fmtLimit = (limit) => (limit > 0 ? limit : "∞");
   const quotaPct =
     quotaLimit > 0 ? Math.min((quotaUsed / quotaLimit) * 100, 100) : 0;
-  const concPct =
-    concurrentLimit > 0
-      ? Math.min((concurrentUsed / concurrentLimit) * 100, 100)
-      : 0;
 
-  return (
-    <div className="app-layout">
-      {/* Mobile Backdrop */}
-      <div
-        className={`sidebar-backdrop ${mobileOpen ? "sidebar-backdrop--visible" : ""}`}
-        onClick={() => setMobileOpen(false)}
-      />
-
-      <aside
-        className={`sidebar ${localCollapsed ? "sidebar--collapsed" : ""} ${mobileOpen ? "sidebar--mobile-open" : "sidebar--mobile-hidden"}`}
-      >
+  const sidebarFooter = (
+    <>
+      <div className="sh-quota">
+        <div className="sh-quota-row">
+          <span id="sh-quota-label">Scan Quota (24h)</span>
+          <span>
+            {quotaUsed}/{fmtLimit(quotaLimit)}
+          </span>
+        </div>
+        <CcureProgress
+          value={quotaLimit > 0 ? quotaUsed : null}
+          max={quotaLimit > 0 ? quotaLimit : 100}
+          animated={false}
+          showValue={false}
+          variant={quotaPct >= 80 ? "danger" : "primary"}
+          className="sh-quota-bar"
+          label="Scan quota used in the last 24 hours"
+        />
+        <div className="sh-quota-row">
+          <span>Concurrent</span>
+          <span>
+            {concurrentUsed}/{fmtLimit(concurrentLimit)}
+          </span>
+        </div>
+        <CcureProgress
+          value={concurrentLimit > 0 ? concurrentUsed : null}
+          max={concurrentLimit > 0 ? concurrentLimit : 100}
+          animated={false}
+          showValue={false}
+          className="sh-quota-bar"
+          label="Concurrent scans running"
+        />
+      </div>
+      <div className="sh-user">
+        <span className="sh-avatar" aria-hidden="true">
+          <IcoUser />
+        </span>
+        <span className="sh-user-info">
+          <span className="sh-user-info-name" title={user?.username || "User"}>
+            {user?.username || "User"}
+          </span>
+          <span className="sh-user-info-role" title={user?.role?.name || ""}>
+            {user?.role?.name || "Member"}
+          </span>
+        </span>
         <button
           type="button"
-          className="sidebar-toggle"
-          onClick={toggleSidebar}
-          title={localCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          ref={settingsBtnRef}
+          className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn"
+          aria-label="Settings"
+          aria-expanded={showSettings}
+          aria-controls="sh-settings"
+          onClick={() => {
+            closeAll();
+            setShowSettings((s) => !s);
+          }}
         >
-          {localCollapsed ? <IcoChevronRight /> : <IcoChevronLeft />}
+          <IcoSettings />
         </button>
-
-        <div className="sidebar-brand">
-          <span className="sidebar-gem">🛡</span>
-          <div className="sidebar-brand-text">
-            <span className="sidebar-name">CCure Audit</span>
-            <span className="sidebar-sub">PRO</span>
-          </div>
-        </div>
-
-        <nav
-          className="sidebar-nav"
-          ref={sidebarNavRef}
-          onScroll={handleSidebarScroll}
-        >
-          {SIDEBAR_SECTIONS.map((section, idx) => {
-            const visibleItems = section.items.filter((item) =>
-              canSeeNavItem(user, item),
-            );
-            if (visibleItems.length === 0) return null;
-
-            return (
-              <div key={section.label}>
-                {idx > 0 && !localCollapsed && (
-                  <div className="sidebar-divider" />
-                )}
-                <div className="sidebar-section-label">{section.label}</div>
-                {visibleItems.map(renderNavItem)}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="sidebar-footer-quota">
-            <div className="quota-row">
-              <span>Scan Quota (24h)</span>
-              <span>
-                {quotaUsed}/{fmtLimit(quotaLimit)}
-              </span>
-            </div>
-            <div className="quota-bar-track">
-              <div
-                className="quota-bar-fill"
-                style={{
-                  width: `${quotaPct}%`,
-                  background: quotaPct >= 80 ? "#ef4444" : "var(--accent)",
-                }}
-              />
-            </div>
-            <div className="quota-row" style={{ marginTop: 6 }}>
-              <span>Concurrent</span>
-              <span>
-                {concurrentUsed}/{fmtLimit(concurrentLimit)}
-              </span>
-            </div>
-            <div className="quota-bar-track">
-              <div
-                className="quota-bar-fill"
-                style={{ width: `${concPct}%`, background: "var(--accent)" }}
-              />
-            </div>
-          </div>
-
-          <div className="sidebar-footer-bottom">
-            <div className="sidebar-footer-avatar">
-              <IcoUser />
-            </div>
-            <div className="sidebar-footer-userinfo">
-              <span
-                className="sidebar-footer-username"
-                title={user?.username || "User"}
-              >
-                {user?.username || "User"}
-              </span>
-              <span
-                className="sidebar-footer-role"
-                title={user?.role?.name || ""}
-              >
-                {user?.role?.name || "Member"}
-              </span>
-            </div>
-            <button
-              className="sidebar-settings-btn"
-              onClick={() => {
-                closeAll();
-                setShowSettings((s) => !s);
-              }}
-              title="Settings"
-            >
-              <IcoSettings />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main-area">
-        <header className="top-header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "16px",
-              flex: 1,
-            }}
-          >
-            <button
-              className="sidebar-hamburger"
-              onClick={() => setMobileOpen(true)}
-            >
-              <IcoMenu />
-            </button>
-
-            {isSuperadmin && (
-              <div style={{ position: "relative" }}>
-                <div
-                  className="org-dropdown"
-                  onClick={() => {
-                    closeAll();
-                    setShowOrgDropdown((s) => !s);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: "rgba(255,255,255,0.03)",
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    border: "1px solid var(--border)",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    color: "var(--text)",
-                    transition: "background 0.2s",
-                  }}
-                >
-                  <span>{selectedOrg}</span>
-                  <span
-                    style={{
-                      fontSize: "0.6rem",
-                      background: "var(--accent)",
-                      color: "#fff",
-                      padding: "2px 4px",
-                      borderRadius: 4,
-                    }}
-                  >
-                    ENTERPRISE
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: 4,
-                      color: "var(--text-muted)",
-                      fontSize: "0.6rem",
-                    }}
-                  >
-                    ▼
-                  </span>
-                </div>
-                {showOrgDropdown && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      marginTop: 8,
-                      width: 220,
-                      background: "var(--bg-app)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
-                      zIndex: 9999,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "8px 12px",
-                        fontSize: "0.65rem",
-                        fontWeight: 700,
-                        color: "var(--text-muted)",
-                        letterSpacing: "0.05em",
-                        textTransform: "uppercase",
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Switch Organization
-                    </div>
-                    {loadingOrgs ? (
-                      <div
-                        style={{
-                          padding: "10px 12px",
-                          fontSize: "0.82rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        Loading...
-                      </div>
-                    ) : orgs.length === 0 ? (
-                      <div
-                        style={{
-                          padding: "10px 12px",
-                          fontSize: "0.82rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        No organizations found
-                      </div>
-                    ) : (
-                      orgs.map((org) => (
-                        <button
-                          key={org.id}
-                          onClick={() => handleOrgSwitch(org)}
-                          style={{
-                            width: "100%",
-                            padding: "10px 12px",
-                            textAlign: "left",
-                            background: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: "0.82rem",
-                            color:
-                              org.name === selectedOrg
-                                ? "var(--accent)"
-                                : "var(--text)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          {org.name === selectedOrg ? (
-                            <span style={{ width: 14 }}>✓</span>
-                          ) : (
-                            <span style={{ width: 14 }} />
-                          )}
-                          {org.name}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isSuperadmin && (
-              <div
-                className="global-search"
-                style={{ position: "relative", width: "300px" }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 10,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </div>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder="Search assets, CVEs, scans..."
-                  style={{
-                    width: "100%",
-                    background: "var(--bg-app)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "8px 12px 8px 32px",
-                    fontSize: "0.82rem",
-                    color: "var(--text)",
-                    outline: "none",
-                    transition: "border-color 0.2s",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 10,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--text-muted)",
-                    fontSize: "0.7rem",
-                    background: "var(--border)",
-                    padding: "2px 4px",
-                    borderRadius: 4,
-                  }}
-                >
-                  ⌘K
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="header-actions">
-            {saveStatus === "saving" && (
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Saving...
-              </span>
-            )}
-            {saveStatus === "saved" && (
-              <span
-                style={{
-                  fontSize: "0.78rem",
-                  color: "var(--ok)",
-                  fontWeight: 600,
-                }}
-              >
-                Saved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span
-                style={{
-                  fontSize: "0.78rem",
-                  color: "var(--danger)",
-                  fontWeight: 600,
-                }}
-              >
-                Save failed
-              </span>
-            )}
-
-            {canStartScans && (
-              <button
-                className="btn-new-scan"
-                onClick={onNewScan || (() => navigate("/scan"))}
-              >
-                <IcoPlus />
-                <span className="hide-on-mobile">New Scan</span>
-              </button>
-            )}
-
-            <button className={`btn-icon btn-icon--round`} title="Info">
-              <IcoInfo />
-            </button>
-
-            <button
-              className={`btn-icon btn-icon--round ${showHelp ? "btn-icon--active" : ""}`}
-              title="Help"
-              onClick={() => {
-                closeAll();
-                setShowHelp((show) => !show);
-              }}
-            >
-              <IcoHelp />
-            </button>
-
-            <div style={{ position: "relative" }}>
-              <NotificationBell
-                unreadCount={unreadCount}
-                onClick={() => {
-                  closeAll();
-                  setShowNotifs((show) => !show);
-                }}
-              />
-              {showNotifs && (
-                <div className="np-panel-wrap">
-                  <NotificationsPanel
-                    onClose={() => setShowNotifs(false)}
-                    onUnreadChange={setUnreadCount}
-                    liveEvent={notificationEvent}
-                  />
-                </div>
-              )}
-            </div>
-
-            {showHelp && (
-              <div className="hp-panel-wrap">
-                <HelpPanel onClose={() => setShowHelp(false)} />
-              </div>
-            )}
-
-            <div style={{ position: "relative" }}>
-              <button
-                className="profile-btn"
-                onClick={() => setProfileOpen((open) => !open)}
-              >
-                <div className="profile-avatar">
-                  <IcoUser />
-                </div>
-                <span className="profile-name hide-on-mobile">
-                  {user?.username || "Profile"}
-                </span>
-                <span className="profile-chevron">▼</span>
-              </button>
-              {profileOpen && (
-                <ProfileDropdown
-                  user={user}
-                  onClose={() => setProfileOpen(false)}
-                  onLogout={() => {
-                    setProfileOpen(false);
-                    logout();
-                  }}
-                  onOpenProfile={() => setShowProfile(true)}
-                />
-              )}
-            </div>
-          </div>
-        </header>
-
-        <main className="page-main">{children}</main>
       </div>
+    </>
+  );
 
+  const headerLeft = isSuperadmin ? (
+    <>
+      <OrgSwitcher
+        selectedOrg={selectedOrg}
+        orgs={orgs}
+        loading={loadingOrgs}
+        open={showOrgDropdown}
+        onToggle={() => {
+          const next = !showOrgDropdown;
+          closeAll();
+          setShowOrgDropdown(next);
+        }}
+        onClose={closeOrg}
+        onSwitch={handleOrgSwitch}
+      />
+      <div className="sh-search">
+        <CcureInput
+          ref={searchInputRef}
+          id="sh-global-search"
+          type="search"
+          aria-label="Search assets, CVEs, scans..."
+          placeholder="Search assets, CVEs, scans..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          adornment={
+            <kbd className="sh-kbd" aria-hidden="true">
+              ⌘K
+            </kbd>
+          }
+        />
+        <span className="sh-search-icon" aria-hidden="true">
+          <IcoSearch />
+        </span>
+      </div>
+    </>
+  ) : null;
+
+  const headerActions = (
+    <>
+      <span
+        role="status"
+        className={`sh-savestatus${saveStatus === "saved" ? " sh-savestatus--ok" : ""}${saveStatus === "error" ? " sh-savestatus--bad" : ""}`}
+      >
+        {saveStatus === "saving" && "Saving..."}
+        {saveStatus === "saved" && "Saved"}
+        {saveStatus === "error" && "Save failed"}
+      </span>
+      {canStartScans && (
+        <CcureButton
+          variant="primary"
+          size="sm"
+          className="sh-newscan"
+          aria-label="New Scan"
+          onClick={onNewScan || (() => navigate("/scan"))}
+        >
+          <IcoPlus />
+          <span className="hide-on-mobile">New Scan</span>
+        </CcureButton>
+      )}
+      <button
+        type="button"
+        ref={helpBtnRef}
+        id="header-help-btn"
+        className={`cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn${showHelp ? " sh-iconbtn--active" : ""}`}
+        aria-label="Help"
+        aria-expanded={showHelp}
+        aria-controls="sh-help"
+        onClick={() => {
+          const next = !showHelp;
+          closeAll();
+          setShowHelp(next);
+        }}
+      >
+        <IcoHelp />
+      </button>
+      <div className="sh-menu-anchor">
+        <NotificationBell
+          ref={bellRef}
+          unreadCount={unreadCount}
+          expanded={showNotifs}
+          onClick={() => {
+            const next = !showNotifs;
+            closeAll();
+            setShowNotifs(next);
+          }}
+        />
+        {showNotifs && (
+          <div className="sh-popover" ref={notifsRef}>
+            <NotificationsPanel
+              id="sh-notifications"
+              onClose={closeNotifs}
+              onUnreadChange={setUnreadCount}
+              liveEvent={notificationEvent}
+            />
+          </div>
+        )}
+      </div>
+      {showHelp && (
+        <div className="sh-popover sh-popover--help" ref={helpRef}>
+          <HelpPanel id="sh-help" onClose={closeHelp} />
+        </div>
+      )}
+      <ProfileMenu
+        user={user}
+        onLogout={() => logout()}
+        onOpenProfile={() => setShowProfile(true)}
+      />
+    </>
+  );
+
+  return (
+    <>
+      <CcureAppShell
+        brand={{ name: "CCure Audit", sub: "PRO", mark: "🛡" }}
+        sections={sections}
+        currentPath={pathname}
+        onNavigate={(route) => navigate(route)}
+        headerLeft={headerLeft}
+        headerActions={headerActions}
+        sidebarFooter={sidebarFooter}
+        collapsed={localCollapsed}
+        onToggleCollapsed={toggleSidebar}
+        navRef={sidebarNavRef}
+        onNavScroll={handleSidebarScroll}
+        mainClassName="page-main"
+        className="sh-shell"
+      >
+        {children}
+      </CcureAppShell>
       {showSettings && (
         <SettingsDrawer
-          onClose={() => setShowSettings(false)}
+          id="sh-settings"
+          onClose={closeSettings}
           onPreferencesUpdated={updateLocalPreferences}
         />
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
-    </div>
+    </>
   );
 }

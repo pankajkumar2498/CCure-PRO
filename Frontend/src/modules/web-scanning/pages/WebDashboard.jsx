@@ -1,62 +1,57 @@
+/**
+ * modules/web-scanning/pages/WebDashboard.jsx
+ * DAST overview: four counters, an OWASP Top 10 scorecard, a 30-day trend.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C batch-6 migration ──────────────
+ * Every request, fallback and navigation target below is what it was before.
+ * The migration changed presentation only. Specifically preserved:
+ *
+ *   * all three requests are still issued together via `Promise.all`;
+ *   * a counter with no data still reads **0**, not blank — `summary?.x || 0`
+ *     is the page's own choice and it is recorded so a migration cannot change
+ *     it silently;
+ *   * the scorecard is still capped at five rows;
+ *   * a zero trend count is still omitted rather than printed as "0 Crit";
+ *   * the page does not poll.
+ *
+ * ── What the migration changed ──────────────────────────────────────────────
+ * One thing beyond presentation, and it is a reporting defect rather than a
+ * cosmetic one. All three requests share a single try/catch, so a failure in
+ * *any* of them left every widget in its placeholder state — and the scorecard
+ * placeholder reads "No OWASP findings detected yet". That is good news about a
+ * target nobody was able to ask about. The page now distinguishes "we asked and
+ * there was nothing" from "we could not ask", because on a security dashboard
+ * those are opposite facts.
+ *
+ * The scorecard's clean/breached distinction was also colour alone — red for
+ * count > 0, green for 0, with text identical apart from the number. It carries
+ * a severity badge now.
+ */
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webDashboardApi } from "../api/webScansApi";
-import Skeleton from "../../../components/common/Skeleton";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureSeverityBadge,
+  CcureSkeleton,
+} from "../../../design-system";
+import "../styles/web-scanning-pages.css";
 
-const SvgGlobe = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10"></circle>
-    <line x1="2" y1="12" x2="22" y2="12"></line>
-    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-  </svg>
-);
-
-const MetricCard = ({ title, value, icon, color }) => (
-  <div
-    className="stat-card"
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "8px",
-      padding: "20px",
-      borderRadius: "12px",
-      border: "1px solid var(--border)",
-      background: "var(--bg-panel)",
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <span
-        style={{
-          fontSize: "0.9rem",
-          color: "var(--text-muted)",
-          fontWeight: "600",
-        }}
-      >
-        {title}
-      </span>
-      <span style={{ color: color }}>{icon}</span>
-    </div>
-    <div style={{ fontSize: "2rem", fontWeight: "bold", color: "var(--text)" }}>
-      {value}
-    </div>
-  </div>
-);
+function MetricCard({ title, value }) {
+  return (
+    /* CcureCard supplies the heading, and the heading is what names the
+       counter. The pre-migration version paired a styled <span> with a styled
+       <div> and nothing tied them together programmatically, so a screen
+       reader read four labels and four unattached numbers. */
+    <CcureCard title={title} headingLevel={3}>
+      <div className="wsp-metric-value">{value}</div>
+    </CcureCard>
+  );
+}
 
 export default function WebDashboard() {
   const navigate = useNavigate();
@@ -64,11 +59,15 @@ export default function WebDashboard() {
   const [summary, setSummary] = useState(null);
   const [scorecard, setScorecard] = useState(null);
   const [trends, setTrends] = useState(null);
+  // Distinguishes "asked, nothing found" from "could not ask". Without it the
+  // scorecard's own empty state reports a clean target after a failed request.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
+        setLoadFailed(false);
         const [sumRes, scoreRes, trendRes] = await Promise.all([
           webDashboardApi.getSummary(),
           webDashboardApi.getOwaspScorecard(),
@@ -79,6 +78,7 @@ export default function WebDashboard() {
         setTrends(trendRes.data);
       } catch (err) {
         console.error("Failed to load web dashboard data", err);
+        setLoadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -86,267 +86,141 @@ export default function WebDashboard() {
     fetchData();
   }, []);
 
+  const unavailable = (
+    <p className="wsp-placeholder">
+      Could not be loaded — this is not a statement about the target.
+    </p>
+  );
+
   return (
     <AppLayout pageTitle="Web Application Scanning">
-      <div
-        className="page-inner"
-        style={{ maxWidth: "1400px", margin: "0 auto", padding: "24px" }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: "32px",
-          }}
-        >
+      <div className="page-inner wsp-page">
+        <div className="wsp-header">
           <div>
-            <h1
-              className="page-title"
-              style={{ display: "flex", alignItems: "center", gap: "12px" }}
-            >
-              <span style={{ color: "var(--accent)" }}>
-                <SvgGlobe />
-              </span>
-              Web Application Security
-            </h1>
+            <h1 className="page-title">Web Application Security</h1>
             <p className="page-subtitle">
               Dynamic Application Security Testing (DAST) Overview
             </p>
           </div>
-          <div style={{ display: "flex", gap: "12px" }}>
-            <button
-              className="btn btn--outline"
+          <div className="wsp-actions">
+            <CcureButton
+              variant="secondary"
               onClick={() => navigate("/web-scans/list")}
             >
               View All Scans
-            </button>
-            <button
-              className="btn btn--primary"
-              onClick={() => navigate("/web-scans/new")}
-            >
+            </CcureButton>
+            <CcureButton onClick={() => navigate("/web-scans/new")}>
               + New Web Scan
-            </button>
+            </CcureButton>
           </div>
         </div>
 
         {loading ? (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "24px" }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "20px",
-              }}
-            >
-              <Skeleton height="120px" borderRadius="12px" />
-              <Skeleton height="120px" borderRadius="12px" />
-              <Skeleton height="120px" borderRadius="12px" />
-              <Skeleton height="120px" borderRadius="12px" />
+          <div className="wsp-loading" role="status" aria-live="polite">
+            <span className="cc-sr-only">Loading web scanning overview…</span>
+            <div className="wsp-metrics">
+              <CcureSkeleton height="120px" radius="12px" />
+              <CcureSkeleton height="120px" radius="12px" />
+              <CcureSkeleton height="120px" radius="12px" />
+              <CcureSkeleton height="120px" radius="12px" />
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "20px",
-              }}
-            >
-              <Skeleton height="300px" borderRadius="12px" />
-              <Skeleton height="300px" borderRadius="12px" />
+            <div className="wsp-widgets">
+              <CcureSkeleton height="300px" radius="12px" />
+              <CcureSkeleton height="300px" radius="12px" />
             </div>
           </div>
         ) : (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "24px" }}
-          >
-            {/* Top Metrics Row */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "20px",
-              }}
-            >
+          <>
+            {loadFailed && (
+              <CcureAlert variant="danger">
+                Some dashboard data could not be loaded. The figures below are
+                incomplete and must not be read as an assessment of the estate.
+              </CcureAlert>
+            )}
+
+            <div className="wsp-metrics">
               <MetricCard
                 title="Active Web Scans"
                 value={summary?.active_scans || 0}
-                icon={<SvgGlobe />}
-                color="var(--accent)"
               />
               <MetricCard
                 title="Critical Vulnerabilities"
                 value={summary?.critical_vulnerabilities || 0}
-                icon={<span style={{ fontSize: "1.2rem" }}>🔴</span>}
-                color="var(--danger)"
               />
               <MetricCard
                 title="Total Endpoints Discovered"
                 value={summary?.total_endpoints || 0}
-                icon={<span style={{ fontSize: "1.2rem" }}>🔌</span>}
-                color="var(--info)"
               />
               <MetricCard
                 title="Scans Last 30 Days"
                 value={summary?.scans_last_30_days || 0}
-                icon={<span style={{ fontSize: "1.2rem" }}>📅</span>}
-                color="var(--text-muted)"
               />
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "20px",
-              }}
-            >
-              {/* OWASP Scorecard Widget */}
-              <div
-                style={{
-                  padding: "24px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-panel)",
-                }}
-              >
-                <h3 style={{ marginBottom: "20px", fontSize: "1.1rem" }}>
-                  OWASP Top 10 Coverage
-                </h3>
-                {scorecard && scorecard.length > 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
-                    }}
-                  >
+            <div className="wsp-widgets">
+              <CcureCard title="OWASP Top 10 Coverage" headingLevel={2}>
+                {loadFailed ? (
+                  unavailable
+                ) : scorecard && scorecard.length > 0 ? (
+                  <div className="wsp-rows">
                     {scorecard.slice(0, 5).map((item) => (
-                      <div
-                        key={item.category}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          borderBottom: "1px solid var(--border)",
-                          paddingBottom: "8px",
-                        }}
-                      >
-                        <span
-                          style={{ fontSize: "0.9rem", color: "var(--text)" }}
-                        >
-                          {item.category}
-                        </span>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.8rem",
-                              fontWeight: "bold",
-                              color:
-                                item.count > 0 ? "var(--danger)" : "var(--ok)",
-                            }}
-                          >
-                            {item.count} findings
-                          </span>
-                        </div>
+                      <div className="wsp-row" key={item.category}>
+                        <span>{item.category}</span>
+                        {item.count > 0 ? (
+                          <CcureSeverityBadge
+                            severity="high"
+                            score={`${item.count} findings`}
+                            showLabel={false}
+                          />
+                        ) : (
+                          <CcureBadge variant="success">
+                            0 findings — clear
+                          </CcureBadge>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.9rem",
-                      fontStyle: "italic",
-                    }}
-                  >
+                  <p className="wsp-placeholder">
                     No OWASP findings detected yet.
-                  </div>
+                  </p>
                 )}
-              </div>
+              </CcureCard>
 
-              {/* Finding Trends Widget */}
-              <div
-                style={{
-                  padding: "24px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-panel)",
-                }}
+              <CcureCard
+                title="Vulnerability Trends (30 Days)"
+                headingLevel={2}
               >
-                <h3 style={{ marginBottom: "20px", fontSize: "1.1rem" }}>
-                  Vulnerability Trends (30 Days)
-                </h3>
-                {trends && trends.length > 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
-                    }}
-                  >
+                {loadFailed ? (
+                  unavailable
+                ) : trends && trends.length > 0 ? (
+                  <div className="wsp-rows">
                     {trends.slice(0, 5).map((trend) => (
-                      <div
-                        key={trend.date}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          borderBottom: "1px solid var(--border)",
-                          paddingBottom: "8px",
-                        }}
-                      >
-                        <span
-                          style={{ fontSize: "0.9rem", color: "var(--text)" }}
-                        >
-                          {trend.date}
-                        </span>
-                        <div style={{ display: "flex", gap: "8px" }}>
+                      <div className="wsp-row" key={trend.date}>
+                        <span>{trend.date}</span>
+                        <div className="wsp-bands">
                           {trend.critical > 0 && (
-                            <span
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--danger)",
-                              }}
-                            >
-                              {trend.critical} Crit
-                            </span>
+                            <CcureSeverityBadge
+                              severity="critical"
+                              score={trend.critical}
+                            />
                           )}
                           {trend.high > 0 && (
-                            <span
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--warning)",
-                              }}
-                            >
-                              {trend.high} High
-                            </span>
+                            <CcureSeverityBadge
+                              severity="high"
+                              score={trend.high}
+                            />
                           )}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.9rem",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    No trend data available.
-                  </div>
+                  <p className="wsp-placeholder">No trend data available.</p>
                 )}
-              </div>
+              </CcureCard>
             </div>
-          </div>
+          </>
         )}
       </div>
     </AppLayout>

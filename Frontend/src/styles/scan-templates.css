@@ -1,0 +1,126 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Scan Templates (/scan) — page-owned styles.  Checkpoint 3C batch 11.
+
+   Replaces the `.scan-card*`, `.scan-grid`, `.badge-*`, `.search-*` and
+   `.modal-panel-grid` rules this page used from scan.css. Every colour is a
+   CCure semantic token, so the tiles follow the theme; the legacy rules
+   carried twenty-two literal pastels that did not.
+
+   Tone classes map the thirteen templates onto six semantic tones. A tile is
+   a coloured tint with the solid colour for the stroke — the same pairing the
+   alert and badge primitives use — so contrast holds in both themes.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.tpl-search {
+  margin-bottom: var(--ccure-space-md);
+  max-width: 22.5rem;
+}
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr));
+  gap: var(--ccure-space-md);
+}
+
+.tpl-grid--modal {
+  width: 100%;
+  gap: var(--ccure-space-lg);
+}
+
+.tpl-card {
+  position: relative;
+  background: var(--ccure-surface);
+  border: 1.5px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  padding: var(--ccure-space-lg) var(--ccure-space-md) var(--ccure-space-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--ccure-space-xs);
+  font-family: var(--ccure-font);
+  color: var(--ccure-text);
+  cursor: pointer;
+  min-height: 10.625rem;
+  transition:
+    box-shadow var(--ccure-duration-base) var(--ccure-ease),
+    border-color var(--ccure-duration-base) var(--ccure-ease),
+    transform var(--ccure-duration-fast) var(--ccure-ease);
+}
+
+.tpl-card:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.tpl-card--active:hover {
+  box-shadow: var(--ccure-shadow-md);
+  border-color: var(--ccure-border-strong);
+  transform: translateY(-2px);
+}
+
+/* A disabled template is dimmed but its text stays above the AA floor: the
+   legacy `opacity: 0.7` pulled the description to 3.4:1. Only the tile fades. */
+.tpl-card--disabled {
+  cursor: default;
+  background: var(--ccure-surface-sunken);
+}
+
+.tpl-card--disabled .tpl-icon {
+  opacity: 0.6;
+}
+
+.tpl-card-badges {
+  position: absolute;
+  top: var(--ccure-space-xs);
+  right: var(--ccure-space-xs);
+  display: inline-flex;
+  gap: var(--ccure-space-2xs);
+}
+
+.tpl-icon {
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--ccure-radius-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tpl-icon--success {
+  background: var(--ccure-success-bg);
+  color: var(--ccure-success-solid);
+}
+.tpl-icon--info {
+  background: var(--ccure-info-bg);
+  color: var(--ccure-info-solid);
+}
+.tpl-icon--warning {
+  background: var(--ccure-warning-bg);
+  color: var(--ccure-warning-solid);
+}
+.tpl-icon--danger {
+  background: var(--ccure-danger-bg);
+  color: var(--ccure-danger-solid);
+}
+.tpl-icon--primary {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary);
+}
+.tpl-icon--neutral {
+  background: var(--ccure-surface-sunken);
+  color: var(--ccure-text-secondary);
+}
+
+.tpl-card-title {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  line-height: var(--ccure-leading-tight);
+}
+
+.tpl-card-desc {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  line-height: var(--ccure-leading-relaxed);
+}

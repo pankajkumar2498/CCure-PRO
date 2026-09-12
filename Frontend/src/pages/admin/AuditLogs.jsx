@@ -1,6 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureInput,
+  CcureSelect,
+} from "../../design-system";
+import "../../styles/audit-logs.css";
+import {
   listAuditLogs,
   getAuditLogDetail,
   exportAuditLogs,
@@ -9,8 +17,6 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { can, isSuperAdmin } from "../../auth/permissions";
 import { formatDateTime } from "../../utils/date";
-import Button from "../../components/common/Button";
-import FormField from "../../components/common/FormField";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import AuditLogDetailsModal from "../../components/admin/AuditLogDetailsModal";
 
@@ -285,36 +291,28 @@ export default function AuditLogs() {
     ([, v]) => v !== "",
   ).length;
 
-  const SEVERITY_STYLES = {
-    critical: { bg: "rgba(220, 38, 38, 0.15)", fg: "#f87171" },
-    high: { bg: "rgba(234, 88, 12, 0.15)", fg: "#fb923c" },
-    medium: { bg: "rgba(217, 119, 6, 0.15)", fg: "#fbbf24" },
-    low: { bg: "rgba(37, 99, 235, 0.15)", fg: "#60a5fa" },
-    info: { bg: "rgba(107, 114, 128, 0.15)", fg: "#9ca3af" },
+  /* Severity is a CCure vocabulary, so the page no longer keeps a private
+     palette keyed on it. The five entries here were rgba backgrounds with hex
+     foregrounds and a `${fg}33` border — a light-on-dark set hardcoded on a
+     page that renders in whichever theme the account chose. */
+  const SEVERITY_VARIANT = {
+    critical: "critical",
+    high: "high",
+    medium: "medium",
+    low: "low",
+    info: "info",
   };
 
   const renderSeverity = (severity) => {
     const key = String(severity || "info").toLowerCase();
-    const style = SEVERITY_STYLES[key] || SEVERITY_STYLES.info;
     return (
-      <span
+      <CcureBadge
+        variant={SEVERITY_VARIANT[key] || "info"}
+        className="al-sev"
         title={`Severity: ${key}`}
-        style={{
-          display: "inline-block",
-          background: style.bg,
-          color: style.fg,
-          border: `1px solid ${style.fg}33`,
-          borderRadius: 4,
-          padding: "1px 6px",
-          fontSize: "0.62rem",
-          fontWeight: 700,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          whiteSpace: "nowrap",
-        }}
       >
         {key}
-      </span>
+      </CcureBadge>
     );
   };
 
@@ -368,30 +366,22 @@ export default function AuditLogs() {
 
     if (resType === "session") {
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 14 }}>🎫</span>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            Session #{targetVal}
-          </span>
+        <div className="al-row">
+          <span className="al-t-md">🎫</span>
+          <span className="al-t-sm al-medium">Session #{targetVal}</span>
         </div>
       );
     }
 
     if (resType === "user") {
       if (log.user_id && targetVal === log.user_id) {
-        return (
-          <span style={{ color: "var(--text-faint)", fontSize: 13 }}>
-            Self Account
-          </span>
-        );
+        return <span className="al-muted al-t-sm">Self Account</span>;
       }
       const cleanTarget = targetVal.split("_").slice(-2, -1)[0] || targetVal;
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 14 }}>👤</span>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            User: {cleanTarget}
-          </span>
+        <div className="al-row">
+          <span className="al-t-md">👤</span>
+          <span className="al-t-sm al-medium">User: {cleanTarget}</span>
         </div>
       );
     }
@@ -401,11 +391,9 @@ export default function AuditLogs() {
         ? targetVal.split("_").pop()
         : targetVal;
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 14 }}>📡</span>
-          <span
-            style={{ fontSize: 13, fontWeight: 500, fontFamily: "monospace" }}
-          >
+        <div className="al-row">
+          <span className="al-t-md">📡</span>
+          <span className="al-t-sm al-medium al-mono">
             Scan #{displayId.slice(-6)}
           </span>
         </div>
@@ -413,9 +401,9 @@ export default function AuditLogs() {
     }
 
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 14 }}>📌</span>
-        <span style={{ fontSize: 13, fontWeight: 500 }}>
+      <div className="al-row">
+        <span className="al-t-md">📌</span>
+        <span className="al-t-sm al-medium">
           {resType.charAt(0).toUpperCase() + resType.slice(1)}
         </span>
       </div>
@@ -526,8 +514,8 @@ export default function AuditLogs() {
 
   if (loading) {
     return (
-      <AppLayout pageTitle="Audit Logs">
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+      <AppLayout>
+        <div className="al-centered">
           <div className="spinner" />
         </div>
       </AppLayout>
@@ -539,54 +527,39 @@ export default function AuditLogs() {
       <div className="page-inner">
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Audit Logs</h2>
+            <h1 className="page-title">Audit Logs</h1>
             <p className="page-subtitle">
               Immutable trail of system activities and user actions
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {newEventsCount > 0 && (
-              <div
-                onClick={() => {
-                  setPage(1);
-                  loadData(true, 1);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  background: "rgba(96, 165, 250, 0.15)",
-                  backdropFilter: "blur(10px)",
-                  WebkitBackdropFilter: "blur(10px)",
-                  border: "1px solid rgba(96, 165, 250, 0.3)",
-                  color: "#60a5fa",
-                  padding: "6px 14px",
-                  borderRadius: "20px",
-                  cursor: "pointer",
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
-                  transition: "all 0.2s ease-in-out",
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = "rgba(96, 165, 250, 0.22)";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow =
-                    "0 6px 20px rgba(96, 165, 250, 0.2)";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = "rgba(96, 165, 250, 0.15)";
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 15px rgba(0, 0, 0, 0.2)";
-                }}
-              >
-                <span>
-                  💬 {newEventsCount} new event{newEventsCount > 1 ? "s" : ""}
-                </span>
-              </div>
-            )}
-            <Button
+          <div className="al-title-actions">
+            {/* The region is mounted unconditionally and the button appears
+                inside it. A `role="status"` that mounts at the same moment its
+                content arrives is frequently not announced at all — the reader
+                has nothing to observe changing.
+
+                It was a `<div onClick>` with inline hover handlers: not
+                focusable, not announced, and the only way to catch up with new
+                events. It is a button now, so Enter and Space work and it is in
+                the tab order. Polite, not assertive: a background freshness
+                notice is not an emergency, and this one can arrive every five
+                seconds. */}
+            <div role="status" aria-live="polite" className="al-newevents">
+              {newEventsCount > 0 && (
+                <button
+                  type="button"
+                  className="al-newevents-btn"
+                  onClick={() => {
+                    setPage(1);
+                    loadData(true, 1);
+                  }}
+                >
+                  <span aria-hidden="true">💬</span> {newEventsCount} new event
+                  {newEventsCount > 1 ? "s" : ""} — show
+                </button>
+              )}
+            </div>
+            <CcureButton
               type="button"
               variant="ghost"
               size="sm"
@@ -597,10 +570,10 @@ export default function AuditLogs() {
               disabled={refreshing}
             >
               {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
+            </CcureButton>
             {canExport && (
               <>
-                <Button
+                <CcureButton
                   type="button"
                   variant="ghost"
                   size="sm"
@@ -609,8 +582,8 @@ export default function AuditLogs() {
                   title="Download the events matching the current filters, with every stored hash re-verified"
                 >
                   {exporting === "csv" ? "Exporting..." : "Export CSV"}
-                </Button>
-                <Button
+                </CcureButton>
+                <CcureButton
                   type="button"
                   variant="ghost"
                   size="sm"
@@ -619,68 +592,44 @@ export default function AuditLogs() {
                   title="Summary document; the CSV carries the hashes"
                 >
                   {exporting === "pdf" ? "Exporting..." : "Export PDF"}
-                </Button>
+                </CcureButton>
               </>
             )}
           </div>
         </div>
 
         {canSeeRetention && retention && (
-          <div
-            style={{
-              border: "1px solid rgba(148,163,184,0.25)",
-              borderRadius: 8,
-              padding: "10px 14px",
-              marginBottom: 14,
-              fontSize: "0.78rem",
-            }}
-          >
+          <div className="al-note">
             <div
               onClick={() => setRetentionOpen((open) => !open)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                cursor: "pointer",
-              }}
+              className="al-row al-row--gap-md al-clickable"
             >
               <strong>Retention</strong>
-              <span
-                style={{
-                  padding: "1px 8px",
-                  borderRadius: 4,
-                  fontWeight: 700,
-                  fontSize: "0.68rem",
-                  background: retention.installed
-                    ? retention.enabled
-                      ? "rgba(234,88,12,0.15)"
-                      : "rgba(107,114,128,0.15)"
-                    : "rgba(107,114,128,0.15)",
-                  color: retention.installed
-                    ? retention.enabled
-                      ? "#fb923c"
-                      : "#9ca3af"
-                    : "#9ca3af",
-                }}
+              <CcureBadge
+                variant={
+                  retention.installed && retention.enabled
+                    ? "warning"
+                    : "neutral"
+                }
               >
                 {!retention.installed
                   ? "NOT INSTALLED"
                   : retention.enabled
                     ? `${retention.retention_days} DAYS`
                     : "DISABLED"}
-              </span>
-              <span style={{ opacity: 0.7 }}>
+              </CcureBadge>
+              <span className="al-muted">
                 {retention.installed
                   ? `${retention.would_delete_total ?? 0} event(s) would be removed`
                   : "no purge can run"}
               </span>
-              <span style={{ marginLeft: "auto", opacity: 0.6 }}>
+              <span className="al-push al-muted">
                 {retentionOpen ? "▲" : "▼"}
               </span>
             </div>
 
             {retentionOpen && (
-              <div style={{ marginTop: 10, opacity: 0.85, lineHeight: 1.6 }}>
+              <div className="al-mt al-relaxed">
                 {!retention.installed ? (
                   <div>{retention.detail}</div>
                 ) : (
@@ -703,16 +652,16 @@ export default function AuditLogs() {
                         : "none found — a purge would be refused"}
                     </div>
                     {Object.keys(retention.holds || {}).length > 0 && (
-                      <div style={{ color: "#fb923c" }}>
+                      <div className="al-warn-text">
                         Holds:{" "}
                         {Object.entries(retention.holds)
                           .map(([org, reason]) => `${org} (${reason})`)
                           .join(", ")}
                       </div>
                     )}
-                    <table style={{ marginTop: 8, width: "100%" }}>
+                    <table className="al-mt-sm al-full">
                       <thead>
-                        <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                        <tr className="al-start al-muted">
                           <th>Organization</th>
                           <th>Eligible</th>
                           <th>Legacy</th>
@@ -732,7 +681,7 @@ export default function AuditLogs() {
                         ))}
                       </tbody>
                     </table>
-                    <div style={{ marginTop: 8, opacity: 0.7 }}>
+                    <div className="al-mt-sm al-muted">
                       This panel is read-only. A purge runs from the scheduler
                       or
                       <code>
@@ -749,257 +698,184 @@ export default function AuditLogs() {
           </div>
         )}
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
         <div className="filter-bar">
-          <FormField
-            className="filter-group"
-            htmlFor="filter-action"
+          <CcureSelect
             label="Action"
+            fieldClassName="filter-group"
+            id="filter-action"
+            name="action"
+            value={filters.action}
+            onChange={handleFilterChange}
           >
-            <select
-              id="filter-action"
-              name="action"
-              className="field-input"
-              value={filters.action}
-              onChange={handleFilterChange}
-            >
-              <option value="">All Actions</option>
-              <option value="user.login">Login</option>
-              <option value="user.login_failed">Login Failed</option>
-              <option value="user.created">User Created</option>
-              <option value="user.updated">User Updated</option>
-              <option value="user.deleted">User Deleted</option>
-              <option value="scan.created">Scan Created</option>
-            </select>
-          </FormField>
+            <option value="">All Actions</option>
+            <option value="user.login">Login</option>
+            <option value="user.login_failed">Login Failed</option>
+            <option value="user.created">User Created</option>
+            <option value="user.updated">User Updated</option>
+            <option value="user.deleted">User Deleted</option>
+            <option value="scan.created">Scan Created</option>
+          </CcureSelect>
 
-          <FormField
-            className="filter-group"
-            htmlFor="filter-resource"
+          <CcureSelect
             label="Resource"
+            fieldClassName="filter-group"
+            id="filter-resource"
+            name="resource_type"
+            value={filters.resource_type}
+            onChange={handleFilterChange}
           >
-            <select
-              id="filter-resource"
-              name="resource_type"
-              className="field-input"
-              value={filters.resource_type}
-              onChange={handleFilterChange}
-            >
-              <option value="">All Resources</option>
-              <option value="user">User</option>
-              <option value="scan">Scan</option>
-              <option value="organization">Organization</option>
-            </select>
-          </FormField>
+            <option value="">All Resources</option>
+            <option value="user">User</option>
+            <option value="scan">Scan</option>
+            <option value="organization">Organization</option>
+          </CcureSelect>
 
-          <FormField
-            className="filter-group"
-            htmlFor="filter-status"
+          <CcureSelect
             label="Status"
+            fieldClassName="filter-group"
+            id="filter-status"
+            name="status"
+            value={filters.status}
+            onChange={handleFilterChange}
           >
-            <select
-              id="filter-status"
-              name="status"
-              className="field-input"
-              value={filters.status}
-              onChange={handleFilterChange}
-            >
-              <option value="">All Status</option>
-              <option value="success">Success</option>
-              <option value="failure">Failure</option>
-              <option value="denied">Denied</option>
-              <option value="blocked_malware">Blocked (malware)</option>
-              <option value="scanner_unavailable">Scanner unavailable</option>
-            </select>
-          </FormField>
+            <option value="">All Status</option>
+            <option value="success">Success</option>
+            <option value="failure">Failure</option>
+            <option value="denied">Denied</option>
+            <option value="blocked_malware">Blocked (malware)</option>
+            <option value="scanner_unavailable">Scanner unavailable</option>
+          </CcureSelect>
 
-          <FormField
-            className="filter-group"
-            htmlFor="filter-severity"
+          <CcureSelect
             label="Severity"
+            fieldClassName="filter-group"
+            id="filter-severity"
+            name="severity"
+            value={filters.severity}
+            onChange={handleFilterChange}
           >
-            <select
-              id="filter-severity"
-              name="severity"
-              className="field-input"
-              value={filters.severity}
-              onChange={handleFilterChange}
-            >
-              <option value="">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="info">Info</option>
-            </select>
-          </FormField>
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+          </CcureSelect>
 
-          <FormField
-            className="filter-group"
-            htmlFor="filter-range"
+          <CcureSelect
             label="Time Range"
+            fieldClassName="filter-group"
+            id="filter-range"
+            name="range"
+            value={filters.range}
+            onChange={(e) => handleRangePreset(e.target.value)}
           >
-            <select
-              id="filter-range"
-              name="range"
-              className="field-input"
-              value={filters.range}
-              onChange={(e) => handleRangePreset(e.target.value)}
-            >
-              <option value="">All Time</option>
-              <option value="today">Today</option>
-              <option value="24h">Last 24 Hours</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-            </select>
-          </FormField>
+            <option value="">All Time</option>
+            <option value="today">Today</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+          </CcureSelect>
 
-          <FormField
-            className="filter-group"
-            htmlFor="filter-search"
+          <CcureInput
             label="Search"
-          >
-            <input
-              id="filter-search"
-              type="search"
-              className="field-input"
-              placeholder="Event ID, request ID, user, IP…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              style={{ minWidth: 220 }}
-            />
-          </FormField>
+            fieldClassName="filter-group"
+            id="filter-search"
+            type="search"
+            placeholder="Event ID, request ID, user, IP…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="al-minw"
+          />
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginTop: -4,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <Button
+        <div className="al-row al-row--gap-lg al-row--wrap al-chipbar">
+          <CcureButton
             type="button"
             variant="ghost"
             size="sm"
             onClick={() => setShowAdvanced((v) => !v)}
           >
             {showAdvanced ? "▾ Fewer filters" : "▸ More filters"}
-          </Button>
+          </CcureButton>
           {activeFilterCount > 0 && (
             <>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <span className="al-t-xs al-muted">
                 {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""}{" "}
                 active
               </span>
-              <Button
+              <CcureButton
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
               >
                 Clear all
-              </Button>
+              </CcureButton>
             </>
           )}
         </div>
 
         {showAdvanced && (
-          <div className="filter-bar" style={{ marginBottom: 16 }}>
-            <FormField
-              className="filter-group"
-              htmlFor="filter-ip"
+          <div className="filter-bar al-mb">
+            <CcureInput
               label="IP Address"
-            >
-              <input
-                id="filter-ip"
-                name="ip_address"
-                className="field-input"
-                placeholder="10.180.6. (prefix ok)"
-                value={filters.ip_address}
-                onChange={handleFilterChange}
-              />
-            </FormField>
+              fieldClassName="filter-group"
+              id="filter-ip"
+              name="ip_address"
+              placeholder="10.180.6. (prefix ok)"
+              value={filters.ip_address}
+              onChange={handleFilterChange}
+            />
 
-            <FormField
-              className="filter-group"
-              htmlFor="filter-user"
+            <CcureInput
               label="User ID"
-            >
-              <input
-                id="filter-user"
-                name="user_id"
-                className="field-input"
-                placeholder="usr_…"
-                value={filters.user_id}
-                onChange={handleFilterChange}
-              />
-            </FormField>
+              fieldClassName="filter-group"
+              id="filter-user"
+              name="user_id"
+              placeholder="usr_…"
+              value={filters.user_id}
+              onChange={handleFilterChange}
+            />
 
-            <FormField
-              className="filter-group"
-              htmlFor="filter-from"
+            <CcureInput
               label="From (UTC)"
-            >
-              <input
-                id="filter-from"
-                name="date_from"
-                type="datetime-local"
-                className="field-input"
-                value={filters.date_from}
-                onChange={handleCustomDate}
-              />
-            </FormField>
+              fieldClassName="filter-group"
+              id="filter-from"
+              name="date_from"
+              type="datetime-local"
+              value={filters.date_from}
+              onChange={handleCustomDate}
+            />
 
-            <FormField
-              className="filter-group"
-              htmlFor="filter-to"
+            <CcureInput
               label="To (UTC)"
-            >
-              <input
-                id="filter-to"
-                name="date_to"
-                type="datetime-local"
-                className="field-input"
-                value={filters.date_to}
-                onChange={handleCustomDate}
-              />
-            </FormField>
+              fieldClassName="filter-group"
+              id="filter-to"
+              name="date_to"
+              type="datetime-local"
+              value={filters.date_to}
+              onChange={handleCustomDate}
+            />
           </div>
         )}
 
         {total > 0 && (
-          <div className="pagination-row" style={{ marginBottom: 16 }}>
+          <div className="pagination-row al-mb">
             <div className="pagination-summary">
               Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}-
               {Math.min(page * pageSize, total)} of {total} events
             </div>
-            <div
-              className="pagination-controls"
-              style={{ display: "flex", alignItems: "center", gap: 12 }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 12,
-                  marginRight: 12,
-                }}
-              >
-                <span className="text-muted">Show</span>
+            <div className="pagination-controls al-row al-row--gap-lg">
+              <div className="al-row al-t-xs al-pager-group">
+                <span className="text-muted" aria-hidden="true">
+                  Show
+                </span>
                 <select
-                  className="field-input"
-                  style={{
-                    width: 70,
-                    height: 28,
-                    padding: "0 4px",
-                    fontSize: 12,
-                  }}
+                  className="field-input al-pagesize"
+                  aria-label="Events per page"
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
@@ -1013,7 +889,7 @@ export default function AuditLogs() {
                   <option value={250}>250</option>
                 </select>
               </div>
-              <Button
+              <CcureButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -1021,8 +897,8 @@ export default function AuditLogs() {
                 onClick={() => setPage(1)}
               >
                 {"<<"}
-              </Button>
-              <Button
+              </CcureButton>
+              <CcureButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -1030,11 +906,11 @@ export default function AuditLogs() {
                 onClick={() => setPage(page - 1)}
               >
                 Prev
-              </Button>
-              <span className="pagination-page" style={{ fontSize: 12 }}>
+              </CcureButton>
+              <span className="pagination-page al-t-xs">
                 Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
               </span>
-              <Button
+              <CcureButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -1042,8 +918,8 @@ export default function AuditLogs() {
                 onClick={() => setPage(page + 1)}
               >
                 Next
-              </Button>
-              <Button
+              </CcureButton>
+              <CcureButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -1053,28 +929,29 @@ export default function AuditLogs() {
                 }
               >
                 {">>"}
-              </Button>
+              </CcureButton>
             </div>
           </div>
         )}
 
         <div
-          className="table-wrap"
-          style={{
-            opacity: refreshing ? 0.6 : 1,
-            transition: "opacity 0.15s ease-in-out",
-          }}
+          className={`table-wrap al-table-wrap${refreshing ? " al-table-wrap--busy" : ""}`}
+          aria-busy={refreshing || undefined}
         >
           <table className="data-table">
+            <caption className="cc-sr-only">
+              Audit trail — {total} event{total === 1 ? "" : "s"} matching the
+              current filters
+            </caption>
             <thead>
               <tr>
-                <th>Timestamp</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Target Resource</th>
-                <th>Status &amp; Severity</th>
-                <th>Source</th>
-                <th>Changes</th>
+                <th scope="col">Timestamp</th>
+                <th scope="col">User</th>
+                <th scope="col">Action</th>
+                <th scope="col">Target Resource</th>
+                <th scope="col">Status &amp; Severity</th>
+                <th scope="col">Source</th>
+                <th scope="col">Changes</th>
               </tr>
             </thead>
             <tbody>
@@ -1084,68 +961,41 @@ export default function AuditLogs() {
                   <tr
                     key={log.id}
                     onClick={() => openDetails(log, actInfo)}
-                    style={{ cursor: "pointer" }}
+                    className="al-clickable"
                     title="Open full event details"
                   >
-                    <td
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text-muted)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td className="al-t-xs al-muted al-nowrap">
                       {formatDateTime(log.created_at)}
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      <div className="al-col">
+                        <span className="al-t-sm al-semibold">
                           {getActorDisplay(log)}
                         </span>
                         {log.user_email && (
-                          <span
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-faint)",
-                            }}
-                          >
+                          <span className="al-t-2xs al-muted">
                             {log.user_email}
                           </span>
                         )}
                       </div>
                     </td>
                     <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <span style={{ fontSize: 14 }}>{actInfo.icon}</span>
-                        <strong style={{ fontSize: 13, color: actInfo.color }}>
+                      <div className="al-row">
+                        <span className="al-t-md">{actInfo.icon}</span>
+                        <strong className="al-t-sm al-semibold">
                           {actInfo.label}
                         </strong>
                       </div>
                     </td>
                     <td>{renderAffectedObject(log)}</td>
                     <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-start",
-                          gap: 3,
-                        }}
-                      >
+                      <div className="al-col al-col--start">
+                        {/* The word is the status; the colour is the sighted
+                            half of the same fact, never the whole of it. */}
                         <span
-                          style={{
-                            color:
-                              log.status === "success"
-                                ? "var(--ok)"
-                                : "var(--danger)",
-                            fontSize: 12,
-                            fontWeight: 600,
-                          }}
+                          className={`al-t-xs al-semibold al-status al-status--${
+                            log.status === "success" ? "ok" : "bad"
+                          }`}
                         >
                           {String(log.status || "").toUpperCase()}
                         </span>
@@ -1153,18 +1003,12 @@ export default function AuditLogs() {
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <code style={{ fontSize: 12, fontWeight: 600 }}>
+                      <div className="al-col">
+                        <code className="al-t-xs al-semibold">
                           {log.ip_address || "—"}
                         </code>
                         {log.user_agent && (
-                          <span
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-faint)",
-                              marginTop: 2,
-                            }}
-                          >
+                          <span className="al-t-2xs al-muted al-mt-2xs">
                             {parseUserAgent(log.user_agent)}
                           </span>
                         )}
@@ -1182,7 +1026,7 @@ export default function AuditLogs() {
                         "scan.completed",
                         "scan.failed",
                       ].includes(log.action) ? (
-                        <Button
+                        <CcureButton
                           type="button"
                           variant="ghost"
                           size="sm"
@@ -1195,7 +1039,7 @@ export default function AuditLogs() {
                           }}
                         >
                           View Changes
-                        </Button>
+                        </CcureButton>
                       ) : (
                         "—"
                       )}
@@ -1205,14 +1049,7 @@ export default function AuditLogs() {
               })}
               {logs.length === 0 && (
                 <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: 60,
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <td colSpan="7" className="al-centered-note">
                     No audit logs found matching your criteria.
                   </td>
                 </tr>

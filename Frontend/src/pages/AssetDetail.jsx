@@ -8,8 +8,28 @@
  * - Vulnerabilities tab with drawer details (proof, severity, CVSS) and actions (remediate/risk accept)
  * - Services & Open Ports tab with detailed TLS and HTTP security headers inspection
  * - Historical change log audit timeline
+ *
+ * Checkpoint 3C batch 11: presentation moved onto the CCure design system.
+ *
+ * What did NOT change: the four reads on mount, the six writes (method, path
+ * and body), the `assets:update` gate on every write control — including the
+ * finding-status actions, whose backend rule is different and is recorded as
+ * debt rather than changed here — the tag encoding, the optimistic toggle
+ * and its revert, the Confirm step before a status write, the re-read after
+ * every successful write, and every field's show/hide rule.
+ *
+ * Two behaviours changed on purpose, both approved at the batch 11 planning
+ * checkpoint:
+ *
+ *   1. The status-save success message is now rendered in a live region that
+ *      outlives the action panel. It used to be set in state and rendered
+ *      only inside the panel the same handler closed, so nobody ever saw it.
+ *   2. The five writes that swallowed their errors (`catch {}`) now report the
+ *      failure in a danger alert. State behaviour is unchanged — the toggle
+ *      still reverts, edit mode stays open, the tag stays — and nothing
+ *      retries.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
@@ -27,7 +47,21 @@ import {
 import { getFinding, updateFindingStatus } from "../api/findings";
 import CVELink from "../components/common/CVELink";
 import AuditTimeline from "../components/assets/AuditTimeline";
-import "../styles/dashboard.css";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureEmptyState,
+  CcureField,
+  CcureInput,
+  CcureSeverityBadge,
+  CcureSkeleton,
+  CcureTabPanel,
+  CcureTabs,
+  useFocusTrap,
+} from "../design-system";
+import "../styles/asset-detail.css";
 
 const ago = (iso) => {
   if (!iso) return "—";
@@ -97,30 +131,33 @@ const getCategoryLabel = (cat) => {
   return labels[cat] || cat || "—";
 };
 
-const SEV_CLASS = {
-  Critical: "db-sev-badge--critical",
-  High: "db-sev-badge--high",
-  Medium: "db-sev-badge--medium",
-  Low: "db-sev-badge--low",
-  Info: "db-sev-badge--info",
+/* Risk bands, shared by the ring and the CVSS cells: the same thresholds the
+   registry uses, resolved to a class rather than a colour literal. */
+const riskBand = (score) =>
+  score >= 75 ? "crit" : score >= 50 ? "high" : score >= 25 ? "med" : "low";
+const cvssBand = (score) => (score >= 9 ? "crit" : score >= 7 ? "high" : "med");
+
+const RISK_LEVEL_VARIANT = {
+  critical: "danger",
+  high: "danger",
+  medium: "warning",
+  low: "success",
+};
+const PRIORITY_VARIANT = {
+  P0: "danger",
+  P1: "danger",
+  P2: "warning",
+  P3: "info",
+  P4: "neutral",
+};
+const STATUS_VARIANT = {
+  open: "danger",
+  accepted: "warning",
+  fixed: "success",
 };
 
-const PRI_CLASS = {
-  P0: "db-priority-badge--p0",
-  P1: "db-priority-badge--p1",
-  P2: "db-priority-badge--p2",
-  P3: "db-priority-badge--p3",
-  P4: "db-priority-badge--p4",
-};
-
-const riskColor = (score) =>
-  score >= 75
-    ? "#ef4444"
-    : score >= 50
-      ? "#f97316"
-      : score >= 25
-        ? "#eab308"
-        : "#22c55e";
+const RING_R = 38;
+const RING_C = 2 * Math.PI * RING_R;
 
 function InfoField({ label, value, mono = false, isTag = false }) {
   if (
@@ -133,49 +170,23 @@ function InfoField({ label, value, mono = false, isTag = false }) {
   )
     return null;
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        padding: "8px 12px",
-        background: "rgba(255,255,255,0.015)",
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-      }}
-    >
-      <span
-        style={{
-          color: "var(--text-faint)",
-          fontSize: "0.65rem",
-          textTransform: "uppercase",
-          fontWeight: 700,
-          letterSpacing: "0.03em",
-        }}
-      >
-        {label}
-      </span>
+    <div className="ad-field">
+      <span className="ad-field-label">{label}</span>
       {isTag ? (
-        <div>
-          <span className="db-tag" style={{ margin: 0 }}>
-            {value}
-          </span>
-        </div>
+        <span>
+          <CcureBadge variant="neutral">{value}</CcureBadge>
+        </span>
       ) : (
-        <span
-          className={mono ? "mono" : ""}
-          style={{
-            fontWeight: 600,
-            fontSize: "0.8rem",
-            color: "var(--text)",
-            wordBreak: "break-all",
-          }}
-        >
+        <span className={`ad-field-value${mono ? " ad-mono" : ""}`}>
           {value}
         </span>
       )}
     </div>
   );
+}
+
+function InfoGrid({ children }) {
+  return <div className="ad-field-grid">{children}</div>;
 }
 
 // ── Vulnerability Drawer component (similar to VulnerabilityBrowser's finding drawer) ──
@@ -187,6 +198,18 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+
+  /* A real dialog: focus is contained while it is open and restored to the
+     opener on close; Escape closes it. */
+  const panelRef = useRef(null);
+  useFocusTrap(panelRef, true);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   useEffect(() => {
     if (!findingId) return;
@@ -215,523 +238,243 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
   };
 
   const v = detail?.vulnerability;
+  const saveFailed = saveMsg.includes("Failed");
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 500,
-        display: "flex",
-        alignItems: "stretch",
-      }}
-    >
+    <div className="ad-drawer">
+      <div className="ad-drawer-scrim" onClick={onClose} />
       <div
-        style={{ flex: 1, background: "rgba(0,0,0,0.35)" }}
-        onClick={onClose}
-      />
-      <div
-        style={{
-          width: 480,
-          background: "var(--bg-white)",
-          boxShadow: "-4px 0 24px rgba(0,0,0,0.12)",
-          overflow: "auto",
-          display: "flex",
-          flexDirection: "column",
-        }}
+        className="ad-drawer-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ad-drawer-title"
+        ref={panelRef}
       >
-        <div
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-          }}
-        >
+        <div className="ad-drawer-head">
           <div>
-            <div
-              style={{
-                fontSize: "0.68rem",
-                color: "var(--text-muted)",
-                marginBottom: 4,
-              }}
-            >
-              Finding Detail
-            </div>
-            {loading ? (
-              <div className="db-skeleton" style={{ height: 18, width: 200 }} />
-            ) : (
-              <div
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: "0.9rem",
-                  fontWeight: 700,
-                  color: "#3b82f6",
-                }}
-              >
-                <CVELink cveId={v?.id} style={{ color: "inherit" }} />
-              </div>
-            )}
+            <div className="ad-kicker">Finding Detail</div>
+            <h2 className="ad-drawer-title" id="ad-drawer-title">
+              {loading ? (
+                <CcureSkeleton width={200} height={18} radius={3} />
+              ) : (
+                <CVELink cveId={v?.id} className="ad-inherit" />
+              )}
+            </h2>
           </div>
-          <button
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            aria-label="Close finding details"
             onClick={onClose}
-            className="db-btn db-btn--ghost"
-            style={{ padding: "4px 10px" }}
           >
             ✕
-          </button>
+          </CcureButton>
+        </div>
+
+        {/* Always mounted, so a result written after the action panel closes
+            still has somewhere to be announced. (Approved change 1.) */}
+        <div
+          role="status"
+          aria-live="polite"
+          className={`ad-savemsg${saveMsg ? (saveFailed ? " ad-savemsg--bad" : " ad-savemsg--ok") : ""}`}
+        >
+          {saveMsg}
         </div>
 
         {loading ? (
-          <div style={{ padding: 20 }}>
+          <div className="ad-drawer-body">
             {[200, 100, 150, 80, 120].map((w, i) => (
-              <div
+              <CcureSkeleton
                 key={i}
-                className="db-skeleton"
-                style={{ height: 12, width: w, marginBottom: 12 }}
+                width={w}
+                height={12}
+                radius={3}
+                className="ad-mb-sm"
               />
             ))}
           </div>
         ) : !detail ? (
-          <div className="db-empty">
-            <div className="db-empty-icon">⚠</div>Finding not found
-          </div>
+          <CcureEmptyState icon="⚠" title="Finding not found" />
         ) : (
-          <div style={{ padding: 20, flex: 1, overflowY: "auto" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                marginBottom: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <span className={`db-sev-badge ${SEV_CLASS[v?.severity] || ""}`}>
-                {v?.severity}
-              </span>
-              <span
-                className={`db-priority-badge ${PRI_CLASS[v?.priority_label] || ""}`}
+          <div className="ad-drawer-body">
+            <div className="ad-badges ad-mb-sm">
+              <CcureSeverityBadge severity={v?.severity} />
+              <CcureBadge
+                variant={PRIORITY_VARIANT[v?.priority_label] || "neutral"}
+                mono
               >
                 {v?.priority_label}
-              </span>
-              {v?.in_kev && (
-                <span
-                  style={{
-                    fontSize: "0.65rem",
-                    fontWeight: 700,
-                    background: "rgba(239,68,68,0.12)",
-                    color: "#f87171",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                  }}
-                >
-                  KEV
-                </span>
-              )}
+              </CcureBadge>
+              {v?.in_kev && <CcureBadge variant="danger">KEV</CcureBadge>}
               {v?.has_exploit && (
-                <span
-                  style={{
-                    fontSize: "0.65rem",
-                    fontWeight: 700,
-                    background: "rgba(249,115,22,0.12)",
-                    color: "#fb923c",
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                  }}
-                >
-                  Exploit
-                </span>
+                <CcureBadge variant="warning">Exploit</CcureBadge>
               )}
             </div>
 
-            <div
-              style={{
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                color: "var(--text)",
-                marginBottom: 8,
-              }}
-            >
-              {v?.title}
-            </div>
+            <div className="ad-drawer-name">{v?.title}</div>
 
-            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-              <div
-                style={{
-                  flex: 1,
-                  background: "var(--border)",
-                  borderRadius: 7,
-                  padding: "8px 12px",
-                  textAlign: "center",
-                }}
-              >
+            <div className="ad-scores">
+              <div className="ad-score">
+                <div className="ad-score-label">CVSSv3</div>
                 <div
-                  style={{
-                    fontSize: "0.6rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 2,
-                  }}
-                >
-                  CVSSv3
-                </div>
-                <div
-                  style={{
-                    fontSize: "1.1rem",
-                    fontWeight: 800,
-                    color:
-                      v?.cvss_v3_score >= 9
-                        ? "#f87171"
-                        : v?.cvss_v3_score >= 7
-                          ? "#fb923c"
-                          : "#fbbf24",
-                  }}
+                  className={`ad-score-value ad-cvss--${cvssBand(v?.cvss_v3_score || 0)}`}
                 >
                   {(v?.cvss_v3_score || 0).toFixed(1)}
                 </div>
               </div>
-              <div
-                style={{
-                  flex: 1,
-                  background: "var(--border)",
-                  borderRadius: 7,
-                  padding: "8px 12px",
-                  textAlign: "center",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.6rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 2,
-                  }}
-                >
-                  EPSS
-                </div>
-                <div
-                  style={{
-                    fontSize: "1.1rem",
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+              <div className="ad-score">
+                <div className="ad-score-label">EPSS</div>
+                <div className="ad-score-value">
                   {((v?.epss_score || 0) * 100).toFixed(1)}%
                 </div>
               </div>
-              <div
-                style={{
-                  flex: 1,
-                  background: "var(--border)",
-                  borderRadius: 7,
-                  padding: "8px 12px",
-                  textAlign: "center",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.6rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 2,
-                  }}
-                >
-                  Priority
-                </div>
-                <div
-                  style={{
-                    fontSize: "1.1rem",
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+              <div className="ad-score">
+                <div className="ad-score-label">Priority</div>
+                <div className="ad-score-value">
                   {(v?.priority_score || 0).toFixed(0)}
                 </div>
               </div>
             </div>
 
-            <div
-              style={{
-                fontSize: "0.78rem",
-                color: "var(--text-muted)",
-                lineHeight: 1.6,
-                marginBottom: 14,
-                padding: "10px 12px",
-                background: "var(--border)",
-                borderRadius: 7,
-              }}
-            >
+            <div className="ad-description">
               {v?.description || "No description available."}
             </div>
 
             {v?.cvss_v3_vector && (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 3,
-                  }}
-                >
-                  CVSS Vector
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--mono)",
-                    fontSize: "0.7rem",
-                    background: "var(--border)",
-                    padding: "6px 10px",
-                    borderRadius: 5,
-                  }}
-                >
-                  {v.cvss_v3_vector}
-                </div>
+              <div className="ad-section">
+                <div className="ad-kicker">CVSS Vector</div>
+                <div className="ad-code">{v.cvss_v3_vector}</div>
               </div>
             )}
 
             {(v?.cwe_ids || []).length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  CWE IDs
-                </div>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <div className="ad-section">
+                <div className="ad-kicker">CWE IDs</div>
+                <div className="ad-badges">
                   {v.cwe_ids.map((c) => (
-                    <span key={c} className="db-tag">
+                    <CcureBadge key={c} variant="neutral" mono>
                       {c}
-                    </span>
+                    </CcureBadge>
                   ))}
                 </div>
               </div>
             )}
 
             {(detail.proof || detail.plugin_output) && (
-              <div style={{ marginBottom: 14 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  Evidence / Plugin Output
-                </div>
-                <pre
-                  style={{
-                    fontFamily: "var(--mono)",
-                    fontSize: "0.68rem",
-                    background: "var(--border)",
-                    padding: "8px 10px",
-                    borderRadius: 5,
-                    overflow: "auto",
-                    maxHeight: 120,
-                    whiteSpace: "pre-wrap",
-                    color: "var(--text)",
-                  }}
-                >
+              <div className="ad-section">
+                <div className="ad-kicker">Evidence / Plugin Output</div>
+                <pre className="ad-evidence">
                   {detail.proof || detail.plugin_output}
                 </pre>
               </div>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginBottom: 14,
-                fontSize: "0.68rem",
-                color: "var(--text-muted)",
-              }}
-            >
+            <div className="ad-dates">
               <span>First: {ago(detail.first_found_at)}</span>
               <span>Last: {ago(detail.last_found_at)}</span>
               {detail.fixed_at && (
-                <span style={{ color: "#4ade80" }}>
+                <span className="ad-dates-fixed">
                   Fixed: {ago(detail.fixed_at)}
                 </span>
               )}
             </div>
 
             {canUpdate && detail.status === "open" && (
-              <div style={{ marginBottom: 14 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 6,
-                    fontWeight: 700,
-                  }}
-                >
-                  Actions
-                </div>
+              <div className="ad-section">
+                <div className="ad-kicker ad-kicker--strong">Actions</div>
                 {!action ? (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      className="db-btn db-btn--ghost"
+                  <div className="ad-actions">
+                    <CcureButton
+                      variant="secondary"
+                      className="ad-grow"
                       onClick={() => setAction("accepted")}
-                      style={{ flex: 1 }}
                     >
                       ✔ Accept Risk
-                    </button>
-                    <button
-                      className="db-btn db-btn--ghost"
+                    </CcureButton>
+                    <CcureButton
+                      variant="secondary"
+                      className="ad-grow ad-btn--ok"
                       onClick={() => setAction("fixed")}
-                      style={{
-                        flex: 1,
-                        color: "#4ade80",
-                        borderColor: "rgba(34,197,94,0.2)",
-                      }}
                     >
                       🛠 Mark Fixed
-                    </button>
+                    </CcureButton>
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      background: "var(--border)",
-                      borderRadius: 7,
-                      padding: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "0.72rem",
-                        fontWeight: 600,
-                        marginBottom: 8,
-                      }}
-                    >
+                  <div className="ad-action-panel">
+                    <div className="ad-action-title">
                       {action === "accepted"
                         ? "Accept Risk — provide reason:"
                         : "Mark as Fixed:"}
                     </div>
                     {action === "accepted" && (
-                      <textarea
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        placeholder="Reason for accepting this risk…"
-                        rows={3}
-                        style={{
-                          width: "100%",
-                          padding: "6px 8px",
-                          borderRadius: 5,
-                          border: "1px solid var(--border)",
-                          fontSize: "0.72rem",
-                          resize: "vertical",
-                          marginBottom: 8,
-                          background: "var(--bg-white)",
-                          color: "var(--text)",
-                        }}
-                      />
+                      <CcureField
+                        id="ad-reason"
+                        label="Reason for accepting this risk"
+                      >
+                        <textarea
+                          id="ad-reason"
+                          className="cc-field__control ad-textarea"
+                          value={reason}
+                          onChange={(e) => setReason(e.target.value)}
+                          placeholder="Reason for accepting this risk…"
+                          rows={3}
+                        />
+                      </CcureField>
                     )}
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Remediation notes (optional)…"
-                      rows={2}
-                      style={{
-                        width: "100%",
-                        padding: "6px 8px",
-                        borderRadius: 5,
-                        border: "1px solid var(--border)",
-                        fontSize: "0.72rem",
-                        resize: "vertical",
-                        marginBottom: 8,
-                        background: "var(--bg-white)",
-                        color: "var(--text)",
-                      }}
-                    />
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        className="db-btn db-btn--primary"
+                    <CcureField
+                      id="ad-remediation"
+                      label="Remediation notes (optional)"
+                    >
+                      <textarea
+                        id="ad-remediation"
+                        className="cc-field__control ad-textarea"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Remediation notes (optional)…"
+                        rows={2}
+                      />
+                    </CcureField>
+                    <div className="ad-actions">
+                      <CcureButton
+                        variant="primary"
+                        className="ad-grow"
                         disabled={saving}
                         onClick={() => handleStatusSave(action)}
-                        style={{ flex: 1 }}
                       >
                         {saving
                           ? "Saving…"
                           : `Confirm ${action === "accepted" ? "Accept" : "Fixed"}`}
-                      </button>
-                      <button
-                        className="db-btn db-btn--ghost"
+                      </CcureButton>
+                      <CcureButton
+                        variant="ghost"
                         onClick={() => setAction(null)}
                       >
                         Cancel
-                      </button>
+                      </CcureButton>
                     </div>
-                    {saveMsg && (
-                      <div
-                        style={{
-                          fontSize: "0.7rem",
-                          color: saveMsg.includes("Failed")
-                            ? "#f87171"
-                            : "#4ade80",
-                          marginTop: 6,
-                        }}
-                      >
-                        {saveMsg}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
             )}
 
             {detail.remediation_notes && (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  Remediation Notes
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text)",
-                    background: "var(--border)",
-                    padding: "8px 10px",
-                    borderRadius: 5,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {detail.remediation_notes}
-                </div>
+              <div className="ad-section">
+                <div className="ad-kicker">Remediation Notes</div>
+                <div className="ad-note-box">{detail.remediation_notes}</div>
               </div>
             )}
 
             {(v?.references || []).length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--text-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  References
-                </div>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 3 }}
-                >
+              <div className="ad-section">
+                <div className="ad-kicker">References</div>
+                <div className="ad-refs">
                   {v.references.slice(0, 5).map((ref, i) => (
                     <a
                       key={i}
                       href={ref}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{
-                        fontSize: "0.7rem",
-                        color: "#3b82f6",
-                        textDecoration: "none",
-                        wordBreak: "break-all",
-                      }}
+                      className="ad-ref"
                     >
                       {ref}
                     </a>
@@ -756,183 +499,99 @@ function ServiceDetailRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetails = !!svc.tls || !!svc.http;
+  const detailId = `ad-svc-${svc.id ?? `${svc.port}-${svc.protocol}`}`;
+
+  const dash = <span className="ad-faint ad-italic">—</span>;
 
   return (
     <>
-      <tr
-        onClick={() => hasDetails && setExpanded(!expanded)}
-        style={{ cursor: hasDetails ? "pointer" : "default" }}
-      >
+      <tr>
         <td>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span
-              style={{
-                fontSize: "0.65rem",
-                color: "var(--text-faint)",
-                width: "12px",
-                display: "inline-block",
-              }}
+          {/* Was a `<tr onClick>` with a glyph: unreachable by keyboard and
+              silent about whether it was open. */}
+          {hasDetails ? (
+            <button
+              type="button"
+              className="ad-expand"
+              aria-expanded={expanded}
+              aria-controls={expanded ? detailId : undefined}
+              onClick={() => setExpanded(!expanded)}
             >
-              {hasDetails ? (expanded ? "▼" : "▶") : ""}
-            </span>
-            <span className="mono" style={{ fontWeight: 700 }}>
+              <span className="ad-expand-glyph" aria-hidden="true">
+                {expanded ? "▼" : "▶"}
+              </span>
+              {svc.port} / {svc.protocol}
+            </button>
+          ) : (
+            <span className="ad-mono ad-strong">
               {svc.port} / {svc.protocol}
             </span>
-          </div>
+          )}
         </td>
         <td>
-          <span className="db-tag">{svc.service_name || "unknown"}</span>
+          <CcureBadge variant="neutral">
+            {svc.service_name || "unknown"}
+          </CcureBadge>
         </td>
         <td>
-          <span className="db-status db-status--complete">{svc.state}</span>
+          <CcureBadge variant="success">{svc.state}</CcureBadge>
         </td>
         {showProduct && (
-          <td>
-            <div className="mono" style={{ fontSize: "0.72rem" }}>
-              {svc.service_product ? (
-                `${svc.service_product} ${svc.service_version || ""}`.trim()
-              ) : (
-                <span
-                  style={{
-                    color: "var(--text-faint)",
-                    fontStyle: "italic",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  —
-                </span>
-              )}
-            </div>
+          <td className="ad-mono ad-t-xs">
+            {svc.service_product
+              ? `${svc.service_product} ${svc.service_version || ""}`.trim()
+              : dash}
           </td>
         )}
         {showBanner && (
-          <td
-            className="mono"
-            style={{
-              fontSize: "0.7rem",
-              maxWidth: 200,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {svc.banner ? (
-              svc.banner
-            ) : (
-              <span
-                style={{
-                  color: "var(--text-faint)",
-                  fontStyle: "italic",
-                  fontFamily: "inherit",
-                }}
-              >
-                —
-              </span>
-            )}
+          <td className="ad-mono ad-t-xs ad-truncate">
+            {svc.banner ? svc.banner : dash}
           </td>
         )}
         {showAudits && (
           <td>
-            <div style={{ display: "flex", gap: 4 }}>
-              {svc.tls && (
-                <span
-                  className="db-tag"
-                  style={{
-                    background: "rgba(168,85,247,0.12)",
-                    color: "#c084fc",
-                    fontWeight: 700,
-                  }}
-                >
-                  TLS
-                </span>
-              )}
-              {svc.http && (
-                <span
-                  className="db-tag"
-                  style={{
-                    background: "rgba(20,184,166,0.12)",
-                    color: "#2dd4bf",
-                    fontWeight: 700,
-                  }}
-                >
-                  HTTP
-                </span>
-              )}
-              {!svc.tls && !svc.http && (
-                <span
-                  style={{
-                    color: "var(--text-faint)",
-                    fontSize: "0.7rem",
-                    fontStyle: "italic",
-                  }}
-                >
-                  —
-                </span>
-              )}
+            <div className="ad-badges">
+              {svc.tls && <CcureBadge variant="info">TLS</CcureBadge>}
+              {svc.http && <CcureBadge variant="primary">HTTP</CcureBadge>}
+              {!svc.tls && !svc.http && dash}
             </div>
           </td>
         )}
       </tr>
       {expanded && hasDetails && (
-        <tr>
-          <td
-            colSpan={colSpan}
-            style={{ background: "rgba(255,255,255,0.01)", padding: 14 }}
-          >
+        <tr id={detailId}>
+          <td colSpan={colSpan} className="ad-detail-cell">
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: svc.tls && svc.http ? "1fr 1fr" : "1fr",
-                gap: 20,
-              }}
+              className={`ad-detail-grid${svc.tls && svc.http ? " ad-detail-grid--two" : ""}`}
             >
               {/* TLS Details */}
               {svc.tls && (
-                <div
-                  style={{ borderLeft: "2px solid #a855f7", paddingLeft: 12 }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.72rem",
-                      fontWeight: 700,
-                      color: "#c084fc",
-                      marginBottom: 6,
-                    }}
-                  >
-                    🔐 TLS Details
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      fontSize: "0.72rem",
-                    }}
-                  >
+                <div className="ad-detail ad-detail--tls">
+                  <div className="ad-detail-title">🔐 TLS Details</div>
+                  <div className="ad-detail-rows">
                     <div>
                       <strong>Grade:</strong>{" "}
                       <span
-                        style={{
-                          fontWeight: 800,
-                          color: svc.tls.grade === "A" ? "#22c55e" : "#ef4444",
-                        }}
+                        className={`ad-grade ad-grade--${svc.tls.grade === "A" ? "good" : "bad"}`}
                       >
                         {svc.tls.grade || "Unknown"}
                       </span>
                     </div>
                     <div>
                       <strong>Protocol:</strong>{" "}
-                      <span className="mono">{svc.tls.protocol_version}</span>
+                      <span className="ad-mono">
+                        {svc.tls.protocol_version}
+                      </span>
                     </div>
                     <div>
                       <strong>Cipher:</strong>{" "}
-                      <span className="mono" style={{ fontSize: "0.68rem" }}>
+                      <span className="ad-mono ad-t-xs">
                         {svc.tls.cipher_suite}
                       </span>
                     </div>
                     <div>
                       <strong>Subject:</strong>{" "}
-                      <span className="mono" style={{ fontSize: "0.68rem" }}>
+                      <span className="ad-mono ad-t-xs">
                         {typeof svc.tls.cert_subject === "object"
                           ? svc.tls.cert_subject?.common_name || "—"
                           : svc.tls.cert_subject || "—"}
@@ -945,24 +604,24 @@ function ServiceDetailRow({
                         : "—"}
                     </div>
                     {svc.tls.cert_is_expired && (
-                      <span style={{ color: "#ef4444", fontWeight: 700 }}>
+                      <span className="ad-flag ad-flag--danger">
                         ⚠ Certificate Expired
                       </span>
                     )}
                     {svc.tls.cert_is_self_signed && (
-                      <span style={{ color: "#eab308", fontWeight: 700 }}>
+                      <span className="ad-flag ad-flag--warning">
                         ⚠ Self-Signed Certificate
                       </span>
                     )}
                     {svc.tls.is_weak_cipher && (
-                      <span style={{ color: "#f97316", fontWeight: 700 }}>
+                      <span className="ad-flag ad-flag--high">
                         ⚠ Weak Ciphers Enabled
                       </span>
                     )}
                     {(svc.tls.issues || []).length > 0 && (
-                      <div style={{ marginTop: 4, color: "#f87171" }}>
+                      <div className="ad-issues">
                         <strong>Issues:</strong>
-                        <ul style={{ margin: 2, paddingLeft: 12 }}>
+                        <ul className="ad-issues-list">
                           {svc.tls.issues.map((iss, index) => (
                             <li key={index}>{iss}</li>
                           ))}
@@ -975,34 +634,16 @@ function ServiceDetailRow({
 
               {/* HTTP Details */}
               {svc.http && (
-                <div
-                  style={{ borderLeft: "2px solid #2dd4bf", paddingLeft: 12 }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.72rem",
-                      fontWeight: 700,
-                      color: "#2dd4bf",
-                      marginBottom: 6,
-                    }}
-                  >
-                    🌐 HTTP Details
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      fontSize: "0.72rem",
-                    }}
-                  >
+                <div className="ad-detail ad-detail--http">
+                  <div className="ad-detail-title">🌐 HTTP Details</div>
+                  <div className="ad-detail-rows">
                     <div>
                       <strong>Status Code:</strong>{" "}
-                      <span className="mono">{svc.http.status_code}</span>
+                      <span className="ad-mono">{svc.http.status_code}</span>
                     </div>
                     <div>
                       <strong>Security Score:</strong>{" "}
-                      <span style={{ fontWeight: 800 }}>
+                      <span className="ad-strong">
                         {svc.http.security_score}/100
                       </span>
                     </div>
@@ -1016,35 +657,24 @@ function ServiceDetailRow({
                     </div>
                     <div>
                       <strong>X-Frame-Options:</strong>{" "}
-                      <span className="mono">
+                      <span className="ad-mono">
                         {svc.http.x_frame_options || "Missing"}
                       </span>
                     </div>
                     <div>
                       <strong>X-Content-Type:</strong>{" "}
-                      <span className="mono">
+                      <span className="ad-mono">
                         {svc.http.x_content_type || "Missing"}
                       </span>
                     </div>
                     {(svc.http.missing_headers || []).length > 0 && (
-                      <div style={{ marginTop: 4, color: "#fb923c" }}>
+                      <div className="ad-missing">
                         <strong>Missing Headers:</strong>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 2,
-                            marginTop: 2,
-                          }}
-                        >
+                        <div className="ad-badges ad-mt-2xs">
                           {svc.http.missing_headers.map((h) => (
-                            <span
-                              key={h}
-                              className="db-tag"
-                              style={{ fontSize: "0.6rem" }}
-                            >
+                            <CcureBadge key={h} variant="warning" mono>
                               {h}
-                            </span>
+                            </CcureBadge>
                           ))}
                         </div>
                       </div>
@@ -1059,6 +689,8 @@ function ServiceDetailRow({
     </>
   );
 }
+
+const TABS_ID = "ad-tabs";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
@@ -1086,6 +718,10 @@ export default function AssetDetail() {
   const [newTag, setNewTag] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [editingOwner, setEditingOwner] = useState(false);
+
+  /* Approved change 2: a failed write is reported, not swallowed. One message
+     at a time; a later success clears it. */
+  const [writeError, setWriteError] = useState("");
 
   // Selected vulnerability for Drawer
   const [selectedFindingId, setSelectedFindingId] = useState(null);
@@ -1125,8 +761,11 @@ export default function AssetDetail() {
       const newVal = !asset.is_managed;
       await updateAsset(id, { is_managed: newVal });
       setAsset((prev) => ({ ...prev, is_managed: newVal }));
+      setWriteError("");
     } catch {
-      /* silent error */
+      setWriteError(
+        "Could not update the managed state. The asset was not changed.",
+      );
     }
   };
 
@@ -1136,8 +775,11 @@ export default function AssetDetail() {
       await updateAsset(id, { owner: ownerName });
       setAsset((prev) => ({ ...prev, owner: ownerName }));
       setEditingOwner(false);
+      setWriteError("");
     } catch {
-      /* silent error */
+      setWriteError(
+        "Could not save the owner. The previous owner is still recorded.",
+      );
     }
   };
 
@@ -1148,11 +790,12 @@ export default function AssetDetail() {
     try {
       await addAssetNote(id, newNote);
       setNewNote("");
+      setWriteError("");
       // Refresh asset details (to load updated note history)
       const assetRes = await getAsset(id);
       setAsset(assetRes.data);
     } catch {
-      /* silent error */
+      setWriteError("Could not log the note.");
     }
   };
 
@@ -1164,11 +807,12 @@ export default function AssetDetail() {
     try {
       await addAssetTag(id, tag);
       setNewTag("");
+      setWriteError("");
       // Refresh asset details to see updated tags
       const assetRes = await getAsset(id);
       setAsset(assetRes.data);
     } catch {
-      /* silent */
+      setWriteError(`Could not add the tag "${tag}".`);
     }
   };
 
@@ -1180,8 +824,9 @@ export default function AssetDetail() {
         ...prev,
         tags: prev.tags.filter((t) => t !== tag),
       }));
+      setWriteError("");
     } catch {
-      /* silent */
+      setWriteError(`Could not remove the tag "${tag}".`);
     }
   };
 
@@ -1192,19 +837,16 @@ export default function AssetDetail() {
     );
   };
 
+  const closeDrawer = useCallback(() => setSelectedFindingId(null), []);
+
   if (loading) {
     return (
       <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
-        <div style={{ padding: 40 }}>
-          <div
-            className="db-skeleton"
-            style={{ height: 48, marginBottom: 20 }}
-          />
-          <div
-            style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }}
-          >
-            <div className="db-skeleton" style={{ height: 350 }} />
-            <div className="db-skeleton" style={{ height: 350 }} />
+        <div className="ad-page ad-page--loading" aria-busy="true">
+          <CcureSkeleton height={48} className="ad-mb-lg" />
+          <div className="ad-body">
+            <CcureSkeleton height={350} />
+            <CcureSkeleton height={350} />
           </div>
         </div>
       </AppLayout>
@@ -1214,347 +856,233 @@ export default function AssetDetail() {
   if (error || !asset) {
     return (
       <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
-        <div style={{ padding: 40 }} className="db-empty">
-          <div className="db-empty-icon">⚠</div>
-          <h3>Failed to Load Asset</h3>
-          <p>
+        <div className="ad-page ad-page--error">
+          <CcureAlert variant="danger" title="Failed to Load Asset">
             {error ||
               "The requested asset does not exist or you do not have permission to view it."}
-          </p>
-          <button
-            className="db-btn db-btn--primary"
-            onClick={() => navigate("/assets")}
-          >
-            Back to Registry
-          </button>
+          </CcureAlert>
+          <div className="ad-mt-md">
+            <CcureButton variant="primary" onClick={() => navigate("/assets")}>
+              Back to Registry
+            </CcureButton>
+          </div>
         </div>
       </AppLayout>
     );
   }
+
+  const band = riskBand(asset.risk_score);
+  const riskLevelKey = String(asset.risk_level || "").toLowerCase();
+  const changelogCount = changelogData?.stats?.total_events || 0;
 
   return (
     <AppLayout
       pageTitle={`Asset: ${asset.ip_address}`}
       onNewScan={() => navigate("/scan")}
     >
-      <div className="db-page">
+      <div className="ad-page">
         {/* Back Link */}
-        <div style={{ padding: "16px 28px 0" }}>
-          <button
+        <div className="ad-back">
+          <CcureButton
+            variant="ghost"
+            size="sm"
             onClick={() => navigate("/assets")}
-            className="db-btn db-btn--ghost"
-            style={{ padding: "4px 10px", fontSize: "0.72rem" }}
           >
             ← Back to Asset Registry
-          </button>
+          </CcureButton>
         </div>
 
-        {/* Header Block */}
-        <div className="db-page-header" style={{ borderBottom: "none" }}>
-          <div>
-            <div
-              className="db-page-title"
-              style={{ fontFamily: "var(--mono)", fontSize: "1.6rem" }}
+        {writeError && (
+          <div className="ad-write-error">
+            <CcureAlert
+              variant="danger"
+              onDismiss={() => setWriteError("")}
+              dismissLabel="Dismiss this message"
             >
-              {asset.ip_address}
-            </div>
-            <div className="db-page-subtitle">
+              {writeError}
+            </CcureAlert>
+          </div>
+        )}
+
+        {/* Header Block */}
+        <header className="ad-header">
+          <div className="ad-header-main">
+            <h1 className="ad-address">{asset.ip_address}</h1>
+            <p className="ad-hostname">
               {asset.hostname ? (
                 <>
-                  <span style={{ fontWeight: 600, color: "var(--text)" }}>
-                    {asset.hostname}
-                  </span>
+                  <span className="ad-hostname-name">{asset.hostname}</span>
                   {asset.fqdn && asset.fqdn !== asset.hostname && (
-                    <span style={{ color: "var(--text-faint)" }}>
-                      {" "}
-                      · {asset.fqdn}
-                    </span>
+                    <span className="ad-faint"> · {asset.fqdn}</span>
                   )}
                 </>
               ) : (
                 "No Hostname Resolved"
               )}
-            </div>
+            </p>
 
             {/* Managed Toggle / Status Row */}
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                marginTop: 12,
-                alignItems: "center",
-              }}
-            >
-              <span
-                className="db-status"
-                style={
-                  asset.is_active
-                    ? { background: "rgba(34,197,94,0.1)", color: "#4ade80" }
-                    : {
-                        background: "var(--border)",
-                        color: "var(--text-muted)",
-                      }
-                }
-              >
-                ● {asset.is_active ? "Online / Active" : "Offline / Inactive"}
-              </span>
+            <div className="ad-status-row">
+              <CcureBadge variant={asset.is_active ? "success" : "neutral"} dot>
+                {asset.is_active ? "Online / Active" : "Offline / Inactive"}
+              </CcureBadge>
 
+              {/* A toggle that says which way it is set. Disabled, not hidden,
+                  without the permission — the state is still information. */}
               <button
+                type="button"
                 disabled={!canUpdate}
+                aria-pressed={Boolean(asset.is_managed)}
                 onClick={handleToggleManaged}
-                className="db-tag"
-                style={{
-                  cursor: canUpdate ? "pointer" : "default",
-                  background: asset.is_managed
-                    ? "rgba(34,197,94,0.08)"
-                    : "rgba(239,68,68,0.08)",
-                  color: asset.is_managed ? "#4ade80" : "#f87171",
-                  borderColor: asset.is_managed
-                    ? "rgba(34,197,94,0.2)"
-                    : "rgba(239,68,68,0.2)",
-                  fontWeight: 700,
-                  outline: "none",
-                }}
+                className={`ad-toggle ${asset.is_managed ? "ad-toggle--on" : "ad-toggle--off"}`}
               >
                 {asset.is_managed ? "✔ Managed Asset" : "✗ Unmanaged Asset"}
               </button>
 
-              <span
-                className="db-tag"
-                style={{
-                  background: "rgba(59,130,246,0.08)",
-                  color: "#60a5fa",
-                  borderColor: "rgba(59,130,246,0.2)",
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
+              <CcureBadge variant="info">
                 👤 Owner: {asset.owner || "Unassigned"}
-              </span>
+              </CcureBadge>
             </div>
           </div>
 
-          {/* Risk Ring (Radial indicator) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div className="db-risk-ring">
-              <svg width="88" height="88">
+          {/* Risk Ring (Radial indicator). The ring's arc and colour are the
+              score itself, expressed as SVG attributes and a band class —
+              no inline style. */}
+          <div className="ad-risk">
+            <div
+              className={`ad-riskring ad-riskring--${band}`}
+              role="img"
+              aria-label={`Risk score ${asset.risk_score} out of 100`}
+            >
+              <svg width="88" height="88" aria-hidden="true" focusable="false">
                 <circle
+                  className="ad-riskring-track"
                   cx="44"
                   cy="44"
-                  r="38"
+                  r={RING_R}
                   fill="transparent"
-                  stroke="var(--border)"
                   strokeWidth="6"
                 />
                 <circle
+                  className="ad-riskring-arc"
                   cx="44"
                   cy="44"
-                  r="38"
+                  r={RING_R}
                   fill="transparent"
-                  stroke={riskColor(asset.risk_score)}
                   strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 38}`}
-                  strokeDashoffset={`${2 * Math.PI * 38 * (1 - asset.risk_score / 100)}`}
+                  strokeDasharray={`${RING_C}`}
+                  strokeDashoffset={`${RING_C * (1 - asset.risk_score / 100)}`}
                 />
               </svg>
-              <div className="db-risk-ring-center">
-                <span
-                  className="db-risk-ring-num"
-                  style={{ color: riskColor(asset.risk_score) }}
-                >
-                  {asset.risk_score}
-                </span>
-                <span className="db-risk-ring-lbl">RISK</span>
+              <div className="ad-riskring-center">
+                <span className="ad-riskring-num">{asset.risk_score}</span>
+                <span className="ad-riskring-lbl">RISK</span>
               </div>
             </div>
 
             <div>
-              <div
-                style={{
-                  fontSize: "0.6rem",
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                }}
-              >
-                Risk Classification
-              </div>
-              <span
-                className={`db-sev-badge ${SEV_CLASS[asset.risk_level?.charAt(0).toUpperCase() + asset.risk_level?.slice(1).toLowerCase()] || "db-sev-badge--info"}`}
-                style={{
-                  marginTop: 4,
-                  display: "inline-block",
-                  fontSize: "0.78rem",
-                  padding: "4px 8px",
-                }}
+              <div className="ad-kicker">Risk Classification</div>
+              <CcureBadge
+                variant={RISK_LEVEL_VARIANT[riskLevelKey] || "info"}
+                size="md"
               >
                 {asset.risk_level}
-              </span>
+              </CcureBadge>
             </div>
           </div>
-        </div>
+        </header>
 
         {/* Tab Selector */}
-        <div className="db-tab-bar" style={{ marginTop: 8 }}>
-          <button
-            className={`db-tab ${activeTab === "system_info" ? "active" : ""}`}
-            onClick={() => setActiveTab("system_info")}
-          >
-            Asset Information
-          </button>
-
-          <button
-            className={`db-tab ${activeTab === "services" ? "active" : ""}`}
-            onClick={() => setActiveTab("services")}
-          >
-            Services & Ports ({services.length})
-          </button>
-
-          <button
-            className={`db-tab ${activeTab === "vulnerabilities" ? "active" : ""}`}
-            onClick={() => setActiveTab("vulnerabilities")}
-          >
-            Vulnerabilities ({findings.length})
-          </button>
-
-          <button
-            className={`db-tab ${activeTab === "changelog" ? "active" : ""}`}
-            onClick={() => setActiveTab("changelog")}
-          >
-            Audit & Changelog ({changelogData?.stats?.total_events || 0})
-          </button>
-        </div>
+        <CcureTabs
+          id={TABS_ID}
+          className="ad-tabs"
+          label="Asset detail views"
+          value={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { id: "system_info", label: "Asset Information" },
+            { id: "services", label: `Services & Ports (${services.length})` },
+            {
+              id: "vulnerabilities",
+              label: `Vulnerabilities (${findings.length})`,
+            },
+            { id: "changelog", label: `Audit & Changelog (${changelogCount})` },
+          ]}
+        />
 
         {/* Main Content Grid */}
-        <div
-          className="db-section"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr",
-            gap: 16,
-            height: "calc(100vh - 250px)",
-            minHeight: "450px",
-          }}
-        >
+        <div className="ad-body">
           {/* Left Column: Tab Data */}
-          <div>
+          <div className="ad-main">
             {/* Tab: Vulnerabilities */}
-            {activeTab === "vulnerabilities" && (
-              <div className="db-card" style={{ padding: 0 }}>
-                <div
-                  style={{
-                    padding: "14px 16px",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  <h4
-                    style={{
-                      margin: 0,
-                      fontSize: "0.85rem",
-                      color: "var(--text)",
-                    }}
-                  >
-                    Discovered Findings
-                  </h4>
-                </div>
-                <div className="db-table-wrap">
-                  <table className="db-table">
+            <CcureTabPanel
+              id="vulnerabilities"
+              tabsId={TABS_ID}
+              active={activeTab === "vulnerabilities"}
+            >
+              <CcureCard title="Discovered Findings" headingLevel={2} bodyFlush>
+                <div className="cc-table-wrap">
+                  <table className="cc-table ad-table">
+                    <caption className="cc-sr-only">
+                      Findings on this asset, with CVSS score, priority,
+                      severity, status and last detection
+                    </caption>
                     <thead>
                       <tr>
-                        <th>CVE / Finding</th>
-                        <th>CVSS</th>
-                        <th>Priority</th>
-                        <th>Severity</th>
-                        <th>Status</th>
-                        <th>Last Detected</th>
+                        <th scope="col">CVE / Finding</th>
+                        <th scope="col">CVSS</th>
+                        <th scope="col">Priority</th>
+                        <th scope="col">Severity</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Last Detected</th>
                       </tr>
                     </thead>
                     <tbody>
                       {findings.length === 0 ? (
                         <tr>
-                          <td
-                            colSpan={6}
-                            style={{
-                              textAlign: "center",
-                              padding: "48px 20px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                marginBottom: 6,
-                              }}
-                            >
-                              No vulnerabilities identified on this asset.
-                            </div>
-                            <div
-                              style={{
-                                color: "var(--text-faint)",
-                                fontSize: "0.72rem",
-                                maxWidth: 480,
-                                margin: "0 auto",
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              To scan for vulnerabilities, run a{" "}
-                              <strong>Vulnerability Audit Scan</strong> on this
-                              host.
-                            </div>
+                          <td colSpan={6} className="ad-empty-cell">
+                            <CcureEmptyState
+                              title="No vulnerabilities identified on this asset."
+                              description={
+                                <>
+                                  To scan for vulnerabilities, run a{" "}
+                                  <strong>Vulnerability Audit Scan</strong> on
+                                  this host.
+                                </>
+                              }
+                            />
                           </td>
                         </tr>
                       ) : (
                         findings.map((f) => (
-                          <tr
-                            key={f.id}
-                            style={{ cursor: "pointer" }}
-                            onClick={() => setSelectedFindingId(f.id)}
-                          >
+                          <tr key={f.id}>
                             <td>
-                              <div className="cve-id">
-                                <CVELink cveId={f.vuln_id} />
+                              <div className="ad-cve-id">
+                                <CVELink
+                                  cveId={f.vuln_id}
+                                  className="ad-cve-link"
+                                />
                               </div>
-                              <div
-                                style={{
-                                  fontSize: "0.65rem",
-                                  color: "var(--text-faint)",
-                                  maxWidth: 220,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
+                              <div className="ad-finding-title" title={f.title}>
                                 {f.title}
                               </div>
-                              {f.in_kev && (
-                                <span
-                                  style={{
-                                    fontSize: "0.6rem",
-                                    fontWeight: 700,
-                                    background: "rgba(239,68,68,0.12)",
-                                    color: "#f87171",
-                                    padding: "1px 5px",
-                                    borderRadius: 3,
-                                  }}
+                              <div className="ad-badges ad-mt-2xs">
+                                {f.in_kev && (
+                                  <CcureBadge variant="danger">KEV</CcureBadge>
+                                )}
+                                <CcureButton
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Details for ${f.vuln_id}`}
+                                  onClick={() => setSelectedFindingId(f.id)}
                                 >
-                                  KEV
-                                </span>
-                              )}
+                                  Details
+                                </CcureButton>
+                              </div>
                             </td>
                             <td>
                               <span
-                                className="cvss-score"
-                                style={{
-                                  color:
-                                    f.cvss_v3_score >= 9
-                                      ? "#f87171"
-                                      : f.cvss_v3_score >= 7
-                                        ? "#fb923c"
-                                        : "#fbbf24",
-                                }}
+                                className={`ad-cvss ad-cvss--${cvssBand(f.cvss_v3_score || 0)}`}
                               >
                                 {f.cvss_v3_score
                                   ? f.cvss_v3_score.toFixed(1)
@@ -1562,53 +1090,27 @@ export default function AssetDetail() {
                               </span>
                             </td>
                             <td>
-                              <span
-                                className={`db-priority-badge ${PRI_CLASS[f.priority_label] || ""}`}
+                              <CcureBadge
+                                variant={
+                                  PRIORITY_VARIANT[f.priority_label] ||
+                                  "neutral"
+                                }
+                                mono
                               >
                                 {f.priority_label}
-                              </span>
+                              </CcureBadge>
                             </td>
                             <td>
-                              <span
-                                className={`db-sev-badge ${SEV_CLASS[f.severity] || ""}`}
-                              >
-                                {f.severity}
-                              </span>
+                              <CcureSeverityBadge severity={f.severity} />
                             </td>
                             <td>
-                              <span
-                                className="db-tag"
-                                style={
-                                  f.status === "open"
-                                    ? {
-                                        color: "#f87171",
-                                        borderColor: "rgba(239,68,68,0.2)",
-                                        background: "rgba(239,68,68,0.06)",
-                                      }
-                                    : f.status === "accepted"
-                                      ? {
-                                          color: "#fbbf24",
-                                          borderColor: "rgba(234,179,8,0.2)",
-                                          background: "rgba(234,179,8,0.06)",
-                                        }
-                                      : f.status === "fixed"
-                                        ? {
-                                            color: "#4ade80",
-                                            borderColor: "rgba(34,197,94,0.2)",
-                                            background: "rgba(34,197,94,0.06)",
-                                          }
-                                        : {}
-                                }
+                              <CcureBadge
+                                variant={STATUS_VARIANT[f.status] || "neutral"}
                               >
                                 {f.status}
-                              </span>
+                              </CcureBadge>
                             </td>
-                            <td
-                              style={{
-                                fontSize: "0.72rem",
-                                color: "var(--text-muted)",
-                              }}
-                            >
+                            <td className="ad-t-xs ad-secondary">
                               {ago(f.last_found_at)}
                             </td>
                           </tr>
@@ -1617,12 +1119,16 @@ export default function AssetDetail() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
+              </CcureCard>
+            </CcureTabPanel>
 
             {/* Tab: Services & Open Ports */}
-            {activeTab === "services" &&
-              (() => {
+            <CcureTabPanel
+              id="services"
+              tabsId={TABS_ID}
+              active={activeTab === "services"}
+            >
+              {(() => {
                 // ── Compute column visibility from actual data ──────────────────
                 const showProduct = services.some((s) => s.service_product);
                 const showBanner = services.some((s) => s.banner);
@@ -1636,156 +1142,82 @@ export default function AssetDetail() {
                   !showProduct && !showBanner && !showAudits;
 
                 return (
-                  <div className="db-card" style={{ padding: 0 }}>
-                    <div
-                      style={{
-                        padding: "14px 16px",
-                        borderBottom: "1px solid var(--border)",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <h4
-                        style={{
-                          margin: 0,
-                          fontSize: "0.85rem",
-                          color: "var(--text)",
-                        }}
-                      >
-                        Open Ports & Running Services
-                      </h4>
-                      <span
-                        style={{
-                          fontSize: "0.65rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
+                  <CcureCard
+                    title="Open Ports & Running Services"
+                    headingLevel={2}
+                    bodyFlush
+                    actions={
+                      <span className="ad-t-xs ad-secondary">
                         {services.length} service
                         {services.length !== 1 ? "s" : ""} discovered
                       </span>
-                    </div>
-
+                    }
+                  >
                     {/* ── Enrichment hint banner ─────────────────────────────── */}
                     {missingEnrichment && services.length > 0 && (
-                      <div
-                        style={{
-                          margin: "12px 16px 0",
-                          padding: "10px 14px",
-                          background: "rgba(59,130,246,0.06)",
-                          border: "1px solid rgba(59,130,246,0.18)",
-                          borderRadius: 8,
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 10,
-                        }}
-                      >
-                        <span style={{ fontSize: "1rem", lineHeight: 1.2 }}>
-                          🔬
-                        </span>
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: 700,
-                              color: "#60a5fa",
-                              marginBottom: 4,
-                            }}
-                          >
-                            Service enrichment data not available for this scan
-                            type
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-muted)",
-                              lineHeight: 1.6,
-                            }}
-                          >
-                            <strong>Product &amp; Version</strong> and{" "}
-                            <strong>Banner</strong> data require a{" "}
-                            <span style={{ color: "#93c5fd", fontWeight: 600 }}>
-                              Service Fingerprinting Scan
-                            </span>{" "}
-                            (Nmap{" "}
-                            <code
-                              style={{
-                                background: "rgba(255,255,255,0.07)",
-                                padding: "0 3px",
-                                borderRadius: 3,
-                              }}
-                            >
-                              -sV
-                            </code>
-                            ). &nbsp;<strong>TLS / HTTP Audits</strong> require
-                            a{" "}
-                            <span style={{ color: "#93c5fd", fontWeight: 600 }}>
-                              Vulnerability Assessment
-                            </span>{" "}
-                            or{" "}
-                            <span style={{ color: "#93c5fd", fontWeight: 600 }}>
-                              Authenticated Deep Inspection
-                            </span>
-                            . Port discovery and service identification from the
-                            current scan are shown below.
-                          </div>
-                        </div>
+                      <div className="ad-hint">
+                        <CcureAlert
+                          variant="info"
+                          live={false}
+                          title="Service enrichment data not available for this scan type"
+                        >
+                          <strong>Product &amp; Version</strong> and{" "}
+                          <strong>Banner</strong> data require a{" "}
+                          <span className="ad-strong">
+                            Service Fingerprinting Scan
+                          </span>{" "}
+                          (Nmap <code className="ad-code-inline">-sV</code>).{" "}
+                          <strong>TLS / HTTP Audits</strong> require a{" "}
+                          <span className="ad-strong">
+                            Vulnerability Assessment
+                          </span>{" "}
+                          or{" "}
+                          <span className="ad-strong">
+                            Authenticated Deep Inspection
+                          </span>
+                          . Port discovery and service identification from the
+                          current scan are shown below.
+                        </CcureAlert>
                       </div>
                     )}
 
-                    <div
-                      className="db-table-wrap"
-                      style={{
-                        marginTop:
-                          missingEnrichment && services.length > 0 ? 8 : 0,
-                      }}
-                    >
-                      <table className="db-table">
+                    <div className="cc-table-wrap">
+                      <table className="cc-table ad-table">
+                        <caption className="cc-sr-only">
+                          Open ports and running services on this asset
+                        </caption>
                         <thead>
                           <tr>
-                            <th>Port / Protocol</th>
-                            <th>Service Name</th>
-                            <th>State</th>
-                            {showProduct && <th>Product &amp; Version</th>}
-                            {showBanner && <th>Banner</th>}
-                            {showAudits && <th>Audits</th>}
+                            <th scope="col">Port / Protocol</th>
+                            <th scope="col">Service Name</th>
+                            <th scope="col">State</th>
+                            {showProduct && (
+                              <th scope="col">Product &amp; Version</th>
+                            )}
+                            {showBanner && <th scope="col">Banner</th>}
+                            {showAudits && <th scope="col">Audits</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {services.length === 0 ? (
                             <tr>
-                              <td
-                                colSpan={colCount}
-                                style={{
-                                  textAlign: "center",
-                                  padding: "48px 20px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    color: "var(--text-muted)",
-                                    fontSize: "0.85rem",
-                                    fontWeight: 600,
-                                    marginBottom: 6,
-                                  }}
-                                >
-                                  No open ports detected on this host.
-                                </div>
-                                <div
-                                  style={{
-                                    color: "var(--text-faint)",
-                                    fontSize: "0.72rem",
-                                    maxWidth: 480,
-                                    margin: "0 auto",
-                                    lineHeight: 1.5,
-                                  }}
-                                >
-                                  To discover active running services, run a{" "}
-                                  <strong>Asset Discovery (Port Scan)</strong>{" "}
-                                  or{" "}
-                                  <strong>Service Fingerprinting Scan</strong>{" "}
-                                  on this host.
-                                </div>
+                              <td colSpan={colCount} className="ad-empty-cell">
+                                <CcureEmptyState
+                                  title="No open ports detected on this host."
+                                  description={
+                                    <>
+                                      To discover active running services, run a{" "}
+                                      <strong>
+                                        Asset Discovery (Port Scan)
+                                      </strong>{" "}
+                                      or{" "}
+                                      <strong>
+                                        Service Fingerprinting Scan
+                                      </strong>{" "}
+                                      on this host.
+                                    </>
+                                  }
+                                />
                               </td>
                             </tr>
                           ) : (
@@ -1803,169 +1235,117 @@ export default function AssetDetail() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </CcureCard>
                 );
               })()}
+            </CcureTabPanel>
 
             {/* Tab: Changelog */}
-            {activeTab === "changelog" && (
-              <div className="db-card" style={{ padding: 0 }}>
-                <AuditTimeline changelogData={changelogData} />
-              </div>
-            )}
+            <CcureTabPanel
+              id="changelog"
+              tabsId={TABS_ID}
+              active={activeTab === "changelog"}
+            >
+              <CcureCard>
+                <AuditTimeline changelogData={changelogData} headingLevel={2} />
+              </CcureCard>
+            </CcureTabPanel>
 
             {/* Tab: System Info */}
-            {activeTab === "system_info" && (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 16 }}
-              >
+            <CcureTabPanel
+              id="system_info"
+              tabsId={TABS_ID}
+              active={activeTab === "system_info"}
+            >
+              <div className="ad-stack">
                 {/* Panel: Owner Details */}
-                <div className="db-card">
-                  <h4 className="db-card-title">Assignee / Owner</h4>
-                  <div className="db-card-sub">
-                    Assign accountability for security remediation
-                  </div>
-
+                <CcureCard
+                  title="Assignee / Owner"
+                  subtitle="Assign accountability for security remediation"
+                  headingLevel={2}
+                >
                   {!editingOwner ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                        }}
-                      >
+                    <div className="ad-owner-row">
+                      <div className="ad-owner">
                         <span
-                          style={{
-                            fontSize: "0.78rem",
-                            fontWeight: 700,
-                            color: asset.owner
-                              ? "var(--text)"
-                              : "var(--text-faint)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
+                          className={`ad-owner-name${asset.owner ? "" : " ad-faint"}`}
                         >
                           👤 {asset.owner || "No owner assigned"}
                           {asset.provenance?.owner?.source === "analyst" && (
-                            <span
-                              style={{
-                                fontSize: "0.58rem",
-                                background: "rgba(14,165,233,0.12)",
-                                color: "var(--accent)",
-                                padding: "1px 4px",
-                                borderRadius: 3,
-                                fontWeight: 700,
-                              }}
+                            <CcureBadge
+                              variant="info"
                               title="Manually set by security analyst. Protected from overwrite."
                             >
                               OVERRIDE
-                            </span>
+                            </CcureBadge>
                           )}
                           {asset.provenance?.owner?.source === "amt_import" && (
-                            <span
-                              style={{
-                                fontSize: "0.58rem",
-                                background: "rgba(34,197,94,0.12)",
-                                color: "#10b981",
-                                padding: "1px 4px",
-                                borderRadius: 3,
-                                fontWeight: 700,
-                              }}
+                            <CcureBadge
+                              variant="success"
                               title="Verified via AMT inventory synchronization."
                             >
                               ✔ Ccure VERIFIED
-                            </span>
+                            </CcureBadge>
                           )}
                         </span>
                         {asset.custom_attributes?.owner_employee_id && (
-                          <span
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-muted)",
-                              paddingLeft: 16,
-                            }}
-                          >
+                          <span className="ad-owner-emp">
                             Employee ID:{" "}
                             {asset.custom_attributes.owner_employee_id}
                           </span>
                         )}
                       </div>
                       {canUpdate && (
-                        <button
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setEditingOwner(true)}
-                          className="db-btn db-btn--ghost"
-                          style={{ padding: "3px 6px", fontSize: "0.65rem" }}
                         >
                           Edit
-                        </button>
+                        </CcureButton>
                       )}
                     </div>
                   ) : (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input
+                    <div className="ad-owner-edit">
+                      <CcureInput
+                        id="ad-owner"
+                        label="Owner name"
                         type="text"
                         value={ownerName}
                         onChange={(e) => setOwnerName(e.target.value)}
                         placeholder="Enter owner name…"
-                        style={{
-                          flex: 1,
-                          padding: "4px 8px",
-                          fontSize: "0.72rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: 5,
-                          background: "var(--bg-white)",
-                          color: "var(--text)",
-                        }}
+                        fieldClassName="ad-grow"
                       />
-                      <button
-                        onClick={handleSaveOwner}
-                        className="db-btn db-btn--primary"
-                        style={{ padding: "4px 8px" }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => {
-                          setOwnerName(asset.owner || "");
-                          setEditingOwner(false);
-                        }}
-                        className="db-btn db-btn--ghost"
-                        style={{ padding: "4px 8px" }}
-                      >
-                        Cancel
-                      </button>
+                      <div className="ad-actions">
+                        <CcureButton
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveOwner}
+                        >
+                          Save
+                        </CcureButton>
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setOwnerName(asset.owner || "");
+                            setEditingOwner(false);
+                          }}
+                        >
+                          Cancel
+                        </CcureButton>
+                      </div>
                     </div>
                   )}
-                </div>
+                </CcureCard>
 
                 {/* Panel: Network & Identity */}
-                <div className="db-card">
-                  <h4
-                    className="db-card-title"
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <span style={{ fontSize: "1.1rem" }}>🌐</span> Network &
-                    Identity
-                  </h4>
-                  <div className="db-card-sub">
-                    IP details, MAC, hostname, and DNS settings
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fill, minmax(220px, 1fr))",
-                      gap: 12,
-                    }}
-                  >
+                <CcureCard
+                  title="🌐 Network & Identity"
+                  subtitle="IP details, MAC, hostname, and DNS settings"
+                  headingLevel={2}
+                >
+                  <InfoGrid>
                     <InfoField
                       label="IP Address"
                       value={asset.ip_address}
@@ -2004,29 +1384,16 @@ export default function AssetDetail() {
                       mono
                     />
                     <InfoField label="VLAN ID" value={asset.vlan_id} mono />
-                  </div>
-                </div>
+                  </InfoGrid>
+                </CcureCard>
 
                 {/* Panel: OS & Hardware */}
-                <div className="db-card">
-                  <h4
-                    className="db-card-title"
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <span style={{ fontSize: "1.1rem" }}>🖥️</span> Operating
-                    System & Hardware
-                  </h4>
-                  <div className="db-card-sub">
-                    Device category, manufacturer, CPU, and kernel details
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fill, minmax(220px, 1fr))",
-                      gap: 12,
-                    }}
-                  >
+                <CcureCard
+                  title="🖥️ Operating System & Hardware"
+                  subtitle="Device category, manufacturer, CPU, and kernel details"
+                  headingLevel={2}
+                >
+                  <InfoGrid>
                     <InfoField label="OS Family" value={asset.os_family} mono />
                     <InfoField label="OS Name" value={asset.os_name} />
                     <InfoField
@@ -2100,30 +1467,19 @@ export default function AssetDetail() {
                           ?.uptime
                       }
                     />
-                  </div>
-                </div>
+                  </InfoGrid>
+                </CcureCard>
 
                 {/* Panel: CCure AMT Reference */}
                 {(asset.custom_attributes?.amt_asset_tag ||
                   asset.custom_attributes?.amt_asset_name ||
                   asset.custom_attributes?.serial_number) && (
-                  <div className="db-card">
-                    <h4
-                      className="db-card-title"
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      <span style={{ fontSize: "1.1rem" }}>🏢</span> Corporate
-                      (Assets) Details
-                    </h4>
-                    <div className="db-card-sub">Verified Asset</div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fill, minmax(220px, 1fr))",
-                        gap: 12,
-                      }}
-                    >
+                  <CcureCard
+                    title="🏢 Corporate (Assets) Details"
+                    subtitle="Verified Asset"
+                    headingLevel={2}
+                  >
+                    <InfoGrid>
                       {/* <InfoField label="Asset Tag" value={asset.custom_attributes?.amt_asset_tag} mono /> */}
                       <InfoField
                         label="Asset Name"
@@ -2147,30 +1503,17 @@ export default function AssetDetail() {
                         value={asset.custom_attributes?.amt_location}
                       />
                       {/* <InfoField label="Corporate Status" value={asset.custom_attributes?.amt_status} isTag /> */}
-                    </div>
-                  </div>
+                    </InfoGrid>
+                  </CcureCard>
                 )}
 
                 {/* Panel: Scan & Discovery */}
-                <div className="db-card">
-                  <h4
-                    className="db-card-title"
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <span style={{ fontSize: "1.1rem" }}>🔬</span> Discovery &
-                    Scan Metadata
-                  </h4>
-                  <div className="db-card-sub">
-                    Scan identification, activity times, and audit details
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fill, minmax(220px, 1fr))",
-                      gap: 12,
-                    }}
-                  >
+                <CcureCard
+                  title="🔬 Discovery & Scan Metadata"
+                  subtitle="Scan identification, activity times, and audit details"
+                  headingLevel={2}
+                >
+                  <InfoGrid>
                     <InfoField
                       label="Discovery Method"
                       value={asset.discovery_method || "active"}
@@ -2198,70 +1541,38 @@ export default function AssetDetail() {
                       mono
                     />
                     <InfoField label="Asset ID" value={asset.id} mono />
-                  </div>
-                </div>
+                  </InfoGrid>
+                </CcureCard>
               </div>
-            )}
+            </CcureTabPanel>
           </div>
 
           {/* Right Column: Sidebar Panels */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-              height: "100%",
-              overflowY: "auto",
-              paddingRight: 4,
-            }}
-          >
+          <aside className="ad-side">
             {/* Panel: Tags Manager */}
-            <div className="db-card">
-              <h4 className="db-card-title">Asset Tags</h4>
-              <div className="db-card-sub">
-                Tag hosts to filter reports and group assets
-              </div>
-
+            <CcureCard
+              title="Asset Tags"
+              subtitle="Tag hosts to filter reports and group assets"
+              headingLevel={2}
+            >
               {/* Tag List */}
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 4,
-                  marginBottom: 12,
-                }}
-              >
+              <div className="ad-tags">
                 {(asset.tags || []).length === 0 ? (
-                  <span
-                    style={{ fontSize: "0.72rem", color: "var(--text-faint)" }}
-                  >
-                    No tags configured
-                  </span>
+                  <span className="ad-t-xs ad-faint">No tags configured</span>
                 ) : (
                   asset.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="db-tag"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
+                    <span key={tag} className="ad-tag">
                       {tag}
                       {canUpdate && (
-                        <span
-                          onClick={() => handleRemoveTag(tag)}
-                          style={{
-                            cursor: "pointer",
-                            opacity: 0.6,
-                            fontSize: "0.6rem",
-                            fontWeight: "bold",
-                          }}
+                        <button
+                          type="button"
+                          className="ad-tag-remove"
+                          aria-label={`Remove tag ${tag}`}
                           title="Remove Tag"
+                          onClick={() => handleRemoveTag(tag)}
                         >
                           ✕
-                        </span>
+                        </button>
                       )}
                     </span>
                   ))
@@ -2270,136 +1581,75 @@ export default function AssetDetail() {
 
               {/* Tag Add Form */}
               {canUpdate && (
-                <form
-                  onSubmit={handleAddTag}
-                  style={{ display: "flex", gap: 6 }}
-                >
-                  <input
+                <form onSubmit={handleAddTag} className="ad-inline-form">
+                  <CcureInput
+                    id="ad-new-tag"
+                    label="New tag"
                     type="text"
                     placeholder="New tag (e.g. dmz, production)…"
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: "5px 8px",
-                      fontSize: "0.72rem",
-                      border: "1px solid var(--border)",
-                      borderRadius: 5,
-                      background: "var(--bg-white)",
-                      color: "var(--text)",
-                    }}
+                    fieldClassName="ad-grow"
                   />
-                  <button
+                  <CcureButton
                     type="submit"
-                    className="db-btn db-btn--ghost"
-                    style={{ padding: "5px 8px" }}
+                    variant="secondary"
+                    size="sm"
+                    aria-label="Add tag"
                   >
                     +
-                  </button>
+                  </CcureButton>
                 </form>
               )}
-            </div>
+            </CcureCard>
 
             {/* Panel: Analyst Notes */}
-            <div className="db-card">
-              <h4 className="db-card-title">Analyst Log Notes</h4>
-              <div className="db-card-sub">
-                Add findings notes, status tracking comments
-              </div>
-
+            <CcureCard
+              title="Analyst Log Notes"
+              subtitle="Add findings notes, status tracking comments"
+              headingLevel={2}
+            >
               {/* Note Submission Form */}
               {canUpdate && (
-                <form onSubmit={handleAddNote} style={{ marginBottom: 12 }}>
-                  <textarea
-                    placeholder="Add comment logs for other SOC analysts…"
-                    rows={3}
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "6px 8px",
-                      fontSize: "0.72rem",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      background: "var(--bg-white)",
-                      color: "var(--text)",
-                      resize: "vertical",
-                      marginBottom: 6,
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="db-btn db-btn--primary"
-                    style={{ padding: "4px 8px", fontSize: "0.68rem" }}
-                  >
+                <form onSubmit={handleAddNote} className="ad-note-form">
+                  <CcureField id="ad-new-note" label="Analyst note">
+                    <textarea
+                      id="ad-new-note"
+                      className="cc-field__control ad-textarea"
+                      placeholder="Add comment logs for other SOC analysts…"
+                      rows={3}
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                    />
+                  </CcureField>
+                  <CcureButton type="submit" variant="primary" size="sm">
                     Log Note
-                  </button>
+                  </CcureButton>
                 </form>
               )}
 
               {/* Notes Timeline List */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  maxHeight: 220,
-                  overflowY: "auto",
-                  paddingRight: 4,
-                }}
-              >
+              <div className="ad-notes">
                 {(asset.notes || []).length === 0 ? (
-                  <div
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-faint)",
-                      textAlign: "center",
-                      padding: "10px 0",
-                    }}
-                  >
+                  <div className="ad-notes-empty">
                     No analyst notes logged for this host.
                   </div>
                 ) : (
                   [...(asset.notes || [])].reverse().map((note) => (
-                    <div
-                      key={note.id}
-                      style={{
-                        background: "rgba(255,255,255,0.015)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 6,
-                        padding: 8,
-                        fontSize: "0.72rem",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          color: "var(--text-faint)",
-                          fontSize: "0.62rem",
-                          marginBottom: 4,
-                        }}
-                      >
-                        <span style={{ fontWeight: 600 }}>
+                    <div key={note.id} className="ad-note">
+                      <div className="ad-note-meta">
+                        <span className="ad-note-author">
                           👤 User ID: {note.user_id?.substring(0, 8)}...
                         </span>
                         <span>{ago(note.created_at)}</span>
                       </div>
-                      <div
-                        style={{
-                          color: "var(--text)",
-                          lineHeight: 1.4,
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {note.content}
-                      </div>
+                      <div className="ad-note-body">{note.content}</div>
                     </div>
                   ))
                 )}
               </div>
-            </div>
-          </div>
+            </CcureCard>
+          </aside>
         </div>
       </div>
 
@@ -2408,7 +1658,7 @@ export default function AssetDetail() {
         <FindingDrawer
           findingId={selectedFindingId}
           canUpdate={canUpdate}
-          onClose={() => setSelectedFindingId(null)}
+          onClose={closeDrawer}
           onStatusChange={handleFindingStatusChange}
         />
       )}

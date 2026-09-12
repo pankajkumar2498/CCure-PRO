@@ -1,3 +1,40 @@
+/**
+ * src/pages/admin/OrganizationManagement.jsx
+ * Tenants — provision, edit, activate/deactivate, delete.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C migration ──────────────────────
+ * Every request, payload, permission check and state transition below is what
+ * it was before. The migration changed presentation only. Specifically
+ * preserved:
+ *
+ *   * the four authorisations stay four distinct tests, and they are not
+ *     interchangeable —
+ *       create  → `organizations:create`
+ *       update  → `organizations:update`
+ *       delete  → superadmin **and** `organizations:delete`, a conjunction,
+ *                 because a permission alone would let an org_admin who held
+ *                 it delete somebody else's tenant
+ *       manage  → `canManageOrg`: a superadmin may manage any organisation,
+ *                 an org_admin only their own;
+ *   * `changeOrganizationStatus(id, { is_active: !org.is_active })` sends the
+ *     inverted value, never a literal;
+ *   * both destructive actions require an explicit confirmation carrying the
+ *     consequence — deletion reaches users, assets and scans; deactivation
+ *     cuts off everyone inside the tenant;
+ *   * `loadData(true)` is the quiet reload used after a successful write, so
+ *     the table does not blank out.
+ *
+ * ── Scope boundary ──────────────────────────────────────────────────────────
+ * `components/layout/Modal` (9 consumers) and `components/admin/OrganizationForm`
+ * are deliberately NOT migrated here. The form carries admin password
+ * provisioning — credential-handling surface with its own review — and the
+ * modal is shared shell. Both keep working exactly as they did; the create and
+ * edit dialogs are untouched. Their own accessibility gaps are recorded in the
+ * checkpoint report as shell work, not fixed in passing.
+ *
+ * src/__tests__/pages/admin/OrganizationManagement.test.jsx asserts all of the
+ * above and was written against the pre-migration page.
+ */
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -11,11 +48,18 @@ import {
 } from "../../api/admin";
 import Modal from "../../components/layout/Modal";
 import { formatDateTime } from "../../utils/date";
-import Button from "../../components/common/Button";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import OrganizationForm from "../../components/admin/OrganizationForm";
-import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { can, denyMessage, isSuperAdmin } from "../../auth/permissions";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureLoader,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/organization-management.css";
 
 export default function OrganizationManagement() {
   const navigate = useNavigate();
@@ -55,7 +99,7 @@ export default function OrganizationManagement() {
     try {
       const data = await listOrganizations();
       setOrgs(data.organizations);
-    } catch (err) {
+    } catch {
       setError(
         "Failed to load organizations. This area is for Superadmins only.",
       );
@@ -138,9 +182,7 @@ export default function OrganizationManagement() {
         ? "Users in this organization may lose access while the tenant is inactive."
         : "Users in this organization will be able to access the tenant again.",
       confirmLabel: action,
-      confirmType: "info",
-      icon: org.is_active ? "⏻" : "▶",
-      iconClass: "info",
+      tone: "info",
       onConfirm: async () => {
         setBusy(true);
         try {
@@ -161,7 +203,6 @@ export default function OrganizationManagement() {
           setConfirmConfig(null);
         }
       },
-      onCancel: () => setConfirmConfig(null),
     });
   };
 
@@ -176,9 +217,7 @@ export default function OrganizationManagement() {
       warning:
         "This is a destructive tenant-level action. Users, assets, scans, and related organization data may be removed.",
       confirmLabel: "Delete organization",
-      confirmType: "danger",
-      icon: "🗑️",
-      iconClass: "danger",
+      tone: "danger",
       onConfirm: async () => {
         setBusy(true);
         try {
@@ -195,7 +234,6 @@ export default function OrganizationManagement() {
           setConfirmConfig(null);
         }
       },
-      onCancel: () => setConfirmConfig(null),
     });
   };
 
@@ -212,11 +250,118 @@ export default function OrganizationManagement() {
     setIsEditModalOpen(true);
   };
 
+  /* Declared columns, so CcureTable owns the caption, `scope="col"` on every
+     header and `scope="row"` on the organisation name — the identity a reader
+     needs announced alongside every quota and status in the row. */
+  const columns = [
+    {
+      key: "name",
+      header: "Name",
+      isRowHeader: true,
+      cell: (org) => <span className="om-name">{org.name}</span>,
+    },
+    { key: "slug", header: "Slug", mono: true, cell: (org) => org.slug },
+    {
+      key: "plan",
+      header: "Plan",
+      cell: (org) => <CcureBadge variant="info">{org.plan}</CcureBadge>,
+    },
+    {
+      key: "max_assets",
+      header: "Max Assets",
+      mono: true,
+      align: "end",
+      cell: (org) => org.max_assets,
+    },
+    {
+      key: "max_users",
+      header: "Max Users",
+      mono: true,
+      align: "end",
+      cell: (org) => org.max_users,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (org) => (
+        <CcureBadge variant={org.is_active ? "success" : "neutral"}>
+          {org.is_active ? "Active" : "Inactive"}
+        </CcureBadge>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      nowrap: true,
+      cell: (org) => (
+        <span className="om-muted">{formatDateTime(org.created_at)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      cell: (org) => {
+        if (!canManageOrg(org)) {
+          return <span className="om-muted">—</span>;
+        }
+        return (
+          <div className="om-actions">
+            {canDeleteOrganizations && (
+              <CcureButton
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate(`/admin/users?org_id=${org.id}`)}
+                /* Every emoji here is decorative and every control carries its
+                   own row-specific name, so a reader listing the eight buttons
+                   on a two-row table gets eight distinct entries rather than
+                   four pairs. */
+                aria-label={`View users in ${org.name}`}
+              >
+                <span aria-hidden="true">👥</span> Users
+              </CcureButton>
+            )}
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              onClick={() => openEditModal(org)}
+              disabled={busy}
+              aria-label={`Edit ${org.name}`}
+            >
+              <span aria-hidden="true">✏️</span> Edit
+            </CcureButton>
+            <CcureButton
+              variant="secondary"
+              size="sm"
+              onClick={() => handleToggleStatus(org)}
+              disabled={busy}
+              aria-label={`${org.is_active ? "Deactivate" : "Activate"} ${org.name}`}
+            >
+              <span aria-hidden="true">{org.is_active ? "⏻" : "▶"}</span>{" "}
+              {org.is_active ? "Deactivate" : "Activate"}
+            </CcureButton>
+            {canDeleteOrganizations && (
+              <CcureButton
+                variant="danger"
+                size="sm"
+                onClick={() => handleDeleteOrg(org)}
+                disabled={busy}
+                aria-label={`Delete ${org.name}`}
+              >
+                <span aria-hidden="true">🗑️</span> Delete
+              </CcureButton>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   if (loading) {
     return (
       <AppLayout pageTitle="Organization Management">
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-          <div className="spinner" />
+        <div className="om-loading">
+          <CcureLoader label="Loading organizations…" />
         </div>
       </AppLayout>
     );
@@ -232,147 +377,47 @@ export default function OrganizationManagement() {
               Manage multi-tenant organizations and their subscription plans
             </p>
           </div>
-          <div className="page-actions-row">
-            <Button
-              type="button"
+          <div className="om-toolbar">
+            <CcureButton
               variant="ghost"
               size="sm"
               onClick={() => loadData(true)}
-              disabled={refreshing || busy}
+              loading={refreshing}
+              disabled={busy}
             >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
+              Refresh
+            </CcureButton>
             {canCreateOrganizations && (
-              <Button
-                type="button"
+              <CcureButton
                 variant="primary"
                 size="sm"
                 onClick={() => setIsCreateModalOpen(true)}
                 disabled={busy}
               >
                 + New Organization
-              </Button>
+              </CcureButton>
             )}
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          <CcureAlert variant="danger" className="om-message">
+            {error}
+          </CcureAlert>
+        )}
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>Plan</th>
-                <th>Max Assets</th>
-                <th>Max Users</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgs.map((o) => (
-                <tr key={o.id}>
-                  <td>
-                    <strong>{o.name}</strong>
-                  </td>
-                  <td>
-                    <code className="ip-code">{o.slug}</code>
-                  </td>
-                  <td>
-                    <span className="chip chip--info">{o.plan}</span>
-                  </td>
-                  <td>
-                    <code className="ip-code">{o.max_assets}</code>
-                  </td>
-                  <td>
-                    <code className="ip-code">{o.max_users}</code>
-                  </td>
-                  <td>
-                    <span
-                      className={`chip ${o.is_active ? "chip--active" : "chip--inactive"}`}
-                    >
-                      {o.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="text-muted" style={{ fontSize: 12 }}>
-                    {formatDateTime(o.created_at)}
-                  </td>
-                  <td>
-                    {canManageOrg(o) ? (
-                      <div className="action-btns table-action-cell">
-                        {canDeleteOrganizations && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            title="View users in this organization"
-                            onClick={() =>
-                              navigate(`/admin/users?org_id=${o.id}`)
-                            }
-                          >
-                            👥 Users
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          title="Edit organization"
-                          onClick={() => openEditModal(o)}
-                          disabled={busy}
-                        >
-                          ✏️ Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          title={
-                            o.is_active
-                              ? "Deactivate organization"
-                              : "Activate organization"
-                          }
-                          onClick={() => handleToggleStatus(o)}
-                          disabled={busy}
-                        >
-                          {o.is_active ? "⏻ Deactivate" : "▶ Activate"}
-                        </Button>
-                        {canDeleteOrganizations && (
-                          <Button
-                            type="button"
-                            variant="danger"
-                            size="sm"
-                            title="Delete organization"
-                            onClick={() => handleDeleteOrg(o)}
-                            disabled={busy}
-                          >
-                            🗑️ Delete
-                          </Button>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {orgs.length === 0 && (
-                <tr>
-                  <td colSpan="8" className="table-empty-cell">
-                    No organizations are available yet. Create one to get
-                    started.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <CcureTable
+          caption={`Organizations — ${orgs.length} tenant${orgs.length !== 1 ? "s" : ""}`}
+          columns={columns}
+          rows={orgs}
+          rowKey={(org) => org.id}
+          density="comfortable"
+          emptyMessage="No organizations are available yet. Create one to get started."
+        />
       </div>
 
-      {/* Create Org Modal */}
+      {/* Create Org Modal — shared Modal + OrganizationForm, out of this
+          batch's scope and unchanged. */}
       {isCreateModalOpen && (
         <Modal
           isOpen={isCreateModalOpen}
@@ -390,7 +435,7 @@ export default function OrganizationManagement() {
         </Modal>
       )}
 
-      {/* Edit Org Modal */}
+      {/* Edit Org Modal — likewise unchanged. */}
       {isEditModalOpen && (
         <Modal
           isOpen={isEditModalOpen}
@@ -407,17 +452,17 @@ export default function OrganizationManagement() {
           />
         </Modal>
       )}
-      <ConfirmDialog
+
+      <CcureConfirmDialog
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
         subtitle={confirmConfig?.subtitle}
         warning={confirmConfig?.warning}
         confirmLabel={confirmConfig?.confirmLabel}
-        confirmType={confirmConfig?.confirmType}
-        icon={confirmConfig?.icon}
-        iconClass={confirmConfig?.iconClass}
+        tone={confirmConfig?.tone}
+        busy={busy}
         onConfirm={confirmConfig?.onConfirm}
-        onCancel={confirmConfig?.onCancel}
+        onCancel={() => setConfirmConfig(null)}
       />
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>

@@ -1,4 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * src/pages/RecycleBin.jsx
+ * Deleted scan records — restore, or destroy permanently.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C migration ──────────────────────
+ * Every handler, request, permission check, state transition and navigation
+ * below is what it was before. The migration changed presentation only.
+ * Specifically preserved:
+ *
+ *   * `getScans(0, 200, "deleted")` — the scope argument is load-bearing.
+ *     `getScans` defaults to `scope="active"`, so losing it would list LIVE
+ *     scans on a page whose second button purges them;
+ *   * restore is gated on `scans:restore` and purge on `scans:purge`, at
+ *     render *and* inside the handler, and they stay separate permissions —
+ *     a user who may undo a deletion is not thereby a user who may make one
+ *     permanent. The client gate is an affordance, not the authorisation
+ *     boundary; the API enforces it;
+ *   * purge requires an explicit confirmation naming the scan, and restore
+ *     deliberately does not — it is the reversible direction;
+ *   * a successful action drops the row locally and does not re-fetch; a
+ *     failed one leaves the row in place;
+ *   * the page does not poll.
+ *
+ * src/__tests__/pages/RecycleBin.test.jsx asserts all of this and was written
+ * against the pre-migration page.
+ *
+ * ── What the migration changed ──────────────────────────────────────────────
+ * The local `ConfirmDialog` defined in this file — a byte-identical twin of
+ * the one in SecurityReports.jsx — is gone, replaced by `CcureConfirmDialog`.
+ * It placed focus but never trapped it, never restored it, and described the
+ * dialog to a screen reader by its title alone, omitting the "this is
+ * irreversible" warning that is the whole content of a purge confirmation.
+ *
+ * The local `STATUS_STYLE`/`StatusBadge` are gone too. Their fallback,
+ * `STATUS_STYLE[status] || STATUS_STYLE.running`, painted any status the map
+ * did not carry — `queued` and `pending` among them — in the *running* style:
+ * a false statement about a scan, on a page that reports what happened to it.
+ */
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
@@ -7,34 +45,17 @@ import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import { can, denyMessage } from "../auth/permissions";
 import { SCAN_PIPELINES } from "../config/scanConfig";
-
-const STATUS_STYLE = {
-  complete: {
-    color: "#22c55e",
-    bg: "rgba(34,197,94,.1)",
-    border: "rgba(34,197,94,.25)",
-  },
-  running: {
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,.1)",
-    border: "rgba(245,158,11,.25)",
-  },
-  failed: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  cancelled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  canceled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-};
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureLoader,
+  CcureScanStatus,
+  CcureTable,
+} from "../design-system";
+import "../styles/recycle-bin.css";
 
 const isCred = (scan) => scan.scan_type === "credentialed";
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
@@ -64,126 +85,6 @@ const fmtDur = (sec) =>
     : sec < 60
       ? `${sec.toFixed(1)}s`
       : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
-
-function StatusBadge({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 9px",
-        borderRadius: 4,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        color: s.color,
-        fontSize: 11,
-        fontFamily: "var(--mono)",
-        letterSpacing: ".05em",
-      }}
-    >
-      {status}
-    </span>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   CONFIRMATION DIALOG
-   ══════════════════════════════════════════════════════════════════════════ */
-function ConfirmDialog({ config, onConfirm, onCancel }) {
-  const {
-    title,
-    subtitle,
-    warning,
-    confirmLabel,
-    confirmClass,
-    icon,
-    iconClass,
-  } = config;
-  const [busy, setBusy] = useState(false);
-  const btnRef = useRef(null);
-
-  // Focus confirm button on mount
-  useEffect(() => {
-    btnRef.current?.focus();
-  }, []);
-
-  // ESC to cancel
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    try {
-      await onConfirm();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      className="confirm-overlay"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div
-        className="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cdlg-title"
-      >
-        {/* Header */}
-        <div className="confirm-dialog-header">
-          <div
-            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
-          >
-            {icon}
-          </div>
-          <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">
-              {title}
-            </div>
-            <div className="confirm-dialog-subtitle">{subtitle}</div>
-          </div>
-        </div>
-
-        {/* Warning banner */}
-        {warning && (
-          <div
-            className={`confirm-dialog-warning confirm-dialog-warning--danger`}
-          >
-            <span style={{ flexShrink: 0 }}>⚠️</span>
-            <span>{warning}</span>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="confirm-dialog-footer">
-          <button
-            className="confirm-btn confirm-btn--cancel"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <button
-            ref={btnRef}
-            className={`confirm-btn confirm-btn--${confirmClass}`}
-            onClick={handleConfirm}
-            disabled={busy}
-          >
-            {busy ? <span className="confirm-btn-spinner" /> : null}
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function RecycleBin() {
   const navigate = useNavigate();
@@ -246,21 +147,7 @@ export default function RecycleBin() {
     }
     const scan = scans.find((s) => s.id === id);
     if (!scan) return;
-
-    setModal({
-      config: {
-        icon: "🗑️",
-        iconClass: "danger",
-        title: `Permanently Delete Scan No. ${scanNo(scan)}?`,
-        subtitle:
-          "This action cannot be undone. The scan record will be completely removed from the system.",
-        warning:
-          "Once deleted, you cannot recover this scan or its associated data. This is irreversible.",
-        confirmLabel: "Delete Permanently",
-        confirmClass: "danger",
-      },
-      scanId: id,
-    });
+    setModal({ scanId: id, scanNo: scanNo(scan) });
   };
 
   const handleConfirmDelete = async () => {
@@ -290,175 +177,169 @@ export default function RecycleBin() {
     }
   };
 
+  /* Columns are declared rather than hand-written as <tr>/<td>, so CcureTable
+     owns the caption, `scope="col"` on every header and `scope="row"` on the
+     identifying cell. `mono` replaces five separate inline
+     `fontFamily: "var(--mono)"` declarations. */
+  const columns = [
+    {
+      key: "scan_no",
+      header: "Scan No.",
+      isRowHeader: true,
+      mono: true,
+      nowrap: true,
+      cell: (scan) => scanNo(scan),
+    },
+    {
+      key: "target",
+      header: "Target",
+      mono: true,
+      cell: (scan) => <span className="rb-target">{scan.target}</span>,
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (scan) => (
+        <CcureBadge variant="neutral">{scanTypeLabel(scan)}</CcureBadge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (scan) => <CcureScanStatus status={scan.status} />,
+    },
+    {
+      key: "scan_duration",
+      header: "Duration",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => fmtDur(scan.scan_duration),
+    },
+    {
+      key: "deleted_at",
+      header: "Deleted",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => (
+        <span className="rb-muted">{fmtDate(scan.deleted_at)}</span>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => (
+        <span className="rb-muted">{fmtDate(scan.created_at)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      cell: (scan) => {
+        if (!canRestoreScans && !canPurgeScans) {
+          return <span className="rb-muted">Read only</span>;
+        }
+        return (
+          <div className="rb-actions">
+            {canRestoreScans && (
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={() => handleRestore(scan.id)}
+                loading={restoringId === scan.id}
+                /* The label alone repeats once per row, so a screen reader
+                   listing controls gets N identical entries and no way to tell
+                   which scan each belongs to. The scan number disambiguates. */
+                aria-label={`Restore scan ${scanNo(scan)}`}
+              >
+                Restore
+              </CcureButton>
+            )}
+            {canPurgeScans && (
+              <CcureButton
+                variant="danger"
+                size="sm"
+                onClick={() => handlePermanentDelete(scan.id)}
+                loading={purgingId === scan.id}
+                aria-label={`Delete scan ${scanNo(scan)} permanently`}
+              >
+                Delete Permanently
+              </CcureButton>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <AppLayout pageTitle="Recycle Bin">
       <div className="page-inner">
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Recycle Bin</h2>
-            <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
+            <p className="page-subtitle rb-count">
               {total} scan{total !== 1 ? "s" : ""} ready for permanent deletion
               - {user?.username}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btn--ghost"
-              onClick={() => navigate("/history")}
-            >
+          <div className="rb-toolbar">
+            <CcureButton variant="ghost" onClick={() => navigate("/history")}>
               My Scan Jobs
-            </button>
-            <button
-              className="btn btn--ghost"
-              onClick={load}
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="btn-spinner btn-spinner--dark" />
-              ) : (
-                "Refresh"
-              )}
-            </button>
+            </CcureButton>
+            <CcureButton variant="ghost" onClick={load} loading={loading}>
+              Refresh
+            </CcureButton>
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          <CcureAlert variant="danger" className="rb-message">
+            {error}
+          </CcureAlert>
+        )}
 
         {loading && (
-          <div
-            style={{ display: "flex", justifyContent: "center", padding: 60 }}
-          >
-            <div className="spinner" />
+          <div className="rb-loading">
+            <CcureLoader label="Loading recycle bin…" />
           </div>
         )}
 
         {!loading && !error && scans.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-state-icon">-</span>
-            <p className="empty-state-title">Recycle Bin is empty.</p>
-            <button
-              className="btn btn--primary"
-              style={{ marginTop: 16 }}
-              onClick={() => navigate("/history")}
-            >
-              Back to Scan Jobs
-            </button>
-          </div>
+          <CcureEmptyState
+            title="Recycle Bin is empty."
+            action={
+              <CcureButton onClick={() => navigate("/history")}>
+                Back to Scan Jobs
+              </CcureButton>
+            }
+          />
         )}
 
         {!loading && scans.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Scan No.</th>
-                  <th>Target</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Deleted</th>
-                  <th>Created</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scans.map((scan) => (
-                  <tr key={scan.id}>
-                    <td>
-                      <code className="ip-code" style={{ fontSize: 12 }}>
-                        {scanNo(scan)}
-                      </code>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {scan.target}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="method-chip">{scanTypeLabel(scan)}</span>
-                    </td>
-                    <td>
-                      <StatusBadge status={scan.status} />
-                    </td>
-                    <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>
-                        {fmtDur(scan.scan_duration)}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {fmtDate(scan.deleted_at)}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {fmtDate(scan.created_at)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-btns">
-                        {canRestoreScans || canPurgeScans ? (
-                          <>
-                            {canRestoreScans && (
-                              <button
-                                className="action-btn"
-                                onClick={() => handleRestore(scan.id)}
-                                disabled={restoringId === scan.id}
-                              >
-                                {restoringId === scan.id ? "..." : "Restore"}
-                              </button>
-                            )}
-                            {canPurgeScans && (
-                              <button
-                                className="action-btn action-btn--danger"
-                                onClick={() => handlePermanentDelete(scan.id)}
-                                disabled={purgingId === scan.id}
-                              >
-                                {purgingId === scan.id
-                                  ? "..."
-                                  : "Delete Permanently"}
-                              </button>
-                            )}
-                          </>
-                        ) : (
-                          <span className="muted">Read only</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CcureTable
+            caption={`Recycle bin — ${total} scan${total !== 1 ? "s" : ""} awaiting permanent deletion`}
+            columns={columns}
+            rows={scans}
+            rowKey={(scan) => scan.id}
+            density="comfortable"
+          />
         )}
       </div>
 
-      {/* Confirmation modal for permanent deletion */}
-      {modal && (
-        <ConfirmDialog
-          config={modal.config}
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setModal(null)}
-        />
-      )}
+      <CcureConfirmDialog
+        open={Boolean(modal)}
+        title={`Permanently Delete Scan No. ${modal?.scanNo ?? ""}?`}
+        subtitle="This action cannot be undone. The scan record will be completely removed from the system."
+        warning="Once deleted, you cannot recover this scan or its associated data. This is irreversible."
+        confirmLabel="Delete Permanently"
+        tone="danger"
+        busy={purgingId !== null}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setModal(null)}
+      />
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );

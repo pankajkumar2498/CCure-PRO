@@ -17,12 +17,21 @@ import {
   listPendingUsers,
   approveUser,
 } from "../../api/admin";
-import Button from "../../components/common/Button";
-import Modal from "../../components/layout/Modal";
 import UserTable from "../../components/admin/UserTable";
 import UserForm from "../../components/admin/UserForm";
-import ConfirmDialog from "../../components/common/ConfirmDialog";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureInput,
+  CcureModal,
+  CcurePagination,
+  CcurePasswordField,
+  CcureSelect,
+} from "../../design-system";
+import "../../styles/user-management.css";
 import {
   can,
   denyMessage,
@@ -412,8 +421,6 @@ export default function UserManagement() {
       warning: "Users can be re-activated later by an administrator.",
       confirmLabel: action,
       confirmType: "info",
-      icon: "⏻",
-      iconClass: "info",
       onConfirm: async () => {
         setBusy(true);
         try {
@@ -475,8 +482,6 @@ export default function UserManagement() {
         "This action will immediately terminate all active sessions for this user.",
       confirmLabel: "Reset MFA",
       confirmType: "danger",
-      icon: "🛡️",
-      iconClass: "danger",
       onConfirm: async () => {
         setBusy(true);
         try {
@@ -557,8 +562,6 @@ export default function UserManagement() {
         "The account becomes inactive immediately and can later be restored from Deleted Users.",
       confirmLabel: "Move to deleted users",
       confirmType: "danger",
-      icon: "🗑️",
-      iconClass: "danger",
       onConfirm: async () => {
         setBusy(true);
         try {
@@ -587,83 +590,84 @@ export default function UserManagement() {
       : `${totalCount} total users across all organizations`
     : `${totalCount} user${totalCount !== 1 ? "s" : ""} in your organization`;
 
-  const startIndex = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const endIndex = Math.min(startIndex + users.length - 1, totalCount);
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const closeResetModal = () => {
+    setResetModalOpen(false);
+    setUserToReset(null);
+    setNewPassword("");
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout pageTitle="User Management">
-      <div className="page-inner">
+      <div className="page-inner um-page">
         {/* Header */}
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">User Management</h2>
+            <h1 className="page-title">User Management</h1>
             <p className="page-subtitle">{subtitle}</p>
             {orgAdmin && (
-              <p className="page-note">
+              <p className="um-note">
                 Org admins can only manage users in their own organization.
               </p>
             )}
           </div>
-          <div className="page-actions-row">
+          <div className="um-toolbar">
             {canDeleteUsers && (
-              <Button
-                type="button"
+              <CcureButton
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/admin/users/deleted")}
                 disabled={busy}
               >
                 Deleted users
-              </Button>
+              </CcureButton>
             )}
-            <Button
-              type="button"
+            <CcureButton
               variant="ghost"
               size="sm"
               onClick={() => loadUsers(true)}
+              loading={refreshing}
               disabled={loading || refreshing || busy}
             >
               {refreshing ? "Refreshing..." : "Refresh"}
-            </Button>
+            </CcureButton>
             {canCreateUsers && (
-              <Button
-                type="button"
+              <CcureButton
                 variant="primary"
                 size="sm"
                 onClick={openCreateModal}
                 disabled={busy}
               >
                 + Create user
-              </Button>
+              </CcureButton>
             )}
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
         {/* Filters toolbar */}
-        <div className="table-filters-row">
-          <div className="search-box">
-            <span className="search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Search by username, email or name..."
-              value={searchInput}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="search-input"
-            />
-          </div>
+        <div className="um-filters">
+          <CcureInput
+            id="um-search"
+            type="search"
+            label="Search users"
+            fieldClassName="um-filter um-search"
+            placeholder="Search by username, email or name..."
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            autoComplete="off"
+          />
           {isSuperadmin && (
-            <select
-              className="org-filter-select"
+            <CcureSelect
+              id="um-org-filter"
+              label="Filter by organization"
+              fieldClassName="um-filter um-org-filter"
               value={selectedOrgId}
               onChange={(e) => {
                 setSelectedOrgId(e.target.value);
                 setPage(1);
               }}
-              title="Filter by organization"
             >
               <option value="">All Organizations</option>
               {organizations.map((org) => (
@@ -671,208 +675,132 @@ export default function UserManagement() {
                   {org.name}
                 </option>
               ))}
-            </select>
+            </CcureSelect>
           )}
         </div>
 
         {totalCount > 0 && (
-          <div className="pagination-row" style={{ marginBottom: 16 }}>
-            <div className="pagination-summary">
-              Showing {startIndex}–{endIndex} of {totalCount} users
-            </div>
-            <div className="pagination-controls">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page <= 1 || refreshing}
-                onClick={() => setPage(page - 1)}
-              >
-                Prev
-              </Button>
-              <span className="pagination-page">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page >= totalPages || refreshing}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <CcurePagination
+            className="um-pagination"
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={totalCount}
+            onPageChange={setPage}
+            disabled={refreshing}
+            itemNoun="users"
+            label="User pages"
+          />
         )}
 
         {/* Accounts awaiting approval. Only rendered when there are any, so the
             page is unchanged for deployments with self-registration disabled. */}
         {canUpdateUsers && pending.length > 0 && (
-          <div
-            style={{
-              border: "1px solid #f59e0b",
-              background: "rgba(245,158,11,0.08)",
-              borderRadius: 10,
-              padding: "16px 18px",
-              marginBottom: 20,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 4,
-              }}
-            >
-              <strong style={{ fontSize: 15 }}>
-                {pending.length} account{pending.length === 1 ? "" : "s"}{" "}
-                awaiting approval
-              </strong>
-            </div>
-            <p style={{ margin: "0 0 14px 0", fontSize: 13, opacity: 0.85 }}>
+          <section className="um-pending" aria-labelledby="um-pending-title">
+            <h2 className="um-pending__title" id="um-pending-title">
+              {pending.length} account{pending.length === 1 ? "" : "s"} awaiting
+              approval
+            </h2>
+            <p className="um-pending__lead">
               These accounts cannot sign in yet. Approving one enables sign-in
               and emails the account holder. An account whose email is still
               unverified cannot be approved &mdash; the owner must click their
               verification link first.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {pending.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    padding: "10px 12px",
-                    background: "rgba(0,0,0,0.04)",
-                    borderRadius: 8,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
-                      {p.username}
-                      <span
-                        style={{
-                          marginLeft: 10,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          background: p.is_verified ? "#dcfce7" : "#fee2e2",
-                          color: p.is_verified ? "#166534" : "#991b1b",
-                        }}
-                      >
-                        {p.is_verified
-                          ? "email verified"
-                          : "email not verified"}
-                      </span>
-                      {/* An "email verified" badge on its own is misleading
-                          here: a throwaway inbox can receive and click the
-                          verification link perfectly well, which is exactly how
-                          the two temp-mail accounts of 18 Aug 2026 arrived
-                          looking legitimate. The domain verdict sits beside it
-                          so the two facts are read together. */}
-                      {p.is_email_flagged && (
-                        <span
-                          style={{
-                            marginLeft: 8,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            background:
-                              p.email_risk?.reason === "disposable" ||
-                              p.email_risk?.reason === "denylisted"
-                                ? "#fee2e2"
-                                : "#fef3c7",
-                            color:
-                              p.email_risk?.reason === "disposable" ||
-                              p.email_risk?.reason === "denylisted"
-                                ? "#991b1b"
-                                : "#92400e",
-                          }}
-                          title={describeEmailRisk(p.email_risk)}
+            <ul className="um-pending__list">
+              {pending.map((p) => {
+                const riskText = describeEmailRisk(p.email_risk);
+                const domainText = describeEmailDomain(p.email_risk);
+                const blocked =
+                  p.email_risk?.reason === "disposable" ||
+                  p.email_risk?.reason === "denylisted";
+                return (
+                  <li key={p.id} className="um-pending-item">
+                    <div className="um-pending-item__who">
+                      <div className="um-pending-item__name">
+                        {p.username}
+                        <CcureBadge
+                          variant={p.is_verified ? "success" : "danger"}
                         >
-                          {p.email_risk?.reason === "disposable"
-                            ? "disposable domain"
-                            : p.email_risk?.reason === "denylisted"
-                              ? "blocked domain"
-                              : "email risk"}
-                        </span>
+                          {p.is_verified
+                            ? "email verified"
+                            : "email not verified"}
+                        </CcureBadge>
+                        {/* An "email verified" badge on its own is misleading
+                            here: a throwaway inbox can receive and click the
+                            verification link perfectly well, which is exactly how
+                            the two temp-mail accounts of 18 Aug 2026 arrived
+                            looking legitimate. The domain verdict sits beside it
+                            so the two facts are read together. */}
+                        {p.is_email_flagged && (
+                          <CcureBadge
+                            variant={blocked ? "danger" : "warning"}
+                            title={riskText}
+                          >
+                            {p.email_risk?.reason === "disposable"
+                              ? "disposable domain"
+                              : p.email_risk?.reason === "denylisted"
+                                ? "blocked domain"
+                                : "email risk"}
+                          </CcureBadge>
+                        )}
+                      </div>
+                      <div className="um-pending-item__meta">
+                        {p.email}
+                        {p.full_name ? ` · ${p.full_name}` : ""}
+                        {p.created_at
+                          ? ` · requested ${new Date(p.created_at).toLocaleString()}`
+                          : ""}
+                      </div>
+                      {p.is_email_flagged && riskText && (
+                        <div className="um-pending-item__risk">{riskText}</div>
+                      )}
+                      {domainText && (
+                        <div className="um-pending-item__domain">
+                          {domainText}
+                        </div>
                       )}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        opacity: 0.75,
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      {p.email}
-                      {p.full_name ? ` · ${p.full_name}` : ""}
-                      {p.created_at
-                        ? ` · requested ${new Date(p.created_at).toLocaleString()}`
-                        : ""}
-                    </div>
-                    {p.is_email_flagged && describeEmailRisk(p.email_risk) && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          marginTop: 4,
-                          color: "#92400e",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {describeEmailRisk(p.email_risk)}
-                      </div>
-                    )}
-                    {describeEmailDomain(p.email_risk) && (
-                      <div style={{ fontSize: 12, marginTop: 3, opacity: 0.7 }}>
-                        {describeEmailDomain(p.email_risk)}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Button
-                      onClick={() => handleApprove(p)}
-                      disabled={!p.is_verified || approvingId === p.id}
-                      title={
-                        p.is_verified
-                          ? "Approve this account only. The domain stays as it is."
-                          : "Cannot approve until the email address is verified"
-                      }
-                    >
-                      {approvingId === p.id
-                        ? "Approving…"
-                        : p.is_email_flagged
-                          ? "Approve only"
-                          : "Approve"}
-                    </Button>
-                    {/* Offered only for a flagged account, because for anything
-                        else there is nothing to allow — and a button that is
-                        always present is one an admin eventually clicks by
-                        habit. */}
-                    {p.is_email_flagged && (
-                      <Button
-                        variant="secondary"
-                        onClick={() =>
-                          handleApprove(p, { allowlistDomain: true })
-                        }
+                    <div className="um-pending-item__actions">
+                      <CcureButton
+                        size="sm"
+                        onClick={() => handleApprove(p)}
                         disabled={!p.is_verified || approvingId === p.id}
-                        title={`Approve and permanently allow every address at ${(p.email || "").split("@").pop()}`}
+                        loading={approvingId === p.id}
+                        title={
+                          p.is_verified
+                            ? "Approve this account only. The domain stays as it is."
+                            : "Cannot approve until the email address is verified"
+                        }
                       >
-                        Approve + allow domain
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                        {approvingId === p.id
+                          ? "Approving…"
+                          : p.is_email_flagged
+                            ? "Approve only"
+                            : "Approve"}
+                      </CcureButton>
+                      {/* Offered only for a flagged account, because for anything
+                          else there is nothing to allow — and a button that is
+                          always present is one an admin eventually clicks by
+                          habit. */}
+                      {p.is_email_flagged && (
+                        <CcureButton
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            handleApprove(p, { allowlistDomain: true })
+                          }
+                          disabled={!p.is_verified || approvingId === p.id}
+                          title={`Approve and permanently allow every address at ${(p.email || "").split("@").pop()}`}
+                        >
+                          Approve + allow domain
+                        </CcureButton>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         )}
 
         {/* Table — server-side data, no client-side slicing */}
@@ -895,8 +823,8 @@ export default function UserManagement() {
         />
       </div>
 
-      <Modal
-        isOpen={modalOpen}
+      <CcureModal
+        open={modalOpen}
         title={
           modalMode === "create"
             ? "Create new user"
@@ -904,8 +832,9 @@ export default function UserManagement() {
               ? `Edit ${selectedUser.username}`
               : "Edit user"
         }
-        size="medium"
-        onClose={closeModal}
+        size="md"
+        onClose={busy ? undefined : closeModal}
+        closeOnOverlayClick={false}
       >
         <UserForm
           mode={modalMode}
@@ -919,106 +848,63 @@ export default function UserManagement() {
           onCancel={closeModal}
           busy={busy}
         />
-      </Modal>
+      </CcureModal>
 
-      <Modal
-        isOpen={resetModalOpen}
+      <CcureModal
+        open={resetModalOpen}
         title={`Reset Password for ${userToReset?.username || ""}`}
-        size="small"
-        onClose={() => {
-          setResetModalOpen(false);
-          setUserToReset(null);
-          setNewPassword("");
-        }}
+        subtitle={`Enter a new secure password for ${userToReset?.username || "this user"}.`}
+        size="sm"
+        onClose={busy ? undefined : closeResetModal}
+        closeOnOverlayClick={false}
       >
-        <div
-          className="card card--admin-form"
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            boxShadow: "none",
-          }}
-        >
-          <div
-            className="form-card-header"
-            style={{ padding: 0, marginBottom: 20 }}
-          >
-            <div>
-              <h3 className="card-title">Reset User Password</h3>
-              <p className="card-subtitle">
-                Enter a new secure password for{" "}
-                <strong>{userToReset?.username}</strong>.
-              </p>
-            </div>
+        <form className="um-form" onSubmit={handleResetPasswordSubmit}>
+          <CcureAlert variant="warning" live={false}>
+            Resetting the password will immediately terminate all active
+            sessions for this user.
+          </CcureAlert>
+
+          <CcurePasswordField
+            id="um-reset-password"
+            label="New Password"
+            placeholder="Enter new secure password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            disabled={busy}
+            required
+            autoComplete="new-password"
+            capsLockWarning={false}
+            hint="Must be at least 12 characters and contain uppercase, lowercase, numbers, and special characters."
+          />
+
+          <div className="um-form__actions">
+            <CcureButton
+              variant="secondary"
+              onClick={closeResetModal}
+              disabled={busy}
+            >
+              Cancel
+            </CcureButton>
+            <CcureButton
+              type="submit"
+              variant="primary"
+              loading={busy}
+              disabled={busy || !newPassword.trim()}
+            >
+              Reset Password
+            </CcureButton>
           </div>
+        </form>
+      </CcureModal>
 
-          <form
-            className="form-horizontal"
-            onSubmit={handleResetPasswordSubmit}
-          >
-            <div className="alert alert--warning" style={{ marginBottom: 16 }}>
-              ⚠️ Resetting the password will immediately terminate all active
-              sessions for this user.
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="reset-new-password">
-                New Password
-              </label>
-              <input
-                id="reset-new-password"
-                className="field-input"
-                type="password"
-                placeholder="Enter new secure password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                disabled={busy}
-                required
-              />
-              <span className="field-hint">
-                Must be at least 12 characters and contain uppercase, lowercase,
-                numbers, and special characters.
-              </span>
-            </div>
-
-            <div className="form-action-row" style={{ marginTop: 24 }}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="md"
-                onClick={() => {
-                  setResetModalOpen(false);
-                  setUserToReset(null);
-                  setNewPassword("");
-                }}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                loading={busy}
-                disabled={busy || !newPassword.trim()}
-              >
-                Reset Password
-              </Button>
-            </div>
-          </form>
-        </div>
-      </Modal>
-
-      <ConfirmDialog
+      <CcureConfirmDialog
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
         subtitle={confirmConfig?.subtitle}
         warning={confirmConfig?.warning}
         confirmLabel={confirmConfig?.confirmLabel}
-        confirmType={confirmConfig?.confirmType}
-        icon={confirmConfig?.icon}
-        iconClass={confirmConfig?.iconClass}
+        tone={confirmConfig?.confirmType === "danger" ? "danger" : "info"}
+        busy={busy}
         onConfirm={confirmConfig?.onConfirm}
         onCancel={confirmConfig?.onCancel}
       />

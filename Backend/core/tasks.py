@@ -52,6 +52,28 @@ from sqlalchemy.dialects.postgresql import insert
 log = logging.getLogger("ccure.tasks")
 
 
+def _strip_nul(value):
+    """Recursively remove NUL (U+0000) from every string in a nested structure.
+
+    Windows collectors read version-resource and registry values that are
+    UTF-16LE and occasionally carry an embedded NUL — a truncated
+    ``"Microsoft\\x00..."`` publisher string, for instance. PostgreSQL's
+    ``jsonb``/``text`` cannot store U+0000, so one such byte anywhere in a
+    credentialed report aborts the whole result commit
+    (``UntranslatableCharacter: \\u0000 cannot be converted to text``): the scan
+    is marked ``failed`` and every finding it produced is lost on the rollback.
+    Scrub at the point the report is produced, before anything derived from it
+    is persisted or merged into ``scans.options``.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {k: _strip_nul(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_strip_nul(v) for v in value]
+    return value
+
+
 def _new_orchestrator(
     db=None, scan_id: str | None = None, user_id: str | None = None
 ) -> ScanOrchestrator:
@@ -2162,6 +2184,10 @@ def _apply_credentialed_enrichment(
                 domain=material.get("domain"),
                 credential_options=credential_options,
             )
+            # See _strip_nul: one NUL in a collected UTF-16LE string aborts the
+            # whole result commit and loses every finding.
+            stored_report = _strip_nul(stored_report)
+            system_data = _strip_nul(system_data)
         except Exception as exc:  # noqa: BLE001 — recorded, scan continues
             log.warning("Credentialed enrichment failed for %s: %s", ip, exc)
             skipped.append({"target": ip, "reason": str(exc)})
@@ -4509,6 +4535,11 @@ def run_credentialed_scan_task(
                         domain=domain,
                         credential_options=credential_options,
                     )
+                # A single embedded NUL in any collected string (a UTF-16LE
+                # registry or version-resource value) makes the final
+                # `scans.options` commit unstorable and loses every finding.
+                stored_report = _strip_nul(stored_report)
+                system_data = _strip_nul(system_data)
                 reports.append(stored_report)
                 collected.append((stored_report, system_data, os_type))
             except Exception as host_exc:  # noqa: BLE001 — recorded, not swallowed

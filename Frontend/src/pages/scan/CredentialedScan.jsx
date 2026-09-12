@@ -2,10 +2,26 @@
  * src/pages/scan/CredentialedScan.jsx
  * SSH credential form → POST /scan/credentialed → CredentialedResults.
  * Credentials are NEVER stored — cleared from state immediately after use.
+ *
+ * ── Migration note (Checkpoint 3C, batch 9) ─────────────────────────────────
+ * The dispatch contract is untouched: same endpoint, same method, same nine
+ * payload keys, same target parsing, same JIT-vs-stored exclusivity, same
+ * `scans:execute` gate, same clearing of the secret after a successful send.
+ * What changed is the surface — every control is now a CCure primitive, so it
+ * carries a real label association, and the page's own layout moved into
+ * `credentialed-scan.css` where it is expressed in tokens rather than in the
+ * light-theme literals `scan.css` held.
  */
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
+import {
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcureSelect,
+} from "../../design-system";
+import "../../styles/credentialed-scan.css";
 import { parseTargets, runCredentialedScan } from "../../api/credentialedScan";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
@@ -191,36 +207,50 @@ export default function CredentialedScan() {
       error.toLowerCase().includes("refused") ||
       error.toLowerCase().includes("down"));
 
+  const formDisabled = loading || !canExecuteScans;
+
   return (
-    <AppLayout pageTitle="Credentialed Scan">
-      <div className="page-inner cred-page-inner">
-        <div className="cred-back-row">
-          <button
-            className="btn btn--ghost cred-back-btn"
+    <AppLayout>
+      <div className="page-inner cs-page">
+        <div className="cs-back-row">
+          <CcureButton
+            variant="ghost"
+            size="sm"
             onClick={() => navigate("/dashboard")}
           >
             ← Back
-          </button>
+          </CcureButton>
         </div>
 
-        {/* Form card */}
-        <div className="cred-form-card">
+        <h1 className="page-title">Credentialed Scan</h1>
+
+        {/* A control that is merely disabled says nothing about why. The
+            refusal is stated in words as well, and `live={false}` because a
+            banner present on first paint is not an event to announce. */}
+        {!canExecuteScans && (
+          <CcureAlert
+            variant="warning"
+            live={false}
+            title="You cannot start a credentialed scan"
+            className="cs-deny"
+          >
+            {denyMessage} Dispatching an authenticated scan needs the{" "}
+            <code>scans:execute</code> permission. The form below is shown
+            read-only.
+          </CcureAlert>
+        )}
+
+        <div className="cs-card">
           {/* What this scan covers. Stated before the scan runs, because a
               result with no network findings is easily read as a host with no
               network exposure — and this policy never looks for that. */}
-          <div
-            style={{
-              margin: "0 0 18px",
-              padding: "12px 16px",
-              borderRadius: 8,
-              background: "rgba(96, 165, 250, 0.07)",
-              border: "1px solid rgba(96, 165, 250, 0.25)",
-              fontSize: 13,
-              lineHeight: 1.55,
-            }}
+          <CcureAlert
+            variant="info"
+            live={false}
+            title="Scope of this scan"
+            className="cs-scope"
           >
-            <strong>Scope of this scan</strong>
-            <p style={{ margin: "6px 0 0", opacity: 0.92 }}>
+            <p className="cs-scope-p">
               An authenticated audit reads each host from the inside: installed
               packages matched against the vulnerability feed, hardening policy,
               users, and the local listening-socket table. It performs{" "}
@@ -229,20 +259,12 @@ export default function CredentialedScan() {
               default-credential findings, and cannot confirm which listening
               services are reachable from the network.
             </p>
-            <p style={{ margin: "8px 0 0", opacity: 0.92 }}>
+            <p className="cs-scope-p">
               For a complete assessment, run a{" "}
               <button
                 type="button"
                 onClick={() => navigate("/scan/new")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--accent)",
-                  textDecoration: "underline",
-                  padding: 0,
-                  font: "inherit",
-                  cursor: "pointer",
-                }}
+                className="cs-linkbtn"
               >
                 Vulnerability Audit
               </button>{" "}
@@ -250,352 +272,328 @@ export default function CredentialedScan() {
               unauthenticated checks run first, and the authenticated results
               are merged into the same report.
             </p>
-          </div>
+          </CcureAlert>
 
           {/* Target */}
-          <div className="cred-section">
-            <h3 className="cred-section-title">Target</h3>
-            <div className="cred-row">
-              <div className="cred-field cred-field--wide">
-                <label className="field-label">Targets</label>
-                <input
-                  className="field-input"
-                  type="text"
-                  placeholder="10.180.5.190, server.local, 10.180.5.10-20, 10.180.5.0/28"
-                  value={ip}
-                  onChange={(e) => setIp(e.target.value)}
-                  disabled={loading || !canExecuteScans}
-                  autoComplete="off"
-                />
-                <p
-                  style={{
-                    fontSize: "0.74rem",
-                    color: "var(--text-muted)",
-                    margin: "6px 0 0",
-                  }}
-                >
-                  One or more IPs, hostnames, ranges, or CIDRs — separated by
-                  commas or spaces. The same credential is used for every host.
-                  {targetList.length > 1 && (
-                    <strong style={{ color: "var(--accent)" }}>
-                      {" "}
-                      {targetList.length} target expressions entered.
-                    </strong>
-                  )}
-                </p>
-              </div>
-              <div className="cred-field cred-field--narrow">
-                <label className="field-label">SSH Port</label>
-                <input
-                  className="field-input"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  disabled={loading || !canExecuteScans}
-                />
-              </div>
-              <div className="cred-field cred-field--narrow">
-                <label className="field-label">Target OS</label>
-                <select
-                  className="field-input"
-                  value={osType}
-                  onChange={(e) => setOsType(e.target.value)}
-                  disabled={loading || !canExecuteScans}
-                >
-                  <option value="auto">Auto-detect</option>
-                  <option value="linux">Linux</option>
-                  <option value="windows">Windows ⚠ Beta</option>
-                </select>
-              </div>
+          <section className="cs-section" aria-labelledby="cs-h-target">
+            <h2 id="cs-h-target" className="cs-section-title">
+              Target
+            </h2>
+            <div className="cs-row">
+              <CcureInput
+                label="Targets"
+                fieldClassName="cs-field cs-field--wide"
+                placeholder="10.180.5.190, server.local, 10.180.5.10-20, 10.180.5.0/28"
+                value={ip}
+                onChange={(e) => setIp(e.target.value)}
+                disabled={formDisabled}
+                autoComplete="off"
+                /* The hint is wired through `aria-describedby`, so the target
+                   count is announced with the field rather than sitting beside
+                   it unread. */
+                hint={
+                  <>
+                    One or more IPs, hostnames, ranges, or CIDRs — separated by
+                    commas or spaces. The same credential is used for every
+                    host.
+                    {targetList.length > 1 && (
+                      <strong className="cs-accent">
+                        {" "}
+                        {targetList.length} target expressions entered.
+                      </strong>
+                    )}
+                  </>
+                }
+              />
+              <CcureInput
+                label="SSH port"
+                type="number"
+                min={1}
+                max={65535}
+                fieldClassName="cs-field cs-field--narrow"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                disabled={formDisabled}
+              />
+              <CcureSelect
+                label="Target OS"
+                fieldClassName="cs-field cs-field--narrow"
+                value={osType}
+                onChange={(e) => setOsType(e.target.value)}
+                disabled={formDisabled}
+              >
+                <option value="auto">Auto-detect</option>
+                <option value="linux">Linux</option>
+                <option value="windows">Windows ⚠ Beta</option>
+              </CcureSelect>
             </div>
 
-            {/* Windows Beta Warning */}
+            {/* Windows Beta Warning. This one IS an event — it appears in
+                response to the operator changing the OS — so it announces. */}
             {osType === "windows" && (
-              <div
-                className="alert alert--warn"
-                style={{ marginTop: 10, fontSize: 13, lineHeight: 1.55 }}
+              <CcureAlert
+                variant="warning"
+                title="Windows support — beta"
+                className="cs-inline-alert"
               >
-                <strong>⚠ Windows Support — Beta</strong>
-                <br />
                 Windows credentialed scanning requires{" "}
                 <strong>OpenSSH Server</strong> to be enabled on the target and
                 PowerShell set as the default shell. WMI/registry-based commands
                 work over SSH, but some queries (e.g. large package lists, event
-                log) may time out on heavily patched systems.
-                <br />
+                log) may time out on heavily patched systems.{" "}
                 <strong>
                   Test on your environment before deploying to production.
                 </strong>
-              </div>
+              </CcureAlert>
             )}
-          </div>
+          </section>
 
           {/* Authentication */}
-          <div className="cred-section">
-            <h3 className="cred-section-title">Authentication</h3>
+          <section className="cs-section" aria-labelledby="cs-h-auth">
+            <h2 id="cs-h-auth" className="cs-section-title">
+              Authentication
+            </h2>
 
-            <div style={{ display: "flex", gap: "16px", marginBottom: "16px" }}>
-              <label
-                style={{
-                  fontSize: "0.84rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                <input
-                  type="radio"
-                  checked={credentialSource === "jit"}
-                  onChange={() => setCredentialSource("jit")}
-                  disabled={loading || !canExecuteScans}
-                />
-                One-time JIT Credentials
-              </label>
-              <label
-                style={{
-                  fontSize: "0.84rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                <input
-                  type="radio"
-                  checked={credentialSource === "stored"}
-                  onChange={() => setCredentialSource("stored")}
-                  disabled={loading || !canExecuteScans}
-                />
-                Use Stored Credential
-              </label>
-            </div>
+            {/* A fieldset, so the two radios are announced as one choice with
+                a name. They also share a `name`, which is what makes the arrow
+                keys move between them — without it each is an island. */}
+            <fieldset className="cs-fieldset">
+              <legend className="cs-legend">Credential source</legend>
+              <div className="cs-source-row">
+                <label className="cs-radio">
+                  <input
+                    type="radio"
+                    name="cs-credential-source"
+                    value="jit"
+                    checked={credentialSource === "jit"}
+                    onChange={() => setCredentialSource("jit")}
+                    disabled={formDisabled}
+                  />
+                  One-time JIT Credentials
+                </label>
+                <label className="cs-radio">
+                  <input
+                    type="radio"
+                    name="cs-credential-source"
+                    value="stored"
+                    checked={credentialSource === "stored"}
+                    onChange={() => setCredentialSource("stored")}
+                    disabled={formDisabled}
+                  />
+                  Use Stored Credential
+                </label>
+              </div>
+            </fieldset>
 
             {credentialSource === "stored" ? (
-              <div className="cred-row">
-                <div className="cred-field cred-field--wide">
-                  <label className="field-label">Select Saved Credential</label>
-                  <select
-                    className="field-input"
-                    value={selectedCredId}
-                    onChange={(e) => setSelectedCredId(e.target.value)}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    <option value="">-- Choose Credential --</option>
-                    {credentialsList.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.username})
-                      </option>
-                    ))}
-                  </select>
-                  {credentialsList.length === 0 && (
-                    <p
-                      style={{
-                        fontSize: "0.78rem",
-                        color: "var(--text-muted)",
-                        marginTop: "6px",
-                        marginBottom: 0,
-                      }}
-                    >
-                      No saved credentials registered. Manage your credentials
-                      under the{" "}
-                      <button
-                        type="button"
-                        className="btn-link"
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "var(--accent)",
-                          textDecoration: "underline",
-                          padding: 0,
-                          font: "inherit",
-                          cursor: "pointer",
-                        }}
-                        onClick={() => navigate("/compliance")}
-                      >
-                        Credentials Manager
-                      </button>{" "}
-                      tab.
-                    </p>
-                  )}
-                </div>
+              <div className="cs-row">
+                <CcureSelect
+                  label="Select saved credential"
+                  fieldClassName="cs-field cs-field--wide"
+                  value={selectedCredId}
+                  onChange={(e) => setSelectedCredId(e.target.value)}
+                  disabled={formDisabled}
+                  hint={
+                    credentialsList.length === 0 ? (
+                      <>
+                        No saved credentials registered. Manage your credentials
+                        under the{" "}
+                        <button
+                          type="button"
+                          className="cs-linkbtn"
+                          onClick={() => navigate("/compliance")}
+                        >
+                          Credentials Manager
+                        </button>{" "}
+                        tab.
+                      </>
+                    ) : undefined
+                  }
+                >
+                  <option value="">-- Choose Credential --</option>
+                  {credentialsList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.username})
+                    </option>
+                  ))}
+                </CcureSelect>
               </div>
             ) : (
               <>
-                <div className="cred-auth-toggle">
+                {/* A segmented control. `aria-pressed` is what tells a reader
+                    which of the two is in force; the active styling alone is
+                    colour-only state. */}
+                <div
+                  className="cs-auth-toggle"
+                  role="group"
+                  aria-label="Authentication method"
+                >
                   {["password", "key"].map((method) => (
-                    <button
+                    <CcureButton
                       key={method}
-                      className={`cred-auth-btn ${authMethod === method ? "cred-auth-btn--active" : ""}`}
+                      variant="ghost"
+                      size="sm"
+                      className={`cs-auth-btn ${authMethod === method ? "cs-auth-btn--active" : ""}`}
+                      aria-pressed={authMethod === method}
                       onClick={() => setAuthMethod(method)}
-                      disabled={loading || !canExecuteScans}
+                      disabled={formDisabled}
                     >
                       {method === "password" ? "🔑 Password" : "📄 SSH Key"}
-                    </button>
+                    </CcureButton>
                   ))}
                 </div>
 
-                <div className="cred-row">
-                  <div className="cred-field">
-                    <label className="field-label">Username</label>
-                    <input
-                      className="field-input"
-                      type="text"
-                      placeholder="root"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      disabled={loading || !canExecuteScans}
-                      autoComplete="off"
-                    />
-                  </div>
+                <div className="cs-row">
+                  <CcureInput
+                    label="Username"
+                    fieldClassName="cs-field"
+                    placeholder="root"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={formDisabled}
+                    autoComplete="off"
+                  />
 
                   {authMethod === "password" ? (
-                    <div className="cred-field cred-field--pass">
-                      <label className="field-label">Password</label>
-                      <div className="pass-wrap">
-                        <input
-                          className="field-input"
-                          type={showPass ? "text" : "password"}
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={loading || !canExecuteScans}
-                          autoComplete="current-password"
-                        />
+                    <CcureInput
+                      label="Password"
+                      type={showPass ? "text" : "password"}
+                      fieldClassName="cs-field cs-field--pass"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={formDisabled}
+                      autoComplete="current-password"
+                      /* Deliberately NOT CcurePasswordField: that pattern adds
+                         a strength meter, which grades a credential the
+                         operator does not own and cannot change. A reveal
+                         toggle is legitimate here — the secret is being typed
+                         now, not read back from the server — so it is an
+                         adornment on an ordinary field, which keeps the
+                         input's own id, label and describedby wiring. */
+                      adornment={
                         <button
-                          className="pass-toggle"
+                          type="button"
+                          className="cs-pass-toggle"
                           onClick={() => setShowPass((p) => !p)}
-                          tabIndex={-1}
+                          /* Was tabIndex={-1}, which put the only control that
+                             reveals a mistyped password out of keyboard reach.
+                             `aria-pressed` states which way it is set; the
+                             name changes with it so the announcement says what
+                             activating it will do. */
+                          aria-pressed={showPass}
+                          aria-label={
+                            showPass ? "Hide password" : "Show password"
+                          }
+                          disabled={formDisabled}
                         >
-                          {showPass ? "🙈" : "👁"}
+                          <span aria-hidden="true">
+                            {showPass ? "🙈" : "👁"}
+                          </span>
                         </button>
-                      </div>
-                    </div>
+                      }
+                    />
                   ) : (
-                    <div className="cred-field cred-field--wide">
-                      <label className="field-label">
-                        Private Key Path (server-side)
-                      </label>
-                      <input
-                        className="field-input"
-                        type="text"
-                        placeholder="/home/user/.ssh/id_rsa"
-                        value={keyPath}
-                        onChange={(e) => setKeyPath(e.target.value)}
-                        disabled={loading || !canExecuteScans}
-                        autoComplete="off"
-                      />
-                    </div>
+                    <CcureInput
+                      label="Private key path (server-side)"
+                      fieldClassName="cs-field cs-field--wide"
+                      placeholder="/home/user/.ssh/id_rsa"
+                      value={keyPath}
+                      onChange={(e) => setKeyPath(e.target.value)}
+                      disabled={formDisabled}
+                      autoComplete="off"
+                    />
                   )}
                 </div>
               </>
             )}
 
-            <p className="cred-privacy-note">
+            <p className="cs-privacy-note">
               🔒 Credentials are used for this scan only and immediately
               discarded — never logged, stored, or transmitted elsewhere.
             </p>
-          </div>
+          </section>
 
           {/* Data categories */}
-          <div className="cred-section">
-            <div className="cred-section-header">
-              <h3 className="cred-section-title">Collect</h3>
-              <button
-                className="btn btn--ghost"
-                style={{ fontSize: 12, padding: "4px 12px" }}
+          <section className="cs-section" aria-labelledby="cs-h-collect">
+            <div className="cs-section-header">
+              <h2 id="cs-h-collect" className="cs-section-title">
+                Collect
+              </h2>
+              <CcureButton
+                variant="ghost"
+                size="sm"
                 onClick={toggleAll}
-                disabled={loading || !canExecuteScans}
+                disabled={formDisabled}
               >
                 {allSelected ? "Deselect All" : "Select All"}
-              </button>
+              </CcureButton>
             </div>
-            <div className="cred-sections-grid">
+            <div className="cs-chip-grid">
               {SECTIONS.map((s) => (
                 <label
                   key={s.key}
-                  className={`cred-section-chip ${sections.has(s.key) ? "cred-section-chip--on" : ""}`}
+                  className={`cs-chip ${sections.has(s.key) ? "cs-chip--on" : ""}`}
                 >
+                  {/* Clipped, not `display: none`. See credentialed-scan.css —
+                      hiding it outright took the control out of the tab order,
+                      so a keyboard user could not choose what is collected. */}
                   <input
                     type="checkbox"
-                    style={{ display: "none" }}
+                    className="cs-visually-hidden"
                     checked={sections.has(s.key)}
                     onChange={() => toggleSection(s.key)}
-                    disabled={loading || !canExecuteScans}
+                    disabled={formDisabled}
                   />
-                  <span className="csc-icon">{s.icon}</span>
-                  <span className="csc-label">{s.label}</span>
-                  <span className="csc-desc">{s.desc}</span>
+                  <span className="cs-chip-icon" aria-hidden="true">
+                    {s.icon}
+                  </span>
+                  <span className="cs-chip-label">{s.label}</span>
+                  <span className="cs-chip-desc">{s.desc}</span>
                 </label>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Status / Error */}
           {loading && (
-            <p className="muted" style={{ fontSize: 13, marginBottom: 4 }}>
-              {loadPhase === "detecting" ? (
-                <>⏳ Connecting and detecting OS&hellip; (may take ~5s)</>
-              ) : (
-                <>
-                  ⏳ Collecting system data via SSH&hellip; this takes
-                  15&ndash;60s.
-                </>
-              )}
-            </p>
+            <CcureAlert variant="info" className="cs-inline-alert">
+              {loadPhase === "detecting"
+                ? "Connecting and detecting OS… (may take ~5s)"
+                : "Collecting system data via SSH… this takes 15–60s."}
+            </CcureAlert>
           )}
 
           {error && isUnreachableError && (
-            <div
-              style={{
-                margin: "16px 0",
-                padding: "16px 20px",
-                borderRadius: 8,
-                background: "rgba(245, 158, 11, 0.08)",
-                border: "1px solid rgba(245, 158, 11, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                gap: 16,
-                color: "#92400e",
-              }}
+            <CcureAlert
+              variant="warning"
+              title="Host is unreachable or down"
+              className="cs-inline-alert"
             >
-              <span style={{ fontSize: 24 }}>⚠️</span>
-              <div>
-                <strong style={{ display: "block", fontSize: 16 }}>
-                  Host is unreachable or down
-                </strong>
-                <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                  The scanner could not establish an SSH connection to{" "}
-                  <code>{ip}</code>. Verify the IP address, SSH service status,
-                  and firewall rules.
-                </p>
-              </div>
-            </div>
+              The scanner could not establish an SSH connection to{" "}
+              <code>{ip}</code>. Verify the IP address, SSH service status, and
+              firewall rules.
+            </CcureAlert>
           )}
 
           {error && !isUnreachableError && (
-            <div className="alert alert--error">⚠ {error}</div>
+            <CcureAlert variant="danger" className="cs-inline-alert">
+              {error}
+            </CcureAlert>
           )}
 
           {/* Submit */}
-          <div className="cred-submit-row">
-            <button
-              className="btn btn--danger cred-submit-btn"
+          <div className="cs-submit-row">
+            <CcureButton
+              variant="danger"
+              size="lg"
+              className="cs-submit-btn"
               onClick={handleSubmit}
-              disabled={loading || !canExecuteScans}
+              loading={loading}
+              disabled={!canExecuteScans}
             >
-              {loading ? (
-                <>
-                  <span className="btn-spinner" /> Scanning…
-                </>
-              ) : (
-                "🔐 Start Credentialed Scan"
-              )}
-            </button>
+              {loading ? "Scanning…" : "🔐 Start Credentialed Scan"}
+            </CcureButton>
           </div>
         </div>
       </div>

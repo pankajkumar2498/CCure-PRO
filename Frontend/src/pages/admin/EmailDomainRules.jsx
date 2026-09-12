@@ -11,14 +11,29 @@
  * guard fails open when its blocklist is empty, which is the right behaviour
  * and completely silent: registration keeps working and nothing is screened.
  * The one place that can be noticed is here.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C migration ──────────────────────
+ * Every request, payload, debounce, page calculation and message below is what
+ * it was before. The migration changed presentation only. Specifically
+ * preserved: the 400 ms search debounce; `skip: page * PAGE_SIZE` with
+ * PAGE_SIZE 25; `reason: undefined` rather than an empty string on create; the
+ * verdict flip sending the *opposite* value; the two opposite removal warnings
+ * (removing an ALLOW can start blocking a domain, removing a DENY does not
+ * necessarily unblock it); and the post-removal message reporting what the
+ * domain does *now*.
+ *
+ * ── What the migration changed, and why it mattered here ────────────────────
+ * The verdict pill and the corpus banner were both hardcoded light-theme
+ * palettes — `#dcfce7`/`#166534` and `#991b1b` on `rgba(220,38,38,0.08)`. In
+ * dark theme the banner's dark-red text composited over a dark red-tinted
+ * surface, measured at 2.06:1. That banner is the sentence "the blocklist is
+ * empty — nothing is being screened": the one visible sign of a guard that has
+ * failed open. It is a CcureAlert now, which is theme-aware and, being
+ * `role="alert"`, is announced rather than only coloured.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import AppLayout from "../../components/layout/AppLayout";
-import Button from "../../components/common/Button";
-import ConfirmDialog from "../../components/common/ConfirmDialog";
-import EmptyState from "../../components/common/EmptyState";
-import Loader from "../../components/common/Loader";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import {
   createEmailDomainRule,
@@ -29,13 +44,21 @@ import {
   updateEmailDomainRule,
 } from "../../api/emailDomains";
 import { useDebounce } from "../../hooks/useDebounce";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcurePagination,
+  CcureSelect,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/email-domain-rules.css";
 
 const PAGE_SIZE = 25;
-
-const VERDICT_STYLE = {
-  allow: { bg: "#dcfce7", fg: "#166534", label: "ALLOW" },
-  deny: { bg: "#fee2e2", fg: "#991b1b", label: "DENY" },
-};
 
 const SOURCE_HELP = {
   seed: "Shipped with the application — the never-block floor",
@@ -43,23 +66,20 @@ const SOURCE_HELP = {
   approval: "Created by approving a flagged account",
 };
 
-function VerdictPill({ verdict }) {
-  const s = VERDICT_STYLE[verdict] || VERDICT_STYLE.deny;
+/* ALLOW is a success, DENY is a refusal. Both were hardcoded pastel pairs that
+   ignored `data-theme`; the badge variants carry the same meaning and follow
+   the theme. An unrecognised verdict is neutral rather than being reported as
+   a DENY — the old fallback (`|| VERDICT_STYLE.deny`) labelled any unknown
+   value "DENY", which on this page is a claim that a domain is blocked. */
+function VerdictBadge({ verdict }) {
+  const known = verdict === "allow" || verdict === "deny";
   return (
-    <span
-      style={{
-        display: "inline-block",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        padding: "2px 8px",
-        borderRadius: 4,
-        background: s.bg,
-        color: s.fg,
-      }}
+    <CcureBadge
+      variant={verdict === "allow" ? "success" : known ? "danger" : "neutral"}
+      title={known ? undefined : `Unrecognised verdict: ${verdict}`}
     >
-      {s.label}
-    </span>
+      {known ? verdict.toUpperCase() : "UNKNOWN"}
+    </CcureBadge>
   );
 }
 
@@ -75,6 +95,8 @@ function errorText(err, fallback) {
 
 export default function EmailDomainRules() {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const addFormId = useId();
+  const probeFormId = useId();
 
   const [rules, setRules] = useState([]);
   const [counts, setCounts] = useState({ allow: 0, deny: 0 });
@@ -232,22 +254,79 @@ export default function EmailDomainRules() {
     [probe, pushToast],
   );
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  /* Declared columns, so CcureTable owns the caption, `scope="col"` on every
+     header and `scope="row"` on the domain — which is the row's identity and
+     the thing a reader needs announced beside every verdict. */
+  const columns = [
+    {
+      key: "domain",
+      header: "Domain",
+      isRowHeader: true,
+      mono: true,
+      cell: (rule) => rule.domain,
+    },
+    {
+      key: "verdict",
+      header: "Verdict",
+      cell: (rule) => <VerdictBadge verdict={rule.verdict} />,
+    },
+    {
+      key: "source",
+      header: "Source",
+      cell: (rule) => (
+        <span className="edr-source" title={SOURCE_HELP[rule.source] || ""}>
+          {rule.source}
+        </span>
+      ),
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      cell: (rule) => <span className="edr-reason">{rule.reason || "—"}</span>,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      nowrap: true,
+      cell: (rule) => (
+        <div className="edr-actions">
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            onClick={() => handleFlip(rule)}
+            loading={busyId === rule.id}
+            /* One "Set deny" per row is N identical entries in a reader's
+               control list. The domain is the only thing that tells them
+               apart, and on this page picking the wrong row changes who can
+               register on the whole deployment. */
+            aria-label={`Change ${rule.domain} to ${
+              rule.verdict === "allow" ? "DENY" : "ALLOW"
+            }`}
+          >
+            {rule.verdict === "allow" ? "Set deny" : "Set allow"}
+          </CcureButton>
+          <CcureButton
+            variant="danger"
+            size="sm"
+            onClick={() => setConfirm(rule)}
+            loading={busyId === rule.id}
+            aria-label={`Remove the rule for ${rule.domain}`}
+          >
+            Remove
+          </CcureButton>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <AppLayout>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
 
-      <div style={{ padding: "0 4px 40px" }}>
-        <h1 style={{ margin: "0 0 6px", fontSize: 24 }}>Email Domain Rules</h1>
-        <p
-          style={{
-            margin: "0 0 20px",
-            fontSize: 14,
-            opacity: 0.75,
-            maxWidth: 760,
-          }}
-        >
+      <div className="page-inner edr-page">
+        <h1 className="page-title">Email Domain Rules</h1>
+        <p className="page-subtitle edr-lede">
           Decides which email domains may create an account.{" "}
           <strong>ALLOW always wins</strong> — it overrides both a DENY rule and
           the disposable-domain blocklist, and it is how you unblock a real
@@ -257,164 +336,117 @@ export default function EmailDomainRules() {
 
         {/* Corpus health. First, because an empty blocklist is silent. */}
         {stats && (
-          <div
-            style={{
-              display: "flex",
-              gap: 20,
-              flexWrap: "wrap",
-              alignItems: "center",
-              border: `1px solid ${stats.corpus_healthy ? "#d1d5db" : "#dc2626"}`,
-              background: stats.corpus_healthy
-                ? "rgba(0,0,0,0.03)"
-                : "rgba(220,38,38,0.08)",
-              borderRadius: 10,
-              padding: "12px 16px",
-              marginBottom: 20,
-              fontSize: 13,
-            }}
+          <CcureAlert
+            variant={stats.corpus_healthy ? "info" : "danger"}
+            /* A healthy corpus is standing page furniture, not an event, so it
+               is not announced. An empty one is the failure this banner exists
+               for, and role="alert" is what makes it reach a reader who never
+               sees the colour. */
+            live={!stats.corpus_healthy}
+            className="edr-corpus"
           >
-            <span>
-              Mode <strong>{stats.mode}</strong>
-            </span>
-            <span>
-              Blocklist{" "}
-              <strong>{(stats.corpus_size || 0).toLocaleString()}</strong>{" "}
-              domains
-            </span>
-            <span>
-              Allow <strong>{stats.allow_rules}</strong> · Deny{" "}
-              <strong>{stats.deny_rules}</strong>
-            </span>
-            <span>
-              Flagged accounts <strong>{stats.flagged_users}</strong>
-            </span>
-            {!stats.corpus_healthy && (
-              <span style={{ color: "#991b1b", fontWeight: 600 }}>
-                ⚠ The blocklist is empty — nothing is being screened. Run the
-                disposable-domain sync.
+            <span className="edr-corpus-facts">
+              <span>
+                Mode <strong>{stats.mode}</strong>
               </span>
-            )}
-          </div>
+              <span>
+                Blocklist{" "}
+                <strong>{(stats.corpus_size || 0).toLocaleString()}</strong>{" "}
+                domains
+              </span>
+              <span>
+                Allow <strong>{stats.allow_rules}</strong> · Deny{" "}
+                <strong>{stats.deny_rules}</strong>
+              </span>
+              <span>
+                Flagged accounts <strong>{stats.flagged_users}</strong>
+              </span>
+              {!stats.corpus_healthy && (
+                <strong className="edr-corpus-warning">
+                  ⚠ The blocklist is empty — nothing is being screened. Run the
+                  disposable-domain sync.
+                </strong>
+              )}
+            </span>
+          </CcureAlert>
         )}
 
         {/* Add a rule */}
         <form
           onSubmit={handleCreate}
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: 10,
-            padding: "14px 16px",
-            marginBottom: 18,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "flex-end",
-          }}
+          className="edr-panel edr-add"
+          aria-labelledby={addFormId}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label
-              htmlFor="new-domain"
-              style={{ fontSize: 12, fontWeight: 600 }}
-            >
-              Domain
-            </label>
-            <input
-              id="new-domain"
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              placeholder="acme.com"
-              style={{ padding: "7px 10px", minWidth: 220 }}
-              required
-            />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label
-              htmlFor="new-verdict"
-              style={{ fontSize: 12, fontWeight: 600 }}
-            >
-              Verdict
-            </label>
-            <select
-              id="new-verdict"
-              value={newVerdict}
-              onChange={(e) => setNewVerdict(e.target.value)}
-              style={{ padding: "7px 10px" }}
-            >
-              <option value="deny">Deny — block this domain</option>
-              <option value="allow">Allow — always accept this domain</option>
-            </select>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              flex: 1,
-              minWidth: 220,
-            }}
+          <h2 className="cc-sr-only" id={addFormId}>
+            Add a domain rule
+          </h2>
+          <CcureInput
+            id="new-domain"
+            label="Domain"
+            value={newDomain}
+            onChange={(e) => setNewDomain(e.target.value)}
+            placeholder="acme.com"
+            required
+            fieldClassName="edr-field edr-field--domain"
+          />
+          <CcureSelect
+            id="new-verdict"
+            label="Verdict"
+            value={newVerdict}
+            onChange={(e) => setNewVerdict(e.target.value)}
+            fieldClassName="edr-field"
           >
-            <label
-              htmlFor="new-reason"
-              style={{ fontSize: 12, fontWeight: 600 }}
-            >
-              Reason{" "}
-              <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span>
-            </label>
-            <input
-              id="new-reason"
-              value={newReason}
-              onChange={(e) => setNewReason(e.target.value)}
-              placeholder="Why this rule exists — the next admin will thank you"
-              style={{ padding: "7px 10px", width: "100%" }}
-            />
-          </div>
-          <Button type="submit" disabled={saving || !newDomain.trim()}>
-            {saving ? "Adding…" : "Add rule"}
-          </Button>
+            <option value="deny">Deny — block this domain</option>
+            <option value="allow">Allow — always accept this domain</option>
+          </CcureSelect>
+          <CcureInput
+            id="new-reason"
+            label="Reason (optional)"
+            value={newReason}
+            onChange={(e) => setNewReason(e.target.value)}
+            placeholder="Why this rule exists — the next admin will thank you"
+            fieldClassName="edr-field edr-field--grow"
+          />
+          <CcureButton
+            type="submit"
+            loading={saving}
+            disabled={!newDomain.trim()}
+          >
+            Add rule
+          </CcureButton>
         </form>
 
         {/* Test an address */}
         <form
           onSubmit={handleProbe}
-          style={{
-            border: "1px solid #d1d5db",
-            borderRadius: 10,
-            padding: "14px 16px",
-            marginBottom: 22,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
+          className="edr-panel edr-probe"
+          aria-labelledby={probeFormId}
         >
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Test an address</span>
-          <input
+          <h2 className="edr-probe-title" id={probeFormId}>
+            Test an address
+          </h2>
+          <CcureInput
             value={probe}
             onChange={(e) => setProbe(e.target.value)}
             placeholder="someone@company.com"
             aria-label="Address or domain to test"
-            style={{ padding: "7px 10px", minWidth: 260, flex: 1 }}
+            fieldClassName="edr-field edr-field--grow"
           />
-          <Button
-            type="submit"
-            variant="secondary"
-            disabled={probing || !probe.trim()}
-          >
-            {probing ? "Checking…" : "Check"}
-          </Button>
+          <CcureButton type="submit" variant="secondary" loading={probing}>
+            Check
+          </CcureButton>
           {probeResult && (
-            <div style={{ fontSize: 13, width: "100%", marginTop: 4 }}>
+            /* The result replaces itself in place without focus moving, so it
+               is announced. Polite: it answers a question the user just asked,
+               it does not interrupt. */
+            <div className="edr-probe-result" role="status" aria-live="polite">
               <strong>{probeResult.domain}</strong>{" "}
               {probeResult.would_block_registration ? (
-                <span style={{ color: "#991b1b", fontWeight: 600 }}>
-                  would be BLOCKED
-                </span>
+                <span className="edr-verdict-blocked">would be BLOCKED</span>
               ) : (
-                <span style={{ color: "#166534", fontWeight: 600 }}>
-                  would be accepted
-                </span>
+                <span className="edr-verdict-accepted">would be accepted</span>
               )}
-              <span style={{ opacity: 0.75 }}>
+              <span className="edr-probe-detail">
                 {" "}
                 — {probeResult.reason}
                 {probeResult.matched_domain
@@ -425,7 +457,7 @@ export default function EmailDomainRules() {
                   : ""}
               </span>
               {probeResult.blocked && !probeResult.would_block_registration && (
-                <div style={{ marginTop: 3, opacity: 0.75 }}>
+                <div className="edr-probe-detail edr-probe-note">
                   The guard is in <strong>{stats?.mode}</strong> mode, so this
                   is recorded but not enforced.
                 </div>
@@ -435,40 +467,36 @@ export default function EmailDomainRules() {
         </form>
 
         {/* Filters */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <input
+        <div className="edr-filters">
+          <CcureInput
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search domain or reason…"
             aria-label="Search rules"
-            style={{ padding: "7px 10px", minWidth: 240 }}
+            fieldClassName="edr-field edr-field--search"
           />
-          <select
+          <CcureSelect
             value={verdictFilter}
             onChange={(e) => setVerdictFilter(e.target.value)}
             aria-label="Filter by verdict"
-            style={{ padding: "7px 10px" }}
+            fieldClassName="edr-field"
           >
             <option value="">
               All verdicts ({counts.allow + counts.deny})
             </option>
             <option value="allow">Allow ({counts.allow})</option>
             <option value="deny">Deny ({counts.deny})</option>
-          </select>
+          </CcureSelect>
         </div>
 
         {/* Table */}
         {loading ? (
-          <Loader />
+          <div className="edr-loading">
+            <CcureLoader label="Loading domain rules…" />
+          </div>
         ) : rules.length === 0 ? (
-          <EmptyState
+          <CcureEmptyState
             title="No rules match"
             description={
               search || verdictFilter
@@ -477,128 +505,31 @@ export default function EmailDomainRules() {
             }
           />
         ) : (
-          <div
-            style={{
-              overflowX: "auto",
-              border: "1px solid #d1d5db",
-              borderRadius: 10,
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr style={{ background: "rgba(0,0,0,0.04)" }}>
-                  <th style={{ textAlign: "left", padding: "10px 12px" }}>
-                    Domain
-                  </th>
-                  <th style={{ textAlign: "left", padding: "10px 12px" }}>
-                    Verdict
-                  </th>
-                  <th style={{ textAlign: "left", padding: "10px 12px" }}>
-                    Source
-                  </th>
-                  <th style={{ textAlign: "left", padding: "10px 12px" }}>
-                    Reason
-                  </th>
-                  <th style={{ textAlign: "right", padding: "10px 12px" }}>
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr key={rule.id} style={{ borderTop: "1px solid #e5e7eb" }}>
-                    <td
-                      style={{ padding: "10px 12px", fontFamily: "monospace" }}
-                    >
-                      {rule.domain}
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <VerdictPill verdict={rule.verdict} />
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <span
-                        title={SOURCE_HELP[rule.source] || ""}
-                        style={{ opacity: 0.8 }}
-                      >
-                        {rule.source}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "10px 12px",
-                        opacity: 0.8,
-                        maxWidth: 340,
-                      }}
-                    >
-                      {rule.reason || "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "10px 12px",
-                        textAlign: "right",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleFlip(rule)}
-                        disabled={busyId === rule.id}
-                        title={`Change to ${rule.verdict === "allow" ? "DENY" : "ALLOW"}`}
-                      >
-                        {rule.verdict === "allow" ? "Set deny" : "Set allow"}
-                      </Button>{" "}
-                      <Button
-                        variant="danger"
-                        onClick={() => setConfirm(rule)}
-                        disabled={busyId === rule.id}
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {pageCount > 1 && (
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginTop: 14,
-            }}
-          >
-            <Button
-              variant="ghost"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
-              Previous
-            </Button>
-            <span style={{ fontSize: 13, opacity: 0.75 }}>
-              Page {page + 1} of {pageCount} · {total} rules
-            </span>
-            <Button
-              variant="ghost"
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-              disabled={page >= pageCount - 1}
-            >
-              Next
-            </Button>
-          </div>
+          <>
+            <CcureTable
+              caption={`Email domain rules — ${total} rule${total !== 1 ? "s" : ""}`}
+              columns={columns}
+              rows={rules}
+              rowKey={(rule) => rule.id}
+              density="comfortable"
+            />
+            {/* CcurePagination is 1-based, matching every other call site and
+                every backend query parameter; this page's own state is 0-based
+                because `skip` is computed from it, so the boundary is
+                converted here rather than changing either convention. */}
+            <CcurePagination
+              page={page + 1}
+              pageSize={PAGE_SIZE}
+              total={total}
+              onPageChange={(next) => setPage(next - 1)}
+              itemNoun="rules"
+              disabled={busyId !== null}
+            />
+          </>
         )}
       </div>
 
-      <ConfirmDialog
+      <CcureConfirmDialog
         open={Boolean(confirm)}
         title={
           confirm ? `Remove the rule for ${confirm.domain}?` : "Remove rule?"
@@ -619,6 +550,7 @@ export default function EmailDomainRules() {
             : "Removing this rule lets the domain register again, unless it is on the blocklist."
         }
         confirmLabel="Remove rule"
+        tone="danger"
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
       />

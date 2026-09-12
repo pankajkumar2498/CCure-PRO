@@ -1,0 +1,77 @@
+/* ============================================================================
+   Auth group — page-level spacing shared by Login, Register, ResetPassword and
+   VerifyEmail.
+   ----------------------------------------------------------------------------
+   Layout only. There is deliberately not a single colour in this file: the
+   auth card carries `cc-theme-dark`, so every migrated control resolves its own
+   dark values from the CCure token layer. A colour here would be a second,
+   unmeasured source of truth for the same surface — which is exactly the
+   condition that produced the three sub-AA values this batch removed
+   (`#b45309` at 3.02:1, `#64748b` at 3.85:1 on the card and 3.31:1 in the
+   input).
+
+   The shared auth *shell* — `.auth-split-wrapper`, `.auth-form-panel`,
+   `.auth-card`, `.auth-title`, `.auth-sub`, `.auth-switch`, `.auth-link`,
+   `.auth-brand*`, `.auth-hero*`, `.auth-trust-footer` — stays in
+   styles/forms.css. It is the frame all five auth pages share, ForgotPassword
+   included, and rehousing it was not this batch's business.
+   ============================================================================ */
+
+/* Vertical rhythm inside a form. Replaces `.auth-form`'s own 20px gap for the
+   migrated pages; `.auth-form` is kept on the element so nothing that reads it
+   changes, and this rule simply restates the gap in token terms. */
+.auth-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+}
+
+/* The shared `.auth-error` / `.auth-success` / `.auth-info` boxes carried their
+   own margin-bottom. CcureAlert does not, because margin is layout and belongs
+   to the page rather than the component. */
+.auth-message {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+/* A single secondary action centred under a field — the MFA "send code to
+   email" control. Previously an inline-styled `<button class="auth-link">`. */
+.auth-inline-action {
+  display: flex;
+  justify-content: center;
+}
+
+/* Register's terms row sits tighter to the field above it than the form's
+   default rhythm allows, because the checkbox is part of the last field group
+   rather than a step of its own. */
+.auth-consent-row {
+  margin-top: calc(-1 * var(--ccure-space-sm));
+}
+
+/* Wraps a policy-modal body so long text scrolls inside the dialog instead of
+   growing it past the viewport. */
+.auth-policy-body {
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: var(--ccure-text-base);
+  line-height: 1.6;
+  color: var(--ccure-text-secondary);
+}
+
+.auth-policy-body h4 {
+  margin: var(--ccure-space-md) 0 var(--ccure-space-2xs);
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.auth-policy-body p + h4 {
+  margin-top: var(--ccure-space-lg);
+}
+
+/* Spacing between stacked prose blocks on the non-form auth panels — the
+   registration-disabled notice, the "check your email" panel, the verify-email
+   outcomes. `.auth-sub` supplies its own bottom margin for the single-paragraph
+   case; these are the multi-block ones. */
+.auth-prose > * + * {
+  margin-top: var(--ccure-space-lg);
+}

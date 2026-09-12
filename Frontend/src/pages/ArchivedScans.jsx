@@ -1,3 +1,27 @@
+/**
+ * src/pages/ArchivedScans.jsx
+ * Archived scan records — restore, or move to the recycle bin.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C migration ──────────────────────
+ * Every handler, request, permission check, state transition and navigation
+ * below is what it was before. The migration changed presentation only.
+ * Specifically preserved:
+ *
+ *   * `getScans(0, 200, "archived")` — the scope argument is load-bearing.
+ *     `getScans` defaults to `scope="active"`, so losing it would list live
+ *     scans on a page whose Delete button moves them to the recycle bin;
+ *   * both actions stay gated on their own permission, `scans:restore` and
+ *     `scans:recycle`, at render *and* inside the handler. The client gate is
+ *     an affordance, not the authorisation boundary — the API enforces it —
+ *     but a control offered to someone who cannot use it produces a failed
+ *     request and a confusing error;
+ *   * a successful action drops the row locally and does not re-fetch; a
+ *     failed one leaves the row in place;
+ *   * the page does not poll.
+ *
+ * src/__tests__/pages/ArchivedScans.test.jsx asserts all of this and was
+ * written against the pre-migration page.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
@@ -7,34 +31,16 @@ import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import { can, denyMessage } from "../auth/permissions";
 import { SCAN_PIPELINES } from "../config/scanConfig";
-
-const STATUS_STYLE = {
-  complete: {
-    color: "#22c55e",
-    bg: "rgba(34,197,94,.1)",
-    border: "rgba(34,197,94,.25)",
-  },
-  running: {
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,.1)",
-    border: "rgba(245,158,11,.25)",
-  },
-  failed: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  cancelled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  canceled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-};
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureEmptyState,
+  CcureLoader,
+  CcureScanStatus,
+  CcureTable,
+} from "../design-system";
+import "../styles/archived-scans.css";
 
 const isCred = (scan) => scan.scan_type === "credentialed";
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
@@ -64,27 +70,6 @@ const fmtDur = (sec) =>
     : sec < 60
       ? `${sec.toFixed(1)}s`
       : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
-
-function StatusBadge({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.running;
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 9px",
-        borderRadius: 4,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        color: s.color,
-        fontSize: 11,
-        fontFamily: "var(--mono)",
-        letterSpacing: ".05em",
-      }}
-    >
-      {status}
-    </span>
-  );
-}
 
 export default function ArchivedScans() {
   const navigate = useNavigate();
@@ -160,161 +145,157 @@ export default function ArchivedScans() {
     }
   };
 
+  /* Columns are declared rather than hand-written as <tr>/<td>, so CcureTable
+     owns the caption, `scope="col"` on every header and `scope="row"` on the
+     identifying cell. `mono` replaces four separate inline
+     `fontFamily: "var(--mono)"` declarations. */
+  const columns = [
+    {
+      key: "scan_no",
+      header: "Scan No.",
+      isRowHeader: true,
+      mono: true,
+      nowrap: true,
+      cell: (scan) => scanNo(scan),
+    },
+    {
+      key: "target",
+      header: "Target",
+      mono: true,
+      cell: (scan) => <span className="as-target">{scan.target}</span>,
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (scan) => (
+        <CcureBadge variant="neutral">{scanTypeLabel(scan)}</CcureBadge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      // Replaces the local STATUS_STYLE map, whose fallback rendered any
+      // unrecognised status in the *running* style — a false statement about a
+      // scan on a page whose whole job is to report what happened.
+      cell: (scan) => <CcureScanStatus status={scan.status} />,
+    },
+    {
+      key: "scan_duration",
+      header: "Duration",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => fmtDur(scan.scan_duration),
+    },
+    {
+      key: "archived_at",
+      header: "Archived",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => (
+        <span className="as-muted">{fmtDate(scan.archived_at)}</span>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      mono: true,
+      nowrap: true,
+      cell: (scan) => (
+        <span className="as-muted">{fmtDate(scan.created_at)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      cell: (scan) => {
+        if (!canRestoreScans && !canRecycleScans) {
+          return <span className="as-muted">Read only</span>;
+        }
+        return (
+          <div className="as-actions">
+            {canRestoreScans && (
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={() => handleRestore(scan.id)}
+                loading={restoringId === scan.id}
+                /* The label alone repeats once per row, so a screen reader
+                   listing controls gets N identical entries and no way to tell
+                   which scan each belongs to. The scan number disambiguates. */
+                aria-label={`Restore scan ${scanNo(scan)}`}
+              >
+                Restore
+              </CcureButton>
+            )}
+            {canRecycleScans && (
+              <CcureButton
+                variant="danger"
+                size="sm"
+                onClick={() => handleDelete(scan.id)}
+                loading={deletingId === scan.id}
+                aria-label={`Delete scan ${scanNo(scan)}`}
+              >
+                Delete
+              </CcureButton>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <AppLayout pageTitle="Archived Scans">
       <div className="page-inner">
         <div className="page-title-row">
           <div>
             <h2 className="page-title">Archived Scans</h2>
-            <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
+            <p className="page-subtitle as-count">
               {total} archived scan{total !== 1 ? "s" : ""} - {user?.username}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btn--ghost"
-              onClick={() => navigate("/history")}
-            >
+          <div className="as-toolbar">
+            <CcureButton variant="ghost" onClick={() => navigate("/history")}>
               My Scan Jobs
-            </button>
-            <button
-              className="btn btn--ghost"
-              onClick={load}
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="btn-spinner btn-spinner--dark" />
-              ) : (
-                "Refresh"
-              )}
-            </button>
+            </CcureButton>
+            <CcureButton variant="ghost" onClick={load} loading={loading}>
+              Refresh
+            </CcureButton>
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          <CcureAlert variant="danger" className="as-message">
+            {error}
+          </CcureAlert>
+        )}
 
         {loading && (
-          <div
-            style={{ display: "flex", justifyContent: "center", padding: 60 }}
-          >
-            <div className="spinner" />
+          <div className="as-loading">
+            <CcureLoader label="Loading archived scans…" />
           </div>
         )}
 
         {!loading && !error && scans.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-state-icon">-</span>
-            <p className="empty-state-title">No archived scans yet.</p>
-            <button
-              className="btn btn--primary"
-              style={{ marginTop: 16 }}
-              onClick={() => navigate("/history")}
-            >
-              Back to My Scan Jobs
-            </button>
-          </div>
+          <CcureEmptyState
+            title="No archived scans yet."
+            action={
+              <CcureButton onClick={() => navigate("/history")}>
+                Back to My Scan Jobs
+              </CcureButton>
+            }
+          />
         )}
 
         {!loading && scans.length > 0 && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Scan No.</th>
-                  <th>Target</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Archived</th>
-                  <th>Created</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scans.map((scan) => (
-                  <tr key={scan.id}>
-                    <td>
-                      <code className="ip-code" style={{ fontSize: 12 }}>
-                        {scanNo(scan)}
-                      </code>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {scan.target}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="method-chip">{scanTypeLabel(scan)}</span>
-                    </td>
-                    <td>
-                      <StatusBadge status={scan.status} />
-                    </td>
-                    <td>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>
-                        {fmtDur(scan.scan_duration)}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {fmtDate(scan.archived_at)}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {fmtDate(scan.created_at)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="action-btns">
-                        {canRestoreScans || canRecycleScans ? (
-                          <>
-                            {canRestoreScans && (
-                              <button
-                                className="action-btn"
-                                onClick={() => handleRestore(scan.id)}
-                                disabled={restoringId === scan.id}
-                              >
-                                {restoringId === scan.id ? "..." : "Restore"}
-                              </button>
-                            )}
-                            {canRecycleScans && (
-                              <button
-                                className="action-btn action-btn--danger"
-                                onClick={() => handleDelete(scan.id)}
-                                disabled={deletingId === scan.id}
-                              >
-                                {deletingId === scan.id ? "..." : "Delete"}
-                              </button>
-                            )}
-                          </>
-                        ) : (
-                          <span className="muted">Read only</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CcureTable
+            caption={`Archived scans — ${total} record${total !== 1 ? "s" : ""}`}
+            columns={columns}
+            rows={scans}
+            rowKey={(scan) => scan.id}
+            density="comfortable"
+          />
         )}
       </div>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />

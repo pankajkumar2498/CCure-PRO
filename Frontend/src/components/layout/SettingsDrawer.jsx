@@ -5,12 +5,23 @@
  *   • Display       – theme, date format, rows per page
  *   • Scan Defaults – default scan type, target discovery
  *   • Notifications – email and in-app alerts
+ *
+ * Checkpoint 3C batch 12: presentation moved onto the CCure design system.
+ * The contract is unchanged: GET /user/preferences on open, PUT with the
+ * whole preferences object on Save, `onPreferencesUpdated(response)` so
+ * PreferencesContext applies the theme through `data-theme` exactly as
+ * before. The drawer is a modal dialog now — it has a backdrop and blocks
+ * the page, which is what `role="complementary"` never said — with a focus
+ * trap, Escape, focus restoration (by the owner) and a named close control.
+ * Option groups are radio groups, so the chosen theme is announced; the
+ * toggles are labelled by their visible text, which they never were.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getPreferences, updatePreferences } from "../../api/user";
+import { CcureAlert, CcureButton, useFocusTrap } from "../../design-system";
 
-/* ── Icons ───────────────────────────────────────────────────────────────── */
+/* ── Icons (decorative) ──────────────────────────────────────────────────── */
 const Icon = ({ d, size = 16 }) => (
   <svg
     width={size}
@@ -21,10 +32,13 @@ const Icon = ({ d, size = 16 }) => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
   >
     <path d={d} />
   </svg>
 );
+
 const IcoClose = () => <Icon d="M18 6L6 18M6 6l12 12" />;
 const IcoCheck = () => <Icon d="M20 6L9 17l-5-5" />;
 const IcoSun = () => (
@@ -38,36 +52,53 @@ const IcoScan = () => (
 );
 
 /* ── Toggle switch ───────────────────────────────────────────────────────── */
-function Toggle({ checked, onChange, id }) {
+/* The input is named by the visible row label through aria-labelledby; the
+   wrapping <label> used to be empty, so the checkbox had no name at all. */
+function Toggle({ checked, onChange, id, labelledBy }) {
   return (
-    <label className="sd-toggle" htmlFor={id}>
+    <label className="shs-toggle" htmlFor={id}>
       <input
         id={id}
         type="checkbox"
-        className="sd-toggle-input"
-        checked={checked}
+        className="shs-toggle-input"
+        checked={Boolean(checked)}
+        aria-labelledby={labelledBy}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span className="sd-toggle-track">
-        <span className="sd-toggle-thumb" />
+      <span className="shs-toggle-track" aria-hidden="true">
+        <span className="shs-toggle-thumb" />
       </span>
     </label>
   );
 }
 
 /* ── Option select group ─────────────────────────────────────────────────── */
-function OptionGroup({ label, options, value, onChange }) {
+/* A radio group: one choice out of several, announced as such. */
+function OptionGroup({ id, label, options, value, onChange }) {
   return (
-    <div className="sd-option-group">
-      <label className="sd-label">{label}</label>
-      <div className="sd-options">
+    <div
+      className="shs-option-group"
+      role="radiogroup"
+      aria-labelledby={`${id}-label`}
+    >
+      <div className="shs-label" id={`${id}-label`}>
+        {label}
+      </div>
+      <div className="shs-options">
         {options.map((opt) => (
           <button
             key={opt.value}
-            className={`sd-option ${value === opt.value ? "sd-option--active" : ""}`}
+            type="button"
+            role="radio"
+            aria-checked={value === opt.value}
+            className={`shs-option ${value === opt.value ? "shs-option--active" : ""}`}
             onClick={() => onChange(opt.value)}
           >
-            {opt.icon && <span className="sd-option-icon">{opt.icon}</span>}
+            {opt.icon && (
+              <span className="shs-option-icon" aria-hidden="true">
+                {opt.icon}
+              </span>
+            )}
             {opt.label}
           </button>
         ))}
@@ -79,12 +110,14 @@ function OptionGroup({ label, options, value, onChange }) {
 /* ── Section wrapper ─────────────────────────────────────────────────────── */
 function Section({ title, icon, children }) {
   return (
-    <div className="sd-section">
-      <div className="sd-section-header">
-        <span className="sd-section-icon">{icon}</span>
-        <h4 className="sd-section-title">{title}</h4>
+    <div className="shs-section">
+      <div className="shs-section-header">
+        <span className="shs-section-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <h3 className="shs-section-title">{title}</h3>
       </div>
-      <div className="sd-section-body">{children}</div>
+      <div className="shs-section-body">{children}</div>
     </div>
   );
 }
@@ -92,22 +125,57 @@ function Section({ title, icon, children }) {
 /* ── Row with toggle ─────────────────────────────────────────────────────── */
 function ToggleRow({ id, label, hint, checked, onChange }) {
   return (
-    <div className="sd-toggle-row">
-      <div className="sd-toggle-info">
-        <span className="sd-toggle-label">{label}</span>
-        {hint && <span className="sd-toggle-hint">{hint}</span>}
+    <div className="shs-toggle-row">
+      <div className="shs-toggle-info">
+        <span className="shs-toggle-label" id={`${id}-label`}>
+          {label}
+        </span>
+        {hint && <span className="shs-toggle-hint">{hint}</span>}
       </div>
-      <Toggle id={id} checked={checked} onChange={onChange} />
+      <Toggle
+        id={id}
+        labelledBy={`${id}-label`}
+        checked={checked}
+        onChange={onChange}
+      />
     </div>
   );
 }
 
+const SCAN_TYPES = [
+  { value: "host-discovery", label: "Host Discovery" },
+  { value: "asset", label: "Asset Scan" },
+  { value: "vulnerability_audit", label: "Vulnerability Audit" },
+  { value: "credentialed", label: "Credentialed" },
+];
+
+const ROWS_OPTIONS = [
+  { value: 10, label: "10" },
+  { value: 25, label: "25" },
+  { value: 50, label: "50" },
+  { value: 100, label: "100" },
+];
+
 /* ── Main ────────────────────────────────────────────────────────────────── */
-export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
+export default function SettingsDrawer({
+  id = "sh-settings",
+  onClose,
+  onPreferencesUpdated,
+}) {
   const [prefs, setPrefs] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+
+  const drawerRef = useRef(null);
+  useFocusTrap(drawerRef, true);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   useEffect(() => {
     getPreferences()
@@ -137,46 +205,53 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
     }
   };
 
-  const SCAN_TYPES = [
-    { value: "host-discovery", label: "Host Discovery" },
-    { value: "asset", label: "Asset Scan" },
-    { value: "vulnerability_audit", label: "Vulnerability Audit" },
-    { value: "credentialed", label: "Credentialed" },
-  ];
-
-  const ROWS_OPTIONS = [
-    { value: 10, label: "10" },
-    { value: 25, label: "25" },
-    { value: 50, label: "50" },
-    { value: 100, label: "100" },
-  ];
-
   return (
     <>
-      <div className="sd-backdrop" onClick={onClose} />
-      <aside className="sd-drawer" role="complementary" aria-label="Settings">
+      <div className="shs-backdrop" onClick={onClose} />
+      <div
+        className="shs-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shs-title"
+        id={id}
+        ref={drawerRef}
+        tabIndex={-1}
+      >
         {/* Header */}
-        <div className="sd-header">
-          <div className="sd-header-left">
+        <div className="shs-header">
+          <div className="shs-header-left">
             <IcoScan />
-            <span>Settings</span>
+            <h2 className="shs-title" id="shs-title">
+              Settings
+            </h2>
           </div>
-          <button className="sd-close" onClick={onClose}>
+          <button
+            type="button"
+            className="shs-close"
+            onClick={onClose}
+            aria-label="Close settings"
+          >
             <IcoClose />
           </button>
         </div>
 
         {/* Body */}
-        <div className="sd-body">
-          {error && <div className="sd-error">{error}</div>}
-
+        <div className="shs-body">
+          {error && (
+            <CcureAlert variant="danger" className="shs-error">
+              {error}
+            </CcureAlert>
+          )}
           {!prefs ? (
-            <div className="sd-loading">Loading settings…</div>
+            <div className="shs-loading" role="status">
+              Loading settings…
+            </div>
           ) : (
             <>
               {/* Display Preferences */}
               <Section title="Display" icon={<IcoSun />}>
                 <OptionGroup
+                  id="shs-theme"
                   label="Theme"
                   options={[
                     { value: "light", label: "☀ Light" },
@@ -186,13 +261,14 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
                   onChange={set("theme")}
                 />
                 <OptionGroup
+                  id="shs-rows"
                   label="Rows per page"
                   options={ROWS_OPTIONS}
                   value={prefs.default_rows_per_page}
                   onChange={set("default_rows_per_page")}
                 />
                 <ToggleRow
-                  id="sd-sidebar"
+                  id="shs-sidebar"
                   label="Collapsed sidebar by default"
                   hint="Start with the sidebar minimized"
                   checked={prefs.sidebar_collapsed}
@@ -200,11 +276,12 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
                 />
               </Section>
 
-              <div className="sd-divider" />
+              <div className="shs-divider" />
 
               {/* Scan Defaults */}
               <Section title="Scan Defaults" icon={<IcoScan />}>
                 <OptionGroup
+                  id="shs-scantype"
                   label="Default scan type"
                   options={SCAN_TYPES}
                   value={prefs.default_scan_type}
@@ -212,19 +289,19 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
                 />
               </Section>
 
-              <div className="sd-divider" />
+              <div className="shs-divider" />
 
               {/* Notifications */}
               <Section title="Notifications" icon={<IcoBell />}>
                 <ToggleRow
-                  id="sd-email"
+                  id="shs-email"
                   label="Email alerts"
                   hint="Receive scan results and alerts via email"
                   checked={prefs.email_alerts}
                   onChange={set("email_alerts")}
                 />
                 <ToggleRow
-                  id="sd-inapp"
+                  id="shs-inapp"
                   label="In-app notifications"
                   hint="Show notification badge in the header"
                   checked={prefs.in_app_alerts}
@@ -236,24 +313,27 @@ export default function SettingsDrawer({ onClose, onPreferencesUpdated }) {
         </div>
 
         {/* Footer */}
-        <div className="sd-footer">
-          {saved && (
-            <span className="sd-saved">
-              <IcoCheck /> Saved
-            </span>
-          )}
-          <button className="sd-btn sd-btn--ghost" onClick={onClose}>
+        <div className="shs-footer">
+          <span className="shs-saved" role="status" aria-live="polite">
+            {saved && (
+              <>
+                <IcoCheck /> Saved
+              </>
+            )}
+          </span>
+          <CcureButton variant="ghost" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            className="sd-btn sd-btn--primary"
+          </CcureButton>
+          <CcureButton
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={saving || !prefs}
           >
             {saving ? "Saving…" : "Save Settings"}
-          </button>
+          </CcureButton>
         </div>
-      </aside>
+      </div>
     </>
   );
 }

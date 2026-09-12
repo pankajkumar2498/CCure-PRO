@@ -2,22 +2,45 @@
  * src/pages/Login.jsx
  * Dark-themed auth page consistent with the dashboard brand.
  * API: POST /auth/login -> { access_token, user }
+ *
+ * ── Security contract, unchanged by the Checkpoint 3C migration ─────────────
+ * Every handler, piece of state, storage key, endpoint and navigation below is
+ * byte-for-byte what it was before. The migration changed presentation only.
+ * Specifically preserved:
+ *
+ *   * the identifier is trimmed and the password is never trimmed — trimming a
+ *     password silently authenticates with a credential the user did not type;
+ *   * an `mfa_required` response shows the challenge and does not navigate, and
+ *     the `mfa_token` is held in state only: never rendered, never persisted;
+ *   * "remember me" writes the identifier and only the identifier, and clearing
+ *     it also clears the legacy `ccure_remembered_email` key;
+ *   * the post-login destination comes from router state, or from
+ *     `postLoginRedirect` when and only when the visit was an expiry, and that
+ *     key is removed on success so a stale destination cannot be replayed;
+ *   * the self-registration probe is the backend's decision, not this page's —
+ *     `null` renders neither branch rather than flashing a link.
+ *
+ * src/__tests__/pages/Login.test.jsx asserts all of the above and was written
+ * against the pre-migration page.
  */
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
+import { ShieldLogoIcon } from "../components/auth/AuthIcons";
 import {
-  ShieldLogoIcon,
-  EyeIcon,
-  EyeOffIcon,
-} from "../components/auth/AuthIcons";
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcurePasswordField,
+} from "../design-system";
 import {
   verifyMfa as verifyMfaApi,
   sendEmailOtp as sendEmailOtpApi,
   isSelfRegistrationEnabled,
 } from "../api/auth";
+import "../styles/auth.css";
 
 export default function Login() {
   const { login, refreshUser, authMessage } = useAuth();
@@ -64,8 +87,6 @@ export default function Login() {
   });
 
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [capsLockOn, setCapsLockOn] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -105,12 +126,6 @@ export default function Login() {
         return prev - 1;
       });
     }, 1000);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.getModifierState) {
-      setCapsLockOn(e.getModifierState("CapsLock"));
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -220,9 +235,15 @@ export default function Login() {
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="login" />
 
-      {/* Right Form Panel */}
+      {/* Right Form Panel.
+          `cc-theme-dark` scopes the CCure semantic tokens to their dark values
+          for everything inside. The auth surface is a fixed dark panel —
+          `.auth-split-wrapper` hardcodes `background:#020617` and ignores
+          `data-theme` — so without this a CcureInput would render as a white
+          box with near-black text on a #0f172a card whenever the user's account
+          theme is light, which is the default. */}
       <div className="auth-form-panel">
-        <div className="auth-card">
+        <div className="auth-card cc-theme-dark">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
@@ -238,79 +259,61 @@ export default function Login() {
               <p className="auth-sub">Enter your security verification code</p>
 
               {error && (
-                <div className="auth-error" role="alert">
-                  <span>⚠</span> {error}
-                </div>
+                <CcureAlert variant="danger" className="auth-message">
+                  {error}
+                </CcureAlert>
               )}
 
               {emailSent && (
-                <div className="auth-success" role="status">
-                  ✓ Verification code sent to your email!
-                </div>
+                <CcureAlert variant="success" className="auth-message">
+                  Verification code sent to your email!
+                </CcureAlert>
               )}
 
-              <form onSubmit={handleMfaSubmit} className="auth-form">
-                <div className="field">
-                  <label htmlFor="mfaCode">Verification Code</label>
-                  <input
-                    id="mfaCode"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    placeholder="Enter code"
-                    required
-                    autoFocus
-                    maxLength={12}
-                  />
-                </div>
+              <form onSubmit={handleMfaSubmit} className="auth-form auth-stack">
+                <CcureInput
+                  id="mfaCode"
+                  name="mfaCode"
+                  label="Verification Code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  placeholder="Enter code"
+                  required
+                  autoFocus
+                  maxLength={12}
+                />
 
-                <div style={{ margin: "4px 0 12px 0", textAlign: "center" }}>
-                  <button
+                <div className="auth-inline-action">
+                  <CcureButton
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleSendEmailOtp}
                     disabled={resendCooldown > 0}
-                    className="auth-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      fontSize: "0.8rem",
-                      cursor: resendCooldown > 0 ? "not-allowed" : "pointer",
-                      opacity: resendCooldown > 0 ? 0.6 : 1,
-                    }}
                   >
                     {resendCooldown > 0
                       ? `Resend code in ${resendCooldown}s`
                       : "Send code to email"}
-                  </button>
+                  </CcureButton>
                 </div>
 
-                <button type="submit" className="auth-btn" disabled={loading}>
-                  {loading ? (
-                    <>
-                      <span className="btn-spinner" /> Verifying...
-                    </>
-                  ) : (
-                    "Verify Code →"
-                  )}
-                </button>
+                <CcureButton type="submit" loading={loading} block size="lg">
+                  {loading ? "Verifying..." : "Verify Code →"}
+                </CcureButton>
               </form>
 
               <p className="auth-switch">
-                <button
+                <CcureButton
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={handleBackToLogin}
-                  className="auth-link"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "0.84rem",
-                  }}
                 >
                   ← Back to credentials login
-                </button>
+                </CcureButton>
               </p>
             </>
           ) : (
@@ -321,59 +324,44 @@ export default function Login() {
               </p>
 
               {error && (
-                <div className="auth-error" role="alert">
-                  <span>⚠</span> {error}
-                </div>
+                <CcureAlert variant="danger" className="auth-message">
+                  {error}
+                </CcureAlert>
               )}
 
               {!error && noticeMessage && (
-                <div className="auth-info" role="status">
-                  ℹ {noticeMessage}
-                </div>
+                <CcureAlert variant="info" className="auth-message">
+                  {noticeMessage}
+                </CcureAlert>
               )}
 
-              <form onSubmit={handleSubmit} className="auth-form">
-                <div className="field">
-                  <label htmlFor="emailOrUsername">Email or Username</label>
-                  <input
-                    id="emailOrUsername"
-                    type="text"
-                    autoComplete="username"
-                    value={emailOrUsername}
-                    onChange={(e) => setEmailOrUsername(e.target.value)}
-                    placeholder="name@company.com or username"
-                    required
-                  />
-                </div>
+              <form onSubmit={handleSubmit} className="auth-form auth-stack">
+                <CcureInput
+                  id="emailOrUsername"
+                  name="emailOrUsername"
+                  label="Email or Username"
+                  // type="text", not "email": the endpoint resolves
+                  // or_(email_matches, username_matches), and type="email"
+                  // would make the browser reject a username before the
+                  // request was ever made.
+                  type="text"
+                  autoComplete="username"
+                  value={emailOrUsername}
+                  onChange={(e) => setEmailOrUsername(e.target.value)}
+                  placeholder="name@company.com or username"
+                  required
+                />
 
-                <div className="field">
-                  <label htmlFor="password">Password</label>
-                  <div className="password-input-wrapper">
-                    <input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      onKeyUp={handleKeyDown}
-                      placeholder="••••••••"
-                      required
-                    />
-                    <button
-                      type="button"
-                      tabIndex="-1"
-                      aria-label="Toggle password visibility"
-                      className="password-toggle-btn"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                    >
-                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                    </button>
-                  </div>
-                  {capsLockOn && (
-                    <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
-                  )}
-                </div>
+                <CcurePasswordField
+                  id="password"
+                  name="password"
+                  label="Password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
 
                 {/* Remember Me & Forgot Password Row */}
                 <div className="auth-checkbox-row">
@@ -385,29 +373,14 @@ export default function Login() {
                     />
                     <span>Remember me</span>
                   </label>
-                  <Link
-                    to="/forgot-password"
-                    className="auth-link"
-                    style={{ fontSize: "0.78rem" }}
-                  >
+                  <Link to="/forgot-password" className="auth-link">
                     Forgot password?
                   </Link>
                 </div>
 
-                <button
-                  type="submit"
-                  className="auth-btn"
-                  disabled={loading}
-                  style={{ marginTop: "16px" }}
-                >
-                  {loading ? (
-                    <>
-                      <span className="btn-spinner" /> Signing in...
-                    </>
-                  ) : (
-                    "Sign In →"
-                  )}
-                </button>
+                <CcureButton type="submit" loading={loading} block size="lg">
+                  {loading ? "Signing in..." : "Sign In →"}
+                </CcureButton>
               </form>
 
               {selfRegAllowed === true && (

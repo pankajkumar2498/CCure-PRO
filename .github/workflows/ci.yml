@@ -204,6 +204,17 @@ jobs:
           cd Frontend
           npm audit --audit-level=high || echo "NPM audit flagged high/critical vulnerabilities"
 
+      # The build comes before the tests, and both matter. The guardrails
+      # suite inspects dist/ to assert the shipped bundle carries no UX4G
+      # runtime; without a build it fails on every clean checkout, and until
+      # this step existed CI had never verified that the frontend builds at
+      # all. `prebuild` generates the UX4G assets from the pinned package, so
+      # this step needs no network beyond `npm ci`.
+      - name: Build Frontend
+        run: |
+          cd Frontend
+          npm run build
+
       - name: Run Frontend Tests
         run: |
           cd Frontend

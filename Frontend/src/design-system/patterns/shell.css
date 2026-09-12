@@ -1,0 +1,432 @@
+/* ============================================================================
+   CCure application shell — UX4G-aligned
+   ----------------------------------------------------------------------------
+   Spike implementation of the government-oriented chrome. It is a *pattern*,
+   not a primitive: it composes the design-system tokens into the specific
+   information architecture this product needs.
+
+   The visual language is UX4G's. The structure is CCure's — a security console
+   with a dense, permission-filtered navigation tree, not a citizen-services
+   portal with a wide marketing header. The brief's phrasing is the test: it
+   should read as a professional government security platform, not a generic
+   government website.
+   ============================================================================ */
+
+.cc-shell {
+  display: grid;
+  grid-template-columns: var(--ccure-sidebar-width) 1fr;
+  grid-template-rows: var(--ccure-header-height) 1fr auto;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main"
+    "sidebar footer";
+  min-height: 100vh;
+  background: var(--ccure-bg);
+  color: var(--ccure-text);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-base);
+}
+
+.cc-shell--collapsed {
+  grid-template-columns: 64px 1fr;
+}
+
+/* ── Government identity strip ───────────────────────────────────────────────
+   The one piece of UX4G's citizen-facing convention that belongs on an internal
+   console: it states which government body operates the system. It sits above
+   the header, spans the full width, and is not part of the scrollable region. */
+.cc-govbar {
+  grid-area: header;
+  display: none; /* enabled by the shell when `identity` is supplied */
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.cc-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-lg);
+  padding: 0 var(--ccure-space-lg);
+  background: var(--ccure-surface);
+  border-bottom: 1px solid var(--ccure-border);
+  position: sticky;
+  top: 0;
+  z-index: var(--ccure-z-header);
+}
+
+.cc-header__left,
+.cc-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+.cc-header__title {
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-header__meta {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.cc-sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  background: var(--ccure-surface);
+  border-inline-end: 1px solid var(--ccure-border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.cc-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  min-height: var(--ccure-header-height);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.cc-sidebar__brand-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ccure-radius-sm);
+  background: var(--ccure-primary);
+  color: var(--ccure-on-primary);
+  font-weight: var(--ccure-weight-bold);
+}
+
+.cc-sidebar__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: var(--ccure-leading-tight);
+  min-width: 0;
+}
+
+.cc-sidebar__brand-name {
+  font-weight: var(--ccure-weight-semibold);
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text);
+}
+
+.cc-sidebar__brand-sub {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cc-sidebar__nav {
+  flex: 1;
+  padding: var(--ccure-space-md) var(--ccure-space-sm);
+}
+
+.cc-sidebar__section + .cc-sidebar__section {
+  margin-top: var(--ccure-space-lg);
+}
+
+.cc-sidebar__section-label {
+  padding: 0 var(--ccure-space-md) var(--ccure-space-2xs);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.cc-sidebar__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cc-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border-radius: var(--ccure-radius-md);
+  color: var(--ccure-text-secondary);
+  text-decoration: none;
+  font-size: var(--ccure-text-base);
+  min-height: 36px;
+  border: 0;
+  background: none;
+  width: 100%;
+  text-align: start;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cc-sidebar__link:hover {
+  background: var(--ccure-surface-hover);
+  color: var(--ccure-text);
+}
+
+/* The active item is keyed on aria-current, not on a class.
+   Phase 0 measured zero uses of aria-current in the application: the active
+   nav item was styled but never announced, so a screen-reader user could not
+   tell where they were. Styling the attribute makes the visual state and the
+   announced state the same fact — they cannot drift apart. */
+.cc-sidebar__link[aria-current="page"] {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+/* Colour alone does not mark the current page — WCAG 1.4.1 again. The bar is
+   the non-colour carrier. */
+.cc-sidebar__link[aria-current="page"]::before {
+  content: "";
+  width: 3px;
+  align-self: stretch;
+  margin-inline-start: calc(var(--ccure-space-md) * -1);
+  margin-inline-end: calc(var(--ccure-space-md) - 3px);
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+}
+
+.cc-sidebar__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.cc-sidebar__footer {
+  padding: var(--ccure-space-md);
+  border-top: 1px solid var(--ccure-border-subtle);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+.cc-main {
+  grid-area: main;
+  padding: var(--ccure-space-2xl);
+  min-width: 0; /* lets wide tables scroll inside instead of stretching the grid */
+}
+
+/* The skip-link target. tabindex="-1" makes it programmatically focusable so
+   the browser actually moves the caret there; without it, following the skip
+   link scrolls but leaves focus at the top of the document, and the next Tab
+   returns to the navigation the user just skipped. */
+.cc-main:focus {
+  outline: none;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.cc-footer {
+  grid-area: footer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-lg) var(--ccure-space-2xl);
+  background: var(--ccure-surface);
+  border-top: 1px solid var(--ccure-border);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cc-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-lg);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cc-footer a {
+  color: var(--ccure-text-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────────
+   The existing responsive.css sets `.sidebar { display: none }` under 768px
+   with no replacement, which leaves the application with no navigation at all
+   on a phone. This shell collapses to a single column and moves the sidebar
+   into a disclosure instead — the nav stays in the DOM and stays reachable. */
+@media (max-width: 768px) {
+  .cc-shell,
+  .cc-shell--collapsed {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "main"
+      "footer";
+  }
+
+  .cc-sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(280px, 80vw);
+    z-index: var(--ccure-z-drawer);
+    transform: translateX(-100%);
+    transition: transform var(--ccure-duration-base) var(--ccure-ease);
+    box-shadow: var(--ccure-shadow-lg);
+  }
+
+  .cc-sidebar[data-open="true"] {
+    transform: none;
+  }
+
+  .cc-main {
+    padding: var(--ccure-space-lg);
+  }
+}
+
+/* Above the breakpoint the disclosure button is meaningless — the sidebar is
+   always visible — so it is removed from the accessibility tree as well as the
+   layout. `display:none` is correct here precisely because the control should
+   not be announced. */
+@media (min-width: 769px) {
+  .cc-header__nav-toggle {
+    display: none;
+  }
+}
+
+/* ── Batch 12 additions ────────────────────────────────────────────────────
+   Collapsed rail, disabled items, item tags, the collapse toggle and the
+   off-canvas backdrop. All additive; nothing above changed. */
+
+.cc-sidebar__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-sidebar__tag {
+  flex: none;
+  display: inline-flex;
+}
+
+.cc-sidebar__link--disabled {
+  color: var(--ccure-text-disabled);
+  cursor: default;
+}
+
+.cc-sidebar__link--disabled:hover {
+  background: none;
+  color: var(--ccure-text-disabled);
+}
+
+.cc-sidebar__link:focus-visible,
+.cc-sidebar__collapse:focus-visible,
+.cc-header__nav-toggle:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: calc(-1 * var(--ccure-focus-ring-width));
+}
+
+.cc-sidebar__collapse {
+  margin-inline-start: auto;
+  flex: none;
+}
+
+/* The rail: 64px wide (see .cc-shell--collapsed), icons only. Labels are
+   removed from layout but the link keeps its accessible name through the
+   `title` the shell sets while collapsed, and section groups stay labelled
+   through aria-labelledby (the heading is hidden visually, not removed). */
+.cc-shell--collapsed .cc-sidebar__brand {
+  padding-inline: var(--ccure-space-sm);
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+.cc-shell--collapsed .cc-sidebar__brand-text,
+.cc-shell--collapsed .cc-sidebar__label,
+.cc-shell--collapsed .cc-sidebar__tag,
+.cc-shell--collapsed .cc-sidebar__section-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cc-shell--collapsed .cc-sidebar__collapse {
+  margin-inline-start: 0;
+}
+
+.cc-shell--collapsed .cc-sidebar__nav {
+  padding-inline: var(--ccure-space-xs);
+}
+
+.cc-shell--collapsed .cc-sidebar__link {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.cc-shell--collapsed .cc-sidebar__link[aria-current="page"]::before {
+  margin-inline-start: 0;
+  margin-inline-end: var(--ccure-space-2xs);
+}
+
+.cc-shell--collapsed .cc-sidebar__section + .cc-sidebar__section {
+  margin-top: var(--ccure-space-sm);
+  padding-top: var(--ccure-space-sm);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+/* Off-canvas backdrop: present only while the narrow-viewport nav is open. */
+.cc-sidebar__backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .cc-sidebar__backdrop[data-open="true"] {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: var(--ccure-overlay);
+    z-index: calc(var(--ccure-z-drawer) - 1);
+  }
+  /* The rail mode is a desktop concept; off-canvas the sidebar is full. */
+  .cc-shell--collapsed .cc-sidebar__brand-text,
+  .cc-shell--collapsed .cc-sidebar__label,
+  .cc-shell--collapsed .cc-sidebar__tag,
+  .cc-shell--collapsed .cc-sidebar__section-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+  .cc-shell--collapsed .cc-sidebar__collapse {
+    display: none;
+  }
+  .cc-shell--collapsed .cc-sidebar__link {
+    justify-content: flex-start;
+    padding-inline: var(--ccure-space-md);
+  }
+}

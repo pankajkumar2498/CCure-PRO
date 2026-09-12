@@ -12,17 +12,33 @@
  * The whole route is also feature-gated: when a deployment has
  * ALLOW_SELF_REGISTRATION off (the default) every self-service endpoint returns
  * 404, and the page says so instead of presenting a form that cannot succeed.
+ *
+ * ── Unchanged by the Checkpoint 3C migration ────────────────────────────────
+ * Every handler, request, guard, validation rule and message below is what it
+ * was before; the migration changed presentation only. Three properties are
+ * worth naming because they look cosmetic and are not:
+ *
+ *   * there is still no live "this email is already registered" check, and
+ *     there must never be one — see the note beside the checkEmail effect;
+ *   * the email is lower-cased and trimmed, and the password is never
+ *     trimmed;
+ *   * the resend failure is swallowed, because the endpoint answers
+ *     identically for every address.
  */
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
+import { ShieldLogoIcon } from "../components/auth/AuthIcons";
 import {
-  ShieldLogoIcon,
-  EyeIcon,
-  EyeOffIcon,
-} from "../components/auth/AuthIcons";
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcureModal,
+  CcurePasswordField,
+  gradePassword,
+} from "../design-system";
 import {
   checkEmail,
   checkUsername,
@@ -30,6 +46,7 @@ import {
   resendVerification,
 } from "../api/auth";
 import { useDebounce } from "../hooks/useDebounce";
+import "../styles/auth.css";
 
 function validate(fullName, username, email, password, confirm, agreeToTerms) {
   if (!fullName || !fullName.trim()) return "Full name is required.";
@@ -52,17 +69,10 @@ function validate(fullName, username, email, password, confirm, agreeToTerms) {
   return null;
 }
 
-export function strengthOf(pw) {
-  if (!pw) return { label: "", level: 0 };
-  let level = 0;
-  if (pw.length >= 12) level++;
-  if (/[A-Z]/.test(pw)) level++;
-  if (/[0-9]/.test(pw)) level++;
-  if (/[^a-zA-Z0-9]/.test(pw)) level++;
-
-  const labels = ["", "Weak", "Fair", "Good", "Strong"];
-  return { label: labels[level], level };
-}
+/* Re-exported from the design system so the two pages that grade a password
+   cannot drift into two different scales. The named export is kept because
+   it was public before the migration. */
+export const strengthOf = gradePassword;
 
 export default function Register() {
   const { register } = useAuth();
@@ -73,11 +83,6 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [agreeToTerms, setAgreeToTerms] = useState(false);
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [capsLockPw, setCapsLockPw] = useState(false);
-  const [capsLockConfirm, setCapsLockConfirm] = useState(false);
 
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -165,16 +170,6 @@ export default function Register() {
     };
   }, [debouncedEmail]);
 
-  const strength = strengthOf(password);
-
-  const handlePwKey = (e) => {
-    if (e.getModifierState) setCapsLockPw(e.getModifierState("CapsLock"));
-  };
-
-  const handleConfirmKey = (e) => {
-    if (e.getModifierState) setCapsLockConfirm(e.getModifierState("CapsLock"));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
@@ -256,320 +251,216 @@ export default function Register() {
     </div>
   );
 
-  // ── Self-registration disabled for this deployment ───────────────────────
-  if (selfRegAllowed === false) {
-    return (
-      <div className="auth-split-wrapper">
-        <AuthHeroPanel pageType="register" />
-        <div className="auth-form-panel">
-          <div className="auth-card">
-            {brandHeader}
-            <h1 className="auth-title">
-              Accounts are created by an administrator
-            </h1>
-            <p className="auth-sub">
-              Self-service sign-up is turned off on this installation. CCure
-              Audit PRO runs network scans against your infrastructure, so
-              accounts are provisioned deliberately rather than opened on
-              request.
-            </p>
-            <p className="auth-sub">
-              Ask your CCure administrator to create an account for you. If you
-              already have one, sign in below.
-            </p>
-            <Link
-              to="/login"
-              className="auth-btn"
-              style={{ textDecoration: "none" }}
-            >
-              Back to sign in
-            </Link>
-            <AuthTrustFooter />
-          </div>
+  /* `cc-theme-dark` scopes the CCure semantic tokens to their dark values. The
+     auth surface is a fixed dark panel that ignores `data-theme`, so without it
+     every migrated control would render light-on-dark whenever the account
+     theme is light — which is the default. */
+  const shell = (body) => (
+    <div className="auth-split-wrapper">
+      <AuthHeroPanel pageType="register" />
+      <div className="auth-form-panel">
+        <div className="auth-card cc-theme-dark">
+          {brandHeader}
+          {body}
+          <AuthTrustFooter />
         </div>
       </div>
+    </div>
+  );
+
+  // ── Self-registration disabled for this deployment ───────────────────────
+  if (selfRegAllowed === false) {
+    return shell(
+      <div className="auth-prose">
+        <h1 className="auth-title">Accounts are created by an administrator</h1>
+        <p className="auth-sub">
+          Self-service sign-up is turned off on this installation. CCure Audit
+          PRO runs network scans against your infrastructure, so accounts are
+          provisioned deliberately rather than opened on request.
+        </p>
+        <p className="auth-sub">
+          Ask your CCure administrator to create an account for you. If you
+          already have one, sign in below.
+        </p>
+        <CcureButton as={Link} to="/login" block size="lg">
+          Back to sign in
+        </CcureButton>
+      </div>,
     );
   }
 
   // ── Registered, awaiting mailbox confirmation ────────────────────────────
   if (submitted) {
-    return (
-      <div className="auth-split-wrapper">
-        <AuthHeroPanel pageType="register" />
-        <div className="auth-form-panel">
-          <div className="auth-card">
-            {brandHeader}
-            <h1 className="auth-title">Check your email</h1>
-            <p className="auth-sub">
-              If that address can be registered, we have sent a verification
-              link to <strong>{email.trim().toLowerCase()}</strong>. The link is
-              valid for 24 hours and can be used once.
-            </p>
-            <div
-              className="auth-error"
-              role="status"
-              style={{
-                background: "rgba(245,158,11,0.12)",
-                borderColor: "#f59e0b",
-                color: "#b45309",
-              }}
-            >
-              <span>ℹ</span> Confirming your email does not by itself grant
-              access. An administrator reviews and approves new accounts before
-              sign-in is enabled, and you will be notified once that happens.
-            </div>
-            <button
-              type="button"
-              className="auth-btn"
-              onClick={handleResend}
-              disabled={resendState === "sending" || resendState === "sent"}
-            >
-              {resendState === "sent"
-                ? "Verification email re-sent"
-                : resendState === "sending"
-                  ? "Sending…"
-                  : "Resend verification email"}
-            </button>
-            <p className="auth-sub" style={{ marginTop: 16 }}>
-              <Link to="/login">Back to sign in</Link>
-            </p>
-            <AuthTrustFooter />
-          </div>
-        </div>
-      </div>
+    return shell(
+      <div className="auth-prose">
+        <h1 className="auth-title">Check your email</h1>
+        <p className="auth-sub">
+          If that address can be registered, we have sent a verification link to{" "}
+          <strong>{email.trim().toLowerCase()}</strong>. The link is valid for
+          24 hours and can be used once.
+        </p>
+        {/* `role="status"` deliberately overrides the assertive role
+            CcureAlert gives `warning`: this is a caveat attached to a success
+            the user is already reading, not an interruption. The pre-migration
+            markup was explicitly polite and that was right. It also previously
+            hardcoded #b45309 on an amber tint, which measured 3.02:1 over the
+            dark card — the most important sentence on the page was the least
+            readable thing on it. */}
+        <CcureAlert variant="warning" role="status">
+          Confirming your email does not by itself grant access. An
+          administrator reviews and approves new accounts before sign-in is
+          enabled, and you will be notified once that happens.
+        </CcureAlert>
+        <CcureButton
+          type="button"
+          block
+          size="lg"
+          onClick={handleResend}
+          loading={resendState === "sending"}
+          disabled={resendState === "sent"}
+        >
+          {resendState === "sent"
+            ? "Verification email re-sent"
+            : resendState === "sending"
+              ? "Sending…"
+              : "Resend verification email"}
+        </CcureButton>
+        <p className="auth-sub">
+          <Link to="/login" className="auth-link">
+            Back to sign in
+          </Link>
+        </p>
+      </div>,
     );
   }
 
+  /* Username feedback. Previously four sibling <span>s beside the field, none
+     of them associated with it; now one message routed through CcureInput's
+     error/hint wiring so it is announced with the field it describes. Error
+     supersedes hint, which is the component's own rule. */
+  const usernameError = username.includes("@")
+    ? "Username cannot contain '@' symbol"
+    : usernameTaken
+      ? "This username is already taken."
+      : undefined;
+  const usernameHint =
+    username && !username.includes("@") && username.length < 3
+      ? "Min. 3 characters"
+      : usernameChecked &&
+          !usernameTaken &&
+          username.length >= 3 &&
+          !username.includes("@")
+        ? "Username available"
+        : undefined;
+
+  const policyFooter = (close) => (
+    <CcureButton
+      type="button"
+      onClick={() => {
+        setAgreeToTerms(true);
+        close();
+      }}
+    >
+      Accept &amp; Close
+    </CcureButton>
+  );
+
   return (
-    <div className="auth-split-wrapper">
-      {/* Left Enterprise Showcase Panel */}
-      <AuthHeroPanel pageType="register" />
-
-      {/* Right Form Panel */}
-      <div className="auth-form-panel">
-        <div className="auth-card">
-          {/* Mobile Brand Header */}
-          {brandHeader}
-
+    <>
+      {shell(
+        <>
           <h1 className="auth-title">Create account</h1>
           <p className="auth-sub">
             Register your organization to start auditing
           </p>
 
           {error && (
-            <div className="auth-error" role="alert">
-              <span>⚠</span> {error}
-            </div>
+            <CcureAlert variant="danger" className="auth-message">
+              {error}
+            </CcureAlert>
           )}
 
-          <form onSubmit={handleSubmit} className="auth-form">
-            <div className="field">
-              <label htmlFor="fullName">Full Name</label>
-              <input
-                id="fullName"
-                type="text"
-                autoComplete="name"
-                maxLength={255}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. John Doe"
-                required
-              />
-            </div>
+          <form onSubmit={handleSubmit} className="auth-form auth-stack">
+            <CcureInput
+              id="fullName"
+              name="fullName"
+              label="Full Name"
+              type="text"
+              autoComplete="name"
+              maxLength={255}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="e.g. John Doe"
+              required
+            />
 
-            <div className="field">
-              <label htmlFor="username">Username</label>
-              <input
-                id="username"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="username"
-                required
-              />
-              {username && username.includes("@") && (
-                <span className="field-hint field-hint--error">
-                  Username cannot contain &apos;@&apos; symbol
-                </span>
-              )}
-              {username && !username.includes("@") && username.length < 3 && (
-                <span className="field-hint field-hint--warn">
-                  Min. 3 characters
-                </span>
-              )}
-              {usernameTaken && (
-                <span className="field-hint field-hint--error">
-                  This username is already taken.
-                </span>
-              )}
-              {usernameChecked &&
-                !usernameTaken &&
-                username.length >= 3 &&
-                !username.includes("@") && (
-                  <span className="field-hint field-hint--ok">
-                    ✓ Username available
-                  </span>
-                )}
-            </div>
+            <CcureInput
+              id="username"
+              name="username"
+              label="Username"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="username"
+              required
+              error={usernameError}
+              hint={usernameHint}
+            />
 
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                required
-              />
-              {/* Still no "already registered" hint, by design — see the note
-                  beside the checkEmail effect above. The domain verdict below
-                  is a different fact and safe to show. */}
-              {domainWarning ? (
-                <span
-                  className="field-hint field-hint--error"
-                  role="status"
-                  aria-live="polite"
-                >
-                  {domainWarning}
-                </span>
-              ) : (
-                <span className="field-hint">
-                  We will send a verification link to this address.
-                </span>
-              )}
-            </div>
+            <CcureInput
+              id="email"
+              name="email"
+              label="Email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@company.com"
+              required
+              /* Still no "already registered" hint, by design — see the note
+                 beside the checkEmail effect above. The domain verdict is a
+                 different fact and safe to show. */
+              error={domainWarning || undefined}
+              hint="We will send a verification link to this address."
+            />
 
-            <div className="field">
-              <label htmlFor="password">Password</label>
-              <div className="password-input-wrapper">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handlePwKey}
-                  onKeyUp={handlePwKey}
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  type="button"
-                  tabIndex="-1"
-                  aria-label="Toggle password visibility"
-                  className="password-toggle-btn"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
-              </div>
-              {capsLockPw && (
-                <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
-              )}
-              {password && (
-                <>
-                  <div className="strength-bar">
-                    {[1, 2, 3, 4].map((n) => (
-                      <span
-                        key={n}
-                        className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`}
-                      />
-                    ))}
-                    <span className="strength-label">{strength.label}</span>
-                  </div>
-                  <div
-                    className="field-hint"
-                    style={{
-                      marginTop: "6px",
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      gap: "10px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: password.length >= 12 ? "#34d399" : "#64748b",
-                      }}
-                    >
-                      {password.length >= 12 ? "✓" : "•"} 12+ chars
-                    </span>
-                    <span
-                      style={{
-                        color: /[A-Z]/.test(password) ? "#34d399" : "#64748b",
-                      }}
-                    >
-                      {/[A-Z]/.test(password) ? "✓" : "•"} Uppercase
-                    </span>
-                    <span
-                      style={{
-                        color: /[0-9]/.test(password) ? "#34d399" : "#64748b",
-                      }}
-                    >
-                      {/[0-9]/.test(password) ? "✓" : "•"} Number
-                    </span>
-                    <span
-                      style={{
-                        color: /[^a-zA-Z0-9]/.test(password)
-                          ? "#34d399"
-                          : "#64748b",
-                      }}
-                    >
-                      {/[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Special char
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
+            <CcurePasswordField
+              id="password"
+              name="password"
+              label="Password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              showStrength
+            />
 
-            <div className="field">
-              <label htmlFor="confirm">Confirm password</label>
-              <div className="password-input-wrapper">
-                <input
-                  id="confirm"
-                  type={showConfirm ? "text" : "password"}
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  onKeyDown={handleConfirmKey}
-                  onKeyUp={handleConfirmKey}
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  type="button"
-                  tabIndex="-1"
-                  aria-label="Toggle confirm password visibility"
-                  className="password-toggle-btn"
-                  onClick={() => setShowConfirm((prev) => !prev)}
-                >
-                  {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
-              </div>
-              {capsLockConfirm && (
-                <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
-              )}
-              {confirm && confirm !== password && (
-                <span className="field-hint field-hint--warn">
-                  Passwords don&apos;t match
-                </span>
-              )}
-              {confirm && confirm === password && password && (
-                <span className="field-hint field-hint--ok">
-                  ✓ Passwords match
-                </span>
-              )}
-            </div>
+            <CcurePasswordField
+              id="confirm"
+              name="confirm"
+              label="Confirm password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="••••••••"
+              required
+              error={
+                confirm && confirm !== password
+                  ? "Passwords don't match"
+                  : undefined
+              }
+              hint={
+                confirm && confirm === password && password
+                  ? "Passwords match"
+                  : undefined
+              }
+            />
 
             {/* Terms of Service & Privacy Policy Checkbox */}
-            <div className="auth-checkbox-row" style={{ marginTop: "12px" }}>
-              <label
-                className="auth-checkbox-label"
-                style={{ fontSize: "0.82rem" }}
-              >
+            <div className="auth-checkbox-row auth-consent-row">
+              <label className="auth-checkbox-label">
                 <input
                   type="checkbox"
                   checked={agreeToTerms}
@@ -578,55 +469,30 @@ export default function Register() {
                 />
                 <span>
                   I agree to the{" "}
-                  <button
+                  <CcureButton
                     type="button"
-                    className="auth-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      fontSize: "0.82rem",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                    }}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowTermsModal(true)}
                   >
                     Terms of Service
-                  </button>{" "}
+                  </CcureButton>{" "}
                   and{" "}
-                  <button
+                  <CcureButton
                     type="button"
-                    className="auth-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      fontSize: "0.82rem",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                    }}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowPrivacyModal(true)}
                   >
                     Privacy Policy
-                  </button>
+                  </CcureButton>
                 </span>
               </label>
             </div>
 
-            <button
-              type="submit"
-              className="auth-btn"
-              disabled={loading}
-              style={{ marginTop: "16px" }}
-            >
-              {loading ? (
-                <>
-                  <span className="btn-spinner" /> Creating account...
-                </>
-              ) : (
-                "Create Account →"
-              )}
-            </button>
+            <CcureButton type="submit" loading={loading} block size="lg">
+              {loading ? "Creating account..." : "Create Account →"}
+            </CcureButton>
           </form>
 
           <p className="auth-switch">
@@ -635,251 +501,77 @@ export default function Register() {
               Sign in
             </Link>
           </p>
-
-          {/* Reusable Enterprise Security Trust Footer */}
-          <AuthTrustFooter />
-        </div>
-      </div>
-
-      {/* Inline Modal: Terms of Service */}
-      {showTermsModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-          onClick={() => setShowTermsModal(false)}
-        >
-          <div
-            style={{
-              maxWidth: "560px",
-              width: "90%",
-              background: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: "12px",
-              padding: "24px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.6)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                borderBottom: "1px solid #1e293b",
-                paddingBottom: "12px",
-              }}
-            >
-              <h2
-                style={{
-                  fontSize: "1.15rem",
-                  fontWeight: 600,
-                  color: "#f8fafc",
-                  margin: 0,
-                }}
-              >
-                Terms of Service — CCure Audit PRO
-              </h2>
-              <button
-                type="button"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#94a3b8",
-                  fontSize: "1.4rem",
-                  cursor: "pointer",
-                  lineHeight: 1,
-                }}
-                onClick={() => setShowTermsModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div
-              style={{
-                maxHeight: "320px",
-                overflowY: "auto",
-                fontSize: "0.85rem",
-                color: "#cbd5e1",
-                lineHeight: 1.6,
-                marginTop: "12px",
-              }}
-            >
-              <p>
-                Welcome to CCure Audit PRO. By creating an account and using our
-                network security platform, you agree to comply with the
-                following terms:
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                1. Authorized Use
-              </h4>
-              <p>
-                You agree to only perform security assessments and vulnerability
-                scans on networks, hosts, and domain infrastructure that you own
-                or have explicit written authorization to audit.
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                2. Account Security
-              </h4>
-              <p>
-                You are responsible for maintaining the confidentiality of your
-                credentials and multi-factor authentication tokens. Any action
-                initiated under your credentials is your responsibility.
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                3. Compliance & Audit Logs
-              </h4>
-              <p>
-                All activities performed on this platform are recorded in
-                tamper-resistant immutable audit logs for enterprise compliance
-                and SIEM auditing.
-              </p>
-            </div>
-            <div style={{ marginTop: "20px", textAlign: "right" }}>
-              <button
-                type="button"
-                className="auth-btn"
-                style={{ width: "auto", padding: "8px 20px" }}
-                onClick={() => {
-                  setAgreeToTerms(true);
-                  setShowTermsModal(false);
-                }}
-              >
-                Accept & Close
-              </button>
-            </div>
-          </div>
-        </div>
+        </>,
       )}
 
-      {/* Inline Modal: Privacy Policy */}
-      {showPrivacyModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-          onClick={() => setShowPrivacyModal(false)}
-        >
-          <div
-            style={{
-              maxWidth: "560px",
-              width: "90%",
-              background: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: "12px",
-              padding: "24px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.6)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                borderBottom: "1px solid #1e293b",
-                paddingBottom: "12px",
-              }}
-            >
-              <h2
-                style={{
-                  fontSize: "1.15rem",
-                  fontWeight: 600,
-                  color: "#f8fafc",
-                  margin: 0,
-                }}
-              >
-                Privacy Policy — CCure Audit PRO
-              </h2>
-              <button
-                type="button"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#94a3b8",
-                  fontSize: "1.4rem",
-                  cursor: "pointer",
-                  lineHeight: 1,
-                }}
-                onClick={() => setShowPrivacyModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div
-              style={{
-                maxHeight: "320px",
-                overflowY: "auto",
-                fontSize: "0.85rem",
-                color: "#cbd5e1",
-                lineHeight: 1.6,
-                marginTop: "12px",
-              }}
-            >
-              <p>
-                Your privacy and data security are our top priorities. Here is
-                how we handle your personal and enterprise telemetry data:
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                1. Data Collection
-              </h4>
-              <p>
-                We collect your username, email address, optional full name, and
-                authentication logs to provide secure tenant isolation and audit
-                trails.
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                2. Scan Result Encryption
-              </h4>
-              <p>
-                All network scan assets, vulnerability reports, and credential
-                credentials are stored with strict multi-tenant isolation and
-                database encryption.
-              </p>
-              <h4 style={{ color: "#38bdf8", margin: "12px 0 4px 0" }}>
-                3. No Data Sharing
-              </h4>
-              <p>
-                We never sell or share your telemetry or scan findings with
-                third parties.
-              </p>
-            </div>
-            <div style={{ marginTop: "20px", textAlign: "right" }}>
-              <button
-                type="button"
-                className="auth-btn"
-                style={{ width: "auto", padding: "8px 20px" }}
-                onClick={() => {
-                  setAgreeToTerms(true);
-                  setShowPrivacyModal(false);
-                }}
-              >
-                Accept & Close
-              </button>
-            </div>
-          </div>
+      {/* Both policy dialogs were previously raw fixed-position <div>s: no
+          role, no accessible name, no focus trap, no Escape, and a dismiss
+          control named only by the glyph "×". CcureModal supplies all five. */}
+      <CcureModal
+        open={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        title="Terms of Service — CCure Audit PRO"
+        className="cc-theme-dark"
+        footer={policyFooter(() => setShowTermsModal(false))}
+      >
+        <div className="auth-policy-body">
+          <p>
+            Welcome to CCure Audit PRO. By creating an account and using our
+            network security platform, you agree to comply with the following
+            terms:
+          </p>
+          <h4>1. Authorized Use</h4>
+          <p>
+            You agree to only perform security assessments and vulnerability
+            scans on networks, hosts, and domain infrastructure that you own or
+            have explicit written authorization to audit.
+          </p>
+          <h4>2. Account Security</h4>
+          <p>
+            You are responsible for maintaining the confidentiality of your
+            credentials and multi-factor authentication tokens. Any action
+            initiated under your credentials is your responsibility.
+          </p>
+          <h4>3. Compliance &amp; Audit Logs</h4>
+          <p>
+            All activities performed on this platform are recorded in
+            tamper-resistant immutable audit logs for enterprise compliance and
+            SIEM auditing.
+          </p>
         </div>
-      )}
-    </div>
+      </CcureModal>
+
+      <CcureModal
+        open={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        title="Privacy Policy — CCure Audit PRO"
+        className="cc-theme-dark"
+        footer={policyFooter(() => setShowPrivacyModal(false))}
+      >
+        <div className="auth-policy-body">
+          <p>
+            Your privacy and data security are our top priorities. Here is how
+            we handle your personal and enterprise telemetry data:
+          </p>
+          <h4>1. Data Collection</h4>
+          <p>
+            We collect your username, email address, optional full name, and
+            authentication logs to provide secure tenant isolation and audit
+            trails.
+          </p>
+          <h4>2. Scan Result Encryption</h4>
+          <p>
+            All network scan assets, vulnerability reports, and credential
+            credentials are stored with strict multi-tenant isolation and
+            database encryption.
+          </p>
+          <h4>3. No Data Sharing</h4>
+          <p>
+            We never sell or share your telemetry or scan findings with third
+            parties.
+          </p>
+        </div>
+      </CcureModal>
+    </>
   );
 }

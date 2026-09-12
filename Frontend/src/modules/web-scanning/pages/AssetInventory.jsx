@@ -1,16 +1,62 @@
+/**
+ * modules/web-scanning/pages/AssetInventory.jsx
+ * The endpoints a DAST scan discovered on its target.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C batch-6 migration ──────────────
+ * Every request, filter rule and state transition below is what it was before.
+ * The migration changed presentation only. Specifically preserved:
+ *
+ *   * `getAssets(id, { per_page: 200 })`, where `id` is the route parameter.
+ *     That id is the whole scoping: an inventory rendered against a different
+ *     scan's id would show one customer's discovered endpoints under another's
+ *     scan;
+ *   * the client-side filter still matches on `url` and `content_type` only,
+ *     case-insensitively;
+ *   * both response shapes are still accepted; a failed load still leaves the
+ *     list empty rather than throwing;
+ *   * the page does not poll.
+ *
+ * ── What the migration changed ──────────────────────────────────────────────
+ * The flag column. `auth_required`, `is_api`, `is_form` and `has_file_upload`
+ * are the security facts on this page — a discovered file-upload endpoint is
+ * the most useful row here — and each was an emoji in a bare `<span>` with a
+ * `title` attribute. `title` is not an accessible name on a span: most screen
+ * readers ignore it there, and it is unreachable by keyboard and by touch. They
+ * are labelled badges now.
+ */
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webScansApi } from "../api/webScansApi";
-import Skeleton from "../../../components/common/Skeleton";
+import {
+  CcureBadge,
+  CcureEmptyState,
+  CcureInput,
+  CcureSkeleton,
+  CcureTable,
+} from "../../../design-system";
+import "../styles/web-scanning-pages.css";
 
-const getMethodColor = (method) => {
-  const m = method?.toUpperCase() || "";
-  if (m === "GET") return "var(--info)";
-  if (m === "POST") return "var(--ok)";
-  if (m === "PUT") return "var(--warning)";
-  if (m === "DELETE") return "var(--danger)";
-  return "var(--text-muted)";
+/* An HTTP method is a small closed vocabulary and maps one-to-one onto the
+   badge variants, so it needs no pattern of its own — the Batch 5 rule that a
+   new design-system pattern must be earned by reuse, not by a single page. */
+const METHOD_VARIANT = {
+  GET: "info",
+  POST: "success",
+  PUT: "warning",
+  PATCH: "warning",
+  DELETE: "danger",
+};
+
+/* A response code band. 2xx is not "good news" on this page — it means the
+   endpoint answered — so the vocabulary is deliberately neutral except where
+   the server actually reported a problem. */
+const codeVariant = (code) => {
+  const n = Number(code);
+  if (n >= 500) return "danger";
+  if (n === 401 || n === 403) return "warning";
+  if (n >= 400) return "neutral";
+  return "success";
 };
 
 export default function AssetInventory() {
@@ -40,293 +86,155 @@ export default function AssetInventory() {
       a.content_type?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
+  const columns = [
+    {
+      key: "method",
+      header: "Method",
+      nowrap: true,
+      cell: (asset) => {
+        const method = (asset.method || "GET").toUpperCase();
+        return (
+          <CcureBadge variant={METHOD_VARIANT[method] || "neutral"} mono>
+            {method}
+          </CcureBadge>
+        );
+      },
+    },
+    {
+      key: "url",
+      header: "URL",
+      isRowHeader: true,
+      mono: true,
+      /* Deliberately not an anchor: this is a URL discovered on a target
+         somebody named, and making it followable invites a click straight at
+         it from inside the console. */
+      cell: (asset) => <span className="wsp-target">{asset.url}</span>,
+    },
+    {
+      key: "response_code",
+      header: "Status",
+      nowrap: true,
+      cell: (asset) => {
+        const code = asset.response_code || 200;
+        return (
+          <CcureBadge variant={codeVariant(code)} mono>
+            {code}
+          </CcureBadge>
+        );
+      },
+    },
+    {
+      key: "content_type",
+      header: "Content type",
+      cell: (asset) => (
+        <span className="wsp-muted">{asset.content_type || "text/html"}</span>
+      ),
+    },
+    {
+      key: "flags",
+      header: "Flags",
+      cell: (asset) => {
+        const flags = [];
+        if (asset.auth_required) {
+          flags.push(
+            <CcureBadge key="auth" variant="warning">
+              Auth required
+            </CcureBadge>,
+          );
+        }
+        if (asset.is_api) {
+          flags.push(
+            <CcureBadge key="api" variant="info">
+              API
+            </CcureBadge>,
+          );
+        }
+        if (asset.is_form) {
+          flags.push(
+            <CcureBadge key="form" variant="neutral">
+              Form
+            </CcureBadge>,
+          );
+        }
+        if (asset.has_file_upload) {
+          flags.push(
+            <CcureBadge key="upload" variant="danger">
+              File upload
+            </CcureBadge>,
+          );
+        }
+        // No flags means no flags. An empty cell says that; a dash would read
+        // as "not assessed".
+        return flags.length ? <div className="wsp-flags">{flags}</div> : null;
+      },
+    },
+    {
+      key: "size_time",
+      header: "Size / time",
+      align: "end",
+      nowrap: true,
+      mono: true,
+      cell: (asset) => (
+        <span className="wsp-muted">
+          <span className="wsp-size">
+            {asset.response_size
+              ? `${(asset.response_size / 1024).toFixed(1)} KB`
+              : "-"}
+          </span>
+          <span className="wsp-time">
+            {asset.response_time ? `${asset.response_time}s` : "-"}
+          </span>
+        </span>
+      ),
+    },
+  ];
+
   return (
     <AppLayout pageTitle="Asset Inventory">
-      <div
-        className="page-inner"
-        style={{ maxWidth: "1400px", margin: "0 auto", padding: "24px" }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "24px",
-          }}
-        >
+      <div className="page-inner wsp-page">
+        <div className="wsp-header">
           <div>
-            <Link
-              to={`/web-scans/${id}`}
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--accent)",
-                textDecoration: "none",
-                marginBottom: "8px",
-                display: "inline-block",
-              }}
-            >
+            <Link to={`/web-scans/${id}`} className="wsp-back">
               ← Back to Scan Detail
             </Link>
-            <h1 className="page-title" style={{ margin: 0 }}>
-              Asset Inventory
-            </h1>
+            <h1 className="page-title">Asset Inventory</h1>
             <p className="page-subtitle">
               Discovered endpoints, APIs, and technologies
             </p>
           </div>
-          <div style={{ width: "300px" }}>
-            <input
-              type="text"
-              placeholder="Search URLs or Content-Types..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="form-input"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: "6px",
-                border: "1px solid var(--border)",
-                background: "var(--bg-app)",
-                color: "var(--text)",
-              }}
-            />
-          </div>
+          <CcureInput
+            type="search"
+            label="Search assets"
+            placeholder="Search URLs or Content-Types..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            fieldClassName="wsp-search"
+          />
         </div>
 
-        <div
-          style={{
-            background: "var(--bg-panel)",
-            borderRadius: "12px",
-            border: "1px solid var(--border)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="wsp-panel">
           {loading ? (
-            <div
-              style={{
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "16px",
-              }}
-            >
-              <Skeleton height="40px" borderRadius="8px" />
-              <Skeleton height="50px" borderRadius="8px" />
-              <Skeleton height="50px" borderRadius="8px" />
-              <Skeleton height="50px" borderRadius="8px" />
-              <Skeleton height="50px" borderRadius="8px" />
+            <div className="wsp-loading" role="status" aria-live="polite">
+              <span className="cc-sr-only">Loading discovered assets…</span>
+              <CcureSkeleton height="40px" radius="8px" />
+              <CcureSkeleton height="50px" radius="8px" />
+              <CcureSkeleton height="50px" radius="8px" />
+              <CcureSkeleton height="50px" radius="8px" />
+              <CcureSkeleton height="50px" radius="8px" />
             </div>
           ) : filteredAssets.length === 0 ? (
-            <div
-              style={{
-                padding: "60px 20px",
-                textAlign: "center",
-                color: "var(--text-muted)",
-              }}
-            >
-              <div style={{ fontSize: "2rem", marginBottom: "16px" }}>📂</div>
-              <h3>No Assets Found</h3>
-              <p>The scanner has not discovered any unique endpoints yet.</p>
-            </div>
+            <CcureEmptyState
+              title="No Assets Found"
+              description="No discovered endpoints match the current search."
+            />
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    background: "rgba(0,0,0,0.2)",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    METHOD
-                  </th>
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    URL
-                  </th>
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    STATUS
-                  </th>
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    CONTENT TYPE
-                  </th>
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                      textAlign: "center",
-                    }}
-                  >
-                    FLAGS
-                  </th>
-                  <th
-                    style={{
-                      padding: "16px",
-                      fontWeight: "600",
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                      textAlign: "right",
-                    }}
-                  >
-                    SIZE / TIME
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAssets.map((asset) => (
-                  <tr
-                    key={asset.id}
-                    style={{ borderBottom: "1px solid var(--border)" }}
-                  >
-                    <td
-                      style={{
-                        padding: "16px",
-                        fontWeight: "bold",
-                        fontSize: "0.85rem",
-                        color: getMethodColor(asset.method),
-                      }}
-                    >
-                      {asset.method || "GET"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px",
-                        color: "var(--text)",
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      <a
-                        href={asset.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: "var(--text)", textDecoration: "none" }}
-                      >
-                        {asset.url}
-                      </a>
-                    </td>
-                    <td style={{ padding: "16px" }}>
-                      <span
-                        style={{
-                          color:
-                            asset.response_code >= 400
-                              ? "var(--danger)"
-                              : asset.response_code >= 300
-                                ? "var(--warning)"
-                                : "var(--ok)",
-                          fontWeight: "bold",
-                          fontSize: "0.9rem",
-                        }}
-                      >
-                        {asset.response_code || 200}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px",
-                        fontSize: "0.85rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {asset.content_type || "text/html"}
-                    </td>
-                    <td style={{ padding: "16px", textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {asset.auth_required && (
-                          <span
-                            title="Auth Required"
-                            style={{ fontSize: "1.1rem" }}
-                          >
-                            🔒
-                          </span>
-                        )}
-                        {asset.is_api && (
-                          <span
-                            title="API Endpoint"
-                            style={{ fontSize: "1.1rem" }}
-                          >
-                            ⚙️
-                          </span>
-                        )}
-                        {asset.is_form && (
-                          <span
-                            title="HTML Form"
-                            style={{ fontSize: "1.1rem" }}
-                          >
-                            📝
-                          </span>
-                        )}
-                        {asset.has_file_upload && (
-                          <span
-                            title="File Upload"
-                            style={{ fontSize: "1.1rem" }}
-                          >
-                            📤
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px",
-                        textAlign: "right",
-                        fontSize: "0.85rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      <div>
-                        {asset.response_size
-                          ? `${(asset.response_size / 1024).toFixed(1)} KB`
-                          : "-"}
-                      </div>
-                      <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>
-                        {asset.response_time ? `${asset.response_time}s` : "-"}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <CcureTable
+              caption={`Discovered assets — ${filteredAssets.length} endpoint${filteredAssets.length !== 1 ? "s" : ""}`}
+              columns={columns}
+              rows={filteredAssets}
+              rowKey={(asset) => asset.id}
+              density="comfortable"
+            />
           )}
         </div>
       </div>

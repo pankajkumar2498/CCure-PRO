@@ -1,51 +1,79 @@
+/**
+ * modules/web-scanning/pages/ScanDetail.jsx
+ * The live view of one web scan.
+ *
+ * ── The lifecycle contract, preserved exactly (Checkpoint 3C batch 8) ───────
+ * `useScanPolling(id, 5000)` is untouched — the hook file is not modified by
+ * this batch — and this page's use of it is unchanged. What that contract
+ * actually is, because it is easy to assume wrongly:
+ *
+ *   * ONE `getScan` on mount;
+ *   * the **WebSocket is the primary channel**. While it is healthy there is
+ *     no polling at all — this page does not "poll every 5 seconds";
+ *   * timed polling is a FALLBACK, armed only after the socket errors, closes,
+ *     or the ticket request fails;
+ *   * the fallback re-arms only while status is running / pending / queued, so
+ *     a terminal state stops it;
+ *   * a terminal status over the socket triggers one final `getScan` and closes
+ *     the socket;
+ *   * unmount clears both timers and closes the socket.
+ *
+ * Also preserved without change: `cancelScan` behind `window.confirm` followed
+ * by `refresh()`; `downloadReport` → Blob → anchor click, with `alert()` on
+ * failure; the `ACTIVE_STATUSES` / `COMPLETE_STATUSES` sets that decide which
+ * actions are offered; the `PIPELINE_PHASES` order; the progress derivation
+ * (`live_progress.percentage`, else 100 when complete, else phase index × 33.33);
+ * the `liveStatus` → label map; and the coverage-caveat logic in full.
+ *
+ * ── The one branch that had to keep its exact shape ─────────────────────────
+ * `if (loading && !scan)`. The hook sets `loading` true on EVERY refetch, so a
+ * skeleton branch keyed on `loading` alone would blank the whole page back to
+ * placeholders on every poll — over settled results, every five seconds. The
+ * condition is unchanged and is asserted directly.
+ *
+ * ── Intentionally changed: presentation and accessibility ───────────────────
+ * The progress bar was a bare `<div>` with a width percentage: no
+ * `role="progressbar"`, no value, no name. The error branch was a plain
+ * `<div>`, so a scan that failed to load was never announced. The pipeline
+ * stepper conveyed done / active / pending through a tick glyph, a spinner and
+ * a number — none of which carries text. The status badge was a two-way branch
+ * that dressed any unrecognised status as an active scan.
+ */
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { useScanPolling } from "../hooks/useScanPolling";
 import { webScansApi } from "../api/webScansApi";
-import Skeleton from "../../../components/common/Skeleton";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureScanProgress,
+  CcureScanStatus,
+  CcureSkeleton,
+} from "../../../design-system";
+import "../styles/web-scanning-pages.css";
 
 const PIPELINE_PHASES = ["RECON", "CRAWL", "DETECT", "AUDIT"];
 const ACTIVE_STATUSES = new Set(["queued", "pending", "running"]);
 const COMPLETE_STATUSES = new Set(["complete", "completed"]);
 
-const SvgCheck = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="3"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="20 6 9 17 4 12"></polyline>
-  </svg>
-);
-const SvgSpinner = () => (
-  <svg
-    className="spinner-icon"
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    style={{ animation: "spin 1s linear infinite" }}
-  >
-    <line x1="12" y1="2" x2="12" y2="6"></line>
-    <line x1="12" y1="18" x2="12" y2="22"></line>
-    <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-    <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-    <line x1="2" y1="12" x2="6" y2="12"></line>
-    <line x1="18" y1="12" x2="22" y2="12"></line>
-    <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-    <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-  </svg>
-);
+/* The live-channel indicator. This is the transport's health, NOT the scan's
+   status, and the two must not read alike — an operator who confuses "we lost
+   the socket" with "the scan failed" goes looking in the wrong place. */
+const LIVE_LABEL = {
+  connected: "Live",
+  connecting: "Connecting",
+  reconnecting: "Reconnecting",
+  degraded: "Polling",
+  closed: "Closed",
+};
+
+/** Each pipeline step's state, in words. The pre-migration stepper carried
+ *  this only as a tick, a spinner or a number. */
+const stepState = (isDone, isActive) =>
+  isDone ? "Done" : isActive ? "In progress" : "Pending";
 
 export default function ScanDetail() {
   const { id } = useParams();
@@ -81,37 +109,28 @@ export default function ScanDetail() {
     }
   };
 
+  /* `loading && !scan`, unchanged. Keyed on "nothing to show yet" rather than
+     on `loading`, which the hook raises on every refetch. */
   if (loading && !scan) {
     return (
       <AppLayout pageTitle="Scan Details">
         <div
-          className="page-inner"
-          style={{
-            maxWidth: "1200px",
-            margin: "0 auto",
-            padding: "24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "24px",
-          }}
+          className="page-inner wsp-page sd-loading"
+          role="status"
+          aria-live="polite"
         >
-          <Skeleton height="60px" borderRadius="8px" />
-          <Skeleton height="150px" borderRadius="12px" />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "20px",
-            }}
-          >
-            <Skeleton height="100px" borderRadius="12px" />
-            <Skeleton height="100px" borderRadius="12px" />
-            <Skeleton height="100px" borderRadius="12px" />
-            <Skeleton height="100px" borderRadius="12px" />
+          <span className="cc-sr-only">Loading scan details…</span>
+          <CcureSkeleton height="60px" radius="8px" />
+          <CcureSkeleton height="150px" radius="12px" />
+          <div className="sd-stat-grid">
+            <CcureSkeleton height="100px" radius="12px" />
+            <CcureSkeleton height="100px" radius="12px" />
+            <CcureSkeleton height="100px" radius="12px" />
+            <CcureSkeleton height="100px" radius="12px" />
           </div>
-          <div style={{ display: "flex", gap: "20px" }}>
-            <Skeleton height="120px" borderRadius="12px" />
-            <Skeleton height="120px" borderRadius="12px" />
+          <div className="sd-links">
+            <CcureSkeleton height="120px" radius="12px" />
+            <CcureSkeleton height="120px" radius="12px" />
           </div>
         </div>
       </AppLayout>
@@ -121,7 +140,11 @@ export default function ScanDetail() {
   if (error) {
     return (
       <AppLayout pageTitle="Scan Details">
-        <div style={{ padding: "24px", color: "var(--danger)" }}>{error}</div>
+        <div className="page-inner wsp-page">
+          {/* Was a plain <div>. A scan detail that could not be loaded is now
+              announced rather than merely coloured red. */}
+          <CcureAlert variant="danger">{error}</CcureAlert>
+        </div>
       </AppLayout>
     );
   }
@@ -136,582 +159,248 @@ export default function ScanDetail() {
   const progressPercent =
     scan.live_progress?.percentage ??
     (isCompleteScan ? 100 : Math.max(0, currentPhaseIndex) * 33.33);
-  const liveStatusLabel =
+  const liveStatusLabel = LIVE_LABEL[liveStatus] || "Polling";
+
+  const coverage = scan.options?.tool_coverage;
+  const coveragePhases = coverage ? Object.entries(coverage) : [];
+  const unavailable = [
+    ...new Set(coveragePhases.flatMap(([, c]) => c.tools_unavailable || [])),
+  ];
+  const incomplete = coveragePhases.some(
+    ([, c]) => c.assessment_complete === false,
+  );
+  // A depth that narrowed the scan is disclosed even when every tool ran —
+  // otherwise a quick pass reads as a thorough one that found nothing.
+  const narrowed = coveragePhases.find(([, c]) => c.scan_depth_caveat);
+  const showCoverage =
+    Boolean(coverage) && (unavailable.length > 0 || incomplete || narrowed);
+
+  const stats = [
     {
-      connected: "Live",
-      connecting: "Connecting",
-      reconnecting: "Reconnecting",
-      degraded: "Polling",
-      closed: "Closed",
-    }[liveStatus] || "Polling";
+      key: "endpoints",
+      label: "Discovered Assets",
+      value: scan.total_endpoints || 0,
+    },
+    {
+      key: "critical",
+      label: "Critical Findings",
+      value: scan.critical_count || 0,
+      tone: scan.critical_count > 0 ? "critical" : null,
+    },
+    {
+      key: "high",
+      label: "High Findings",
+      value: scan.high_count || 0,
+      tone: scan.high_count > 0 ? "high" : null,
+    },
+    { key: "total", label: "Total Findings", value: scan.total_findings || 0 },
+  ];
 
   return (
     <AppLayout pageTitle={`Scan: ${scan.scan_name}`}>
-      <div
-        className="page-inner"
-        style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px" }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: "24px",
-          }}
-        >
+      <div className="page-inner wsp-page">
+        <div className="wsp-header">
           <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                marginBottom: "8px",
-              }}
-            >
-              <h1 className="page-title" style={{ margin: 0 }}>
-                {scan.scan_name}
-              </h1>
-              <span
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "12px",
-                  fontSize: "0.75rem",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                  background: isCompleteScan
-                    ? "var(--ok-bg, rgba(34,197,94,0.15))"
-                    : "var(--info-bg, rgba(59,130,246,0.15))",
-                  color: isCompleteScan ? "var(--ok)" : "var(--info)",
-                  border: `1px solid ${isCompleteScan ? "var(--ok)" : "var(--info)"}40`,
-                }}
-              >
-                {scan.status}
-              </span>
-              <span
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "12px",
-                  fontSize: "0.75rem",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                  background:
-                    liveStatus === "connected"
-                      ? "rgba(34,197,94,0.12)"
-                      : "rgba(245,158,11,0.12)",
-                  color:
-                    liveStatus === "connected" ? "var(--ok)" : "var(--warning)",
-                  border: `1px solid ${liveStatus === "connected" ? "var(--ok)" : "var(--warning)"}40`,
-                }}
+            <div className="sd-title-row">
+              <h1 className="page-title">{scan.scan_name}</h1>
+              {/* The canonical vocabulary. The previous badge was a two-way
+                  branch — complete, else "info" — so an unrecognised status was
+                  dressed as an active scan. CcureScanStatus reports an unknown
+                  value as Unknown and keeps the raw string in its title. */}
+              <CcureScanStatus status={scan.status} />
+              {/* Transport health, labelled as such so it cannot be read as the
+                  scan's own state. */}
+              <CcureBadge
+                variant={liveStatus === "connected" ? "success" : "warning"}
+                aria-label={`Live updates: ${liveStatusLabel}`}
               >
                 {liveStatusLabel}
-              </span>
+              </CcureBadge>
             </div>
-            <p className="page-subtitle" style={{ fontSize: "1rem" }}>
+            <p className="page-subtitle">
               Target:{" "}
+              {/* Preserved as a link, including target/rel, because changing it
+                  would change this page's navigation behaviour. */}
               <a
                 href={scan.target_url}
                 target="_blank"
                 rel="noreferrer"
-                style={{ color: "var(--accent)", textDecoration: "none" }}
+                className="sd-target"
               >
                 {scan.target_url}
               </a>
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "12px" }}>
+          <div className="wsp-actions">
             {isActiveScan && (
-              <button
-                className="btn btn--outline"
-                onClick={handleCancel}
-                style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
-              >
+              <CcureButton variant="danger" onClick={handleCancel}>
                 Cancel Scan
-              </button>
+              </CcureButton>
             )}
             {isCompleteScan && (
-              <button
-                className="btn btn--primary"
+              <CcureButton
                 onClick={handleDownload}
-                disabled={downloading}
+                loading={downloading}
+                aria-busy={downloading ? "true" : undefined}
               >
                 {downloading ? "Generating PDF..." : "Download Report"}
-              </button>
+              </CcureButton>
             )}
           </div>
         </div>
 
-        {/* Stepper */}
-        <div
-          style={{
-            background: "var(--bg-panel)",
-            padding: "24px",
-            borderRadius: "12px",
-            border: "1px solid var(--border)",
-            marginBottom: "24px",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: "0.9rem",
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              marginBottom: "16px",
-            }}
-          >
-            Pipeline Progress
-          </h3>
+        <CcureCard title="Pipeline Progress" headingLevel={2}>
           {isActiveScan && (
-            <div
-              role="status"
-              aria-live="polite"
-              style={{
-                marginBottom: "16px",
-                color: "var(--text-muted)",
-                fontSize: "0.9rem",
-              }}
-            >
+            <div className="sd-live-note" role="status" aria-live="polite">
               {scan.live_progress?.message ||
                 `Scan is ${normalizedStatus === "queued" ? "queued" : "running"} in the ${normalizedPhase.toLowerCase() || "initializing"} phase.`}{" "}
               This page updates automatically.
             </div>
           )}
-          <div style={{ marginBottom: "16px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                color: "var(--text-muted)",
-                fontSize: "0.8rem",
-                marginBottom: "6px",
-              }}
-            >
-              <span>Overall progress</span>
-              <span>{Math.round(progressPercent)}%</span>
-            </div>
-            <div
-              style={{
-                height: "8px",
-                borderRadius: "999px",
-                background: "var(--bg-app)",
-                overflow: "hidden",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.max(0, Math.min(100, progressPercent))}%`,
-                  height: "100%",
-                  background: isCompleteScan ? "var(--ok)" : "var(--accent)",
-                  transition: "width 0.4s ease",
-                }}
-              />
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              position: "relative",
-            }}
-          >
-            {/* Track */}
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "0",
-                right: "0",
-                height: "2px",
-                background: "var(--border)",
-                zIndex: 0,
-                transform: "translateY(-50%)",
-              }}
-            ></div>
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "0",
-                width: `${progressPercent}%`,
-                height: "2px",
-                background: "var(--accent)",
-                zIndex: 1,
-                transform: "translateY(-50%)",
-                transition: "width 0.5s ease",
-              }}
-            ></div>
 
+          {/* Was a bare <div> with a width percentage: no role, no value, no
+              name. CcureScanProgress supplies all three and resolves a complete
+              scan to 100 even if the last update landed short. */}
+          <CcureScanProgress
+            value={progressPercent}
+            status={scan.status}
+            label="Overall scan progress"
+          />
+
+          <ol className="sd-steps">
             {PIPELINE_PHASES.map((phase, idx) => {
               const isActive = normalizedPhase === phase && isActiveScan;
               const isDone =
                 idx < currentPhaseIndex ||
                 isCompleteScan ||
                 normalizedPhase === "COMPLETE";
-
+              const state = stepState(isDone, isActive);
               return (
-                <div
+                <li
                   key={phase}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "8px",
-                    zIndex: 2,
-                    background: "var(--bg-panel)",
-                    padding: "0 10px",
-                  }}
+                  className={`sd-step sd-step--${state.toLowerCase().replace(/\s+/g, "-")}`}
+                  aria-current={isActive ? "step" : undefined}
                 >
-                  <div
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isDone
-                        ? "var(--accent)"
-                        : isActive
-                          ? "var(--bg-app)"
-                          : "var(--bg-app)",
-                      border: `2px solid ${isDone || isActive ? "var(--accent)" : "var(--border)"}`,
-                      color: isDone
-                        ? "#fff"
-                        : isActive
-                          ? "var(--accent)"
-                          : "var(--text-muted)",
-                    }}
-                  >
-                    {isDone ? (
-                      <SvgCheck />
-                    ) : isActive ? (
-                      <SvgSpinner />
-                    ) : (
-                      idx + 1
-                    )}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: isActive || isDone ? "600" : "400",
-                      color:
-                        isActive || isDone
-                          ? "var(--text)"
-                          : "var(--text-muted)",
-                    }}
-                  >
-                    {phase}
+                  <span className="sd-step-marker" aria-hidden="true">
+                    {isDone ? "✓" : idx + 1}
                   </span>
-                </div>
+                  <span className="sd-step-name">{phase}</span>
+                  {/* The state in words. The glyphs above are decorative; this
+                      is what a reader without them actually gets. */}
+                  <span className="sd-step-state">{state}</span>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ol>
+        </CcureCard>
 
         {isActiveScan && (
-          <div
-            style={{
-              background: "var(--bg-panel)",
-              padding: "20px",
-              borderRadius: "12px",
-              border: "1px solid var(--border)",
-              marginBottom: "24px",
-            }}
-          >
-            <h3
-              style={{
-                fontSize: "0.9rem",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                marginBottom: "12px",
-              }}
-            >
-              Live Activity
-            </h3>
+          <CcureCard title="Live Activity" headingLevel={2}>
             {liveEvents.length === 0 ? (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                Waiting for scanner activity...
-              </div>
+              <p className="wsp-placeholder">Waiting for scanner activity...</p>
             ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                }}
-              >
+              <ul className="sd-events">
                 {liveEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "110px 1fr",
-                      gap: "12px",
-                      fontSize: "0.88rem",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                      }}
-                    >
+                  <li key={event.id} className="sd-event">
+                    <span className="sd-event-phase">
                       {event.phase || "scan"}
                     </span>
-                    <span style={{ color: "var(--text)" }}>
-                      {event.message}
-                    </span>
-                  </div>
+                    <span className="sd-event-message">{event.message}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </CcureCard>
         )}
 
-        {/* Overview Stats */}
         {/* Which scanners actually ran. A phase that could not run its primary
             detector produces an empty result that reads exactly like a clean
-            one, so the gap is stated next to the counts it would distort. */}
-        {(() => {
-          const coverage = scan.options?.tool_coverage;
-          if (!coverage) return null;
-          const phases = Object.entries(coverage);
-          const unavailable = [
-            ...new Set(phases.flatMap(([, c]) => c.tools_unavailable || [])),
-          ];
-          const incomplete = phases.some(
-            ([, c]) => c.assessment_complete === false,
-          );
-          // A depth that narrowed the scan is disclosed even when every tool
-          // ran — otherwise a quick pass reads as a thorough one that found
-          // nothing.
-          const narrowed = phases.find(([, c]) => c.scan_depth_caveat);
-          if (!unavailable.length && !incomplete && !narrowed) return null;
-          return (
-            <div
-              style={{
-                background: "rgba(245, 158, 11, 0.08)",
-                border: "1px solid rgba(245, 158, 11, 0.35)",
-                borderRadius: "12px",
-                padding: "16px 20px",
-                marginBottom: "24px",
-                fontSize: "0.88rem",
-                lineHeight: 1.6,
-              }}
-            >
-              <strong>
-                {unavailable.length || incomplete
-                  ? "⚠ This assessment is incomplete"
-                  : "⚠ This scan ran at reduced depth"}
-              </strong>
-              {narrowed && (
-                <p style={{ margin: "6px 0 0", opacity: 0.9 }}>
-                  <b>{narrowed[1].scan_depth_label}</b>
-                  {" — "}
-                  {narrowed[1].scan_depth_caveat}
-                </p>
-              )}
-              {/* Only claimed when something actually failed. A scan that
-                  merely ran at reduced depth has not "failed to complete", and
-                  saying so would send an operator hunting a problem that is
-                  not there. */}
-              {(unavailable.length > 0 || incomplete) && (
-                <p style={{ margin: "6px 0 0", opacity: 0.9 }}>
-                  {unavailable.length > 0 ? (
-                    <>
-                      <code>{unavailable.join(", ")}</code>{" "}
-                      {unavailable.length === 1 ? "was" : "were"} not available
-                      on the scanner, so the checks{" "}
-                      {unavailable.length === 1
-                        ? "it performs"
-                        : "they perform"}{" "}
-                      did not run. The counts below reflect only what was
-                      actually tested — they are not evidence that nothing else
-                      is present.
-                    </>
-                  ) : (
-                    <>
-                      One or more phases could not complete their checks. The
-                      counts below reflect only what was actually tested.
-                    </>
-                  )}
-                </p>
-              )}
-              <div style={{ marginTop: 10, display: "grid", gap: 4 }}>
-                {phases.map(([phase, c]) =>
-                  (c.tools || [])
-                    .filter((t) => t.status !== "ran")
-                    .map((t) => (
-                      <div
-                        key={`${phase}-${t.tool}`}
-                        style={{ fontSize: "0.8rem", opacity: 0.85 }}
-                      >
-                        <code>{phase}</code> · <b>{t.tool}</b> — {t.status}
-                        {t.detail ? `: ${t.detail}` : ""}
-                      </div>
-                    )),
+            one, so the gap is stated next to the counts it would distort.
+            CcureAlert variant="warning" carries role="alert", because this
+            changes what the numbers below mean. */}
+        {showCoverage && (
+          <CcureAlert
+            variant="warning"
+            title={
+              unavailable.length || incomplete
+                ? "This assessment is incomplete"
+                : "This scan ran at reduced depth"
+            }
+            className="sd-coverage"
+          >
+            {narrowed && (
+              <p>
+                <b>{narrowed[1].scan_depth_label}</b>
+                {" — "}
+                {narrowed[1].scan_depth_caveat}
+              </p>
+            )}
+            {/* Only claimed when something actually failed. A scan that merely
+                ran at reduced depth has not "failed to complete", and saying so
+                would send an operator hunting a problem that is not there. */}
+            {(unavailable.length > 0 || incomplete) && (
+              <p>
+                {unavailable.length > 0 ? (
+                  <>
+                    <code>{unavailable.join(", ")}</code>{" "}
+                    {unavailable.length === 1 ? "was" : "were"} not available on
+                    the scanner, so the checks{" "}
+                    {unavailable.length === 1 ? "it performs" : "they perform"}{" "}
+                    did not run. The counts below reflect only what was actually
+                    tested — they are not evidence that nothing else is present.
+                  </>
+                ) : (
+                  <>
+                    One or more phases could not complete their checks. The
+                    counts below reflect only what was actually tested.
+                  </>
                 )}
-              </div>
-            </div>
-          );
-        })()}
+              </p>
+            )}
+            <ul className="sd-coverage-list">
+              {coveragePhases.map(([phase, c]) =>
+                (c.tools || [])
+                  .filter((t) => t.status !== "ran")
+                  .map((t) => (
+                    <li key={`${phase}-${t.tool}`}>
+                      <code>{phase}</code> · <b>{t.tool}</b> — {t.status}
+                      {t.detail ? `: ${t.detail}` : ""}
+                    </li>
+                  )),
+              )}
+            </ul>
+          </CcureAlert>
+        )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "20px",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              background: "var(--bg-panel)",
-              padding: "20px",
-              borderRadius: "12px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--text-muted)",
-                marginBottom: "8px",
-              }}
-            >
-              Discovered Assets
-            </div>
-            <div style={{ fontSize: "1.8rem", fontWeight: "bold" }}>
-              {scan.total_endpoints || 0}
-            </div>
-          </div>
-          <div
-            style={{
-              background: "var(--bg-panel)",
-              padding: "20px",
-              borderRadius: "12px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--text-muted)",
-                marginBottom: "8px",
-              }}
-            >
-              Critical Findings
-            </div>
-            <div
-              style={{
-                fontSize: "1.8rem",
-                fontWeight: "bold",
-                color:
-                  scan.critical_count > 0 ? "var(--danger)" : "var(--text)",
-              }}
-            >
-              {scan.critical_count || 0}
-            </div>
-          </div>
-          <div
-            style={{
-              background: "var(--bg-panel)",
-              padding: "20px",
-              borderRadius: "12px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--text-muted)",
-                marginBottom: "8px",
-              }}
-            >
-              High Findings
-            </div>
-            <div
-              style={{
-                fontSize: "1.8rem",
-                fontWeight: "bold",
-                color: scan.high_count > 0 ? "var(--warning)" : "var(--text)",
-              }}
-            >
-              {scan.high_count || 0}
-            </div>
-          </div>
-          <div
-            style={{
-              background: "var(--bg-panel)",
-              padding: "20px",
-              borderRadius: "12px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--text-muted)",
-                marginBottom: "8px",
-              }}
-            >
-              Total Findings
-            </div>
-            <div style={{ fontSize: "1.8rem", fontWeight: "bold" }}>
-              {scan.total_findings || 0}
-            </div>
-          </div>
+        <div className="sd-stat-grid">
+          {stats.map((s) => (
+            /* CcureCard supplies the heading, and the heading is what names the
+               counter. The previous markup paired a styled label div with a
+               styled value div and tied them together with nothing. */
+            <CcureCard key={s.key} title={s.label} headingLevel={2}>
+              <div
+                className={`sd-stat-value${s.tone ? ` sd-stat-value--${s.tone}` : ""}`}
+              >
+                {s.value}
+              </div>
+            </CcureCard>
+          ))}
         </div>
 
-        {/* Action Links */}
-        <div style={{ display: "flex", gap: "20px" }}>
-          <Link
-            to={`/web-scans/${scan.id}/findings`}
-            style={{ flex: 1, textDecoration: "none" }}
-          >
-            <div
-              style={{
-                background: "var(--bg-panel)",
-                padding: "24px",
-                borderRadius: "12px",
-                border: "1px solid var(--border)",
-                transition: "border-color 0.2s",
-                cursor: "pointer",
-              }}
-            >
-              <h3 style={{ color: "var(--accent)", marginBottom: "8px" }}>
-                Explore Findings →
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                Deep dive into discovered vulnerabilities, HTTP evidence, and
-                remediation steps.
-              </p>
-            </div>
+        <div className="sd-links">
+          <Link to={`/web-scans/${scan.id}/findings`} className="sd-link-card">
+            <span className="sd-link-title">Explore Findings →</span>
+            <span className="sd-link-desc">
+              Deep dive into discovered vulnerabilities, HTTP evidence, and
+              remediation steps.
+            </span>
           </Link>
-          <Link
-            to={`/web-scans/${scan.id}/assets`}
-            style={{ flex: 1, textDecoration: "none" }}
-          >
-            <div
-              style={{
-                background: "var(--bg-panel)",
-                padding: "24px",
-                borderRadius: "12px",
-                border: "1px solid var(--border)",
-                transition: "border-color 0.2s",
-                cursor: "pointer",
-              }}
-            >
-              <h3 style={{ color: "var(--accent)", marginBottom: "8px" }}>
-                Asset Inventory →
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                Review discovered endpoints, APIs, forms, and technologies.
-              </p>
-            </div>
+          <Link to={`/web-scans/${scan.id}/assets`} className="sd-link-card">
+            <span className="sd-link-title">Asset Inventory →</span>
+            <span className="sd-link-desc">
+              Review discovered endpoints, APIs, forms, and technologies.
+            </span>
           </Link>
         </div>
       </div>

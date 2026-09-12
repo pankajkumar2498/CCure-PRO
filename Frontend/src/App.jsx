@@ -16,6 +16,7 @@
  * NotificationsPage) are replaced with the pages that actually exist.
  */
 
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import PrivateRoute from "./components/auth/PrivateRoute";
 import { ScanProvider } from "./context/ScanContext";
@@ -53,6 +54,19 @@ import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 
+// ── Design-system showcase, development builds only ─────────────────────────
+// `import.meta.env.DEV` is a literal `false` in a production build, so Rollup
+// drops both the route and — because this is the only reference — the module
+// behind it. Verified rather than assumed: a guardrail test asserts the
+// showcase's marker string is absent from dist/.
+//
+// It renders no application data and calls no API, so it is safe to leave
+// reachable in development without an auth gate. It exists to exercise the
+// primitives in both themes; it is not, and must not become, a product page.
+const Ux4gShowcase = import.meta.env.DEV
+  ? lazy(() => import("./pages/DesignSystemShowcase"))
+  : null;
+
 // Admin pages
 import AuditLogs from "./pages/admin/AuditLogs";
 import EmailDomainRules from "./pages/admin/EmailDomainRules";
@@ -74,6 +88,19 @@ export default function App() {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Development-only, see the declaration above. Absent from every
+            production build. */}
+        {Ux4gShowcase ? (
+          <Route
+            path="/design-system"
+            element={
+              <Suspense fallback={null}>
+                <Ux4gShowcase />
+              </Suspense>
+            }
+          />
+        ) : null}
 
         {/* ── Protected ── */}
         <Route element={<PrivateRoute />}>

@@ -1,5 +1,126 @@
-import Modal from "../layout/Modal";
-import Button from "../common/Button";
+/**
+ * components/admin/AuditLogDetailsModal.jsx — Checkpoint 3C batch 13.
+ *
+ * The full-event dialog AuditLogs opens from a row. Same props (`isOpen`,
+ * `onClose`, `log`, `loading`), same parsing and masking: `password_hash`
+ * and `password` values are never rendered, an `{old, new}` pair is shown as
+ * a transition, ISO timestamps are localised.
+ *
+ * On CcureModal (portalled, `aria-modal`, focus trap and restoration, Escape,
+ * a described title) with the changes in a captioned CcureTable. The
+ * twenty-three inline style objects and the five severity hex literals are
+ * gone: severity is a CcureSeverityBadge and everything else is a token.
+ */
+import {
+  CcureButton,
+  CcureModal,
+  CcureSeverityBadge,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/audit-log-details.css";
+
+// The User-Agent is client-supplied and the parse is approximate, so this is
+// a reading aid rather than evidence — the raw string stays available below.
+const parseUserAgent = (ua) => {
+  if (!ua) return { browser: "Unknown", os: "Unknown", device: "Unknown" };
+  const s = String(ua);
+  let os = "Unknown";
+  if (s.includes("Windows NT 10.0")) os = "Windows 10/11";
+  else if (s.includes("Windows NT 6.3")) os = "Windows 8.1";
+  else if (s.includes("Windows NT 6.1")) os = "Windows 7";
+  else if (s.includes("Android")) os = "Android";
+  else if (s.includes("iPhone") || s.includes("iPad")) os = "iOS";
+  else if (s.includes("Macintosh") || s.includes("Mac OS")) os = "macOS";
+  else if (s.includes("Linux")) os = "Linux";
+
+  let browser = "Unknown";
+  if (s.includes("Edg/")) browser = "Edge";
+  else if (s.includes("Firefox/")) browser = "Firefox";
+  else if (s.includes("Chrome/") && s.includes("Safari/")) browser = "Chrome";
+  else if (s.includes("Safari/") && !s.includes("Chrome/")) browser = "Safari";
+  else if (s.includes("curl/")) browser = "curl";
+  else if (s.includes("python-requests")) browser = "python-requests";
+
+  let device = "Desktop";
+  if (s.includes("iPad") || s.includes("Tablet")) device = "Tablet";
+  else if (s.includes("Mobile") || s.includes("iPhone")) device = "Mobile";
+  else if (browser === "curl" || browser === "python-requests")
+    device = "API client";
+
+  return { browser, os, device };
+};
+
+const FIELD_NAMES = {
+  is_active: "Account Status",
+  is_deleted: "Suspension Status",
+  deleted_at: "Suspended At",
+  locked_until: "Temporary Lockout",
+  role_id: "Role ID",
+  email: "Email Address",
+  full_name: "Full Name",
+  password_hash: "Password",
+  mfa_enabled: "MFA Status",
+  totp_secret: "MFA Secret Key",
+  mfa_backup_codes: "MFA Backup Codes",
+  org_id: "Organization ID",
+  failed_login_count: "Failed Login Count",
+};
+
+const getFriendlyField = (key) => {
+  if (FIELD_NAMES[key]) return FIELD_NAMES[key];
+  // Fallback: title case the key
+  return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatSingleValue = (k, v) => {
+  if (v === null || v === undefined || v === "None") return "None";
+  if (k === "password_hash" || k === "password") return "••••••••";
+
+  if (typeof v === "boolean") {
+    if (k === "is_active") return v ? "Enabled" : "Disabled";
+    if (k === "is_deleted") return v ? "Suspended" : "Active";
+    if (k === "mfa_enabled") return v ? "Enabled" : "Disabled";
+    return v ? "Enabled" : "Disabled";
+  }
+
+  // Check if it is a UTC ISO datetime string
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
+    try {
+      return new Date(v).toLocaleString();
+    } catch {
+      return v;
+    }
+  }
+  return String(v);
+};
+
+const getFriendlyValue = (key, val) => {
+  if (val && typeof val === "object" && "old" in val && "new" in val) {
+    const oldDisplay = formatSingleValue(key, val.old);
+    const newDisplay = formatSingleValue(key, val.new);
+    return `${oldDisplay} ➔ ${newDisplay}`;
+  }
+  if (typeof val === "object") {
+    return JSON.stringify(val);
+  }
+  return formatSingleValue(key, val);
+};
+
+const CHANGE_COLUMNS = [
+  { key: "field", header: "Field", isRowHeader: true },
+  { key: "value", header: "Value" },
+];
+
+function Field({ label, children, title, span = false, mono = false }) {
+  return (
+    <div className={`ald-field${span ? " ald-field--span" : ""}`}>
+      <dt className="ald-label" title={title}>
+        {label}
+      </dt>
+      <dd className={`ald-value${mono ? " ald-mono" : ""}`}>{children}</dd>
+    </div>
+  );
+}
 
 export default function AuditLogDetailsModal({
   isOpen,
@@ -9,354 +130,113 @@ export default function AuditLogDetailsModal({
 }) {
   if (!isOpen || !log) return null;
 
-  // The User-Agent is client-supplied and the parse is approximate, so this is
-  // a reading aid rather than evidence — the raw string stays available below.
-  const parseUserAgent = (ua) => {
-    if (!ua) return { browser: "Unknown", os: "Unknown", device: "Unknown" };
-    const s = String(ua);
-    let os = "Unknown";
-    if (s.includes("Windows NT 10.0")) os = "Windows 10/11";
-    else if (s.includes("Windows NT 6.3")) os = "Windows 8.1";
-    else if (s.includes("Windows NT 6.1")) os = "Windows 7";
-    else if (s.includes("Android")) os = "Android";
-    else if (s.includes("iPhone") || s.includes("iPad")) os = "iOS";
-    else if (s.includes("Macintosh") || s.includes("Mac OS")) os = "macOS";
-    else if (s.includes("Linux")) os = "Linux";
-
-    let browser = "Unknown";
-    if (s.includes("Edg/")) browser = "Edge";
-    else if (s.includes("Firefox/")) browser = "Firefox";
-    else if (s.includes("Chrome/") && s.includes("Safari/")) browser = "Chrome";
-    else if (s.includes("Safari/") && !s.includes("Chrome/"))
-      browser = "Safari";
-    else if (s.includes("curl/")) browser = "curl";
-    else if (s.includes("python-requests")) browser = "python-requests";
-
-    let device = "Desktop";
-    if (s.includes("iPad") || s.includes("Tablet")) device = "Tablet";
-    else if (s.includes("Mobile") || s.includes("iPhone")) device = "Mobile";
-    else if (browser === "curl" || browser === "python-requests")
-      device = "API client";
-
-    return { browser, os, device };
-  };
-
   const agent = parseUserAgent(log.user_agent);
-
-  const SEVERITY_COLORS = {
-    critical: "#f87171",
-    high: "#fb923c",
-    medium: "#fbbf24",
-    low: "#60a5fa",
-    info: "#9ca3af",
-  };
-
-  const mono = {
-    fontFamily: "monospace",
-    fontSize: 12,
-    marginTop: 4,
-    wordBreak: "break-all",
-    userSelect: "all",
-  };
-
-  const Field = ({ label, children, title, span }) => (
-    <div style={span ? { gridColumn: "1 / -1" } : undefined}>
-      <span className="meta-label" title={title}>
-        {label}
-      </span>
-      {children}
-    </div>
-  );
-
-  const getFriendlyField = (key) => {
-    const mapping = {
-      is_active: "Account Status",
-      is_deleted: "Suspension Status",
-      deleted_at: "Suspended At",
-      locked_until: "Temporary Lockout",
-      role_id: "Role ID",
-      email: "Email Address",
-      full_name: "Full Name",
-      password_hash: "Password",
-      mfa_enabled: "MFA Status",
-      totp_secret: "MFA Secret Key",
-      mfa_backup_codes: "MFA Backup Codes",
-      org_id: "Organization ID",
-      failed_login_count: "Failed Login Count",
-    };
-    if (mapping[key]) return mapping[key];
-
-    // Fallback: title case the key
-    return key
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  };
-
-  const getFriendlyValue = (key, val) => {
-    const formatSingleValue = (k, v) => {
-      if (v === null || v === undefined || v === "None") return "None";
-      if (k === "password_hash" || k === "password") return "••••••••";
-
-      if (typeof v === "boolean") {
-        if (k === "is_active") return v ? "Enabled" : "Disabled";
-        if (k === "is_deleted") return v ? "Suspended" : "Active";
-        if (k === "mfa_enabled") return v ? "Enabled" : "Disabled";
-        return v ? "Enabled" : "Disabled";
-      }
-
-      // Check if it is a UTC ISO datetime string
-      if (
-        typeof v === "string" &&
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)
-      ) {
-        try {
-          return new Date(v).toLocaleString();
-        } catch {
-          return v;
-        }
-      }
-      return String(v);
-    };
-
-    if (val && typeof val === "object" && "old" in val && "new" in val) {
-      const oldDisplay = formatSingleValue(key, val.old);
-      const newDisplay = formatSingleValue(key, val.new);
-      return `${oldDisplay} ➔ ${newDisplay}`;
-    }
-
-    if (typeof val === "object") {
-      return JSON.stringify(val);
-    }
-
-    return formatSingleValue(key, val);
-  };
-
-  const renderChangesTable = (changes) => {
-    if (!changes || Object.keys(changes).length === 0) {
-      return (
-        <p className="muted" style={{ fontSize: 13 }}>
-          No changes recorded.
-        </p>
-      );
-    }
-
-    return (
-      <div className="table-wrap">
-        <table className="data-table" style={{ marginTop: 8 }}>
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(changes).map(([key, value]) => (
-              <tr key={key}>
-                <td
-                  style={{
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: "var(--text)",
-                  }}
-                >
-                  {getFriendlyField(key)}
-                </td>
-                <td style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  {getFriendlyValue(key, value)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
+  const changes = log.details || log.changes || log.payload || {};
+  const changeRows = Object.entries(changes).map(([key, value]) => ({
+    key,
+    field: getFriendlyField(key),
+    value: getFriendlyValue(key, value),
+  }));
+  const severity = String(log.severity || "").toLowerCase();
 
   return (
-    <Modal
-      isOpen={isOpen}
+    <CcureModal
+      open={isOpen}
       onClose={onClose}
       title="Audit log details"
-      size="medium"
+      size="md"
+      className="ald-modal"
+      footer={
+        <CcureButton variant="secondary" onClick={onClose}>
+          Close
+        </CcureButton>
+      }
     >
-      <section className="stack gap-16">
-        <div
-          className="detail-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-            background: "var(--surface-50)",
-            padding: "16px",
-            borderRadius: "8px",
-            border: "1px solid var(--border)",
-          }}
+      <dl className="ald-grid">
+        <Field label="Audit Event ID" span mono>
+          {log.id || "—"}
+        </Field>
+        <Field label="Event">
+          {log._displayAction || log.action || "Unknown action"}
+        </Field>
+        <Field label="User">{log._displayActor || log.user || "System"}</Field>
+        <Field label="Timestamp">
+          {log._displayTime ||
+            (log.timestamp
+              ? new Date(log.timestamp).toLocaleString()
+              : "Invalid Date")}
+        </Field>
+        <Field label="Target">
+          {log._displayTarget || log.target || "n/a"}
+        </Field>
+        <Field label="Severity">
+          {severity ? <CcureSeverityBadge severity={severity} /> : "—"}
+        </Field>
+        <Field label="Status">
+          <span
+            className={`ald-status ald-status--${log.status === "success" ? "ok" : "fail"}`}
+          >
+            {String(log.status || "—").toUpperCase()}
+          </span>
+        </Field>
+        <Field
+          label="Request ID"
+          title="Correlates this event with the API request and application logs"
+          mono
         >
-          <div style={{ gridColumn: "1 / -1" }}>
-            <span className="meta-label">Audit Event ID</span>
-            <div
-              style={{
-                fontFamily: "monospace",
-                fontSize: 12,
-                marginTop: 4,
-                wordBreak: "break-all",
-                userSelect: "all",
-              }}
-            >
-              {log.id || "—"}
-            </div>
-          </div>
-          <div>
-            <span className="meta-label">Event</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>
-              {log._displayAction || log.action || "Unknown action"}
-            </div>
-          </div>
-          <div>
-            <span className="meta-label">User</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>
-              {log._displayActor || log.user || "System"}
-            </div>
-          </div>
-          <div>
-            <span className="meta-label">Timestamp</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>
-              {log._displayTime ||
-                (log.timestamp
-                  ? new Date(log.timestamp).toLocaleString()
-                  : "Invalid Date")}
-            </div>
-          </div>
-          <div>
-            <span className="meta-label">Target</span>
-            <div style={{ fontWeight: 500, marginTop: 4 }}>
-              {log._displayTarget || log.target || "n/a"}
-            </div>
-          </div>
-          <Field label="Severity">
-            <div
-              style={{
-                fontWeight: 700,
-                marginTop: 4,
-                textTransform: "uppercase",
-                fontSize: 12,
-                letterSpacing: "0.04em",
-                color:
-                  SEVERITY_COLORS[String(log.severity || "").toLowerCase()] ||
-                  "var(--text)",
-              }}
-            >
-              {log.severity || "—"}
-            </div>
-          </Field>
-
-          <Field label="Status">
-            <div
-              style={{
-                fontWeight: 600,
-                marginTop: 4,
-                fontSize: 13,
-                color: log.status === "success" ? "var(--ok)" : "var(--danger)",
-              }}
-            >
-              {String(log.status || "—").toUpperCase()}
-            </div>
-          </Field>
-
+          {log.request_id || "—"}
+        </Field>
+        <Field label="Session ID" mono>
+          {log.session_id !== undefined && log.session_id !== null
+            ? String(log.session_id)
+            : "—"}
+        </Field>
+        <Field label="Source IP" mono>
+          {log.ip_address || "—"}
+        </Field>
+        <Field label="Timezone">
+          {log.timezone || "UTC"}
+          <span className="ald-note"> (stored)</span>
+        </Field>
+        <Field label="Browser">{agent.browser}</Field>
+        <Field label="Operating System">{agent.os}</Field>
+        <Field label="Device">{agent.device}</Field>
+        {log.user_email && <Field label="Email">{log.user_email}</Field>}
+        {log.user_agent && (
           <Field
-            label="Request ID"
-            title="Correlates this event with the API request and application logs"
+            label="User-Agent (raw)"
+            span
+            mono
+            title="Client-supplied; a memory aid, never evidence"
           >
-            <div style={mono}>{log.request_id || "—"}</div>
+            {log.user_agent}
           </Field>
-
-          <Field label="Session ID">
-            <div style={mono}>
-              {log.session_id !== undefined && log.session_id !== null
-                ? String(log.session_id)
-                : "—"}
-            </div>
-          </Field>
-
-          <Field label="Source IP">
-            <div style={mono}>{log.ip_address || "—"}</div>
-          </Field>
-
-          <Field label="Timezone">
-            <div style={{ fontWeight: 500, marginTop: 4 }}>
-              {log.timezone || "UTC"}
-              <span
-                style={{
-                  color: "var(--text-faint)",
-                  fontSize: 11,
-                  marginLeft: 6,
-                }}
-              >
-                (stored)
-              </span>
-            </div>
-          </Field>
-
-          <Field label="Browser">
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{agent.browser}</div>
-          </Field>
-
-          <Field label="Operating System">
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{agent.os}</div>
-          </Field>
-
-          <Field label="Device">
-            <div style={{ fontWeight: 500, marginTop: 4 }}>{agent.device}</div>
-          </Field>
-
-          {log.user_email && (
-            <Field label="Email">
-              <div style={{ fontWeight: 500, marginTop: 4, fontSize: 13 }}>
-                {log.user_email}
-              </div>
-            </Field>
-          )}
-
-          {log.user_agent && (
-            <Field
-              label="User-Agent (raw)"
-              span
-              title="Client-supplied; a memory aid, never evidence"
-            >
-              <div
-                style={{ ...mono, fontSize: 11, color: "var(--text-faint)" }}
-              >
-                {log.user_agent}
-              </div>
-            </Field>
-          )}
-        </div>
-
-        {loading && (
-          <p
-            className="muted"
-            style={{ fontSize: 12, margin: 0, color: "var(--text-faint)" }}
-          >
-            Loading full event details…
-          </p>
         )}
+      </dl>
 
-        <div className="section-card">
-          <p className="meta-label" style={{ marginBottom: 8 }}>
-            Change details
-          </p>
-          {renderChangesTable(log.details || log.changes || log.payload || {})}
-        </div>
+      {loading && (
+        <p className="ald-loading" role="status">
+          Loading full event details…
+        </p>
+      )}
 
-        <div
-          className="modal-actions"
-          style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}
-        >
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+      <section className="ald-changes" aria-labelledby="ald-changes-title">
+        <h3 className="ald-changes__title" id="ald-changes-title">
+          Change details
+        </h3>
+        {changeRows.length === 0 ? (
+          <p className="ald-note">No changes recorded.</p>
+        ) : (
+          <CcureTable
+            caption="Fields changed by this event"
+            columns={CHANGE_COLUMNS}
+            rows={changeRows}
+            rowKey={(row) => row.key}
+            density="compact"
+            hoverable={false}
+          />
+        )}
       </section>
-    </Modal>
+    </CcureModal>
   );
 }

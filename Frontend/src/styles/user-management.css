@@ -1,0 +1,218 @@
+/* ============================================================================
+   User management — page-specific layout (Checkpoint 3C batch 13)
+   ----------------------------------------------------------------------------
+   Layout only. Every control is a CCure primitive (CcureTable, CcureBadge,
+   CcureButton, CcureInput/CcureSelect, CcurePasswordField, CcureModal,
+   CcurePagination, CcureAlert) or a security pattern (CcureConfirmDialog);
+   the page chrome is the shared `.page-inner` / `.page-title-row` family.
+
+   Nothing was deleted from the legacy stylesheets on this page's account:
+   `.card--admin-form`, `.form-horizontal`, `.field`, `.field-input`,
+   `.table-filters-row`, `.search-box`, `.org-filter-select`, `.chip` and
+   `.pagination-row` all have other consumers until the retirement census
+   (see the batch 13 checkpoint report) proves otherwise.
+   ============================================================================ */
+
+.um-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  align-items: center;
+}
+
+.um-note {
+  margin: var(--ccure-space-2xs) 0 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Filters ───────────────────────────────────────────────────────────── */
+
+.um-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  align-items: flex-end;
+  margin: var(--ccure-space-md) 0;
+}
+
+/* The two filters keep a real <label> for assistive technology; it is hidden
+   visually because the placeholder and the option text carry the same words
+   on screen, as the legacy toolbar did. */
+.um-filter .cc-field__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.um-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.um-org-filter {
+  flex: 0 1 260px;
+}
+
+.um-pagination {
+  margin-bottom: var(--ccure-space-md);
+}
+
+/* ── Accounts awaiting approval ────────────────────────────────────────── */
+
+.um-pending {
+  border: 1px solid var(--ccure-warning-border);
+  background: var(--ccure-warning-bg);
+  border-radius: var(--ccure-radius-lg);
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.um-pending__title {
+  margin: 0 0 var(--ccure-space-2xs);
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.um-pending__lead {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.um-pending__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+}
+
+.um-pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  flex-wrap: wrap;
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.um-pending-item__who {
+  min-width: 0;
+}
+
+.um-pending-item__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-weight: var(--ccure-weight-semibold);
+  font-size: var(--ccure-text-base);
+}
+
+.um-pending-item__meta {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  word-break: break-all;
+}
+
+.um-pending-item__risk {
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-warning-text);
+}
+
+.um-pending-item__domain {
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.um-pending-item__actions {
+  display: flex;
+  gap: var(--ccure-space-xs);
+  flex-wrap: wrap;
+}
+
+/* ── Table ─────────────────────────────────────────────────────────────── */
+
+.um-table {
+  transition: opacity var(--ccure-duration-fast) var(--ccure-ease);
+}
+
+.um-table--refreshing {
+  opacity: 0.6;
+}
+
+.um-table-state {
+  padding: var(--ccure-space-xl) 0;
+}
+
+.um-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: var(--ccure-weight-regular);
+}
+
+.um-identity__name {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.um-identity__sub {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  word-break: break-all;
+}
+
+.um-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ccure-space-2xs);
+}
+
+.um-readonly {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Forms inside the dialogs ─────────────────────────────────────────── */
+
+.um-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.um-form__lead {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.um-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-top: var(--ccure-space-xs);
+}
+
+@media (max-width: 640px) {
+  .um-actions {
+    justify-content: flex-start;
+  }
+}

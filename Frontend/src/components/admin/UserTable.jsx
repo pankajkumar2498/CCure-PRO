@@ -1,11 +1,28 @@
-import EmptyState from "../common/EmptyState";
-import Loader from "../common/Loader";
-import Button from "../common/Button";
+/**
+ * components/admin/UserTable.jsx — Checkpoint 3C batch 13.
+ *
+ * Same props and the same per-row gating as before: edit / reset password /
+ * unlock / deactivate need `canUpdateUsers`, delete needs `canDeleteUsers`,
+ * MFA reset needs the user to have MFA on, and nobody can deactivate, delete
+ * or MFA-reset THEMSELVES. A row with neither permission says "Read only".
+ *
+ * On CcureTable: a caption, `scope` on every header, the username cell as the
+ * row header. Every action button carries the username in its accessible
+ * name ("Delete alice") — a table of ten identical "Delete" buttons is
+ * unusable from a screen reader — while the visible label stays short.
+ */
+import {
+  CcureBadge,
+  CcureButton,
+  CcureEmptyState,
+  CcureLoader,
+  CcureTable,
+} from "../../design-system";
 
-const statusConfig = {
-  active: { label: "Active", className: "chip chip--active" },
-  inactive: { label: "Inactive", className: "chip chip--inactive" },
-  locked: { label: "Locked", className: "chip chip--danger" },
+const STATUS = {
+  active: { label: "Active", variant: "success" },
+  inactive: { label: "Inactive", variant: "neutral" },
+  locked: { label: "Locked", variant: "danger" },
 };
 
 function TableRow({
@@ -26,105 +43,102 @@ function TableRow({
   const isLocked =
     user.locked_until && new Date(user.locked_until) > new Date();
   const status = isLocked
-    ? statusConfig.locked
+    ? STATUS.locked
     : user.is_active
-      ? statusConfig.active
-      : statusConfig.inactive;
+      ? STATUS.active
+      : STATUS.inactive;
   const isSelf = currentUser && String(currentUser.id) === String(user.id);
+  const who = user.username;
 
   return (
     <tr>
-      <td>
-        <div className="table-cell-identity">
-          <span className="table-username">{user.username}</span>
-          <span className="table-subtext">{user.email}</span>
+      <th scope="row">
+        <div className="um-identity">
+          <span className="um-identity__name">{user.username}</span>
+          <span className="um-identity__sub">{user.email}</span>
         </div>
-      </td>
+      </th>
       <td>{user.full_name || "—"}</td>
       <td>{roleName || "—"}</td>
       {showOrganizationColumn && <td>{organizationName || "—"}</td>}
       <td>
-        <span className={status.className}>{status.label}</span>
+        <CcureBadge variant={status.variant}>{status.label}</CcureBadge>
       </td>
-      <td>
+      <td className="cc-table__cell--nowrap">
         {user.last_login_at
           ? new Date(user.last_login_at).toLocaleString()
           : "Never"}
       </td>
-      <td>
-        <div className="action-btns table-action-cell">
+      <td className="cc-table__cell--end">
+        <div className="um-actions">
           {canUpdateUsers && (
-            <Button
-              type="button"
+            <CcureButton
               variant="ghost"
               size="sm"
-              title="Edit user"
+              aria-label={`Edit ${who}`}
               onClick={() => onEdit(user)}
             >
-              ✏️ Edit
-            </Button>
+              Edit
+            </CcureButton>
           )}
           {canUpdateUsers && (
-            <Button
-              type="button"
+            <CcureButton
               variant="ghost"
               size="sm"
-              title="Reset password"
+              aria-label={`Reset password for ${who}`}
               onClick={() => onResetPassword(user)}
             >
-              🔑 Reset
-            </Button>
+              Reset password
+            </CcureButton>
           )}
           {canUpdateUsers && user.mfa_enabled && !isSelf && (
-            <Button
-              type="button"
+            <CcureButton
               variant="ghost"
               size="sm"
-              title="Reset MFA"
+              aria-label={`Reset MFA for ${who}`}
               onClick={() => onResetMfa(user)}
             >
-              🛡️ Reset MFA
-            </Button>
+              Reset MFA
+            </CcureButton>
           )}
           {isLocked && canUpdateUsers && (
-            <Button
-              type="button"
-              variant="info"
+            <CcureButton
+              variant="secondary"
               size="sm"
-              title="Unlock user"
+              aria-label={`Unlock ${who}`}
               onClick={() => onUnlock(user)}
             >
               Unlock
-            </Button>
+            </CcureButton>
           )}
           {!isSelf && (canUpdateUsers || canDeleteUsers) && (
             <>
               {canUpdateUsers && (
-                <Button
-                  type="button"
+                <CcureButton
                   variant="secondary"
                   size="sm"
-                  title={user.is_active ? "Deactivate user" : "Activate user"}
+                  aria-label={
+                    user.is_active ? `Deactivate ${who}` : `Activate ${who}`
+                  }
                   onClick={() => onToggleStatus(user)}
                 >
-                  {user.is_active ? "⏻ Deactivate" : "▶ Activate"}
-                </Button>
+                  {user.is_active ? "Deactivate" : "Activate"}
+                </CcureButton>
               )}
               {canDeleteUsers && (
-                <Button
-                  type="button"
+                <CcureButton
                   variant="danger"
                   size="sm"
-                  title="Delete user"
+                  aria-label={`Delete ${who}`}
                   onClick={() => onDelete(user)}
                 >
-                  🗑️ Delete
-                </Button>
+                  Delete
+                </CcureButton>
               )}
             </>
           )}
           {!canUpdateUsers && !canDeleteUsers && (
-            <span className="text-muted">Read only</span>
+            <span className="um-readonly">Read only</span>
           )}
         </div>
       </td>
@@ -149,82 +163,76 @@ export default function UserTable({
   canUpdateUsers = false,
   canDeleteUsers = false,
 }) {
-  return (
-    <div className="card card--admin-table">
-      <div className="table-card-header">
-        <div>
-          <h3 className="card-title">Users</h3>
-          <p className="card-subtitle">
-            Review users, role assignment, account status, and organization.
-          </p>
-        </div>
+  const columns = [
+    { key: "user", header: "User" },
+    { key: "full_name", header: "Full name" },
+    { key: "role", header: "Role" },
+    ...(showOrganizationColumn
+      ? [{ key: "organization", header: "Organization" }]
+      : []),
+    { key: "status", header: "Status" },
+    { key: "last_login", header: "Last login" },
+    { key: "actions", header: "Actions", align: "end" },
+  ];
+
+  if (loading) {
+    return (
+      <div className="um-table-state">
+        <CcureLoader label="Loading users..." />
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="table-loading-shell">
-          <Loader label="Loading users..." />
-        </div>
-      ) : users.length === 0 ? (
-        <EmptyState
-          icon="👥"
-          title="No users found"
-          description="Try a different search term or add a new user to get started."
-        />
-      ) : (
-        <div
-          style={{
-            opacity: refreshing ? 0.6 : 1,
-            transition: "opacity 0.15s ease-in-out",
-          }}
-        >
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Full name</th>
-                  <th>Role</th>
-                  {showOrganizationColumn && <th>Organization</th>}
-                  <th>Status</th>
-                  <th>Last login</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => {
-                  const roleName = roles.find(
-                    (role) => String(role.id) === String(user.role_id),
-                  )?.name;
-                  const organizationName = organizations.find(
-                    (organization) =>
-                      String(organization.id) ===
-                      String(user.organization_id || user.org_id),
-                  )?.name;
+  if (users.length === 0) {
+    return (
+      <CcureEmptyState
+        icon="👥"
+        title="No users found"
+        description="Try a different search term or add a new user to get started."
+      />
+    );
+  }
 
-                  return (
-                    <TableRow
-                      key={user.id}
-                      user={user}
-                      roleName={roleName}
-                      organizationName={organizationName}
-                      showOrganizationColumn={showOrganizationColumn}
-                      currentUser={currentUser}
-                      onEdit={onEdit}
-                      onResetPassword={onResetPassword}
-                      onResetMfa={onResetMfa}
-                      onToggleStatus={onToggleStatus}
-                      onUnlock={onUnlock}
-                      onDelete={onDelete}
-                      canUpdateUsers={canUpdateUsers}
-                      canDeleteUsers={canDeleteUsers}
-                    />
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+  return (
+    <div
+      className={`um-table${refreshing ? " um-table--refreshing" : ""}`}
+      aria-busy={refreshing || undefined}
+    >
+      <CcureTable
+        caption="Users: role assignment, account status, and organization"
+        columns={columns}
+        density="compact"
+      >
+        {users.map((user) => {
+          const roleName = roles.find(
+            (role) => String(role.id) === String(user.role_id),
+          )?.name;
+          const organizationName = organizations.find(
+            (organization) =>
+              String(organization.id) ===
+              String(user.organization_id || user.org_id),
+          )?.name;
+
+          return (
+            <TableRow
+              key={user.id}
+              user={user}
+              roleName={roleName}
+              organizationName={organizationName}
+              showOrganizationColumn={showOrganizationColumn}
+              currentUser={currentUser}
+              onEdit={onEdit}
+              onResetPassword={onResetPassword}
+              onResetMfa={onResetMfa}
+              onToggleStatus={onToggleStatus}
+              onUnlock={onUnlock}
+              onDelete={onDelete}
+              canUpdateUsers={canUpdateUsers}
+              canDeleteUsers={canDeleteUsers}
+            />
+          );
+        })}
+      </CcureTable>
     </div>
   );
 }

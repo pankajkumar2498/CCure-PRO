@@ -1,0 +1,59 @@
+/* ============================================================================
+   Organization form — component layout (Checkpoint 3C batch 13)
+   ----------------------------------------------------------------------------
+   Layout only; every control is a CCure primitive. Mounted inside the legacy
+   Modal shim by OrganizationManagement (the page is out of this batch's
+   scope), so the form sizes itself to its container.
+   ============================================================================ */
+
+.of-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+}
+
+.of-title {
+  margin: 0 0 var(--ccure-space-3xs);
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.of-lead {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.of-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+.of-section--admin {
+  margin: 0;
+  padding: var(--ccure-space-lg) 0 0;
+  border: 0;
+  border-top: 1px solid var(--ccure-border);
+}
+
+.of-legend {
+  padding: 0;
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.of-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--ccure-space-md);
+}
+
+.of-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+}

@@ -1,0 +1,91 @@
+/* ============================================================================
+   Audit log details dialog — component layout (Checkpoint 3C batch 13)
+   ----------------------------------------------------------------------------
+   Layout only. The dialog is CcureModal, the changes are a CcureTable, the
+   severity is a CcureSeverityBadge; the description list below is the
+   event's metadata, laid out as the two-column grid the legacy dialog used.
+   ============================================================================ */
+
+.ald-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ccure-space-md);
+  margin: 0;
+  padding: var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ald-field {
+  min-width: 0;
+}
+
+.ald-field--span {
+  grid-column: 1 / -1;
+}
+
+.ald-label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.ald-value {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.ald-mono {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-regular);
+  user-select: all;
+}
+
+.ald-note {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.ald-status {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.ald-status--ok {
+  color: var(--ccure-success-text);
+}
+
+.ald-status--fail {
+  color: var(--ccure-danger-text);
+}
+
+.ald-loading {
+  margin: var(--ccure-space-sm) 0 0;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.ald-changes {
+  margin-top: var(--ccure-space-lg);
+}
+
+.ald-changes__title {
+  margin: 0 0 var(--ccure-space-xs);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+@media (max-width: 560px) {
+  .ald-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,10 +1,34 @@
+/**
+ * components/admin/UserForm.jsx — Checkpoint 3C batch 13.
+ *
+ * The create/edit form UserManagement mounts inside its dialog. Same props,
+ * same validation, same submit payload (`{ ...form, email: lowercased }`) as
+ * before the migration; the availability checks are the same debounced calls.
+ *
+ * What changed is only how the fields are built:
+ *   * every control is a CcureInput / CcureSelect, so the Role and
+ *     Organization selects — previously a <label> with no `for` — are
+ *     associated with their labels;
+ *   * the password is a CcurePasswordField: type=password, visibility toggle,
+ *     `autocomplete="new-password"` so a browser never offers the admin's own
+ *     credential into a field that creates someone else's. The value reaches
+ *     `onSubmit` and nothing else: no attribute, name or text carries it;
+ *   * "already taken" is a field error (role=alert, aria-invalid) rather than
+ *     a coloured span, so it is announced and blocks submit as it always did.
+ *
+ * `RoleSelector` was a <select> with an unassociated label and one consumer;
+ * it is a CcureSelect here and the file is retired in this batch.
+ */
 import { useEffect, useMemo, useState } from "react";
-import Button from "../common/Button";
-import FormField from "../common/FormField";
-import RoleSelector from "../common/RoleSelector";
 import { checkUsername, checkEmail } from "../../api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
 import { isSuperAdmin } from "../../auth/permissions";
+import {
+  CcureButton,
+  CcureInput,
+  CcurePasswordField,
+  CcureSelect,
+} from "../../design-system";
 
 const createInitial = {
   username: "",
@@ -56,7 +80,7 @@ export default function UserForm({
       setEmailTaken(false);
     }
   }, [debouncedEmail, mode, user]);
-  const title = mode === "create" ? "Create new user" : "Edit user details";
+
   const submitLabel = mode === "create" ? "Create user" : "Save changes";
   const isSuperadmin = isSuperAdmin(currentUser);
 
@@ -106,149 +130,121 @@ export default function UserForm({
   };
 
   return (
-    <div className="card card--admin-form">
-      <div className="form-card-header">
-        <div>
-          <h3 className="card-title">{title}</h3>
-          <p className="card-subtitle">
-            Manage access, role assignments, and account details.
-          </p>
-        </div>
-      </div>
+    <form className="um-form" onSubmit={handleSubmit}>
+      <p className="um-form__lead">
+        Manage access, role assignments, and account details.
+      </p>
 
-      <form className="form-horizontal" onSubmit={handleSubmit}>
-        {mode === "create" && (
-          <FormField label="Username" htmlFor="username">
-            <input
-              id="username"
-              className="field-input"
-              type="text"
-              placeholder="jane.doe"
-              value={form.username}
-              onChange={handleChange("username")}
-              disabled={busy}
-              required
-            />
-            {usernameTaken && (
-              <span
-                className="field-hint field-hint--error"
-                style={{ color: "var(--danger)" }}
-              >
-                This username is already taken.
-              </span>
-            )}
-          </FormField>
-        )}
-
-        <FormField label="Full name" htmlFor="fullName">
-          <input
-            id="fullName"
-            className="field-input"
-            type="text"
-            placeholder="Jane Doe"
-            value={form.full_name}
-            onChange={handleChange("full_name")}
-            disabled={busy}
-          />
-        </FormField>
-
-        <FormField label="Email address" htmlFor="email">
-          <input
-            id="email"
-            className="field-input"
-            type="email"
-            placeholder="jane.doe@ccure.com"
-            value={form.email}
-            onChange={handleChange("email")}
-            disabled={busy}
-            required
-          />
-          {emailTaken && (
-            <span
-              className="field-hint field-hint--error"
-              style={{ color: "var(--danger)" }}
-            >
-              This email is already taken.
-            </span>
-          )}
-        </FormField>
-
-        {mode === "create" && (
-          <FormField label="Password" htmlFor="password">
-            <input
-              id="password"
-              className="field-input"
-              type="password"
-              placeholder="Create secure password"
-              value={form.password}
-              onChange={handleChange("password")}
-              disabled={busy}
-              required
-            />
-            {usernameTaken && (
-              <span
-                className="field-hint field-hint--error"
-                style={{ color: "var(--danger)" }}
-              >
-                This username is already taken.
-              </span>
-            )}
-          </FormField>
-        )}
-
-        <RoleSelector
-          label="Role"
-          roles={roles}
-          value={form.role_id}
-          onChange={(role_id) => setForm((prev) => ({ ...prev, role_id }))}
+      {mode === "create" && (
+        <CcureInput
+          id="um-username"
+          label="Username"
+          type="text"
+          placeholder="jane.doe"
+          value={form.username}
+          onChange={handleChange("username")}
           disabled={busy}
+          required
+          autoComplete="off"
+          error={usernameTaken ? "This username is already taken." : undefined}
         />
+      )}
 
-        {isSuperadmin && (
-          <FormField label="Organization">
-            <select
-              className="field-input"
-              value={form.organization_id}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  organization_id: event.target.value,
-                }))
-              }
-              disabled={busy}
-              required
-            >
-              <option value="">Select organization</option>
-              {organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name} ({organization.slug})
-                </option>
-              ))}
-            </select>
-          </FormField>
-        )}
+      <CcureInput
+        id="um-full-name"
+        label="Full name"
+        type="text"
+        placeholder="Jane Doe"
+        value={form.full_name}
+        onChange={handleChange("full_name")}
+        disabled={busy}
+        autoComplete="off"
+      />
 
-        <div className="form-action-row">
-          <Button
-            type="button"
-            variant="ghost"
-            size="md"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            loading={busy}
-            disabled={!canSubmit || busy}
-          >
-            {submitLabel}
-          </Button>
-        </div>
-      </form>
-    </div>
+      <CcureInput
+        id="um-email"
+        label="Email address"
+        type="email"
+        placeholder="jane.doe@ccure.com"
+        value={form.email}
+        onChange={handleChange("email")}
+        disabled={busy}
+        required
+        autoComplete="off"
+        error={emailTaken ? "This email is already taken." : undefined}
+      />
+
+      {mode === "create" && (
+        <CcurePasswordField
+          id="um-password"
+          label="Password"
+          placeholder="Create secure password"
+          value={form.password}
+          onChange={handleChange("password")}
+          disabled={busy}
+          required
+          autoComplete="new-password"
+          capsLockWarning={false}
+        />
+      )}
+
+      <CcureSelect
+        id="um-role"
+        label="Role"
+        value={form.role_id ?? ""}
+        onChange={(event) =>
+          setForm((prev) => ({
+            ...prev,
+            role_id: event.target.value ? Number(event.target.value) : "",
+          }))
+        }
+        disabled={busy}
+        required
+      >
+        <option value="">Select role</option>
+        {roles.map((role) => (
+          <option key={role.id} value={role.id}>
+            {role.name}
+          </option>
+        ))}
+      </CcureSelect>
+
+      {isSuperadmin && (
+        <CcureSelect
+          id="um-organization"
+          label="Organization"
+          value={form.organization_id}
+          onChange={(event) =>
+            setForm((prev) => ({
+              ...prev,
+              organization_id: event.target.value,
+            }))
+          }
+          disabled={busy}
+          required
+        >
+          <option value="">Select organization</option>
+          {organizations.map((organization) => (
+            <option key={organization.id} value={organization.id}>
+              {organization.name} ({organization.slug})
+            </option>
+          ))}
+        </CcureSelect>
+      )}
+
+      <div className="um-form__actions">
+        <CcureButton variant="secondary" onClick={onCancel} disabled={busy}>
+          Cancel
+        </CcureButton>
+        <CcureButton
+          type="submit"
+          variant="primary"
+          loading={busy}
+          disabled={!canSubmit || busy}
+        >
+          {submitLabel}
+        </CcureButton>
+      </div>
+    </form>
   );
 }

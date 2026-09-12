@@ -1,8 +1,30 @@
+/**
+ * components/admin/OrganizationForm.jsx — Checkpoint 3C batch 13.
+ *
+ * The create/edit form OrganizationManagement mounts inside its dialog. Same
+ * props, same validation and the same payload as before: name, slug, plan,
+ * `max_assets` and `max_users` as numbers, `is_active` only with
+ * `showStatus`, and — on create, only when any of its fields is filled — the
+ * optional initial-administrator block (`admin_username`, `admin_email`,
+ * `admin_full_name`, `admin_password`).
+ *
+ * Batch 5 left this component out of the page migration because of that
+ * password: it is credential-handling surface. On CCure primitives it is a
+ * CcurePasswordField with `autocomplete="new-password"`, type=password, a
+ * visibility toggle, and a value that reaches `onSubmit` and nothing else.
+ * The availability errors are field errors (role=alert, aria-invalid) rather
+ * than coloured spans placed outside their field.
+ */
 import { useEffect, useMemo, useState } from "react";
-import Button from "../common/Button";
-import FormField from "../common/FormField";
 import { checkUsername, checkEmail } from "../../api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
+import {
+  CcureButton,
+  CcureInput,
+  CcurePasswordField,
+  CcureSelect,
+} from "../../design-system";
+import "../../styles/organization-form.css";
 
 const organizationPlans = [
   { value: "community", label: "Community" },
@@ -116,199 +138,147 @@ export default function OrganizationForm({
   };
 
   return (
-    <form className="card card--form" onSubmit={handleSubmit}>
-      <div className="card__header">
-        <div>
-          <h2>{mode === "edit" ? "Edit organization" : "Add organization"}</h2>
-          <p className="muted-text">
-            Keep organizational metadata accurate for audit, subscription
-            tracking, and access policies.
-          </p>
-        </div>
+    <form className="of-form" onSubmit={handleSubmit}>
+      <div>
+        {/* h3: the dialog that mounts this form already carries the h2. */}
+        <h3 className="of-title">
+          {mode === "edit" ? "Edit organization" : "Add organization"}
+        </h3>
+        <p className="of-lead">
+          Keep organizational metadata accurate for audit, subscription
+          tracking, and access policies.
+        </p>
       </div>
 
-      <div className="form-horizontal">
-        <FormField label="Organization name" htmlFor="organization-name">
-          <input
-            id="organization-name"
-            className="field-input"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Acme Security"
-            autoFocus
-          />
-        </FormField>
+      <div className="of-section">
+        <CcureInput
+          id="organization-name"
+          label="Organization name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Acme Security"
+          autoComplete="organization"
+          autoFocus
+        />
 
-        <FormField label="URL" htmlFor="organization-slug">
-          <input
-            id="organization-slug"
-            className="field-input"
-            value={slug}
-            onChange={(event) => setSlug(event.target.value)}
-            placeholder="cdac-kp"
-          />
-          <div className="field-hint">
-            {mode === "edit"
+        <CcureInput
+          id="organization-slug"
+          label="URL"
+          value={slug}
+          onChange={(event) => setSlug(event.target.value)}
+          placeholder="cdac-kp"
+          autoComplete="off"
+          hint={
+            mode === "edit"
               ? "Changing the URL will affect organization URLs and API identifiers."
-              : "Used in organization links and API identifiers."}
-          </div>
-        </FormField>
+              : "Used in organization links and API identifiers."
+          }
+        />
 
-        <FormField label="Subscription plan" htmlFor="organization-plan">
-          <select
-            id="organization-plan"
-            className="field-input"
-            value={plan}
-            onChange={(event) => setPlan(event.target.value)}
-          >
-            {organizationPlans.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </FormField>
+        <CcureSelect
+          id="organization-plan"
+          label="Subscription plan"
+          value={plan}
+          onChange={(event) => setPlan(event.target.value)}
+        >
+          {organizationPlans.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </CcureSelect>
 
         {showStatus && (
-          <FormField label="Status" htmlFor="organization-status">
-            <select
-              id="organization-status"
-              className="field-input"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </FormField>
+          <CcureSelect
+            id="organization-status"
+            label="Status"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </CcureSelect>
         )}
 
-        <FormField label="Max assets" htmlFor="organization-max-assets">
-          <input
+        <div className="of-row">
+          <CcureInput
             id="organization-max-assets"
-            className="field-input"
+            label="Max assets"
             type="number"
             min="1"
             value={maxAssets}
             onChange={(event) => setMaxAssets(event.target.value)}
           />
-        </FormField>
 
-        <FormField label="Max users" htmlFor="organization-max-users">
-          <input
+          <CcureInput
             id="organization-max-users"
-            className="field-input"
+            label="Max users"
             type="number"
             min="1"
             value={maxUsers}
             onChange={(event) => setMaxUsers(event.target.value)}
           />
-        </FormField>
+        </div>
       </div>
 
       {mode === "create" && (
-        <>
-          <div
-            className="card__header"
-            style={{
-              marginTop: "32px",
-              paddingTop: "24px",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            <div>
-              <h2>Initial Organization Admin</h2>
-              <p className="muted-text">
-                Optionally provision an initial administrator for this
-                organization.
-              </p>
-            </div>
-          </div>
+        <fieldset className="of-section of-section--admin">
+          <legend className="of-legend">Initial Organization Admin</legend>
+          <p className="of-lead">
+            Optionally provision an initial administrator for this organization.
+          </p>
 
-          <div className="form-horizontal">
-            <FormField label="Admin username" htmlFor="admin-username">
-              <input
-                id="admin-username"
-                className="field-input"
-                value={adminUsername}
-                onChange={(event) => setAdminUsername(event.target.value)}
-                placeholder="admin"
-              />
-            </FormField>
-            {usernameTaken && (
-              <span
-                className="field-hint field-hint--error"
-                style={{
-                  color: "var(--danger)",
-                  marginTop: "-10px",
-                  display: "block",
-                }}
-              >
-                This username is already taken.
-              </span>
-            )}
+          <CcureInput
+            id="admin-username"
+            label="Admin username"
+            value={adminUsername}
+            onChange={(event) => setAdminUsername(event.target.value)}
+            placeholder="admin"
+            autoComplete="off"
+            error={
+              usernameTaken ? "This username is already taken." : undefined
+            }
+          />
 
-            <FormField label="Admin email" htmlFor="admin-email">
-              <input
-                id="admin-email"
-                className="field-input"
-                type="email"
-                value={adminEmail}
-                onChange={(event) => setAdminEmail(event.target.value)}
-                placeholder="admin@acme.com"
-              />
-            </FormField>
-            {emailTaken && (
-              <span
-                className="field-hint field-hint--error"
-                style={{
-                  color: "var(--danger)",
-                  marginTop: "-10px",
-                  display: "block",
-                }}
-              >
-                This email is already taken.
-              </span>
-            )}
+          <CcureInput
+            id="admin-email"
+            label="Admin email"
+            type="email"
+            value={adminEmail}
+            onChange={(event) => setAdminEmail(event.target.value)}
+            placeholder="admin@acme.com"
+            autoComplete="off"
+            error={emailTaken ? "This email is already taken." : undefined}
+          />
 
-            <FormField label="Full name" htmlFor="admin-fullname">
-              <input
-                id="admin-fullname"
-                className="field-input"
-                value={adminFullName}
-                onChange={(event) => setAdminFullName(event.target.value)}
-                placeholder="Jane Doe"
-              />
-            </FormField>
+          <CcureInput
+            id="admin-fullname"
+            label="Full name"
+            value={adminFullName}
+            onChange={(event) => setAdminFullName(event.target.value)}
+            placeholder="Jane Doe"
+            autoComplete="off"
+          />
 
-            <FormField label="Password" htmlFor="admin-password">
-              <input
-                id="admin-password"
-                className="field-input"
-                type="password"
-                value={adminPassword}
-                onChange={(event) => setAdminPassword(event.target.value)}
-                placeholder="��������"
-              />
-            </FormField>
-          </div>
-        </>
+          <CcurePasswordField
+            id="admin-password"
+            label="Password"
+            value={adminPassword}
+            onChange={(event) => setAdminPassword(event.target.value)}
+            autoComplete="new-password"
+            capsLockWarning={false}
+            hint="At least 6 characters. Sent once, to create the administrator; never stored by this form."
+          />
+        </fieldset>
       )}
 
-      <div className="form-actions" style={{ marginTop: "32px" }}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="md"
-          onClick={onCancel}
-          disabled={busy}
-        >
+      <div className="of-actions">
+        <CcureButton variant="secondary" onClick={onCancel} disabled={busy}>
           Cancel
-        </Button>
-        <Button
+        </CcureButton>
+        <CcureButton
           type="submit"
           variant="primary"
-          size="md"
           loading={busy}
           disabled={!isValid || busy}
         >
@@ -319,7 +289,7 @@ export default function OrganizationForm({
             : mode === "edit"
               ? "Save changes"
               : "Create organization"}
-        </Button>
+        </CcureButton>
       </div>
     </form>
   );

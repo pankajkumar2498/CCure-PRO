@@ -20,15 +20,40 @@
  * own to anyone administering hosts in more than one country, and the whole
  * point of storing an IANA zone rather than an offset is that the schedule
  * keeps its wall-clock time across daylight saving.
+ *
+ * ── Checkpoint 3C batch 13 ──────────────────────────────────────────────────
+ * Rendered on CCure primitives; every read, every write and every argument
+ * to `api/scanSchedules` is unchanged. Two things worth recording:
+ *
+ *   * `Run now` is a scan dispatch. It stays a single explicit button in the
+ *     row, is never the default action of anything, and no dialog or keyboard
+ *     path reaches it. Delete stays behind a confirmation.
+ *   * The page destructured `{ addToast, removeToast }` from `useToasts()`,
+ *     which exports `{ push, dismiss }`. Every success and failure path threw
+ *     after the API call had already been made — save reported "Could not
+ *     save the schedule." on success and left the form open; enable, run and
+ *     delete performed the write and never refreshed the list. The calls now
+ *     use the toaster's real API, so the post-write refresh the code always
+ *     intended actually happens. Recorded as an intentional behaviour change
+ *     in the checkpoint report.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/layout/AppLayout";
-import Button from "../../components/common/Button";
-import ConfirmDialog from "../../components/common/ConfirmDialog";
-import EmptyState from "../../components/common/EmptyState";
-import Loader from "../../components/common/Loader";
 import { ToastContainer, useToasts } from "../../components/common/Toast";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureField,
+  CcureInput,
+  CcureLoader,
+  CcureSelect,
+  CcureTable,
+} from "../../design-system";
 import {
   createScanSchedule,
   deleteScanSchedule,
@@ -40,6 +65,7 @@ import {
   listScheduleCredentials,
   updateScanSchedule,
 } from "../../api/scanSchedules";
+import "../../styles/scan-schedules.css";
 
 const WEEKDAYS = [
   "Monday",
@@ -59,10 +85,10 @@ const RECURRENCES = [
   { value: "custom", label: "Custom (cron)" },
 ];
 
-const STATUS_STYLE = {
-  dispatched: { bg: "#dcfce7", fg: "#166534", label: "DISPATCHED" },
-  failed: { bg: "#fee2e2", fg: "#991b1b", label: "FAILED" },
-  skipped: { bg: "#fef3c7", fg: "#92400e", label: "SKIPPED" },
+const STATUS_VARIANT = {
+  dispatched: "success",
+  failed: "danger",
+  skipped: "warning",
 };
 
 const EMPTY_FORM = {
@@ -83,33 +109,17 @@ const EMPTY_FORM = {
 };
 
 function StatusPill({ status }) {
-  if (!status) return <span style={{ color: "#94a3b8" }}>—</span>;
-  const s = STATUS_STYLE[status] || {
-    bg: "#e2e8f0",
-    fg: "#334155",
-    label: String(status).toUpperCase(),
-  };
+  if (!status) return <span className="ss-muted">—</span>;
   return (
-    <span
-      style={{
-        display: "inline-block",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        padding: "2px 8px",
-        borderRadius: 4,
-        background: s.bg,
-        color: s.fg,
-      }}
-    >
-      {s.label}
-    </span>
+    <CcureBadge variant={STATUS_VARIANT[status] || "neutral"}>
+      {String(status).toUpperCase()}
+    </CcureBadge>
   );
 }
 
 /** Absolute local time plus a relative hint — "in 6 hours" alone is unauditable. */
 function When({ iso, emptyLabel = "—" }) {
-  if (!iso) return <span style={{ color: "#94a3b8" }}>{emptyLabel}</span>;
+  if (!iso) return <span className="ss-muted">{emptyLabel}</span>;
   const when = new Date(iso);
   const deltaMin = Math.round((when.getTime() - Date.now()) / 60000);
   const rel =
@@ -119,15 +129,35 @@ function When({ iso, emptyLabel = "—" }) {
         ? `${Math.round(Math.abs(deltaMin) / 60)} h ${deltaMin >= 0 ? "from now" : "ago"}`
         : when.toLocaleDateString();
   return (
-    <span title={when.toISOString()}>
-      {when.toLocaleString()}
-      <span style={{ color: "#64748b", fontSize: 12 }}> ({rel})</span>
+    <span className="ss-when">
+      <time dateTime={when.toISOString()} title={when.toISOString()}>
+        {when.toLocaleString()}
+      </time>
+      <span className="ss-when__rel"> ({rel})</span>
     </span>
   );
 }
 
+const SCHEDULE_COLUMNS = [
+  { key: "name", header: "Name" },
+  { key: "kind", header: "Kind" },
+  { key: "recurrence", header: "Recurrence" },
+  { key: "next", header: "Next run" },
+  { key: "last", header: "Last run" },
+  { key: "result", header: "Last result" },
+  { key: "actions", header: "Actions", align: "end" },
+];
+
+const RUN_COLUMNS = [
+  { key: "when", header: "When" },
+  { key: "trigger", header: "Trigger" },
+  { key: "status", header: "Status" },
+  { key: "scan", header: "Scan" },
+  { key: "detail", header: "Detail" },
+];
+
 export default function ScanSchedules() {
-  const { toasts, addToast, removeToast } = useToasts();
+  const { toasts, push: addToast, dismiss: removeToast } = useToasts();
 
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +177,7 @@ export default function ScanSchedules() {
   const [runsLoading, setRunsLoading] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,7 +243,8 @@ export default function ScanSchedules() {
     setEditing(schedule.id);
   };
 
-  const save = async () => {
+  const save = async (event) => {
+    event?.preventDefault?.();
     setSaving(true);
     setFormError("");
     try {
@@ -301,6 +333,7 @@ export default function ScanSchedules() {
 
   const doDelete = async () => {
     if (!confirmDelete) return;
+    setDeleting(true);
     try {
       await deleteScanSchedule(confirmDelete.id);
       addToast(`Schedule "${confirmDelete.name}" deleted.`, "success");
@@ -308,6 +341,8 @@ export default function ScanSchedules() {
       await load();
     } catch (err) {
       addToast(err?.response?.data?.detail || "Could not delete.", "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -318,231 +353,219 @@ export default function ScanSchedules() {
     [schedules],
   );
 
+  const setField = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
   return (
-    <AppLayout>
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
-
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h1 style={{ margin: 0, flex: 1 }}>Scan Schedules</h1>
-        <Button onClick={openNew}>New schedule</Button>
-      </div>
-
-      <p style={{ color: "#475569", maxWidth: 760 }}>
-        Scheduled scans run through the same pipeline as manual ones, so their
-        results appear in Scan History, reports and the dashboard exactly as if
-        you had started them yourself.
-      </p>
-
-      {autoDisabled.length > 0 && (
-        <div
-          style={{
-            background: "#fef3c7",
-            border: "1px solid #fcd34d",
-            borderRadius: 6,
-            padding: "10px 14px",
-            margin: "12px 0",
-            color: "#92400e",
-          }}
-        >
-          <strong>
-            {autoDisabled.length} schedule
-            {autoDisabled.length === 1 ? "" : "s"} switched off after repeated
-            failures.
-          </strong>{" "}
-          Assurance scanning has stopped for{" "}
-          {autoDisabled.length === 1 ? "it" : "them"}. Fix the cause and
-          re-enable — re-enabling clears the failure count.
+    <AppLayout pageTitle="Scan Schedules">
+      <div className="page-inner ss-page">
+        <div className="page-title-row">
+          <div>
+            <h1 className="page-title">Scan Schedules</h1>
+            <p className="page-subtitle">
+              Scheduled scans run through the same pipeline as manual ones, so
+              their results appear in Scan History, reports and the dashboard
+              exactly as if you had started them yourself.
+            </p>
+          </div>
+          <div className="ss-toolbar">
+            <CcureButton variant="primary" size="sm" onClick={openNew}>
+              New schedule
+            </CcureButton>
+          </div>
         </div>
-      )}
 
-      <div style={{ display: "flex", gap: 10, margin: "14px 0" }}>
-        <select
-          value={filterKind}
-          onChange={(e) => setFilterKind(e.target.value)}
-        >
-          <option value="">All kinds</option>
-          <option value="network">Network</option>
-          <option value="credentialed">Credentialed</option>
-        </select>
-        <select
-          value={filterEnabled}
-          onChange={(e) => setFilterEnabled(e.target.value)}
-        >
-          <option value="">Enabled and disabled</option>
-          <option value="true">Enabled only</option>
-          <option value="false">Disabled only</option>
-        </select>
-      </div>
+        {autoDisabled.length > 0 && (
+          <CcureAlert variant="warning" className="ss-auto-off">
+            <strong>
+              {autoDisabled.length} schedule
+              {autoDisabled.length === 1 ? "" : "s"} switched off after repeated
+              failures.
+            </strong>{" "}
+            Assurance scanning has stopped for{" "}
+            {autoDisabled.length === 1 ? "it" : "them"}. Fix the cause and
+            re-enable — re-enabling clears the failure count.
+          </CcureAlert>
+        )}
 
-      {loading ? (
-        <Loader />
-      ) : schedules.length === 0 ? (
-        <EmptyState
-          title="No scan schedules yet"
-          message="Create one to run a network or credentialed scan on a recurring basis."
-        />
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr
-              style={{ textAlign: "left", borderBottom: "2px solid #e2e8f0" }}
-            >
-              <th style={{ padding: 8 }}>Name</th>
-              <th style={{ padding: 8 }}>Kind</th>
-              <th style={{ padding: 8 }}>Recurrence</th>
-              <th style={{ padding: 8 }}>Next run</th>
-              <th style={{ padding: 8 }}>Last run</th>
-              <th style={{ padding: 8 }}>Last result</th>
-              <th style={{ padding: 8 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div className="ss-filters">
+          <CcureSelect
+            id="ss-filter-kind"
+            label="Kind"
+            fieldClassName="ss-filter"
+            value={filterKind}
+            onChange={(e) => setFilterKind(e.target.value)}
+          >
+            <option value="">All kinds</option>
+            <option value="network">Network</option>
+            <option value="credentialed">Credentialed</option>
+          </CcureSelect>
+          <CcureSelect
+            id="ss-filter-enabled"
+            label="State"
+            fieldClassName="ss-filter"
+            value={filterEnabled}
+            onChange={(e) => setFilterEnabled(e.target.value)}
+          >
+            <option value="">Enabled and disabled</option>
+            <option value="true">Enabled only</option>
+            <option value="false">Disabled only</option>
+          </CcureSelect>
+        </div>
+
+        {loading ? (
+          <CcureLoader label="Loading scan schedules…" />
+        ) : schedules.length === 0 ? (
+          <CcureEmptyState
+            icon="🗓"
+            title="No scan schedules yet"
+            description="Create one to run a network or credentialed scan on a recurring basis."
+          />
+        ) : (
+          <CcureTable caption="Scan schedules" columns={SCHEDULE_COLUMNS}>
             {schedules.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                <td style={{ padding: 8 }}>
-                  <div style={{ fontWeight: 600 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>
+              <tr key={s.id}>
+                <th scope="row">
+                  <div className="ss-name">{s.name}</div>
+                  <div className="ss-sub">
                     {(s.targets || []).length} target
                     {(s.targets || []).length === 1 ? "" : "s"}
                     {s.credential_name ? ` · ${s.credential_name}` : ""}
                   </div>
-                </td>
-                <td style={{ padding: 8 }}>{s.scan_kind}</td>
-                <td style={{ padding: 8 }}>{s.summary}</td>
-                <td style={{ padding: 8 }}>
+                </th>
+                <td>{s.scan_kind}</td>
+                <td>{s.summary}</td>
+                <td>
                   {s.is_enabled ? (
                     <When iso={s.next_run_at} emptyLabel="not scheduled" />
                   ) : (
-                    <span style={{ color: "#94a3b8" }}>disabled</span>
+                    <span className="ss-muted">disabled</span>
                   )}
                 </td>
-                <td style={{ padding: 8 }}>
+                <td>
                   <When iso={s.last_run_at} emptyLabel="never" />
                 </td>
-                <td style={{ padding: 8 }}>
+                <td>
                   <StatusPill status={s.last_status} />
                   {s.last_error && (
-                    <div
-                      style={{ fontSize: 12, color: "#b91c1c", maxWidth: 280 }}
-                      title={s.last_error}
-                    >
+                    <div className="ss-error" title={s.last_error}>
                       {s.last_error}
                     </div>
                   )}
                 </td>
-                <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <Button variant="secondary" onClick={() => runNow(s)}>
-                    Run now
-                  </Button>{" "}
-                  <Button variant="secondary" onClick={() => toggleEnabled(s)}>
-                    {s.is_enabled ? "Disable" : "Enable"}
-                  </Button>{" "}
-                  <Button variant="secondary" onClick={() => openEdit(s)}>
-                    Edit
-                  </Button>{" "}
-                  <Button variant="secondary" onClick={() => openHistory(s)}>
-                    History
-                  </Button>{" "}
-                  <Button variant="danger" onClick={() => setConfirmDelete(s)}>
-                    Delete
-                  </Button>
+                <td className="cc-table__cell--end cc-table__cell--nowrap">
+                  <div className="ss-actions">
+                    {/* Dispatches a scan. One explicit button, no default
+                        action anywhere else reaches it. */}
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      aria-label={`Run ${s.name} now`}
+                      onClick={() => runNow(s)}
+                    >
+                      Run now
+                    </CcureButton>
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      aria-label={`${s.is_enabled ? "Disable" : "Enable"} ${s.name}`}
+                      onClick={() => toggleEnabled(s)}
+                    >
+                      {s.is_enabled ? "Disable" : "Enable"}
+                    </CcureButton>
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Edit ${s.name}`}
+                      onClick={() => openEdit(s)}
+                    >
+                      Edit
+                    </CcureButton>
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`History for ${s.name}`}
+                      onClick={() => openHistory(s)}
+                    >
+                      History
+                    </CcureButton>
+                    <CcureButton
+                      variant="danger"
+                      size="sm"
+                      aria-label={`Delete ${s.name}`}
+                      onClick={() => setConfirmDelete(s)}
+                    >
+                      Delete
+                    </CcureButton>
+                  </div>
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-      )}
+          </CcureTable>
+        )}
 
-      {editing && (
-        <div
-          style={{
-            marginTop: 24,
-            padding: 16,
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
-            {editing === "new" ? "New schedule" : "Edit schedule"}
-          </h2>
+        {editing && (
+          <CcureCard
+            className="ss-form"
+            title={editing === "new" ? "New schedule" : "Edit schedule"}
+            headingLevel={2}
+          >
+            <form className="ss-form-grid" onSubmit={save}>
+              {formError && (
+                <CcureAlert variant="danger">{formError}</CcureAlert>
+              )}
 
-          {formError && (
-            <div
-              style={{
-                background: "#fee2e2",
-                color: "#991b1b",
-                padding: "8px 12px",
-                borderRadius: 6,
-                marginBottom: 12,
-              }}
-            >
-              {formError}
-            </div>
-          )}
-
-          <div style={{ display: "grid", gap: 12, maxWidth: 720 }}>
-            <label>
-              Name
-              <input
+              <CcureInput
+                id="ss-name"
+                label="Name"
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                style={{ width: "100%" }}
+                onChange={setField("name")}
               />
-            </label>
 
-            <label>
-              Description
-              <input
+              <CcureInput
+                id="ss-description"
+                label="Description"
                 value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-                style={{ width: "100%" }}
+                onChange={setField("description")}
               />
-            </label>
 
-            <label>
-              Scan kind
-              <select
+              <CcureSelect
+                id="ss-kind"
+                label="Scan kind"
                 value={form.scanKind}
                 disabled={editing !== "new"}
-                onChange={(e) => setForm({ ...form, scanKind: e.target.value })}
-                style={{ width: "100%" }}
+                onChange={setField("scanKind")}
+                hint={
+                  editing !== "new"
+                    ? "The kind cannot be changed — it decides which pipeline runs and which options apply. Create a new schedule instead."
+                    : undefined
+                }
               >
                 <option value="network">Network scan</option>
                 <option value="credentialed">Credentialed scan</option>
-              </select>
-              {editing !== "new" && (
-                <span style={{ fontSize: 12, color: "#64748b" }}>
-                  The kind cannot be changed — it decides which pipeline runs
-                  and which options apply. Create a new schedule instead.
-                </span>
-              )}
-            </label>
+              </CcureSelect>
 
-            <label>
-              Targets (one per line, or comma separated)
-              <textarea
-                rows={3}
-                value={form.targets}
-                onChange={(e) => setForm({ ...form, targets: e.target.value })}
-                style={{ width: "100%", fontFamily: "monospace" }}
-              />
-              <span style={{ fontSize: 12, color: "#64748b" }}>
-                Re-checked against your organisation&apos;s authorised scan
-                ranges on every run, not just now.
-              </span>
-            </label>
+              <CcureField
+                id="ss-targets"
+                label="Targets (one per line, or comma separated)"
+                hint="Re-checked against your organisation's authorised scan ranges on every run, not just now."
+              >
+                <textarea
+                  id="ss-targets"
+                  className="cc-field__control ss-mono"
+                  rows={3}
+                  value={form.targets}
+                  onChange={setField("targets")}
+                  aria-describedby="ss-targets-hint"
+                />
+              </CcureField>
 
-            {needsCredential && (
-              <label>
-                Credential
-                <select
+              {needsCredential && (
+                <CcureSelect
+                  id="ss-credential"
+                  label="Credential"
                   value={form.credentialId}
-                  onChange={(e) =>
-                    setForm({ ...form, credentialId: e.target.value })
-                  }
-                  style={{ width: "100%" }}
+                  onChange={setField("credentialId")}
+                  hint="Referenced, never copied. The password stays encrypted and is read only by the scanner at run time."
                 >
                   <option value="">Select a stored credential…</option>
                   {credentials.map((c) => (
@@ -550,227 +573,190 @@ export default function ScanSchedules() {
                       {c.name} ({c.username})
                     </option>
                   ))}
-                </select>
-                <span style={{ fontSize: 12, color: "#64748b" }}>
-                  Referenced, never copied. The password stays encrypted and is
-                  read only by the scanner at run time.
-                </span>
-              </label>
-            )}
+                </CcureSelect>
+              )}
 
-            <label>
-              Recurrence
-              <select
+              <CcureSelect
+                id="ss-recurrence"
+                label="Recurrence"
                 value={form.recurrence}
-                onChange={(e) =>
-                  setForm({ ...form, recurrence: e.target.value })
-                }
-                style={{ width: "100%" }}
+                onChange={setField("recurrence")}
               >
                 {RECURRENCES.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
                   </option>
                 ))}
-              </select>
-            </label>
+              </CcureSelect>
 
-            {form.recurrence === "once" ? (
-              <label>
-                Run at
-                <input
+              {form.recurrence === "once" ? (
+                <CcureInput
+                  id="ss-starts-at"
+                  label="Run at"
                   type="datetime-local"
                   value={form.startsAt}
-                  onChange={(e) =>
-                    setForm({ ...form, startsAt: e.target.value })
-                  }
-                  style={{ width: "100%" }}
+                  onChange={setField("startsAt")}
                 />
-              </label>
-            ) : (
-              <>
-                <label>
-                  Time of day
-                  <input
+              ) : (
+                <>
+                  <CcureInput
+                    id="ss-run-at"
+                    label="Time of day"
                     type="time"
                     value={form.runAt}
-                    onChange={(e) =>
-                      setForm({ ...form, runAt: e.target.value })
-                    }
+                    onChange={setField("runAt")}
+                    fieldClassName="ss-narrow"
                   />
-                </label>
 
-                <label>
-                  Time zone
-                  <select
+                  <CcureSelect
+                    id="ss-timezone"
+                    label="Time zone"
                     value={form.timezone}
-                    onChange={(e) =>
-                      setForm({ ...form, timezone: e.target.value })
-                    }
-                    style={{ width: "100%" }}
+                    onChange={setField("timezone")}
+                    hint="The schedule keeps this wall-clock time across daylight saving."
                   >
                     {timezones.map((tz) => (
                       <option key={tz} value={tz}>
                         {tz}
                       </option>
                     ))}
-                  </select>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>
-                    The schedule keeps this wall-clock time across daylight
-                    saving.
-                  </span>
-                </label>
-              </>
-            )}
+                  </CcureSelect>
+                </>
+              )}
 
-            {form.recurrence === "weekly" && (
-              <label>
-                Day of week
-                <select
+              {form.recurrence === "weekly" && (
+                <CcureSelect
+                  id="ss-day-of-week"
+                  label="Day of week"
                   value={form.dayOfWeek}
-                  onChange={(e) =>
-                    setForm({ ...form, dayOfWeek: e.target.value })
-                  }
-                  style={{ width: "100%" }}
+                  onChange={setField("dayOfWeek")}
                 >
                   {WEEKDAYS.map((d, i) => (
                     <option key={d} value={i}>
                       {d}
                     </option>
                   ))}
-                </select>
-              </label>
-            )}
+                </CcureSelect>
+              )}
 
-            {form.recurrence === "monthly" && (
-              <label>
-                Day of month
-                <input
+              {form.recurrence === "monthly" && (
+                <CcureInput
+                  id="ss-day-of-month"
+                  label="Day of month"
                   type="number"
                   min={1}
                   max={31}
                   value={form.dayOfMonth}
-                  onChange={(e) =>
-                    setForm({ ...form, dayOfMonth: e.target.value })
-                  }
+                  onChange={setField("dayOfMonth")}
+                  fieldClassName="ss-narrow"
+                  hint="A month shorter than this runs on its last day — the 31st becomes the 28th or 29th in February."
                 />
-                <span style={{ fontSize: 12, color: "#64748b" }}>
-                  A month shorter than this runs on its last day — the 31st
-                  becomes the 28th or 29th in February.
-                </span>
-              </label>
-            )}
+              )}
 
-            {form.recurrence === "custom" && (
-              <label>
-                Cron expression
-                <input
+              {form.recurrence === "custom" && (
+                <CcureInput
+                  id="ss-cron"
+                  label="Cron expression"
                   value={form.cronExpression}
-                  onChange={(e) =>
-                    setForm({ ...form, cronExpression: e.target.value })
-                  }
+                  onChange={setField("cronExpression")}
                   placeholder="0 2 * * *"
-                  style={{ width: "100%", fontFamily: "monospace" }}
+                  className="ss-mono"
                 />
-              </label>
-            )}
+              )}
 
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </Button>
-              <Button variant="secondary" onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {historyFor && (
-        <div
-          style={{
-            marginTop: 24,
-            padding: 16,
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <h2 style={{ marginTop: 0, flex: 1 }}>
-              Execution history — {historyFor.name}
-            </h2>
-            <Button variant="secondary" onClick={() => setHistoryFor(null)}>
-              Close
-            </Button>
-          </div>
-
-          {runsLoading ? (
-            <Loader />
-          ) : runs.length === 0 ? (
-            <EmptyState
-              title="No runs yet"
-              message="This schedule has not been dispatched."
-            />
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr
-                  style={{
-                    textAlign: "left",
-                    borderBottom: "2px solid #e2e8f0",
-                  }}
+              <div className="ss-form-actions">
+                <CcureButton
+                  type="submit"
+                  variant="primary"
+                  loading={saving}
+                  disabled={saving}
                 >
-                  <th style={{ padding: 8 }}>When</th>
-                  <th style={{ padding: 8 }}>Trigger</th>
-                  <th style={{ padding: 8 }}>Status</th>
-                  <th style={{ padding: 8 }}>Scan</th>
-                  <th style={{ padding: 8 }}>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
+                  {saving ? "Saving…" : "Save"}
+                </CcureButton>
+                <CcureButton
+                  variant="secondary"
+                  onClick={() => setEditing(null)}
+                >
+                  Cancel
+                </CcureButton>
+              </div>
+            </form>
+          </CcureCard>
+        )}
+
+        {historyFor && (
+          <CcureCard
+            className="ss-history"
+            title={`Execution history — ${historyFor.name}`}
+            headingLevel={2}
+            actions={
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={() => setHistoryFor(null)}
+              >
+                Close
+              </CcureButton>
+            }
+          >
+            {runsLoading ? (
+              <CcureLoader label="Loading run history…" />
+            ) : runs.length === 0 ? (
+              <CcureEmptyState
+                title="No runs yet"
+                description="This schedule has not been dispatched."
+              />
+            ) : (
+              <CcureTable
+                caption={`Execution history for ${historyFor.name}`}
+                columns={RUN_COLUMNS}
+                density="compact"
+              >
                 {runs.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: 8 }}>
+                  <tr key={r.id}>
+                    <th scope="row">
                       <When iso={r.triggered_at} />
-                    </td>
-                    <td style={{ padding: 8 }}>{r.trigger}</td>
-                    <td style={{ padding: 8 }}>
+                    </th>
+                    <td>{r.trigger}</td>
+                    <td>
                       <StatusPill status={r.status} />
                     </td>
-                    <td style={{ padding: 8 }}>
+                    <td>
                       {/* A failure before a scan existed has no scan to link
                           to, which is exactly the case this table exists to
                           make visible. */}
                       {r.scan_id ? (
-                        <a href={`/history?scan=${r.scan_id}`}>{r.scan_id}</a>
+                        <a
+                          className="ss-link"
+                          href={`/history?scan=${r.scan_id}`}
+                        >
+                          {r.scan_id}
+                        </a>
                       ) : (
-                        <span style={{ color: "#94a3b8" }}>
-                          no scan was created
-                        </span>
+                        <span className="ss-muted">no scan was created</span>
                       )}
                     </td>
-                    <td style={{ padding: 8, color: "#b91c1c" }}>
-                      {r.detail || ""}
-                    </td>
+                    <td className="ss-error">{r.detail || ""}</td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+              </CcureTable>
+            )}
+          </CcureCard>
+        )}
+      </div>
 
-      {confirmDelete && (
-        <ConfirmDialog
-          open
-          title={`Delete "${confirmDelete.name}"?`}
-          subtitle="The schedule and its run history are removed. Scans it already produced are kept — they are evidence of what was on the network at the time."
-          confirmLabel="Delete"
-          onConfirm={doDelete}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
+      <CcureConfirmDialog
+        open={Boolean(confirmDelete)}
+        title={confirmDelete ? `Delete "${confirmDelete.name}"?` : ""}
+        subtitle="The schedule and its run history are removed. Scans it already produced are kept — they are evidence of what was on the network at the time."
+        confirmLabel="Delete"
+        tone="danger"
+        busy={deleting}
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      <ToastContainer toasts={toasts} dismiss={removeToast} />
     </AppLayout>
   );
 }

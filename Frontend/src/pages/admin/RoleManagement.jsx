@@ -1,8 +1,38 @@
 import { useEffect, useState, useCallback } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import { listRoles, listRolePermissions } from "../../api/admin";
-import Button from "../../components/common/Button";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureEmptyState,
+  CcureLoader,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/role-management.css";
+
+/**
+ * Roles & Permissions — read-only view of the RBAC catalogue.
+ *
+ * Checkpoint 3C: the first production page migrated onto the CCure design
+ * system. Presentation only — every handler, hook, piece of state and API call
+ * below is unchanged from the pre-migration file, and the two endpoints
+ * (`GET /admin/roles/`, `GET /admin/roles/{id}/permissions/`) are called in the
+ * same order, the same number of times, with the same arguments.
+ */
+
+/**
+ * Permission actions were previously coloured by hand: `manage` in red
+ * (#dc2626 on #fef2f2) and everything else in blue (#0369a1 on #f0f9ff).
+ *
+ * The distinction is real and worth keeping — `manage` is the broadest grant in
+ * the catalogue — so it survives as a semantic variant rather than a literal.
+ * The colours now come from tokens and therefore respond to the theme, which
+ * the hex never did.
+ */
+const actionVariant = (action) => (action === "manage" ? "danger" : "info");
 
 export default function RoleManagement() {
   const [roles, setRoles] = useState([]);
@@ -56,131 +86,117 @@ export default function RoleManagement() {
   if (loading) {
     return (
       <AppLayout pageTitle="Roles & Permissions">
-        <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-          <div className="spinner" />
-        </div>
+        {/* Was a bare `<div className="spinner" />` — visible, but announced
+            nothing at all. CcureLoader carries a polite live region. */}
+        <CcureLoader label="Loading roles…" />
       </AppLayout>
     );
   }
+
+  const permissionColumns = [
+    {
+      key: "resource",
+      header: "Resource",
+      // scope="row": the resource identifies its row, so a reader announces
+      // "scans, Action, execute" rather than a naked value.
+      isRowHeader: true,
+      mono: true,
+      nowrap: true,
+    },
+    {
+      key: "action",
+      header: "Action",
+      nowrap: true,
+      cell: (p) => (
+        <CcureBadge variant={actionVariant(p.action)}>{p.action}</CcureBadge>
+      ),
+    },
+    {
+      key: "description",
+      header: "Description",
+      cell: (p) => p.description || `Allows access to ${p.resource}`,
+    },
+  ];
 
   return (
     <AppLayout pageTitle="Roles & Permissions">
       <div className="page-inner">
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Roles & Permissions</h2>
+            <h2 className="page-title">Roles &amp; Permissions</h2>
             <p className="page-subtitle">
               View system roles and their granular access control
             </p>
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          // role="alert" — a load failure appearing after the request settles
+          // is an event, and the page renders nothing else useful when it
+          // happens.
+          <CcureAlert variant="danger" className="rm-alert">
+            {error}
+          </CcureAlert>
+        )}
 
         <div className="admin-grid">
-          {/* Roles List */}
-          <div className="card role-card">
-            <div className="card__header role-card__header">
-              <h3>Roles</h3>
-            </div>
-            <div className="role-list">
+          <CcureCard title="Roles" headingLevel={3} bodyFlush>
+            <div className="rm-role-list">
               {roles.map((r) => (
-                <Button
+                <CcureButton
                   key={r.id}
                   type="button"
                   variant="ghost"
                   size="md"
-                  className={`role-list-item ${selectedRole?.id === r.id ? "role-list-item--selected" : ""}`}
+                  block
+                  // aria-pressed is the whole point of using a button here:
+                  // the pre-migration page styled the selected role but
+                  // announced nothing, so a screen-reader user could not tell
+                  // which role the permissions panel belonged to.
+                  aria-pressed={selectedRole?.id === r.id}
+                  className="rm-role"
                   onClick={() => handleSelectRole(r)}
                 >
-                  <div className="role-list-item__title">{r.name}</div>
-                  <div className="role-list-item__subtitle">
+                  <span className="rm-role__name">{r.name}</span>
+                  <span className="rm-role__description">
                     {r.description || "No description"}
-                  </div>
-                </Button>
+                  </span>
+                </CcureButton>
               ))}
             </div>
-          </div>
+          </CcureCard>
 
-          {/* Permissions List */}
-          <div className="card">
-            <div style={{ marginBottom: 20 }}>
-              <h3 style={{ fontSize: 18, marginBottom: 4 }}>
-                Permissions for{" "}
-                <span style={{ color: "var(--primary)" }}>
-                  {selectedRole?.name}
-                </span>
-              </h3>
-              <p className="muted" style={{ fontSize: 14 }}>
-                Granted capabilities for this role
+          <CcureCard
+            title={`Permissions for ${selectedRole?.name ?? "—"}`}
+            subtitle="Granted capabilities for this role"
+            headingLevel={3}
+            bodyFlush
+          >
+            <CcureTable
+              // The table had no caption before, so it was announced as
+              // "table" with no indication of what it held.
+              caption={`Permissions granted to the ${selectedRole?.name ?? "selected"} role`}
+              columns={permissionColumns}
+              rows={permissions}
+              rowKey={(p) => p.id}
+              loading={loadingPerms}
+              loadingRows={3}
+              density="compact"
+              empty={
+                <CcureEmptyState
+                  title="No permissions assigned to this role."
+                  description="This role grants no capabilities."
+                />
+              }
+            />
+            {loadingPerms && (
+              // The skeleton rows are aria-hidden, so without this the load is
+              // silent to a screen reader.
+              <p className="cc-sr-only" role="status" aria-live="polite">
+                Loading permissions…
               </p>
-            </div>
-
-            {loadingPerms ? (
-              <div className="section-loader">
-                <div className="spinner" />
-              </div>
-            ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Resource</th>
-                      <th>Action</th>
-                      <th>Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissions.map((p) => (
-                      <tr key={p.id}>
-                        <td>
-                          <code
-                            className="ip-code"
-                            style={{
-                              background: "rgba(37, 99, 235, 0.05)",
-                              color: "var(--primary)",
-                            }}
-                          >
-                            {p.resource}
-                          </code>
-                        </td>
-                        <td>
-                          <span
-                            className="method-chip"
-                            style={{
-                              background:
-                                p.action === "manage" ? "#fef2f2" : "#f0f9ff",
-                              color:
-                                p.action === "manage" ? "#dc2626" : "#0369a1",
-                            }}
-                          >
-                            {p.action}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 13 }}>
-                          {p.description || "Allows access to " + p.resource}
-                        </td>
-                      </tr>
-                    ))}
-                    {permissions.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan="3"
-                          style={{
-                            textAlign: "center",
-                            padding: 40,
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          No permissions assigned to this role.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
             )}
-          </div>
+          </CcureCard>
         </div>
       </div>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />

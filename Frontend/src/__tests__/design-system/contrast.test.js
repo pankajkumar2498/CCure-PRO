@@ -94,7 +94,7 @@ function resolve(name, theme, depth = 0) {
   if (depth > 12) return null;
   const raw = theme[name] ?? light[name];
   if (!raw) return null;
-  const m = raw.match(/^var\((--[a-z0-9-]+)/);
+  const m = raw.match(/^var\(\s*(--[a-z0-9-]+)/);
   return m ? resolve(m[1], theme, depth + 1) : raw;
 }
 

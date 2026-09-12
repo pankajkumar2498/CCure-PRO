@@ -1,18 +1,54 @@
 /**
  * src/pages/SecurityReports.jsx
  *
- * The "Cabinet": A production-grade repository for all generated security audit reports.
- * Allows users to search, filter, and download historical reports (PDF/XML) for compliance.
+ * The "Cabinet": a repository for all generated security audit reports.
+ * Search, filter and download historical reports for compliance.
+ *
+ * ── Three properties this page holds, unchanged by the migration ────────────
+ *
+ * **The listing spans three scopes — active, archived AND deleted.** Reports
+ * stay reachable until permanent deletion, so dropping a scope would silently
+ * hide reports that still exist.
+ *
+ * **The download is an authenticated fetch, not a link.** `/reports/download/
+ * {id}` is bearer-authenticated, so a bare `<a href>` would be an
+ * unauthenticated request and answer 403. It is fetched as an arraybuffer and
+ * saved through a blob, with the filename taken from Content-Disposition. The
+ * `fmt` values are historical: `JSON` is the executive PDF, `XML` the technical
+ * one.
+ *
+ * **Deletion is gated three ways and says what it does.** The control is not
+ * rendered without `reports:delete`; the opener refuses; and the confirm
+ * handler refuses again. The wording names the scan and states that the scan
+ * record and its report are removed — a destructive warning is not softened
+ * into a generic "Are you sure?".
+ *
+ * ── Migration note (Checkpoint 3C, batch 10) ────────────────────────────────
+ * The in-file `ConfirmDialog` is now `CcureConfirmDialog`, which focuses
+ * Cancel rather than the destructive action on open. Its wording is carried
+ * over verbatim.
  */
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { getScans, deleteReport } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
-import { useToasts, ToastContainer } from "../components/common/Toast";
 import { can, denyMessage } from "../auth/permissions";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcureSelect,
+  CcureTabs,
+  CcureToastProvider,
+  useCcureToast,
+} from "../design-system";
 import "../styles/SecurityReports.css";
 
 /* ── Constants & Helpers ─────────────────────────────────────────────────── */
@@ -25,6 +61,31 @@ const REPORT_TYPE_LABELS = {
   credentialed: "SSH Credentialed Audit",
 };
 
+const TABS = [
+  { id: "", label: "Report Cabinet" },
+  { id: "executive", label: "Executive Report" },
+  { id: "compliance", label: "Compliance" },
+  { id: "trends", label: "Risk Trends" },
+];
+
+const PLACEHOLDER_TABS = {
+  executive: {
+    icon: "📊",
+    title: "Executive Report Generation",
+    body: "Generate high-level, business-focused security posture summaries for stakeholders.",
+  },
+  compliance: {
+    icon: "✅",
+    title: "Compliance Auditing",
+    body: "Map scan findings to standard compliance frameworks (CIS, SOC 2, ISO 27001).",
+  },
+  trends: {
+    icon: "📈",
+    title: "Risk Trends Analytics",
+    body: "Visualize organizational risk over time, MTTR (Mean Time to Remediate), and vulnerability velocity.",
+  },
+};
+
 const scanNo = (scan) => scan.scan_no ?? scan.display_id ?? "-";
 
 const fmtDur = (sec) =>
@@ -34,101 +95,25 @@ const fmtDur = (sec) =>
       ? `${sec.toFixed(1)}s`
       : `${Math.floor(sec / 60)}m ${(sec % 60).toFixed(0)}s`;
 
-/* ── CONFIRMATION DIALOG COMPONENT ──────────────────────────────────────── */
-function ConfirmDialog({ config, onConfirm, onCancel }) {
-  const {
-    title,
-    subtitle,
-    warning,
-    confirmLabel,
-    confirmClass,
-    icon,
-    iconClass,
-  } = config;
-  const [busy, setBusy] = useState(false);
-  const btnRef = useRef(null);
+/* ── Main Component ──────────────────────────────────────────────────────── */
 
-  useEffect(() => {
-    btnRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    try {
-      await onConfirm();
-    } finally {
-      setBusy(false);
-    }
-  };
-
+/* The provider wraps the view so the view can consume it — a hook cannot read a
+   context its own component provides.
+   This page uses the design system's toaster rather than the legacy one because
+   of a property, not a preference: the legacy container renders no `aria-live`
+   at all, so a failed download was shown and never announced. CcureToastProvider
+   keeps two always-mounted regions, assertive for danger and polite for the
+   rest, which is what makes a message that arrives after the page has settled
+   reach a screen reader. */
+export default function SecurityReports() {
   return (
-    <div
-      className="confirm-overlay"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div
-        className="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cdlg-title"
-      >
-        <div className="confirm-dialog-header">
-          <div
-            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
-          >
-            {icon}
-          </div>
-          <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">
-              {title}
-            </div>
-            <div className="confirm-dialog-subtitle">{subtitle}</div>
-          </div>
-        </div>
-
-        {warning && (
-          <div
-            className={`confirm-dialog-warning confirm-dialog-warning--danger`}
-          >
-            <span style={{ flexShrink: 0 }}>⚠️</span>
-            <span>{warning}</span>
-          </div>
-        )}
-
-        <div className="confirm-dialog-footer">
-          <button
-            className="confirm-btn confirm-btn--cancel"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <button
-            ref={btnRef}
-            className={`confirm-btn confirm-btn--${confirmClass}`}
-            onClick={handleConfirm}
-            disabled={busy}
-          >
-            {busy ? <span className="confirm-btn-spinner" /> : null}
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <CcureToastProvider>
+      <ReportsView />
+    </CcureToastProvider>
   );
 }
 
-/* ── Main Component ──────────────────────────────────────────────────────── */
-
-export default function SecurityReports() {
+function ReportsView() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get("tab") || "";
@@ -140,7 +125,8 @@ export default function SecurityReports() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [modal, setModal] = useState(null);
-  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+  const [deleting, setDeleting] = useState(false);
+  const toast = useCcureToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,7 +168,7 @@ export default function SecurityReports() {
 
   const handleDownload = async (scanId, format) => {
     if (!canReadReports) {
-      pushToast(denyMessage, "error");
+      toast.danger(denyMessage);
       return;
     }
     try {
@@ -213,16 +199,13 @@ export default function SecurityReports() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      pushToast(
-        "Failed to download report. The session may have expired.",
-        "error",
-      );
+      toast.danger("Failed to download report. The session may have expired.");
     }
   };
 
   const handleDelete = (scanId) => {
     if (!canDeleteReports) {
-      pushToast(denyMessage, "error");
+      toast.danger(denyMessage);
       return;
     }
     const scan = scans.find((s) => s.id === scanId);
@@ -230,15 +213,12 @@ export default function SecurityReports() {
 
     setModal({
       config: {
-        icon: "🗑️",
-        iconClass: "danger",
         title: `Permanently Delete Report for Scan No. ${scanNo(scan)}?`,
         subtitle:
           "This action cannot be undone. The scan record and its report will be completely removed.",
         warning:
           "Once deleted, you cannot recover this report or its associated data. This is irreversible.",
         confirmLabel: "Delete Permanently",
-        confirmClass: "danger",
       },
       scanId: scanId,
     });
@@ -247,19 +227,22 @@ export default function SecurityReports() {
   const handleConfirmDelete = async () => {
     if (!canDeleteReports) {
       setModal(null);
-      pushToast(denyMessage, "error");
+      toast.danger(denyMessage);
       return;
     }
     if (!modal?.scanId) return;
 
     const scanId = modal.scanId;
+    setDeleting(true);
     try {
       await deleteReport(scanId);
       setScans((prev) => prev.filter((s) => s.id !== scanId));
       setModal(null);
     } catch {
       setModal(null);
-      pushToast("Failed to delete report.", "error");
+      toast.danger("Failed to delete report.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -275,13 +258,15 @@ export default function SecurityReports() {
     return matchesSearch && matchesType;
   });
 
+  const placeholder = PLACEHOLDER_TABS[currentTab];
+
   return (
-    <AppLayout pageTitle="Security Reports">
+    <AppLayout>
       <div className="page-inner">
         {/* Header Section */}
         <div className="reports-header-box">
           <div className="rh-left">
-            <h2 className="page-title">Digital Report Cabinet</h2>
+            <h1 className="page-title">Digital Report Cabinet</h1>
             <p className="page-subtitle">
               Securely store and retrieve historical audit archives for
               compliance and sharing.
@@ -305,99 +290,66 @@ export default function SecurityReports() {
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div
-          style={{
-            margin: "0 -32px 24px",
-            padding: "0 32px",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            gap: 24,
-          }}
-        >
-          {[
-            { id: "", label: "Report Cabinet" },
-            { id: "executive", label: "Executive Report" },
-            { id: "compliance", label: "Compliance" },
-            { id: "trends", label: "Risk Trends" },
-          ].map((tab) => {
-            const active = currentTab === tab.id;
-            return (
-              <div
-                key={tab.id}
-                onClick={() => setSearchParams(tab.id ? { tab: tab.id } : {})}
-                style={{
-                  padding: "0 4px 12px",
-                  fontSize: "0.85rem",
-                  fontWeight: active ? 700 : 500,
-                  color: active ? "var(--accent)" : "var(--text-muted)",
-                  borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                {tab.label}
-              </div>
-            );
-          })}
-        </div>
+        {/* The tab strip was `<div onClick>`: no role, no tabindex, no key
+            handler, so three of the four sections could not be reached without
+            a mouse. CcureTabs implements the WAI-ARIA pattern, and the URL
+            stays the source of truth exactly as before. */}
+        <CcureTabs
+          tabs={TABS}
+          value={currentTab}
+          onChange={(id) => setSearchParams(id ? { tab: id } : {})}
+          label="Report sections"
+          className="reports-tabs"
+        />
 
         {currentTab === "" && (
           <>
             {/* Search & Filter Bar */}
             <div className="reports-filter-bar">
-              <div className="search-input-wrap">
-                <span className="search-icon">🔍</span>
-                <input
-                  type="text"
-                  placeholder="Search by target IP or Scan No..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="search-input"
-                />
-              </div>
-              <div className="filter-select-wrap">
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">All Report Types</option>
-                  <option value="basic">Host Discovery</option>
-                  <option value="asset">Asset Discovery</option>
-                  <option value="vulnerability_audit">
-                    Vulnerability Audits
-                  </option>
-                  <option value="credentialed">Credentialed Audits</option>
-                </select>
-              </div>
-              <button
-                className="btn btn--ghost"
+              <CcureInput
+                label="Search reports"
+                type="search"
+                placeholder="Search by target IP or Scan No..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                fieldClassName="reports-search-field"
+              />
+              <CcureSelect
+                label="Report type"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                fieldClassName="reports-type-field"
+              >
+                <option value="all">All Report Types</option>
+                <option value="basic">Host Discovery</option>
+                <option value="asset">Asset Discovery</option>
+                <option value="vulnerability_audit">
+                  Vulnerability Audits
+                </option>
+                <option value="credentialed">Credentialed Audits</option>
+              </CcureSelect>
+              <CcureButton
+                variant="secondary"
                 onClick={load}
-                disabled={loading}
+                loading={loading}
+                className="reports-refresh"
               >
                 {loading ? "Syncing..." : "Refresh Cabinet"}
-              </button>
+              </CcureButton>
             </div>
 
-            {error && <div className="alert alert--error">{error}</div>}
+            {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
             {loading ? (
               <div className="reports-loading-state">
-                <div className="spinner" />
-                <p>Accessing secure storage...</p>
+                <CcureLoader label="Accessing secure storage…" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="empty-state">
-                <span className="empty-state-icon">📁</span>
-                <p className="empty-state-title">
-                  No reports found in this section.
-                </p>
-                <p className="empty-state-subtitle">
-                  Complete a scan to automatically generate and store a report
-                  here.
-                </p>
-              </div>
+              <CcureEmptyState
+                icon="📁"
+                title="No reports found in this section."
+                description="Complete a scan to automatically generate and store a report here."
+              />
             ) : (
               <div className="reports-grid">
                 {filtered.map((scan) => (
@@ -415,115 +367,33 @@ export default function SecurityReports() {
           </>
         )}
 
-        {currentTab === "executive" && (
-          <div
-            style={{
-              padding: 60,
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            <div style={{ fontSize: "3rem", marginBottom: 16 }}>📊</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
-              Executive Report Generation
-            </h3>
-            <p>
-              Generate high-level, business-focused security posture summaries
-              for stakeholders.
-            </p>
-            <div
-              style={{
-                display: "inline-block",
-                marginTop: 16,
-                padding: "4px 8px",
-                background: "rgba(14,165,233,0.1)",
-                color: "var(--accent)",
-                borderRadius: 4,
-                fontSize: "0.75rem",
-                fontWeight: 700,
-              }}
-            >
-              AVAILABLE SOON
+        {placeholder && (
+          <div className="reports-placeholder">
+            <div className="rp-icon" aria-hidden="true">
+              {placeholder.icon}
             </div>
-          </div>
-        )}
-
-        {currentTab === "compliance" && (
-          <div
-            style={{
-              padding: 60,
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            <div style={{ fontSize: "3rem", marginBottom: 16 }}>✅</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
-              Compliance Auditing
-            </h3>
-            <p>
-              Map scan findings to standard compliance frameworks (CIS, SOC 2,
-              ISO 27001).
-            </p>
-            <div
-              style={{
-                display: "inline-block",
-                marginTop: 16,
-                padding: "4px 8px",
-                background: "rgba(14,165,233,0.1)",
-                color: "var(--accent)",
-                borderRadius: 4,
-                fontSize: "0.75rem",
-                fontWeight: 700,
-              }}
-            >
+            <h2 className="rp-title">{placeholder.title}</h2>
+            <p>{placeholder.body}</p>
+            <CcureBadge variant="info" className="rp-soon">
               AVAILABLE SOON
-            </div>
-          </div>
-        )}
-
-        {currentTab === "trends" && (
-          <div
-            style={{
-              padding: 60,
-              textAlign: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            <div style={{ fontSize: "3rem", marginBottom: 16 }}>📈</div>
-            <h3 style={{ color: "var(--text)", marginBottom: 8 }}>
-              Risk Trends Analytics
-            </h3>
-            <p>
-              Visualize organizational risk over time, MTTR (Mean Time to
-              Remediate), and vulnerability velocity.
-            </p>
-            <div
-              style={{
-                display: "inline-block",
-                marginTop: 16,
-                padding: "4px 8px",
-                background: "rgba(14,165,233,0.1)",
-                color: "var(--accent)",
-                borderRadius: 4,
-                fontSize: "0.75rem",
-                fontWeight: 700,
-              }}
-            >
-              AVAILABLE SOON
-            </div>
+            </CcureBadge>
           </div>
         )}
       </div>
 
-      {/* Confirmation modal for permanent deletion */}
-      {modal && (
-        <ConfirmDialog
-          config={modal.config}
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setModal(null)}
-        />
-      )}
-      <ToastContainer toasts={toasts} dismiss={dismissToast} />
+      {/* Confirmation modal for permanent deletion. The wording is carried over
+          verbatim — a destructive warning must not be softened in a migration. */}
+      <CcureConfirmDialog
+        open={Boolean(modal)}
+        title={modal?.config.title || "Delete report?"}
+        subtitle={modal?.config.subtitle}
+        warning={modal?.config.warning}
+        confirmLabel={modal?.config.confirmLabel || "Delete Permanently"}
+        tone="danger"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setModal(null)}
+      />
     </AppLayout>
   );
 }
@@ -542,16 +412,18 @@ function ReportCard({
     REPORT_TYPE_LABELS[scan.pipeline_mode] ||
     "Security Audit";
 
+  const no = scanNo(scan);
+
   return (
     <div className="report-card">
       <div className="rc-top">
         <span className="rc-type-tag">{typeLabel}</span>
-        <span className="rc-id">Scan No. {scanNo(scan)}</span>
+        <span className="rc-id">Scan No. {no}</span>
       </div>
 
       <div className="rc-body">
         <div className="rc-target">{scan.target}</div>
-        <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: 2 }}>
+        <div className="rc-date">
           {formatDateTime(scan.created_at, {
             month: "short",
             day: "numeric",
@@ -564,58 +436,59 @@ function ReportCard({
 
       <div className="rc-meta">
         <div className="rc-meta-item">
-          <span>⏱️</span> {fmtDur(scan.scan_duration)}
+          <span aria-hidden="true">⏱️</span> {fmtDur(scan.scan_duration)}
         </div>
         <div className="rc-meta-item">
-          <span>🎯</span> {scan.summary?.active_hosts || 0} Hosts
+          <span aria-hidden="true">🎯</span> {scan.summary?.active_hosts || 0}{" "}
+          Hosts
         </div>
         {scan.summary?.cve_count !== undefined && (
           <div className="rc-meta-item">
-            <span>🛡️</span> {scan.summary.cve_count} Findings
+            <span aria-hidden="true">🛡️</span> {scan.summary.cve_count} Findings
           </div>
         )}
       </div>
 
+      {/* Every control names its scan. Three cards each offering "Official
+          Report" is three identical entries in a reader's control list, and
+          picking the wrong one downloads — or destroys — the wrong scan's
+          report. The delete control was previously a bare 🗑️ with only a
+          `title`, which is not a reliable accessible name. */}
       <div className="rc-actions">
-        <button
-          className="download-btn download-btn--json"
+        <CcureButton
+          variant="secondary"
+          size="sm"
+          className="rc-action"
           onClick={() => onDownload(scan.id, "JSON")}
           disabled={!canReadReports}
+          aria-label={`Download the official report for scan number ${no}`}
           title="Download Professional PDF Report with formatted tables"
         >
-          <span>📄</span> Official Report
-        </button>
-        <button
-          className="download-btn download-btn--xml"
+          <span aria-hidden="true">📄</span> Official Report
+        </CcureButton>
+        <CcureButton
+          variant="secondary"
+          size="sm"
+          className="rc-action"
           onClick={() => onDownload(scan.id, "XML")}
           disabled={!canReadReports}
+          aria-label={`Download the technical data report for scan number ${no}`}
           title="Download Technical PDF containing raw audit data"
         >
-          <span>📝</span> Technical Data
-        </button>
+          <span aria-hidden="true">📝</span> Technical Data
+        </CcureButton>
         {canDeleteReports && (
-          <button
-            className="download-btn download-btn--delete"
+          <CcureButton
+            variant="danger"
+            size="sm"
+            className="rc-action rc-action--delete"
             onClick={() => onDelete(scan.id)}
+            aria-label={`Delete the report for scan number ${no}`}
             title="Delete report artifacts"
           >
-            <span>🗑️</span>
-          </button>
+            <span aria-hidden="true">🗑️</span>
+          </CcureButton>
         )}
-      </div>
-
-      {/* Visual indicate for "Stored in Cabinet" */}
-      <div
-        style={{
-          position: "absolute",
-          right: -15,
-          bottom: -15,
-          fontSize: "40px",
-          opacity: 0.03,
-          pointerEvents: "none",
-        }}
-      >
-        🛡️
       </div>
     </div>
   );

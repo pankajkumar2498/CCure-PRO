@@ -1,15 +1,27 @@
+/* ============================================================================
+   Security reports — page-specific layout
+   ----------------------------------------------------------------------------
+   Batch 10 note. This sheet was a light-theme palette: the header box was a
+   hardcoded `#1e293b` slate under the shell's `.page-title`, whose colour is
+   `var(--text)` — near-black in light theme. Measured on the built container:
+   the page's h1 rendered at **1.22:1** in light theme. Every literal below is
+   a token now, and the header is a raised surface in whichever theme the
+   account chose rather than a dark hero in one of them.
+
+   The card grid, filter bar and download controls keep their structure; only
+   colour, shadow and border values moved to tokens.
+   ============================================================================ */
+
 .reports-header-box {
-  background: #1e293b;
+  background: var(--ccure-surface-raised);
   border-radius: 12px;
   padding: 24px 32px;
-  color: white;
+  color: var(--ccure-text);
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--ccure-shadow-md);
 }
 .rh-stats {
   display: flex;
@@ -23,11 +35,11 @@
 .rh-stat-val {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #38bdf8;
+  color: var(--ccure-primary-text);
 }
 .rh-stat-lab {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--ccure-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -47,7 +59,7 @@
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #64748b;
+  color: var(--ccure-text-secondary);
 }
 .search-input {
   width: 100%;
@@ -61,8 +73,8 @@
   transition: border-color 0.2s;
 }
 .search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--ccure-border-focus);
+  box-shadow: var(--ccure-focus-ring);
 }
 
 .filter-select {
@@ -98,7 +110,7 @@
 }
 .report-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ccure-shadow-lg);
 }
 
 .rc-top {
@@ -118,7 +130,7 @@
 .rc-id {
   font-family: var(--mono);
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ccure-text-secondary);
 }
 
 .rc-target {
@@ -161,7 +173,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ccure-border);
 }
 .download-btn--json {
   background: var(--bg-app);
@@ -171,21 +183,21 @@
   background: var(--border);
 }
 .download-btn--xml {
-  background: #f0f9ff;
-  color: #0369a1;
-  border-color: #bae6fd;
+  background: var(--ccure-info-bg);
+  color: var(--ccure-info-text);
+  border-color: var(--ccure-info-border);
 }
 .download-btn--xml:hover {
-  background: #e0f2fe;
+  background: var(--ccure-surface-hover);
 }
 .download-btn--delete {
   max-width: 44px;
-  color: #94a3b8;
+  color: var(--ccure-text-secondary);
 }
 .download-btn--delete:hover {
-  background: #fef2f2;
-  color: #ef4444;
-  border-color: #fecaca;
+  background: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+  border-color: var(--ccure-danger-border);
 }
 
 .reports-loading-state {
@@ -194,7 +206,7 @@
   align-items: center;
   padding: 60px;
   gap: 16px;
-  color: #64748b;
+  color: var(--ccure-text-secondary);
 }
 
 .btn--rerun-sm {

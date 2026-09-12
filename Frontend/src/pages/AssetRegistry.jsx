@@ -12,6 +12,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { useAuth } from "../context/AuthContext";
 import { canPermission } from "../auth/permissions";
+import { CcureTabs, useFocusTrap } from "../design-system";
+import "../styles/asset-registry.css";
 import {
   getAssets,
   updateAsset,
@@ -31,14 +33,11 @@ const ago = (iso) => {
   return `${Math.floor(h / 24)}d ago`;
 };
 
-const riskColor = (score) =>
-  score >= 75
-    ? "#ef4444"
-    : score >= 50
-      ? "#f97316"
-      : score >= 25
-        ? "#eab308"
-        : "#22c55e";
+/* The BAND is what the risk bar communicates. The score itself is printed
+   beside it, so the number is available whatever the colour does — and the
+   thresholds are the ones `riskColor` already used, unchanged. */
+const riskBand = (score) =>
+  score >= 75 ? "crit" : score >= 50 ? "high" : score >= 25 ? "med" : "low";
 
 const SEV_CLASS = {
   Critical: "db-sev-badge--critical",
@@ -139,6 +138,27 @@ export default function AssetRegistry() {
   const [certsSkip, setCertsSkip] = useState(0);
 
   const currentTab = searchParams.get("tab") || "assets";
+
+  /* The drill-down is a real dialog now. `useFocusTrap` contains focus while
+     it is open and restores it to the control that opened it on close — the
+     same hook every other CCure dialog uses. Escape closes it, which a
+     click-outside handler alone never gave a keyboard user.
+
+     Stage 1 remediation (after batch 11): the hook's signature is
+     `(ref, active)`. Batch 10 passed the boolean as the ref, so the trap
+     never armed and the dialog's ref was undefined. The container also
+     carries tabindex="-1", which the hook requires as its focus fallback. */
+  const serviceDialogRef = useRef(null);
+  useFocusTrap(serviceDialogRef, Boolean(activeService));
+
+  useEffect(() => {
+    if (!activeService) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setActiveService(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeService]);
 
   // Sync search input and query when URL params change
   useEffect(() => {
@@ -367,13 +387,13 @@ export default function AssetRegistry() {
         {/* Header */}
         <div className="db-page-header">
           <div>
-            <div className="db-page-title">
+            <h1 className="db-page-title">
               {currentTab === "services"
                 ? "Services & Ports Inventory"
                 : currentTab === "tls"
                   ? "TLS / Certificates Inventory"
                   : "Asset Registry"}
-            </div>
+            </h1>
             <div className="db-page-subtitle">
               {currentTab === "services"
                 ? `${servicesTotal.toLocaleString()} services discovered · Global View`
@@ -404,86 +424,42 @@ export default function AssetRegistry() {
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div
-          style={{
-            padding: "0 28px",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            gap: 24,
-            background: "var(--bg-white)",
-          }}
-        >
-          {[
+        {/* Was `<div onClick>` — no role, no tabindex, no key handler, so
+            two of the three views were unreachable without a mouse. CcureTabs
+            implements the WAI-ARIA pattern; the URL stays the source of truth
+            exactly as before, so every existing link keeps working. */}
+        <CcureTabs
+          tabs={[
             { id: "", label: "Asset Inventory" },
             { id: "services", label: "Services & Ports" },
             { id: "tls", label: "TLS / Certificates" },
-          ].map((tab) => {
-            const currentTab = searchParams.get("tab") || "";
-            const active = currentTab === tab.id;
-            return (
-              <div
-                key={tab.id}
-                onClick={() => setSearchParams(tab.id ? { tab: tab.id } : {})}
-                style={{
-                  padding: "16px 4px",
-                  fontSize: "0.85rem",
-                  fontWeight: active ? 700 : 500,
-                  color: active ? "var(--accent)" : "var(--text-muted)",
-                  borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                {tab.label}
-              </div>
-            );
-          })}
-        </div>
+          ]}
+          value={searchParams.get("tab") || ""}
+          onChange={(id) => setSearchParams(id ? { tab: id } : {})}
+          label="Asset registry views"
+          className="ar-tabs"
+        />
 
         {(!searchParams.get("tab") || searchParams.get("tab") === "") && (
           <>
             {/* Filters */}
-            <div
-              style={{
-                padding: "12px 28px",
-                background: "var(--bg-white)",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
               <input
+                aria-label="Search assets"
                 type="text"
                 placeholder="Search IP, hostname, FQDN…"
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 220,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w220"
               />
               <select
+                aria-label="Risk level"
                 value={riskLevel}
                 onChange={(e) => {
                   setRiskLevel(e.target.value);
                   setSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-p-2xs-sm ar-r-md ar-bordered ar-t-sm ar-c-text ar-bg-surface"
               >
                 <option value="">All Risk Levels</option>
                 <option value="critical">Critical</option>
@@ -493,19 +469,13 @@ export default function AssetRegistry() {
                 <option value="info">Info</option>
               </select>
               <select
+                aria-label="Operating system"
                 value={osFamily}
                 onChange={(e) => {
                   setOsFamily(e.target.value);
                   setSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-p-2xs-sm ar-r-md ar-bordered ar-t-sm ar-c-text ar-bg-surface"
               >
                 <option value="">All OS Families</option>
                 <option value="Linux">Linux</option>
@@ -514,51 +484,33 @@ export default function AssetRegistry() {
                 <option value="Unknown">Unknown</option>
               </select>
               <select
+                aria-label="Managed state"
                 value={managed}
                 onChange={(e) => {
                   setManaged(e.target.value);
                   setSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-p-2xs-sm ar-r-md ar-bordered ar-t-sm ar-c-text ar-bg-surface"
               >
                 <option value="">All Assets</option>
                 <option value="true">Managed Only</option>
                 <option value="false">Unmanaged Only</option>
               </select>
               <select
+                aria-label="Verification status"
                 value={verificationStatus}
                 onChange={(e) => {
                   setVerificationStatus(e.target.value);
                   setSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-p-2xs-sm ar-r-md ar-bordered ar-t-sm ar-c-text ar-bg-surface"
               >
                 <option value="">Verification Status</option>
                 <option value="verified">Verified</option>
                 <option value="unverified">Unverified</option>
                 <option value="pending">Pending</option>
               </select>
-              <div
-                style={{
-                  marginLeft: "auto",
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <div className="ar-push ar-t-xs ar-c-secondary">
                 {total.toLocaleString()} assets · Page{" "}
                 {Math.floor(skip / LIMIT) + 1} of{" "}
                 {Math.ceil(total / LIMIT) || 1}
@@ -566,11 +518,11 @@ export default function AssetRegistry() {
             </div>
 
             {/* Table */}
-            <div style={{ padding: "16px 28px" }}>
+            <div className="ar-p-md-xl">
               {error && (
                 <div
-                  className="db-alert db-alert--critical"
-                  style={{ marginBottom: 12 }}
+                  className="db-alert db-alert--critical ar-mb-sm"
+                  role="alert"
                 >
                   <span className="db-alert-icon">⚠</span>
                   <div>{error}</div>
@@ -580,42 +532,66 @@ export default function AssetRegistry() {
                 </div>
               )}
 
-              <div className="db-card" style={{ padding: 0 }}>
+              <div className="db-card ar-p-0">
                 <div className="db-table-wrap">
                   <table className="db-table">
+                    <caption className="cc-sr-only">
+                      {`Asset inventory — ${total} assets`}
+                    </caption>
+                    <caption className="cc-sr-only">
+                      {`Services and ports — ${servicesTotal} services`}
+                    </caption>
+                    <caption className="cc-sr-only">
+                      {`TLS certificates — ${certsTotal} certificates`}
+                    </caption>
                     <thead>
                       <tr>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleSort("ip_address")}
                         >
                           IP / Host <SortIcon col="ip_address" />
                         </th>
-                        <th>OS</th>
-                        <th>Category</th>
-                        <th title="Open services discovered on this asset">
+                        <th scope="col">OS</th>
+                        <th scope="col">Category</th>
+                        <th
+                          scope="col"
+                          title="Open services discovered on this asset"
+                        >
                           Ports
                         </th>
-                        <th>Owner</th>
-                        <th>Employee ID</th>
-                        <th>Serial</th>
+                        <th scope="col">Owner</th>
+                        <th scope="col">Employee ID</th>
+                        <th scope="col">Serial</th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleSort("risk_score")}
                         >
                           Risk <SortIcon col="risk_score" />
                         </th>
-                        <th>C</th>
-                        <th>H</th>
-                        <th>M</th>
-                        <th>Tags</th>
+                        <th scope="col" title="Critical">
+                          <span aria-hidden="true">C</span>
+                          <span className="cc-sr-only">Critical</span>
+                        </th>
+                        <th scope="col" title="High">
+                          <span aria-hidden="true">H</span>
+                          <span className="cc-sr-only">High</span>
+                        </th>
+                        <th scope="col" title="Medium">
+                          <span aria-hidden="true">M</span>
+                          <span className="cc-sr-only">Medium</span>
+                        </th>
+                        <th scope="col">Tags</th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleSort("last_seen_at")}
                         >
                           Last Seen <SortIcon col="last_seen_at" />
                         </th>
-                        <th>Managed</th>
+                        <th scope="col">Managed</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -624,42 +600,18 @@ export default function AssetRegistry() {
                           <tr key={i}>
                             {Array.from({ length: 13 }).map((_, j) => (
                               <td key={j}>
-                                <div
-                                  className="db-skeleton"
-                                  style={{ height: 12, borderRadius: 3 }}
-                                />
+                                <div className="db-skeleton ar-skel" />
                               </td>
                             ))}
                           </tr>
                         ))}
                       {!loading && assets.length === 0 && (
                         <tr>
-                          <td
-                            colSpan={14}
-                            style={{
-                              textAlign: "center",
-                              padding: "48px 20px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                marginBottom: 6,
-                              }}
-                            >
+                          <td colSpan={14} className="ar-ta-center ar-p-2xl-lg">
+                            <div className="ar-c-secondary ar-t-sm ar-fw-semibold ar-mb-2xs">
                               No assets discovered in the registry.
                             </div>
-                            <div
-                              style={{
-                                color: "var(--text-faint)",
-                                fontSize: "0.72rem",
-                                maxWidth: 520,
-                                margin: "0 auto",
-                                lineHeight: 1.5,
-                              }}
-                            >
+                            <div className="ar-empty-note">
                               Run a <strong>Basic Network Scan</strong>on your
                               target subnets or IP ranges to discover live
                               network assets and populate the inventory.
@@ -671,30 +623,20 @@ export default function AssetRegistry() {
                         assets.map((a) => (
                           <tr
                             key={a.id}
-                            style={{ cursor: "pointer" }}
+                            className="ar-clickable"
                             onClick={() => navigate(`/assets/${a.id}`)}
                           >
                             <td>
-                              <div className="mono" style={{ fontWeight: 600 }}>
+                              <div className="mono ar-fw-semibold">
                                 {a.ip_address}
                               </div>
                               {a.hostname && (
-                                <div
-                                  style={{
-                                    fontSize: "0.65rem",
-                                    color: "var(--text-faint)",
-                                  }}
-                                >
+                                <div className="ar-t-xs ar-muted">
                                   {a.hostname}
                                 </div>
                               )}
                               {a.fqdn && a.fqdn !== a.hostname && (
-                                <div
-                                  style={{
-                                    fontSize: "0.62rem",
-                                    color: "var(--text-faint)",
-                                  }}
-                                >
+                                <div className="ar-t-xs ar-c-secondary">
                                   {a.fqdn}
                                 </div>
                               )}
@@ -705,117 +647,73 @@ export default function AssetRegistry() {
                               </span>
                               {(a.os_name || a.os_family) &&
                                 a.os_confidence && (
-                                  <div
-                                    style={{
-                                      fontSize: "0.6rem",
-                                      color: "var(--text-faint)",
-                                      marginTop: 2,
-                                    }}
-                                  >
+                                  <div className="ar-t-xs ar-muted ar-mt-3xs">
                                     Conf: {a.os_confidence}%
                                   </div>
                                 )}
                             </td>
-                            <td
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.72rem",
-                              }}
-                            >
+                            <td className="ar-c-secondary ar-t-xs">
                               {getCategoryLabel(a.device_category)}
                             </td>
                             {/* Exposure at a glance. The count comes from the
                                 asset's open services; a dash distinguishes "no
                                 open ports found" from "never port-scanned". */}
                             <td
-                              style={{
-                                fontVariantNumeric: "tabular-nums",
-                                fontWeight: a.open_ports_count ? 600 : 400,
-                                color: a.open_ports_count
-                                  ? "var(--text)"
-                                  : "var(--text-faint)",
-                              }}
+                              className={`ar-ports${a.open_ports_count ? " ar-ports--on" : ""}`}
                             >
                               {a.open_ports_count ?? "—"}
                             </td>
                             <td>
-                              <span
-                                style={{
-                                  fontWeight: 600,
-                                  color: a.owner
-                                    ? "var(--text)"
-                                    : "var(--text-faint)",
-                                }}
-                              >
+                              <span className="ar-certflag ar-certflag--bad">
                                 {a.owner || "—"}
                               </span>
                             </td>
-                            <td
-                              className="mono"
-                              style={{
-                                fontSize: "0.72rem",
-                                color: "var(--text-muted)",
-                              }}
-                            >
+                            <td className="mono ar-t-xs ar-c-secondary">
                               {a.emp_id || "—"}
                             </td>
-                            <td
-                              className="mono"
-                              style={{
-                                fontSize: "0.72rem",
-                                color: "var(--text-muted)",
-                              }}
-                            >
+                            <td className="mono ar-t-xs ar-c-secondary">
                               {a.serial || "—"}
                             </td>
                             <td>
                               <div className="db-risk-cell">
                                 <div className="db-risk-bar-mini">
+                                  {/* The WIDTH is per-instance data, so it
+                                      stays inline for the same reason
+                                      CcureSkeleton keeps its dimensions
+                                      inline. The COLOUR carried the meaning
+                                      and is now a band class. */}
                                   <div
-                                    className="db-risk-bar-fill"
-                                    style={{
-                                      width: `${a.risk_score}%`,
-                                      background: riskColor(a.risk_score),
-                                    }}
+                                    className={`db-risk-bar-fill ar-riskbar-fill ar-riskbar-fill--${riskBand(
+                                      a.risk_score,
+                                    )}`}
+                                    style={{ width: `${a.risk_score}%` }}
                                   />
                                 </div>
                                 <span
-                                  style={{
-                                    fontWeight: 700,
-                                    fontSize: "0.78rem",
-                                    color: riskColor(a.risk_score),
-                                  }}
+                                  className={`ar-riskscore ar-riskscore--${riskBand(
+                                    a.risk_score,
+                                  )}`}
                                 >
                                   {a.risk_score}
                                 </span>
                               </div>
                               <span
-                                className={`db-sev-badge ${SEV_CLASS[a.risk_level?.charAt(0).toUpperCase() + a.risk_level?.slice(1).toLowerCase()] || "db-sev-badge--info"}`}
-                                style={{
-                                  marginTop: 3,
-                                  display: "inline-block",
-                                }}
+                                className={`db-sev-badge ${SEV_CLASS[a.risk_level?.charAt(0).toUpperCase() + a.risk_level?.slice(1).toLowerCase()] || "db-sev-badge--info"} ar-mt-3xs ar-iblock`}
                               >
                                 {a.risk_level}
                               </span>
                             </td>
-                            <td style={{ color: "#f87171", fontWeight: 700 }}>
+                            <td className="ar-vuln ar-vuln--crit">
                               {a.vuln_counts?.critical || 0}
                             </td>
-                            <td style={{ color: "#fb923c", fontWeight: 700 }}>
+                            <td className="ar-vuln ar-vuln--high">
                               {a.vuln_counts?.high || 0}
                             </td>
-                            <td style={{ color: "#fbbf24" }}>
+                            <td className="ar-vuln ar-vuln--med">
                               {a.vuln_counts?.medium || 0}
                             </td>
                             <td>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: 2,
-                                }}
-                              >
+                              <div className="ar-flex ar-wrap ar-gap-3xs">
                                 {(a.tags || []).slice(0, 3).map((tag) => (
                                   <span key={tag} className="db-tag">
                                     {tag}
@@ -823,12 +721,7 @@ export default function AssetRegistry() {
                                 ))}
                               </div>
                             </td>
-                            <td
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.72rem",
-                              }}
-                            >
+                            <td className="ar-c-secondary ar-t-xs">
                               {ago(a.last_seen_at)}
                             </td>
                             <td
@@ -839,26 +732,9 @@ export default function AssetRegistry() {
                               }
                             >
                               <span
-                                className="db-tag"
-                                style={
-                                  a.is_managed
-                                    ? {
-                                        background: "rgba(34,197,94,0.08)",
-                                        color: "#4ade80",
-                                        border: "1px solid rgba(34,197,94,0.2)",
-                                        cursor: canUpdate
-                                          ? "pointer"
-                                          : "default",
-                                      }
-                                    : {
-                                        background: "rgba(239,68,68,0.08)",
-                                        color: "#f87171",
-                                        border: "1px solid rgba(239,68,68,0.2)",
-                                        cursor: canUpdate
-                                          ? "pointer"
-                                          : "default",
-                                      }
-                                }
+                                className={`db-tag ar-managed ar-managed--${
+                                  a.is_managed ? "on" : "off"
+                                }${canUpdate ? " ar-managed--actionable" : ""}`}
                               >
                                 {a.is_managed ? "✔ Managed" : "✗ Unmanaged"}
                               </span>
@@ -870,27 +746,16 @@ export default function AssetRegistry() {
                 </div>
 
                 {/* Pagination */}
-                <div
-                  style={{
-                    padding: "10px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <span
-                    style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                  >
+                <div className="ar-p-sm-md ar-flex ar-ai-center ar-jc-between ar-border-t">
+                  <span className="ar-t-xs ar-c-secondary">
                     Showing {skip + 1}–{Math.min(skip + LIMIT, total)} of{" "}
                     {total.toLocaleString()}
                   </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="ar-flex ar-gap-2xs">
                     <button
                       className="db-btn db-btn--ghost"
                       disabled={skip === 0}
                       onClick={() => setSkip((s) => Math.max(0, s - LIMIT))}
-                      style={{ opacity: skip === 0 ? 0.4 : 1 }}
                     >
                       ← Prev
                     </button>
@@ -898,7 +763,6 @@ export default function AssetRegistry() {
                       className="db-btn db-btn--ghost"
                       disabled={skip + LIMIT >= total}
                       onClick={() => setSkip((s) => s + LIMIT)}
-                      style={{ opacity: skip + LIMIT >= total ? 0.4 : 1 }}
                     >
                       Next →
                     </button>
@@ -912,33 +776,17 @@ export default function AssetRegistry() {
         {searchParams.get("tab") === "services" && (
           <>
             {/* Filters */}
-            <div
-              style={{
-                padding: "12px 28px",
-                background: "var(--bg-white)",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
               <input
+                aria-label="Search services"
                 type="text"
                 placeholder="Search service, product…"
                 value={servicesSearchInput}
                 onChange={(e) => handleServicesSearchChange(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 180,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w180"
               />
               <input
+                aria-label="Port"
                 type="number"
                 placeholder="Port"
                 value={servicesPort}
@@ -946,51 +794,29 @@ export default function AssetRegistry() {
                   setServicesPort(e.target.value);
                   setServicesSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 80,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w80"
               />
               <select
+                aria-label="Protocol"
                 value={servicesProtocol}
                 onChange={(e) => {
                   setServicesProtocol(e.target.value);
                   setServicesSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 120,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w120"
               >
                 <option value="">All Protocols</option>
                 <option value="tcp">TCP</option>
                 <option value="udp">UDP</option>
               </select>
               <select
+                aria-label="Asset type"
                 value={servicesAssetType}
                 onChange={(e) => {
                   setServicesAssetType(e.target.value);
                   setServicesSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 140,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w140"
               >
                 <option value="">All Asset Types</option>
                 <option value="server">Server</option>
@@ -1002,6 +828,7 @@ export default function AssetRegistry() {
                 <option value="unknown">Unknown</option>
               </select>
               <input
+                aria-label="Subnet"
                 type="text"
                 placeholder="Subnet / Segment…"
                 value={servicesSubnet}
@@ -1009,18 +836,10 @@ export default function AssetRegistry() {
                   setServicesSubnet(e.target.value);
                   setServicesSkip(0);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 160,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w160"
               />
               <button
-                className="db-btn db-btn--ghost"
+                className="db-btn db-btn--ghost ar-t-xs ar-p-2xs-sm"
                 onClick={() => {
                   setServicesSearchInput("");
                   setServicesSearch("");
@@ -1030,17 +849,10 @@ export default function AssetRegistry() {
                   setServicesSubnet("");
                   setServicesSkip(0);
                 }}
-                style={{ fontSize: "0.75rem", padding: "6px 12px" }}
               >
                 Clear Filters
               </button>
-              <div
-                style={{
-                  marginLeft: "auto",
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <div className="ar-push ar-t-xs ar-c-secondary">
                 {servicesTotal.toLocaleString()} services · Page{" "}
                 {Math.floor(servicesSkip / LIMIT) + 1} of{" "}
                 {Math.ceil(servicesTotal / LIMIT) || 1}
@@ -1048,11 +860,11 @@ export default function AssetRegistry() {
             </div>
 
             {/* Table */}
-            <div style={{ padding: "16px 28px" }}>
+            <div className="ar-p-md-xl">
               {servicesError && (
                 <div
-                  className="db-alert db-alert--critical"
-                  style={{ marginBottom: 12 }}
+                  className="db-alert db-alert--critical ar-mb-sm"
+                  role="alert"
                 >
                   <span className="db-alert-icon">⚠</span>
                   <div>{servicesError}</div>
@@ -1065,43 +877,48 @@ export default function AssetRegistry() {
                 </div>
               )}
 
-              <div className="db-card" style={{ padding: 0 }}>
+              <div className="db-card ar-p-0">
                 <div className="db-table-wrap">
                   <table className="db-table">
                     <thead>
                       <tr>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleServicesSort("service_name")}
                         >
                           Service Name <ServicesSortIcon col="service_name" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleServicesSort("port")}
                         >
                           Port <ServicesSortIcon col="port" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleServicesSort("protocol")}
                         >
                           Protocol <ServicesSortIcon col="protocol" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleServicesSort("asset_count")}
                         >
                           Asset Count <ServicesSortIcon col="asset_count" />
                         </th>
-                        <th>Exposure Risk</th>
+                        <th scope="col">Exposure Risk</th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleServicesSort("last_seen")}
                         >
                           Last Seen <ServicesSortIcon col="last_seen" />
                         </th>
-                        <th>Actions</th>
+                        <th scope="col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1110,42 +927,18 @@ export default function AssetRegistry() {
                           <tr key={i}>
                             {Array.from({ length: 7 }).map((_, j) => (
                               <td key={j}>
-                                <div
-                                  className="db-skeleton"
-                                  style={{ height: 12, borderRadius: 3 }}
-                                />
+                                <div className="db-skeleton ar-skel" />
                               </td>
                             ))}
                           </tr>
                         ))}
                       {!servicesLoading && services.length === 0 && (
                         <tr>
-                          <td
-                            colSpan={7}
-                            style={{
-                              textAlign: "center",
-                              padding: "48px 20px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                marginBottom: 6,
-                              }}
-                            >
+                          <td colSpan={7} className="ar-ta-center ar-p-2xl-lg">
+                            <div className="ar-c-secondary ar-t-sm ar-fw-semibold ar-mb-2xs">
                               No network services or open ports discovered yet.
                             </div>
-                            <div
-                              style={{
-                                color: "var(--text-faint)",
-                                fontSize: "0.72rem",
-                                maxWidth: 520,
-                                margin: "0 auto",
-                                lineHeight: 1.5,
-                              }}
-                            >
+                            <div className="ar-empty-note">
                               Run an <strong>Asset Discovery Scan</strong> on
                               active targets to perform port scanning, banner
                               grabbing, and service identification.
@@ -1156,108 +949,60 @@ export default function AssetRegistry() {
                       {!servicesLoading &&
                         services.map((s, idx) => {
                           // Risk Level badge styling
+                          /* The LABEL is the fact; the band is the
+                             presentation. Both were bundled into one object of
+                             rgba values plus a `text` field. */
                           const rc =
                             s.risk_level === "Critical"
-                              ? {
-                                  bg: "rgba(239,68,68,0.12)",
-                                  color: "#f87171",
-                                  border: "1px solid rgba(239,68,68,0.25)",
-                                  text: "CRITICAL EXPOSURE",
-                                }
+                              ? { band: "crit", text: "CRITICAL EXPOSURE" }
                               : s.risk_level === "High"
-                                ? {
-                                    bg: "rgba(249,115,22,0.12)",
-                                    color: "#fb923c",
-                                    border: "1px solid rgba(249,115,22,0.25)",
-                                    text: "HIGH EXPOSURE",
-                                  }
+                                ? { band: "high", text: "HIGH EXPOSURE" }
                                 : s.risk_level === "Medium"
-                                  ? {
-                                      bg: "rgba(234,179,8,0.1)",
-                                      color: "#facc15",
-                                      border: "1px solid rgba(234,179,8,0.2)",
-                                      text: "MEDIUM EXPOSURE",
-                                    }
-                                  : {
-                                      bg: "rgba(156,163,175,0.08)",
-                                      color: "var(--text-muted)",
-                                      border:
-                                        "1px solid rgba(156,163,175,0.15)",
-                                      text: "STANDARD",
-                                    };
+                                  ? { band: "med", text: "MEDIUM EXPOSURE" }
+                                  : { band: "low", text: "LOW EXPOSURE" };
 
                           return (
                             <tr key={idx}>
                               <td>
                                 {s.service_name === "unknown" ? (
-                                  <span
-                                    style={{
-                                      color: "var(--text-faint)",
-                                      fontStyle: "italic",
-                                    }}
-                                  >
+                                  <span className="ar-muted ar-italic">
                                     (Unknown Service)
                                   </span>
                                 ) : (
-                                  <span style={{ fontWeight: 600 }}>
+                                  <span className="ar-fw-semibold">
                                     {s.service_name}
                                   </span>
                                 )}
                               </td>
-                              <td className="mono" style={{ fontWeight: 700 }}>
-                                {s.port}
-                              </td>
-                              <td
-                                style={{
-                                  fontSize: "0.75rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {s.protocol}
-                              </td>
+                              <td className="mono ar-fw-bold">{s.port}</td>
+                              <td className="ar-t-xs ar-upper">{s.protocol}</td>
                               <td>
-                                <span style={{ fontWeight: 600 }}>
+                                <span className="ar-fw-semibold">
                                   {s.asset_count}
                                 </span>
-                                <span
-                                  style={{
-                                    fontSize: "0.72rem",
-                                    color: "var(--text-muted)",
-                                    marginLeft: 4,
-                                  }}
-                                >
+                                <span className="ar-t-xs ar-c-secondary ar-ml-2xs">
                                   {s.asset_count === 1 ? "asset" : "assets"}
                                 </span>
                               </td>
                               <td>
                                 <span
-                                  className="db-tag"
-                                  style={rc}
+                                  className={`db-tag ar-exposure ar-exposure--${rc.band}`}
                                   title={s.risk_reason || ""}
                                 >
                                   {rc.text}
                                 </span>
                               </td>
-                              <td
-                                style={{
-                                  fontSize: "0.72rem",
-                                  color: "var(--text-muted)",
-                                }}
-                              >
+                              <td className="ar-t-xs ar-c-secondary">
                                 {ago(s.last_seen)}
                               </td>
                               <td>
                                 <button
-                                  className="db-btn db-btn--ghost"
+                                  className="db-btn db-btn--ghost ar-t-xs ar-p-2xs-sm"
                                   onClick={() => {
                                     setActiveService(s);
                                     setModalAssetsSkip(0);
                                     setModalSearchInput("");
                                     setModalSearch("");
-                                  }}
-                                  style={{
-                                    fontSize: "0.72rem",
-                                    padding: "4px 10px",
                                   }}
                                 >
                                   View Assets
@@ -1271,30 +1016,19 @@ export default function AssetRegistry() {
                 </div>
 
                 {/* Pagination */}
-                <div
-                  style={{
-                    padding: "10px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <span
-                    style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                  >
+                <div className="ar-p-sm-md ar-flex ar-ai-center ar-jc-between ar-border-t">
+                  <span className="ar-t-xs ar-c-secondary">
                     Showing {servicesSkip + 1}–
                     {Math.min(servicesSkip + LIMIT, servicesTotal)} of{" "}
                     {servicesTotal.toLocaleString()}
                   </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="ar-flex ar-gap-2xs">
                     <button
                       className="db-btn db-btn--ghost"
                       disabled={servicesSkip === 0}
                       onClick={() =>
                         setServicesSkip((s) => Math.max(0, s - LIMIT))
                       }
-                      style={{ opacity: servicesSkip === 0 ? 0.4 : 1 }}
                     >
                       ← Prev
                     </button>
@@ -1302,10 +1036,6 @@ export default function AssetRegistry() {
                       className="db-btn db-btn--ghost"
                       disabled={servicesSkip + LIMIT >= servicesTotal}
                       onClick={() => setServicesSkip((s) => s + LIMIT)}
-                      style={{
-                        opacity:
-                          servicesSkip + LIMIT >= servicesTotal ? 0.4 : 1,
-                      }}
                     >
                       Next →
                     </button>
@@ -1319,39 +1049,16 @@ export default function AssetRegistry() {
         {searchParams.get("tab") === "tls" && (
           <>
             {/* Filters */}
-            <div
-              style={{
-                padding: "12px 28px",
-                background: "var(--bg-white)",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
               <input
+                aria-label="Search certificates"
                 type="text"
                 placeholder="Search common name, issuer, IP…"
                 value={certsSearchInput}
                 onChange={(e) => handleCertsSearchChange(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  fontSize: "0.78rem",
-                  width: 240,
-                  color: "var(--text)",
-                  background: "var(--bg-white)",
-                }}
+                className="ar-input ar-input--w240"
               />
-              <div
-                style={{
-                  marginLeft: "auto",
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <div className="ar-push ar-t-xs ar-c-secondary">
                 {certsTotal.toLocaleString()} certificates · Page{" "}
                 {Math.floor(certsSkip / LIMIT) + 1} of{" "}
                 {Math.ceil(certsTotal / LIMIT) || 1}
@@ -1359,11 +1066,11 @@ export default function AssetRegistry() {
             </div>
 
             {/* Table */}
-            <div style={{ padding: "16px 28px" }}>
+            <div className="ar-p-md-xl">
               {certsError && (
                 <div
-                  className="db-alert db-alert--critical"
-                  style={{ marginBottom: 12 }}
+                  className="db-alert db-alert--critical ar-mb-sm"
+                  role="alert"
                 >
                   <span className="db-alert-icon">⚠</span>
                   <div>{certsError}</div>
@@ -1376,43 +1083,48 @@ export default function AssetRegistry() {
                 </div>
               )}
 
-              <div className="db-card" style={{ padding: 0 }}>
+              <div className="db-card ar-p-0">
                 <div className="db-table-wrap">
                   <table className="db-table">
                     <thead>
                       <tr>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleCertsSort("subject")}
                         >
                           Common Name / Subject <CertsSortIcon col="subject" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleCertsSort("port")}
                         >
                           Port <CertsSortIcon col="port" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleCertsSort("grade")}
                         >
                           Grade <CertsSortIcon col="grade" />
                         </th>
-                        <th>Issuer</th>
+                        <th scope="col">Issuer</th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleCertsSort("expiration")}
                         >
                           Expiration <CertsSortIcon col="expiration" />
                         </th>
                         <th
-                          style={{ cursor: "pointer" }}
+                          scope="col"
+                          className="ar-clickable"
                           onClick={() => handleCertsSort("hostname")}
                         >
                           Asset <CertsSortIcon col="hostname" />
                         </th>
-                        <th>Issues</th>
+                        <th scope="col">Issues</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1421,42 +1133,18 @@ export default function AssetRegistry() {
                           <tr key={i}>
                             {Array.from({ length: 7 }).map((_, j) => (
                               <td key={j}>
-                                <div
-                                  className="db-skeleton"
-                                  style={{ height: 12, borderRadius: 3 }}
-                                />
+                                <div className="db-skeleton ar-skel" />
                               </td>
                             ))}
                           </tr>
                         ))}
                       {!certsLoading && certs.length === 0 && (
                         <tr>
-                          <td
-                            colSpan={7}
-                            style={{
-                              textAlign: "center",
-                              padding: "48px 20px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: "var(--text-muted)",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                marginBottom: 6,
-                              }}
-                            >
+                          <td colSpan={7} className="ar-ta-center ar-p-2xl-lg">
+                            <div className="ar-c-secondary ar-t-sm ar-fw-semibold ar-mb-2xs">
                               No TLS certificates discovered in the inventory.
                             </div>
-                            <div
-                              style={{
-                                color: "var(--text-faint)",
-                                fontSize: "0.72rem",
-                                maxWidth: 520,
-                                margin: "0 auto",
-                                lineHeight: 1.5,
-                              }}
-                            >
+                            <div className="ar-empty-note">
                               TLS audits run during vulnerability scans. Run a{" "}
                               <strong>Vulnerability Audit Scan</strong> on hosts
                               with open SSL/TLS ports (such as HTTPS 443, SMTPS
@@ -1478,33 +1166,13 @@ export default function AssetRegistry() {
                               : c.cert_issuer) || "—";
 
                           // Grade colors mapping
-                          const gradeColors = {
-                            A: {
-                              bg: "rgba(34,197,94,0.1)",
-                              color: "#4ade80",
-                              border: "1px solid rgba(34,197,94,0.2)",
-                            },
-                            B: {
-                              bg: "rgba(34,197,94,0.08)",
-                              color: "#86efac",
-                              border: "1px solid rgba(34,197,94,0.15)",
-                            },
-                            C: {
-                              bg: "rgba(234,179,8,0.1)",
-                              color: "#fde047",
-                              border: "1px solid rgba(234,179,8,0.2)",
-                            },
-                            F: {
-                              bg: "rgba(239,68,68,0.1)",
-                              color: "#f87171",
-                              border: "1px solid rgba(239,68,68,0.2)",
-                            },
-                          };
-                          const gc = gradeColors[c.grade] || {
-                            bg: "rgba(107,114,128,0.1)",
-                            color: "var(--text-muted)",
-                            border: "1px solid rgba(107,114,128,0.2)",
-                          };
+                          /* The grade letter is printed inside the
+                             chip, so the colour reinforces a value that is
+                             always legible on its own. */
+                          const gradeBand =
+                            { A: "a", B: "b", C: "c", D: "d", F: "f" }[
+                              c.grade
+                            ] || "unknown";
 
                           // Expiration formatting
                           const expirationDate = c.cert_not_after
@@ -1523,59 +1191,37 @@ export default function AssetRegistry() {
                             <tr key={c.id}>
                               <td>
                                 <div
-                                  style={{
-                                    fontWeight: 600,
-                                    maxWidth: 300,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
+                                  className="ar-fw-semibold ar-truncate-lg"
                                   title={cn}
                                 >
                                   {cn}
                                 </div>
                                 {c.protocol_version && (
-                                  <div
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      color: "var(--text-faint)",
-                                    }}
-                                  >
+                                  <div className="ar-t-xs ar-muted">
                                     {c.protocol_version}
                                   </div>
                                 )}
                               </td>
-                              <td
-                                className="mono"
-                                style={{ fontSize: "0.75rem" }}
-                              >
+                              <td className="mono ar-t-xs">
                                 {c.port}/{c.protocol?.toUpperCase()}
                               </td>
                               <td>
-                                <span className="db-tag" style={gc}>
+                                <span
+                                  className={`db-tag ar-grade ar-grade--${gradeBand}`}
+                                >
                                   {c.grade}
                                 </span>
                               </td>
                               <td>
                                 <div
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "var(--text)",
-                                    maxWidth: 220,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
+                                  className="ar-t-sm ar-truncate"
                                   title={issuerCn}
                                 >
                                   {issuerCn}
                                 </div>
                                 {c.cipher_suite && (
                                   <div
-                                    style={{
-                                      fontSize: "0.6rem",
-                                      color: "var(--text-faint)",
-                                    }}
+                                    className="ar-t-xs ar-muted"
                                     title={c.cipher_suite}
                                   >
                                     {c.cipher_suite}
@@ -1586,39 +1232,25 @@ export default function AssetRegistry() {
                                 {c.cert_not_after ? (
                                   <div>
                                     <div
-                                      className="mono"
-                                      style={{
-                                        fontSize: "0.75rem",
-                                        color: isExpired
-                                          ? "#f87171"
+                                      className={`mono ar-t-sm ar-expiry${
+                                        isExpired
+                                          ? " ar-expiry--expired"
                                           : isNearExpiry
-                                            ? "#fbbf24"
-                                            : "var(--text)",
-                                      }}
+                                            ? " ar-expiry--soon"
+                                            : ""
+                                      }`}
                                     >
                                       {new Date(
                                         c.cert_not_after,
                                       ).toLocaleDateString()}
                                     </div>
                                     {isExpired && (
-                                      <span
-                                        style={{
-                                          fontSize: "0.6rem",
-                                          color: "#f87171",
-                                          fontWeight: 700,
-                                        }}
-                                      >
+                                      <span className="ar-t-xs ar-muted">
                                         EXPIRED
                                       </span>
                                     )}
                                     {isNearExpiry && (
-                                      <span
-                                        style={{
-                                          fontSize: "0.6rem",
-                                          color: "#fbbf24",
-                                          fontWeight: 700,
-                                        }}
-                                      >
+                                      <span className="ar-certflag ar-certflag--warn">
                                         EXPIRING SOON
                                       </span>
                                     )}
@@ -1632,68 +1264,32 @@ export default function AssetRegistry() {
                                   onClick={() =>
                                     navigate(`/assets/${c.asset_id}`)
                                   }
-                                  style={{
-                                    color: "var(--accent)",
-                                    cursor: "pointer",
-                                    fontWeight: 600,
-                                  }}
+                                  className="ar-c-link ar-clickable ar-fw-semibold"
                                 >
                                   {c.asset_hostname || "—"}
                                 </div>
                                 {c.asset_ip && (
-                                  <div
-                                    className="mono"
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      color: "var(--text-faint)",
-                                    }}
-                                  >
+                                  <div className="mono ar-t-xs ar-muted">
                                     {c.asset_ip}
                                   </div>
                                 )}
                               </td>
                               <td>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: 3,
-                                    maxWidth: 240,
-                                  }}
-                                >
+                                <div className="ar-issues">
                                   {c.cert_is_self_signed && (
-                                    <span
-                                      className="db-tag"
-                                      style={{
-                                        background: "rgba(239,68,68,0.06)",
-                                        color: "#f87171",
-                                        border:
-                                          "1px solid rgba(239,68,68,0.15)",
-                                        fontSize: "0.65rem",
-                                      }}
-                                    >
+                                    <span className="db-tag ar-issue ar-issue--bad">
                                       Self-Signed
                                     </span>
                                   )}
                                   {c.is_weak_cipher && (
-                                    <span
-                                      className="db-tag"
-                                      style={{
-                                        background: "rgba(234,179,8,0.06)",
-                                        color: "#fbbf24",
-                                        border:
-                                          "1px solid rgba(234,179,8,0.15)",
-                                        fontSize: "0.65rem",
-                                      }}
-                                    >
+                                    <span className="db-tag ar-issue ar-issue--warn">
                                       Weak Cipher
                                     </span>
                                   )}
                                   {(c.issues || []).map((issue) => (
                                     <span
+                                      className="db-tag ar-t-xs"
                                       key={issue}
-                                      className="db-tag"
-                                      style={{ fontSize: "0.65rem" }}
                                     >
                                       {issue}
                                     </span>
@@ -1701,12 +1297,7 @@ export default function AssetRegistry() {
                                   {!c.cert_is_self_signed &&
                                     !c.is_weak_cipher &&
                                     (!c.issues || c.issues.length === 0) && (
-                                      <span
-                                        style={{
-                                          color: "var(--text-faint)",
-                                          fontSize: "0.72rem",
-                                        }}
-                                      >
+                                      <span className="ar-c-secondary ar-t-xs">
                                         No issues
                                       </span>
                                     )}
@@ -1720,30 +1311,19 @@ export default function AssetRegistry() {
                 </div>
 
                 {/* Pagination */}
-                <div
-                  style={{
-                    padding: "10px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <span
-                    style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                  >
+                <div className="ar-p-sm-md ar-flex ar-ai-center ar-jc-between ar-border-t">
+                  <span className="ar-t-xs ar-c-secondary">
                     Showing {certsSkip + 1}–
                     {Math.min(certsSkip + LIMIT, certsTotal)} of{" "}
                     {certsTotal.toLocaleString()}
                   </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="ar-flex ar-gap-2xs">
                     <button
                       className="db-btn db-btn--ghost"
                       disabled={certsSkip === 0}
                       onClick={() =>
                         setCertsSkip((s) => Math.max(0, s - LIMIT))
                       }
-                      style={{ opacity: certsSkip === 0 ? 0.4 : 1 }}
                     >
                       ← Prev
                     </button>
@@ -1751,9 +1331,6 @@ export default function AssetRegistry() {
                       className="db-btn db-btn--ghost"
                       disabled={certsSkip + LIMIT >= certsTotal}
                       onClick={() => setCertsSkip((s) => s + LIMIT)}
-                      style={{
-                        opacity: certsSkip + LIMIT >= certsTotal ? 0.4 : 1,
-                      }}
                     >
                       Next →
                     </button>
@@ -1770,88 +1347,69 @@ export default function AssetRegistry() {
             onClick={() => setActiveService(null)}
           >
             <div
-              className="modal"
+              className="modal ar-modal-wide"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ar-service-dialog-title"
+              ref={serviceDialogRef}
+              tabIndex={-1}
               onClick={(e) => e.stopPropagation()}
-              style={{ width: "min(900px, 95vw)" }}
             >
               <div className="modal-header">
-                <h3
-                  className="modal-title"
-                  style={{ fontSize: "1.05rem", fontWeight: 700 }}
+                <h2
+                  className="modal-title ar-modal-title"
+                  id="ar-service-dialog-title"
                 >
                   Associated Assets for{" "}
                   {activeService.service_name === "unknown" ? (
-                    <span style={{ fontStyle: "italic" }}>
+                    <span className="ar-muted ar-italic">
                       (Unknown Service)
                     </span>
                   ) : (
-                    <strong style={{ color: "var(--accent)" }}>
+                    <strong className="ar-c-link">
                       {activeService.service_name}
                     </strong>
-                  )}
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      color: "var(--text-muted)",
-                      marginLeft: 8,
-                      fontWeight: 400,
-                    }}
-                  >
+                  )}{" "}
+                  <span className="ar-t-sm ar-c-secondary ar-ml-xs ar-fw-regular">
                     on Port {activeService.port}/
                     {activeService.protocol?.toUpperCase()}
                   </span>
-                </h3>
+                </h2>
                 <button
                   className="modal-close"
                   onClick={() => setActiveService(null)}
+                  aria-label="Close the associated-assets dialog"
                 >
-                  ✕
+                  <span aria-hidden="true">✕</span>
                 </button>
               </div>
-              <div
-                className="modal-body"
-                style={{ display: "flex", flexDirection: "column", gap: 14 }}
-              >
+              <div className="modal-body ar-flex ar-col ar-gap-md">
                 <input
+                  aria-label="Search assets in this service"
                   type="text"
                   placeholder="Search assets by hostname or IP address…"
                   value={modalSearchInput}
                   onChange={(e) => handleModalSearchChange(e.target.value)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    fontSize: "0.82rem",
-                    width: "100%",
-                    color: "var(--text)",
-                    background: "var(--bg-white)",
-                  }}
+                  className="ar-p-xs-sm ar-r-md ar-bordered ar-t-sm ar-w-full ar-c-text ar-bg-surface"
                 />
 
                 {modalAssetsError && (
-                  <div className="db-alert db-alert--critical">
+                  <div className="db-alert db-alert--critical" role="alert">
                     <span className="db-alert-icon">⚠</span>
                     <div>{modalAssetsError}</div>
                   </div>
                 )}
 
-                <div
-                  className="db-table-wrap"
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    overflow: "hidden",
-                  }}
-                >
+                <div className="db-table-wrap ar-bordered ar-r-md ar-ovh">
                   <table className="db-table">
                     <thead>
                       <tr>
-                        <th>Asset Name</th>
-                        <th>IP Address</th>
-                        <th>Asset Type</th>
-                        <th>Port Status</th>
-                        <th>Version / Product</th>
-                        <th>Last Scan Time</th>
+                        <th scope="col">Asset Name</th>
+                        <th scope="col">IP Address</th>
+                        <th scope="col">Asset Type</th>
+                        <th scope="col">Port Status</th>
+                        <th scope="col">Version / Product</th>
+                        <th scope="col">Last Scan Time</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1860,10 +1418,7 @@ export default function AssetRegistry() {
                           <tr key={i}>
                             {Array.from({ length: 6 }).map((_, j) => (
                               <td key={j}>
-                                <div
-                                  className="db-skeleton"
-                                  style={{ height: 12, borderRadius: 3 }}
-                                />
+                                <div className="db-skeleton ar-skel" />
                               </td>
                             ))}
                           </tr>
@@ -1872,12 +1427,7 @@ export default function AssetRegistry() {
                         <tr>
                           <td
                             colSpan={6}
-                            style={{
-                              textAlign: "center",
-                              padding: 24,
-                              color: "var(--text-muted)",
-                              fontSize: "0.82rem",
-                            }}
+                            className="ar-ta-center ar-p-lg ar-c-secondary ar-t-sm"
                           >
                             No assets match the current criteria.
                           </td>
@@ -1898,61 +1448,26 @@ export default function AssetRegistry() {
                                     setActiveService(null);
                                     navigate(`/assets/${asset.asset_id}`);
                                   }}
-                                  style={{
-                                    color: "var(--accent)",
-                                    cursor: "pointer",
-                                    fontWeight: 600,
-                                    textDecoration: "underline",
-                                  }}
+                                  className="ar-linkish"
                                 >
                                   {asset.asset_hostname}
                                 </span>
                               </td>
-                              <td
-                                className="mono"
-                                style={{ fontSize: "0.8rem" }}
-                              >
-                                {asset.asset_ip}
-                              </td>
-                              <td style={{ fontSize: "0.78rem" }}>
-                                {asset.asset_type}
-                              </td>
+                              <td className="mono ar-t-sm">{asset.asset_ip}</td>
+                              <td className="ar-t-sm">{asset.asset_type}</td>
                               <td>
                                 <span
-                                  className="db-tag"
-                                  style={
-                                    asset.state === "open"
-                                      ? {
-                                          background: "rgba(34,197,94,0.08)",
-                                          color: "#4ade80",
-                                          border:
-                                            "1px solid rgba(34,197,94,0.2)",
-                                        }
-                                      : {
-                                          background: "rgba(107,114,128,0.08)",
-                                          color: "var(--text-muted)",
-                                          border:
-                                            "1px solid rgba(107,114,128,0.15)",
-                                        }
-                                  }
+                                  className={`db-tag ar-portstate ar-portstate--${
+                                    asset.state === "open" ? "open" : "other"
+                                  }`}
                                 >
-                                  {asset.state || "unknown"}
+                                  {asset.state}
                                 </span>
                               </td>
-                              <td
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "var(--text-muted)",
-                                }}
-                              >
+                              <td className="ar-t-sm ar-c-secondary">
                                 {productText}
                               </td>
-                              <td
-                                style={{
-                                  fontSize: "0.75rem",
-                                  color: "var(--text-muted)",
-                                }}
-                              >
+                              <td className="ar-t-xs ar-c-secondary">
                                 {ago(asset.last_scan_time)}
                               </td>
                             </tr>
@@ -1963,46 +1478,31 @@ export default function AssetRegistry() {
                 </div>
 
                 {/* Modal Pagination Footer */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingTop: 4,
-                  }}
-                >
-                  <span
-                    style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                  >
+                <div className="ar-flex ar-ai-center ar-jc-between ar-pt-2xs">
+                  <span className="ar-t-xs ar-c-secondary">
                     Showing {modalAssetsSkip + 1}–
                     {Math.min(modalAssetsSkip + 10, modalAssetsTotal)} of{" "}
                     {modalAssetsTotal.toLocaleString()}
                   </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="ar-flex ar-gap-2xs">
+                    {/* The services table behind this dialog has its own
+                        Prev/Next, so two paginators share a screen. Named for
+                        what they page so a reader can tell them apart. */}
                     <button
-                      className="db-btn db-btn--ghost"
+                      className="db-btn db-btn--ghost ar-pagebtn"
+                      aria-label="Previous page of associated assets"
                       disabled={modalAssetsSkip === 0}
                       onClick={() =>
                         setModalAssetsSkip((s) => Math.max(0, s - 10))
                       }
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: "0.72rem",
-                        opacity: modalAssetsSkip === 0 ? 0.4 : 1,
-                      }}
                     >
                       ← Prev
                     </button>
                     <button
-                      className="db-btn db-btn--ghost"
+                      className="db-btn db-btn--ghost ar-pagebtn"
+                      aria-label="Next page of associated assets"
                       disabled={modalAssetsSkip + 10 >= modalAssetsTotal}
                       onClick={() => setModalAssetsSkip((s) => s + 10)}
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: "0.72rem",
-                        opacity:
-                          modalAssetsSkip + 10 >= modalAssetsTotal ? 0.4 : 1,
-                      }}
                     >
                       Next →
                     </button>

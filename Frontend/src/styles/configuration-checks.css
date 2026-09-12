@@ -1,0 +1,146 @@
+/* ============================================================================
+   Configuration checks — page-specific layout
+   ----------------------------------------------------------------------------
+   This page carried 35 inline style objects and 38 colour literals, all of them
+   a light-theme palette: `#fee2e2`/`#991b1b` severity pills, `#dcfce7`/`#166534`
+   absence pills, `#e2e8f0` borders, `#fff` card backgrounds. On a page that
+   renders in whichever theme the account chose, a dark surface got light pills.
+
+   The severity and absence pills are CcureBadge now, so the vocabulary is the
+   product's rather than this file's, and nothing here defines a colour that
+   carries meaning — the meaning is in the label text.
+
+   Nothing was deleted from a shared stylesheet: the page was inline-styled
+   rather than class-based, so there were no shared selectors to consider.
+   ============================================================================ */
+
+.cfg-page {
+  padding-bottom: var(--ccure-space-4xl);
+}
+
+.cfg-lede {
+  max-width: 52rem;
+}
+
+/* ── Platform switch ──────────────────────────────────────────────────────── */
+
+.cfg-platforms {
+  display: flex;
+  gap: var(--ccure-space-xs);
+  margin: var(--ccure-space-lg) 0;
+}
+
+.cfg-platform-btn {
+  text-transform: capitalize;
+}
+
+.cfg-capability,
+.cfg-error {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.cfg-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--ccure-space-4xl) 0;
+}
+
+.cfg-count {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  margin: 0 0 var(--ccure-space-sm);
+}
+
+/* ── A check ──────────────────────────────────────────────────────────────── */
+
+.cfg-row {
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  margin-bottom: var(--ccure-space-xs);
+  background: var(--ccure-surface);
+  overflow: hidden;
+}
+
+/* The whole header is the control, so the hit area matches what a reader is
+   told is clickable. */
+.cfg-row-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+  color: var(--ccure-text);
+}
+
+.cfg-row-toggle:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.cfg-row-toggle:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: calc(var(--ccure-focus-ring-offset) * -1);
+}
+
+/* The title carries the row's accessible name, so it must not be truncated out
+   of the accessibility tree — it wraps rather than ellipsing. */
+.cfg-row-title {
+  flex: 1;
+  font-weight: var(--ccure-weight-semibold);
+  min-width: 0;
+}
+
+.cfg-row-caret {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-lg);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Expanded detail ──────────────────────────────────────────────────────── */
+
+.cfg-detail {
+  border-top: 1px solid var(--ccure-border-subtle);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+}
+
+.cfg-dl {
+  display: grid;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.cfg-dl dt {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.cfg-dl dd {
+  margin: 0;
+  color: var(--ccure-text-secondary);
+}
+
+.cfg-mono {
+  font-family: var(--ccure-font-mono, var(--mono));
+}
+
+.cfg-meta {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-xs);
+}
+
+.cfg-refs {
+  display: flex;
+  gap: var(--ccure-space-md);
+  flex-wrap: wrap;
+  font-size: var(--ccure-text-sm);
+}
+
+.cfg-refs a {
+  color: var(--ccure-text-link);
+}

@@ -24,5 +24,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/__tests__/setupTests.js"],
+    // Paired with asyncUtilTimeout in setupTests.js: a test that waits up to
+    // 5 s several times must not be cut off by the 5 s default here.
+    testTimeout: 20000,
   },
 });

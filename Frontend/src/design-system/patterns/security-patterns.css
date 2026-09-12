@@ -1,0 +1,214 @@
+/* ============================================================================
+   CCure security patterns
+   ----------------------------------------------------------------------------
+   Deliberately thin. Each pattern composes a generic primitive and overrides
+   only what carries security meaning — which in practice is colour and label.
+   `CcureSeverityBadge` renders a `.cc-badge` and adds one `.cc-sev--*` class;
+   it does not restate padding, radius, font or layout.
+
+   The reason severity cannot simply reuse `CcureBadge`'s variants: UX4G has
+   four status colours and vulnerability severity has seven states. Critical
+   and High would both map to "danger" and lose the distinction that matters
+   most to whoever is triaging a scan.
+
+   Every colour resolves through `--ccure-sev-*`, which Phase 2 chose by
+   measuring contrast rather than by eye — the obvious 600-step choice failed
+   WCAG AA on white for three of the five bands.
+   ============================================================================ */
+
+/* ── Severity ─────────────────────────────────────────────────────────────
+   The text colour is the severity token and the surface is its tint, so the
+   badge stays legible in both themes without a per-theme rule here: both
+   tokens are already redefined under [data-theme="dark"]. */
+.cc-sev--critical {
+  background: var(--ccure-sev-critical-bg);
+  border-color: var(--ccure-sev-critical);
+  color: var(--ccure-sev-critical);
+}
+
+.cc-sev--high {
+  background: var(--ccure-sev-high-bg);
+  border-color: var(--ccure-sev-high);
+  color: var(--ccure-sev-high);
+}
+
+.cc-sev--medium {
+  background: var(--ccure-sev-medium-bg);
+  border-color: var(--ccure-sev-medium);
+  color: var(--ccure-sev-medium);
+}
+
+.cc-sev--low {
+  background: var(--ccure-sev-low-bg);
+  border-color: var(--ccure-sev-low);
+  color: var(--ccure-sev-low);
+}
+
+.cc-sev--info {
+  background: var(--ccure-sev-info-bg);
+  border-color: var(--ccure-sev-info);
+  color: var(--ccure-sev-info);
+}
+
+/* `none` and `unscored` are different facts and must not share a rendering
+   with Info. "No severity was assigned" and "no rating has been published"
+   are both weaker claims than "informational", and on a compliance report the
+   difference decides whether a control counts. */
+.cc-sev--none,
+.cc-sev--unscored {
+  background: var(--ccure-sev-none-bg);
+  border-color: var(--ccure-sev-none);
+  color: var(--ccure-sev-none);
+}
+
+/* The numeric score sits inside the badge, slightly heavier, so the band and
+   its score read as one object rather than two adjacent chips. */
+.cc-sev__score {
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Scan status ──────────────────────────────────────────────────────────
+   A running scan is the one status that is *changing*, so it gets a pulse.
+   Everything else is static, and animating a settled state would suggest
+   work is still happening. */
+.cc-scan-status__pulse {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: var(--ccure-radius-full);
+  background: currentColor;
+  flex: none;
+  animation: cc-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-scan-status__pulse {
+    animation: none;
+  }
+}
+
+/* ── Scan progress ────────────────────────────────────────────────────────
+   No colours of its own: it composes CcureProgress, and the phase caption
+   below is the only addition. */
+.cc-scan-progress__phase {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Password field ───────────────────────────────────────────────────────────
+   CcurePasswordField. Every colour is a semantic token, so the control follows
+   the surface it is placed on — including `.cc-theme-dark`, which is what the
+   auth pages carry. The previous per-page implementations hardcoded #34d399
+   and #64748b, and the second measured 3.85:1 on the auth card: the rules a
+   user had *not* yet met, which are the only ones worth reading, were the ones
+   below the AA floor.
+   ────────────────────────────────────────────────────────────────────────── */
+.cc-password {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+}
+
+.cc-password__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--ccure-text-secondary);
+  background: none;
+  border: 0;
+  border-radius: var(--ccure-radius-sm);
+  cursor: pointer;
+}
+
+.cc-password__toggle:hover {
+  color: var(--ccure-text);
+}
+
+.cc-password__caps {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-warning-text);
+}
+
+/* The glyph is decorative — the text says the same thing — but it is what
+   distinguishes the warning from a hint without relying on colour. */
+.cc-password__caps::before {
+  content: "⚠";
+  line-height: 1;
+}
+
+.cc-password__strength {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-2xs) var(--ccure-space-sm);
+}
+
+.cc-password__meter {
+  display: flex;
+  flex: 1 1 120px;
+  gap: var(--ccure-space-3xs);
+}
+
+.cc-password__seg {
+  flex: 1;
+  height: 4px;
+  background: var(--ccure-border);
+  border-radius: var(--ccure-radius-full);
+}
+
+.cc-password__seg--1 {
+  background: var(--ccure-danger-solid);
+}
+
+.cc-password__seg--2 {
+  background: var(--ccure-warning-solid);
+}
+
+.cc-password__seg--3 {
+  background: var(--ccure-info-solid);
+}
+
+.cc-password__seg--4 {
+  background: var(--ccure-success-solid);
+}
+
+.cc-password__grade {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text-secondary);
+}
+
+.cc-password__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs) var(--ccure-space-md);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: var(--ccure-text-sm);
+  list-style: none;
+  /* An unmet rule is the actionable one, so it takes the readable secondary
+     tier rather than a dimmed one. */
+  color: var(--ccure-text-secondary);
+}
+
+.cc-password__rule--met {
+  color: var(--ccure-success-text);
+}

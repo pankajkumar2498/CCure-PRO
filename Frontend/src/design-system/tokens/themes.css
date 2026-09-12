@@ -1,0 +1,202 @@
+/* ============================================================================
+   CCure theme bridge
+   ----------------------------------------------------------------------------
+   Loaded after ux4g.generated.css and ccure-tokens.css. It holds the few things
+   that are true of the *combination* of the two rather than of either alone.
+
+   ── The theme contract ─────────────────────────────────────────────────────
+
+   There is exactly one theme switch in this application:
+
+       document.documentElement.setAttribute("data-theme", "dark")
+
+   written by src/context/PreferencesContext.jsx from the server-persisted
+   `preferences.theme` field. It predates UX4G and is a backend contract.
+
+   UX4G happens to use the identical selector — `:root[data-theme=dark]`, under
+   which it redefines 217 of its own tokens — so the one attribute drives both
+   token sets with no adapter, no bridging class and no second mechanism. That
+   is a measured fact about ux4g-web-components 2.1.0, not an assumption; it is
+   re-checked by src/__tests__/design-system/tokens.test.js.
+
+   Two things follow, and both must hold:
+
+     * Do not add a second theme mechanism. No `.dark` class, no
+       `prefers-color-scheme` media query, no per-component theme prop.
+     * UX4G ships ZERO `prefers-color-scheme` rules (verified), so it will never
+       flip itself against the user's stored preference. If a future version
+       introduces one it must be neutralised here, because a system-preference
+       override would silently contradict the account setting the user chose.
+   ============================================================================ */
+
+/* ── Focus restoration ───────────────────────────────────────────────────────
+   NOT cosmetic. This exists to repair an accessibility regression that
+   importing UX4G would otherwise introduce across the whole application.
+
+   UX4G's reset is `:where(*,:before,:after){ … outline:0 … }`. The `:where()`
+   wrapper gives it zero specificity, which is why UX4G can be imported at all
+   without restyling CCure — every existing CCure rule outranks it. But
+   `outline:0` still applies to every element for which *nothing else* sets an
+   outline, and CCure sets one in only 36 of its 76 focus rules. The remainder
+   were relying on the browser default, which `outline:0` removes.
+
+   The consequence would be a keyboard user losing the focus indicator on
+   controls across pages nobody had touched — a WCAG 2.4.7 failure introduced by
+   a stylesheet import.
+
+   `:focus-visible` carries specificity (0,1,0), so it beats the `:where()`
+   reset while still losing to any component's own focus styling. The net effect
+   is a floor: every focusable element has a visible focus indicator, and
+   components may still style their own.
+
+   Ordering matters — this file must load after ux4g.generated.css. index.css
+   is what guarantees that. */
+:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+/* Elements that are focusable but not keyboard-focused should not show the ring.
+   Kept explicit rather than relying on the reset, so the intent survives a
+   UX4G upgrade that changes the reset. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   UX4G already ships 11 `prefers-reduced-motion` blocks for its own components.
+   This zeroes the CCure duration tokens as well, so any CCure component built
+   on `--ccure-duration-*` inherits the respect automatically instead of each
+   one having to remember to ask.
+
+   The durations are zeroed rather than the animations disabled: a component
+   whose logic waits for `transitionend` still receives the event. Disabling the
+   transition outright would leave such a component waiting for an event that
+   never fires — a hang, not a preference. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ccure-duration-fast: 0.01ms;
+    --ccure-duration-base: 0.01ms;
+    --ccure-duration-slow: 0.01ms;
+  }
+}
+
+/* ── Forced colours (Windows High Contrast) ──────────────────────────────────
+   A government security console is a realistic place to meet this mode. In it
+   the browser replaces the palette wholesale and `outline` is one of the few
+   properties that still respects the system colours, which is a second reason
+   the focus floor above uses outline rather than box-shadow. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/* ── Scoped dark surface ─────────────────────────────────────────────────────
+   A container that renders dark regardless of the application theme.
+
+   This exists because CCure has a real surface of that kind: all five
+   authentication pages (Login, Register, ForgotPassword, ResetPassword,
+   VerifyEmail) sit on `.auth-split-wrapper`, which hardcodes
+   `background:#020617; color:#f8fafc` and does not consult `data-theme`. The
+   auth flow is deliberately a fixed dark panel.
+
+   Without this, a `cc-*` component placed on that panel resolves its colours
+   from the ROOT theme — so in light mode, which is the default, a CcureInput
+   would render as a white box with near-black text on a #0f172a card. That is
+   not a styling nit; it is a contrast failure introduced by the migration.
+
+   Why a class rather than `data-theme="dark"` on the subtree: `data-theme` is
+   a root-only contract in this application, written by PreferencesContext from
+   the user's stored preference. UX4G's own tokens are likewise defined at
+   `:root[data-theme=dark]` and do not scope to a subtree — the attribute on a
+   div would style nothing. A separate class keeps the account-level theme and
+   a locally dark region as two different ideas, which they are.
+
+   Only the semantic tokens are redefined. Spacing, radius, typography and
+   motion are theme-independent and inherit unchanged. */
+.cc-theme-dark {
+  /* Surfaces */
+  --ccure-bg: var(--ux4g-color-neutral-900);
+  --ccure-surface: var(--ux4g-color-neutral-950);
+  --ccure-surface-raised: var(--ux4g-color-neutral-950);
+  --ccure-surface-sunken: var(--ux4g-color-neutral-800);
+  --ccure-surface-hover: var(--ux4g-color-neutral-800);
+  --ccure-surface-active: var(--ux4g-color-neutral-800);
+  --ccure-surface-disabled: hsla(0, 0%, 98%, 0.25);
+
+  /* Text */
+  --ccure-text: var(--ux4g-color-neutral-50);
+  --ccure-text-secondary: var(--ux4g-color-neutral-200);
+  --ccure-text-placeholder: var(--ux4g-color-neutral-400);
+  --ccure-text-disabled: hsla(0, 0%, 98%, 0.25);
+  --ccure-text-inverse: var(--ux4g-color-neutral-900);
+  --ccure-text-link: var(--ux4g-color-primary-300);
+
+  /* Borders */
+  --ccure-border: var(--ux4g-color-neutral-600);
+  --ccure-border-subtle: var(--ux4g-color-neutral-700);
+  --ccure-border-strong: var(--ux4g-color-neutral-400);
+
+  /* Brand */
+  --ccure-primary: var(--ux4g-color-primary-300);
+  --ccure-primary-hover: var(--ux4g-color-primary-200);
+  --ccure-primary-soft: var(--ux4g-color-primary-800);
+  --ccure-primary-text: var(--ux4g-color-primary-300);
+  --ccure-on-primary: var(--ux4g-color-neutral-900);
+
+  /* Status */
+  --ccure-success-bg: var(--ux4g-color-green-900);
+  --ccure-success-border: var(--ux4g-color-green-700);
+  --ccure-success-text: var(--ux4g-color-green-300);
+  --ccure-warning-bg: var(--ux4g-color-orange-900);
+  --ccure-warning-border: var(--ux4g-color-orange-700);
+  --ccure-warning-text: var(--ux4g-color-orange-300);
+  --ccure-danger-bg: var(--ux4g-color-red-900);
+  --ccure-danger-border: var(--ux4g-color-red-700);
+  --ccure-danger-text: var(--ux4g-color-red-300);
+  --ccure-danger-solid: var(--ux4g-color-red-300);
+  --ccure-info-bg: var(--ux4g-color-cyan-900);
+  --ccure-info-border: var(--ux4g-color-cyan-700);
+  --ccure-info-text: var(--ux4g-color-cyan-300);
+
+  /* The focus ring's inner offset is drawn in the surface colour, so it has to
+     follow the scope or the ring gets a light halo on a dark panel. */
+  --ccure-focus-ring-color: var(--ux4g-color-primary-300);
+  --ccure-focus-ring: 0 0 0 var(--ccure-focus-ring-offset) var(--ccure-surface),
+    0 0 0 calc(var(--ccure-focus-ring-offset) + var(--ccure-focus-ring-width))
+      var(--ccure-focus-ring-color);
+
+  /* Everything below resolves, in the LIGHT definition, through a UX4G
+     *semantic* token — and those flip only at `:root[data-theme=dark]`, never
+     inside a scoped container. Omitting them leaves light values on a dark
+     panel, which is the exact failure this class exists to prevent.
+
+     That is not hypothetical: the first version of this block redefined the
+     severity text colours and not their tints, so `--ccure-sev-critical`
+     (#ffb3ae) sat on `--ccure-sev-critical-bg` (#fff8f8) at **1.63:1**. The
+     contrast suite caught it. `tokens.test.js` now enforces completeness, so
+     a token added to ccure-tokens.css that references a theme-dependent UX4G
+     token must be mirrored here. */
+  --ccure-overlay: hsla(0, 0%, 98%, 0.6);
+  --ccure-border-focus: var(--ux4g-color-neutral-300);
+  --ccure-success-solid: var(--ux4g-color-green-300);
+  --ccure-warning-solid: var(--ux4g-color-orange-300);
+  --ccure-info-solid: var(--ux4g-color-cyan-300);
+
+  --ccure-sev-critical-bg: var(--ux4g-color-red-900);
+  --ccure-sev-high-bg: var(--ux4g-color-orange-900);
+  --ccure-sev-medium-bg: var(--ux4g-color-orange-900);
+  --ccure-sev-low-bg: var(--ux4g-color-green-900);
+  --ccure-sev-info-bg: var(--ux4g-color-cyan-900);
+  --ccure-sev-none-bg: var(--ux4g-color-neutral-800);
+
+  /* Severity, matching the dark block in ccure-tokens.css. */
+  --ccure-sev-critical: var(--ux4g-color-red-300);
+  --ccure-sev-high: var(--ux4g-color-orange-300);
+  --ccure-sev-medium: var(--ux4g-color-yellow-300);
+  --ccure-sev-low: var(--ux4g-color-green-300);
+  --ccure-sev-info: var(--ux4g-color-cyan-300);
+  --ccure-sev-none: var(--ux4g-color-neutral-400);
+}

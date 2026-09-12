@@ -1,0 +1,331 @@
+/* ============================================================================
+   CCure semantic design tokens
+   ----------------------------------------------------------------------------
+   The middle layer of:
+
+       UX4G primitives  →  CCure semantics  →  CCure components  →  pages
+
+   Every value here resolves to a `--ux4g-*` token rather than a literal. That
+   is the whole point: UX4G owns the palette and the light/dark inversion, and
+   CCure owns the *naming* — what a colour is FOR, rather than which colour it
+   is. A page asking for `--ccure-surface` keeps working when UX4G renumbers its
+   neutral ramp, and CCure can be re-skinned by editing this one file.
+
+   ── Two rules for this file ────────────────────────────────────────────────
+
+   1. NEVER put a literal colour here without a fallback chain that names the
+      UX4G token first. A literal is how a theme silently stops inverting.
+
+   2. This layer is ADDITIVE. It does not redefine CCure's existing 44 legacy
+      tokens (--accent, --text, --bg-app, …). Those still resolve exactly as
+      they did in theme.css, so every unmigrated page renders byte-identically
+      while this layer exists alongside it.
+
+      Re-pointing the legacy names onto these is a deliberate, reviewable step
+      and belongs to Phase 3 — doing it here would restyle all 79 pages at once
+      through 2,155 var() call sites, which is precisely the "big bang" the
+      migration plan exists to avoid.
+
+   Dark mode needs no block in this file. Each --ux4g-* token it references is
+   itself redefined under `:root[data-theme=dark]` by the UX4G stylesheet, so
+   these names inherit the inversion for free. The one exception is severity
+   (bottom of file), which is CCure's own vocabulary and therefore CCure's own
+   responsibility.
+   ============================================================================ */
+
+:root {
+  /* ── Surfaces ────────────────────────────────────────────────────────────
+     Three tiers, deliberately. "The page", "a card on the page" and "a thing
+     floating above a card" are different jobs, and collapsing them is how a
+     modal ends up invisible against its own backdrop in one of the themes. */
+  --ccure-bg: var(--ux4g-bg-neutral);
+  --ccure-surface: var(--ux4g-bg-neutral-elevated);
+  --ccure-surface-raised: var(--ux4g-bg-neutral-elevated);
+  --ccure-surface-sunken: var(--ux4g-bg-neutral-soft);
+  --ccure-surface-hover: var(--ux4g-bg-neutral-soft);
+  --ccure-surface-active: var(--ux4g-bg-neutral-subtle);
+  --ccure-surface-disabled: var(--ux4g-bg-neutral-disabled);
+  --ccure-overlay: var(--ux4g-bg-overlay);
+
+  /* ── Text ────────────────────────────────────────────────────────────────
+     Four tiers, in descending emphasis:
+
+         --ccure-text              a value, a heading, a label
+         --ccure-text-secondary    a hint, a subtitle, a caption
+         --ccure-text-placeholder  an empty field's prompt
+         --ccure-text-disabled     an inoperable control
+
+     Every one of the first three clears 4.5:1 against the surface it is drawn
+     on, in all three palettes; `disabled` deliberately does not, because a
+     disabled control is not content a user is expected to read.
+
+     What this layer still does NOT offer is a decorative tier. CCure's legacy
+     palette had one — `--text-faint`, 2.6:1 on white — and theme.css carries a
+     comment recording that six form labels had drifted onto it. Placeholder is
+     a *named role* with a measured floor, not a licence to reintroduce that. */
+  --ccure-text: var(--ux4g-text-neutral-primary);
+  --ccure-text-secondary: var(--ux4g-text-neutral-secondary);
+  /* Placeholder sits between secondary and disabled, and is its own tier
+     because the alternatives were both measured and both wrong.
+
+     It used to be `--ccure-text-secondary`, which on the scoped-dark auth
+     surface put a placeholder at 15.72:1 against a value at 18.97:1 — legible,
+     but near enough to a real value that an empty field reads as a filled one.
+     Contrast was never the problem; perceived hierarchy was.
+
+     UX4G's own `--ux4g-text-neutral-tertiary` looks like the obvious home and
+     is not: light 4.74:1 is good subordination, but dark resolves to
+     neutral-300 at 14.03:1 against secondary's 15.72 — which reproduces the
+     exact defect being fixed. So CCure picks its own steps.
+
+         palette   step          on the input surface   share of value text
+         light     neutral-600   7.81:1                 0.44x  (value 17.93)
+         dark      neutral-400   7.66:1                 0.40x  (value 18.97)
+
+     Roughly equal subordination in both themes, both comfortably clear of the
+     4.5:1 floor, and both far above the disabled tier, which composites to
+     ~1.7–2.0:1. Ordering holds: value > secondary > placeholder > disabled. */
+  --ccure-text-placeholder: var(--ux4g-color-neutral-600);
+  --ccure-text-disabled: var(--ux4g-text-neutral-disabled);
+  --ccure-text-inverse: var(--ux4g-text-neutral-inverse);
+  --ccure-text-link: var(--ux4g-text-brand-primary-default);
+
+  /* ── Borders ─────────────────────────────────────────────────────────── */
+  --ccure-border: var(--ux4g-border-color-neutral-default);
+  --ccure-border-subtle: var(--ux4g-border-color-neutral-subtle);
+  --ccure-border-strong: var(--ux4g-border-color-neutral-strong);
+  --ccure-border-focus: var(--ux4g-border-color-neutral-focus);
+
+  /* ── Brand / primary action ──────────────────────────────────────────── */
+  --ccure-primary: var(--ux4g-bg-primary-strong);
+  --ccure-primary-hover: var(
+    --ux4g-bg-primary-strong-hover,
+    var(--ux4g-bg-primary-emphasis)
+  );
+  --ccure-primary-soft: var(--ux4g-bg-primary-soft);
+  --ccure-primary-text: var(--ux4g-text-brand-primary-default);
+  --ccure-on-primary: var(--ux4g-text-neutral-inverse);
+
+  /* ── Status ──────────────────────────────────────────────────────────────
+     Four statuses, each with a surface / border / text triple so an Alert can
+     be built without any component reaching past this layer for a raw colour. */
+  --ccure-success-bg: var(--ux4g-bg-success);
+  --ccure-success-border: var(
+    --ux4g-border-color-success-default,
+    var(--ux4g-bg-success-strong)
+  );
+  --ccure-success-text: var(
+    --ux4g-text-status-success,
+    var(--ux4g-text-success-default)
+  );
+  --ccure-success-solid: var(--ux4g-bg-success-strong);
+
+  --ccure-warning-bg: var(--ux4g-bg-warning);
+  --ccure-warning-border: var(
+    --ux4g-border-color-warning-default,
+    var(--ux4g-bg-warning-strong)
+  );
+  --ccure-warning-text: var(
+    --ux4g-text-status-warning,
+    var(--ux4g-text-warning-default)
+  );
+  --ccure-warning-solid: var(--ux4g-bg-warning-strong);
+
+  --ccure-danger-bg: var(--ux4g-bg-error);
+  --ccure-danger-border: var(--ux4g-border-color-error-default);
+  --ccure-danger-text: var(--ux4g-text-status-error);
+  /* Deliberately NOT --ux4g-bg-error-strong, which is the obvious choice and
+     is the one measured failure in the palette: in light mode it resolves to
+     red-600 (#db372d), and the button label (--ux4g-text-neutral-inverse,
+     #fafafa) sits on it at **4.38:1** — under the 4.5:1 AA floor for normal
+     text. red-700 gives 6.29:1 with no perceptible change in intent.
+
+     Dark mode is unaffected and keeps the UX4G step: there -strong resolves to
+     red-300 against a dark label, which measures 10.51:1. The override is in
+     the dark block below.
+
+     This is the semantic layer earning its place — the fix is one declaration
+     here rather than a patch to UX4G or a per-component exception. Pinned by
+     tests/design-system/contrast.test.js. */
+  --ccure-danger-solid: var(--ux4g-color-red-700);
+
+  --ccure-info-bg: var(--ux4g-bg-info);
+  --ccure-info-border: var(--ux4g-border-color-info-default);
+  --ccure-info-text: var(--ux4g-text-status-info);
+  --ccure-info-solid: var(--ux4g-bg-info-strong);
+
+  /* ── Spacing ─────────────────────────────────────────────────────────────
+     UX4G's scale is numeric and non-linear (space-4 is 0.5rem, space-6 is
+     1rem). T-shirt names are given here because a component author choosing
+     "md" is making a design decision, whereas one choosing "6" is guessing. */
+  --ccure-space-3xs: var(--ux4g-space-1); /* 0.125rem */
+  --ccure-space-2xs: var(--ux4g-space-2); /* 0.25rem  */
+  --ccure-space-xs: var(--ux4g-space-3); /*  0.375rem */
+  --ccure-space-sm: var(--ux4g-space-4); /*  0.5rem   */
+  --ccure-space-md: var(--ux4g-space-5); /*  0.75rem  */
+  --ccure-space-lg: var(--ux4g-space-6); /*  1rem     */
+  --ccure-space-xl: var(--ux4g-space-7); /*  1.25rem  */
+  --ccure-space-2xl: var(--ux4g-space-8); /* 1.5rem   */
+  --ccure-space-3xl: var(--ux4g-space-10); /* 2.5rem  */
+  --ccure-space-4xl: var(--ux4g-space-12); /* 3.5rem  */
+
+  /* ── Typography ──────────────────────────────────────────────────────────
+     Noto Sans is UX4G's base face and is self-hosted as WOFF2 by
+     scripts/build-ux4g-assets.mjs. The monospace stack stays CCure's own:
+     UX4G publishes no mono face, and this product prints IP addresses, port
+     tables, CVE identifiers and command output where column alignment carries
+     meaning. */
+  --ccure-font: var(--ux4g-font-family-base);
+  --ccure-font-display: var(
+    --ux4g-font-family-display,
+    var(--ux4g-font-family-base)
+  );
+  --ccure-font-mono: "SF Mono", "Fira Mono", Consolas, "Liberation Mono",
+    monospace;
+
+  --ccure-text-xs: var(--ux4g-font-size-11);
+  --ccure-text-sm: var(--ux4g-font-size-12);
+  --ccure-text-base: var(--ux4g-font-size-14);
+  --ccure-text-md: var(--ux4g-font-size-16);
+  --ccure-text-lg: var(--ux4g-font-size-18);
+  --ccure-text-xl: var(--ux4g-font-size-20);
+  --ccure-text-2xl: var(--ux4g-font-size-24);
+  --ccure-text-3xl: var(--ux4g-font-size-32);
+
+  --ccure-weight-regular: 400;
+  --ccure-weight-medium: 500;
+  --ccure-weight-semibold: 600;
+  --ccure-weight-bold: 700;
+
+  --ccure-leading-tight: 1.25;
+  --ccure-leading-normal: 1.5;
+  --ccure-leading-relaxed: 1.7;
+
+  /* ── Radius ──────────────────────────────────────────────────────────── */
+  --ccure-radius-sm: var(--ux4g-radius-sm);
+  --ccure-radius-md: var(--ux4g-radius-md);
+  --ccure-radius-lg: var(--ux4g-radius-lg);
+  --ccure-radius-full: var(--ux4g-radius-full);
+
+  /* ── Elevation ───────────────────────────────────────────────────────── */
+  --ccure-shadow-none: var(--ux4g-shadow-l0);
+  --ccure-shadow-sm: var(--ux4g-shadow-l1);
+  --ccure-shadow-md: var(--ux4g-shadow-l2);
+  --ccure-shadow-lg: var(--ux4g-shadow-l3);
+  --ccure-shadow-xl: var(--ux4g-shadow-l4);
+
+  /* ── Focus ───────────────────────────────────────────────────────────────
+     One focus treatment for the entire product. It is defined here rather than
+     per-component because a focus ring that varies by component is a focus ring
+     a keyboard user cannot learn to look for.
+
+     Width and offset are separate tokens so the ring can be thickened globally
+     if a contrast audit asks for it, without touching any component. */
+  --ccure-focus-ring-width: 2px;
+  --ccure-focus-ring-offset: 2px;
+  --ccure-focus-ring-color: var(--ux4g-bg-primary-strong);
+  --ccure-focus-ring: 0 0 0 var(--ccure-focus-ring-offset) var(--ccure-bg),
+    0 0 0 calc(var(--ccure-focus-ring-offset) + var(--ccure-focus-ring-width))
+      var(--ccure-focus-ring-color);
+
+  /* ── Motion ──────────────────────────────────────────────────────────────
+     Durations are tokens so `prefers-reduced-motion` can zero them in one
+     place (see themes.css) instead of each component remembering to ask. */
+  --ccure-duration-fast: 120ms;
+  --ccure-duration-base: 200ms;
+  --ccure-duration-slow: 320ms;
+  --ccure-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout ──────────────────────────────────────────────────────────────
+     Carried across from theme.css at the same values, so the shell can be
+     migrated without the sidebar changing width mid-phase. */
+  --ccure-sidebar-width: 220px;
+  --ccure-header-height: 52px;
+
+  /* ── Z-index ─────────────────────────────────────────────────────────────
+     An explicit ladder. The application currently has ad-hoc z-index values
+     scattered across 14 stylesheets; anything built on this layer should take
+     its stacking position from here so "the toast is behind the modal" becomes
+     a fact about this list rather than a bug to be discovered. */
+  --ccure-z-sticky: 100;
+  --ccure-z-header: 200;
+  --ccure-z-drawer: 300;
+  --ccure-z-overlay: 400;
+  --ccure-z-modal: 410;
+  --ccure-z-toast: 500;
+}
+
+/* ── Severity ────────────────────────────────────────────────────────────────
+   CCure's own vocabulary, and the one place this layer must define values
+   rather than alias them: UX4G has four statuses and vulnerability severity
+   has five, with Critical and High both mapping onto "error" and losing the
+   distinction that matters most to the reader of a scan report.
+
+   These are mapped onto UX4G's palette ramps rather than CCure's legacy
+   literals so they invert with the theme. That fixes a real pre-existing
+   defect recorded in Phase 0: --sev-* was declared once in dashboard.css with
+   no dark-mode override at all, so severity colour was identical in both
+   themes and its contrast was only ever verified in one of them.
+
+   Severity is a semantic, not a decoration: nothing may use these to mean
+   "red because it looks urgent". They mean CVSS bands. */
+/* Each step below is the one that MEASURES at or above 4.5:1 against
+   --ccure-surface, not the one that looks like the right hue. The obvious
+   choice — the 600 step across the board, matching UX4G's own status colours —
+   was measured and three of the five fail badly on white:
+
+       orange-600  #fa8c16   2.38:1
+       yellow-600  #fadb14   1.38:1
+       cyan-600    #13c2c2   2.21:1
+
+   All three read as perfectly legible to someone with normal colour vision on
+   a good monitor, which is exactly why this is measured rather than reviewed.
+   Pinned by tests/design-system/contrast.test.js.
+
+   The cost is honest and worth stating: at 4.5:1 on white there is no such
+   thing as an accessible yellow, so "medium" is yellow-900 (#876800), a dark
+   amber. It reads as amber rather than as the bright yellow a severity palette
+   usually uses. That is a property of the contrast requirement, not a choice —
+   and severity is never carried by colour alone anyway (WCAG 1.4.1): the badge
+   always carries its label. */
+:root {
+  --ccure-sev-critical: var(--ux4g-color-red-700);
+  --ccure-sev-high: var(--ux4g-color-orange-800);
+  --ccure-sev-medium: var(--ux4g-color-yellow-900);
+  --ccure-sev-low: var(--ux4g-color-green-700);
+  --ccure-sev-info: var(--ux4g-color-cyan-800);
+  --ccure-sev-none: var(--ux4g-color-neutral-600);
+
+  --ccure-sev-critical-bg: var(--ux4g-bg-error);
+  --ccure-sev-high-bg: var(--ux4g-bg-warning);
+  --ccure-sev-medium-bg: var(--ux4g-bg-warning);
+  --ccure-sev-low-bg: var(--ux4g-bg-success);
+  --ccure-sev-info-bg: var(--ux4g-bg-info);
+  --ccure-sev-none-bg: var(--ux4g-bg-neutral-soft);
+}
+
+:root[data-theme="dark"] {
+  /* The placeholder tier is a fixed palette step rather than a UX4G semantic
+     token (see the note above), so it does not flip on its own and must be
+     restated here and in `.cc-theme-dark`. tokens/guardrails enforce both. */
+  --ccure-text-placeholder: var(--ux4g-color-neutral-400);
+
+  /* On a dark surface the solid danger button takes UX4G's own -strong step
+     (red-300) against a dark label: 10.51:1. See the light-mode note above for
+     why the two themes name different steps. */
+  --ccure-danger-solid: var(--ux4g-color-red-300);
+
+  /* Severity inverts explicitly. The ramps above are fixed hues that do not
+     re-resolve per theme, so on a dark surface the 600/700 steps are too dark
+     to read and must step lighter. Without this block severity badges would
+     repeat the exact defect this token set was introduced to fix. */
+  /* On the dark surface (#0a0a0a) the 300 steps measure 11.6–16.2:1, so the
+     hue survives intact here — the yellow compromise above is a light-mode
+     constraint only. */
+  --ccure-sev-critical: var(--ux4g-color-red-300);
+  --ccure-sev-high: var(--ux4g-color-orange-300);
+  --ccure-sev-medium: var(--ux4g-color-yellow-300);
+  --ccure-sev-low: var(--ux4g-color-green-300);
+  --ccure-sev-info: var(--ux4g-color-cyan-300);
+  --ccure-sev-none: var(--ux4g-color-neutral-400);
+}

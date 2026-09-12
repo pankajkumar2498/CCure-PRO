@@ -1,0 +1,37 @@
+/* ============================================================================
+   CCure design system — token entry point
+   ----------------------------------------------------------------------------
+   The import order below is load-bearing. Three of the four relationships in it
+   are decided by CSS cascade rules rather than by preference:
+
+   1. ux4g.generated.css FIRST.
+      Its reset is wrapped in `:where(…)`, which has zero specificity, so any
+      CCure rule beats it on specificity alone. But two zero-specificity rules
+      (UX4G's `:where(*)` and CCure's own `*` reset in theme.css) are decided by
+      SOURCE ORDER. UX4G must come first for CCure's reset to win the tie.
+
+   2. ccure-tokens.css SECOND.
+      It resolves `--ccure-*` against `--ux4g-*`. Custom properties are resolved
+      at use time rather than at parse time, so this would technically work in
+      any order — it is placed here for readability, and so the file reads in
+      the same direction as the architecture.
+
+   3. themes.css LAST of the three.
+      It repairs `outline:0` from UX4G's reset. That repair is a real cascade
+      interaction and only holds if it is parsed after the rule it repairs.
+
+   4. This file is imported BEFORE styles/global.css in main.jsx, so all of
+      CCure's existing stylesheets continue to load after UX4G and keep winning
+      every tie. That is what makes an unmigrated page render byte-identically.
+
+   Nothing here imports the UX4G JavaScript runtime, and nothing may. The
+   runtime injects its library as an inline <script> via textContent, which the
+   deployed CSP (`script-src 'self'`) blocks outright — and its behaviours
+   (dropdown, modal, tabs, toast, tooltip) are owned by React in this codebase.
+   The package's exports map keeps ./styles.css and ./runtime separate, so
+   importing the stylesheet cannot pull the runtime in.
+   ============================================================================ */
+
+@import "./ux4g.generated.css";
+@import "./ccure-tokens.css";
+@import "./themes.css";

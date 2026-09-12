@@ -1,10 +1,38 @@
+/**
+ * src/pages/admin/DeletedUsers.jsx
+ * Soft-deleted accounts — restore, or purge from the database.
+ *
+ * ── Contract, unchanged by the Checkpoint 3C migration ──────────────────────
+ * Every request, permission check, filter, page calculation and state
+ * transition below is what it was before. The migration changed presentation
+ * only. Specifically preserved:
+ *
+ *   * `listUsers({ skip: 0, limit: 100, scope: "deleted" })` — the scope is
+ *     load-bearing; without it this lists live accounts on a page whose second
+ *     button deletes them permanently;
+ *   * the organisation list is requested only for a superadmin, and the role
+ *     name that decides it is read from `currentUser.role.name`. `role` is an
+ *     object throughout this application; comparing it to a string silently
+ *     takes the non-superadmin path and leaves the column empty;
+ *   * `loadData` keeps `currentUser?.role?.name` in its dependency list. It was
+ *     excluded once, and a render where auth had not yet hydrated then loaded
+ *     the page as a non-superadmin and never retried;
+ *   * both actions stay gated on `users:delete`, at render *and* inside the
+ *     handler, and both require an explicit confirmation — restore included,
+ *     because returning an account somebody deliberately deleted is a decision
+ *     of its own;
+ *   * the restore confirmation states that a restored account stays INACTIVE.
+ *     The backend enforces it; this wording is the only thing telling the
+ *     administrator that restoring is not re-enabling;
+ *   * client-side search and 10-per-page paging are unchanged, including the
+ *     effect that pulls the user back when a filter shortens the list.
+ *
+ * src/__tests__/pages/admin/DeletedUsers.test.jsx asserts all of this and was
+ * written against the pre-migration page.
+ */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
-import Button from "../../components/common/Button";
-import ConfirmDialog from "../../components/common/ConfirmDialog";
-import EmptyState from "../../components/common/EmptyState";
-import Loader from "../../components/common/Loader";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import {
   listOrganizations,
@@ -15,6 +43,17 @@ import {
 } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
+import {
+  CcureAlert,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcurePagination,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/deleted-users.css";
 
 const PAGE_SIZE = 10;
 
@@ -117,11 +156,6 @@ export default function DeletedUsers() {
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE,
   );
-  const startIndex = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const endIndex =
-    totalCount === 0
-      ? 0
-      : Math.min(startIndex + pagedUsers.length - 1, totalCount);
 
   useEffect(() => {
     if (page > pageCount) {
@@ -140,9 +174,7 @@ export default function DeletedUsers() {
       warning:
         "For safety, restored users stay inactive until an admin explicitly activates them.",
       confirmLabel: "Restore user",
-      confirmType: "info",
-      icon: "↺",
-      iconClass: "info",
+      tone: "info",
       onConfirm: async () => {
         setBusyId(user.id);
         try {
@@ -162,7 +194,6 @@ export default function DeletedUsers() {
           setConfirmConfig(null);
         }
       },
-      onCancel: () => setConfirmConfig(null),
     });
   };
 
@@ -178,9 +209,7 @@ export default function DeletedUsers() {
       warning:
         "Audit and ownership history will be preserved where supported, but the user account itself cannot be recovered after purge.",
       confirmLabel: "Delete permanently",
-      confirmType: "danger",
-      icon: "🗑️",
-      iconClass: "danger",
+      tone: "danger",
       onConfirm: async () => {
         setBusyId(user.id);
         try {
@@ -197,9 +226,91 @@ export default function DeletedUsers() {
           setConfirmConfig(null);
         }
       },
-      onCancel: () => setConfirmConfig(null),
     });
   };
+
+  /* Declared columns, so CcureTable owns the caption, `scope="col"` on every
+     header and `scope="row"` on the identifying cell — the username, which is
+     what a reader needs announced alongside every other cell in the row. */
+  const columns = [
+    {
+      key: "username",
+      header: "User",
+      isRowHeader: true,
+      cell: (user) => (
+        <span className="du-identity">
+          <span className="du-username">{user.username}</span>
+          <span className="du-email">{user.email}</span>
+        </span>
+      ),
+    },
+    {
+      key: "full_name",
+      header: "Full name",
+      cell: (user) => user.full_name || "—",
+    },
+    {
+      key: "role",
+      header: "Role",
+      cell: (user) => resolveRoleName(user, roles),
+    },
+    {
+      key: "organization",
+      header: "Organization",
+      cell: (user) => resolveOrganizationName(user, organizations),
+    },
+    {
+      key: "deleted_at",
+      header: "Deleted",
+      nowrap: true,
+      cell: (user) => (
+        <span className="du-muted">{formatDate(user.deleted_at)}</span>
+      ),
+    },
+    {
+      key: "last_login_at",
+      header: "Last login",
+      nowrap: true,
+      cell: (user) => (
+        <span className="du-muted">{formatDate(user.last_login_at)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      cell: (user) => {
+        if (!canDeleteUsers) {
+          return <span className="du-muted">Read only</span>;
+        }
+        return (
+          <div className="du-actions">
+            <CcureButton
+              variant="secondary"
+              size="sm"
+              onClick={() => handleRestore(user)}
+              loading={busyId === user.id}
+              /* One "Restore" per row is N identical entries in a screen
+                 reader's control list, with no way to tell which account each
+                 belongs to. The username disambiguates. */
+              aria-label={`Restore ${user.username}`}
+            >
+              Restore
+            </CcureButton>
+            <CcureButton
+              variant="danger"
+              size="sm"
+              onClick={() => handlePermanentDelete(user)}
+              loading={busyId === user.id}
+              aria-label={`Delete ${user.username} permanently`}
+            >
+              Delete permanently
+            </CcureButton>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <AppLayout pageTitle="Deleted Users">
@@ -216,176 +327,94 @@ export default function DeletedUsers() {
               allowed organization scope appear here.
             </p>
           </div>
-          <div className="page-actions-row">
-            <Button
-              type="button"
+          <div className="du-toolbar">
+            <CcureButton
               variant="ghost"
               size="sm"
               onClick={() => navigate("/admin/users")}
               disabled={busyId !== null}
             >
               Active users
-            </Button>
-            <Button
-              type="button"
+            </CcureButton>
+            <CcureButton
               variant="ghost"
               size="sm"
               onClick={loadData}
-              disabled={loading || busyId !== null}
+              loading={loading}
+              disabled={busyId !== null}
             >
-              {loading ? "Refreshing..." : "Refresh"}
-            </Button>
+              Refresh
+            </CcureButton>
           </div>
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          <CcureAlert variant="danger" className="du-message">
+            {error}
+          </CcureAlert>
+        )}
 
-        <div className="card card--admin-table">
-          <div className="table-card-header">
+        <div className="du-panel">
+          <div className="du-panel-header">
             <div>
-              <h3 className="card-title">Deleted Users</h3>
-              <p className="card-subtitle">
+              <h3 className="du-panel-title">Deleted Users</h3>
+              <p className="du-panel-subtitle">
                 Restore accounts safely or permanently delete them from the
                 database.
               </p>
             </div>
-            <div className="table-controls">
-              <label className="field-label" htmlFor="deleted-user-search">
-                Search deleted users
-              </label>
-              <div className="search-field">
-                <span className="search-icon">🔍</span>
-                <input
-                  id="deleted-user-search"
-                  className="field-input"
-                  type="search"
-                  placeholder="Search by name, username, email, or organization"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </div>
-            </div>
+            <CcureInput
+              id="deleted-user-search"
+              type="search"
+              label="Search deleted users"
+              placeholder="Search by name, username, email, or organization"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              fieldClassName="du-search"
+            />
           </div>
 
           {loading ? (
-            <div className="table-loading-shell">
-              <Loader label="Loading deleted users..." />
+            <div className="du-loading">
+              <CcureLoader label="Loading deleted users…" />
             </div>
           ) : totalCount === 0 ? (
-            <EmptyState
-              icon="🗑️"
+            <CcureEmptyState
               title="Deleted Users is empty"
               description="Soft-deleted users will appear here for restore or permanent deletion."
             />
           ) : (
             <>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Full name</th>
-                      <th>Role</th>
-                      <th>Organization</th>
-                      <th>Deleted</th>
-                      <th>Last login</th>
-                      <th style={{ textAlign: "right" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedUsers.map((user) => (
-                      <tr key={user.id}>
-                        <td>
-                          <div className="table-cell-identity">
-                            <span className="table-username">
-                              {user.username}
-                            </span>
-                            <span className="table-subtext">{user.email}</span>
-                          </div>
-                        </td>
-                        <td>{user.full_name || "—"}</td>
-                        <td>{resolveRoleName(user, roles)}</td>
-                        <td>{resolveOrganizationName(user, organizations)}</td>
-                        <td>{formatDate(user.deleted_at)}</td>
-                        <td>{formatDate(user.last_login_at)}</td>
-                        <td>
-                          <div className="action-btns table-action-cell">
-                            {canDeleteUsers ? (
-                              <>
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => handleRestore(user)}
-                                  disabled={busyId === user.id}
-                                >
-                                  Restore
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() => handlePermanentDelete(user)}
-                                  disabled={busyId === user.id}
-                                >
-                                  Delete permanently
-                                </Button>
-                              </>
-                            ) : (
-                              <span className="text-muted">Read only</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="pagination-row">
-                <div className="pagination-summary">
-                  Showing {startIndex}-{endIndex} of {totalCount} deleted users
-                </div>
-                <div className="pagination-controls">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={page <= 1}
-                    onClick={() => setPage(page - 1)}
-                  >
-                    Prev
-                  </Button>
-                  <span className="pagination-page">
-                    Page {page} of {pageCount}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={page >= pageCount}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <CcureTable
+                caption={`Deleted users — ${totalCount} account${totalCount !== 1 ? "s" : ""}`}
+                columns={columns}
+                rows={pagedUsers}
+                rowKey={(user) => user.id}
+                density="comfortable"
+              />
+              <CcurePagination
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={totalCount}
+                onPageChange={setPage}
+                itemNoun="deleted users"
+                disabled={busyId !== null}
+              />
             </>
           )}
         </div>
       </div>
 
-      <ConfirmDialog
+      <CcureConfirmDialog
         open={Boolean(confirmConfig)}
         title={confirmConfig?.title}
         subtitle={confirmConfig?.subtitle}
         warning={confirmConfig?.warning}
         confirmLabel={confirmConfig?.confirmLabel}
-        confirmType={confirmConfig?.confirmType}
-        icon={confirmConfig?.icon}
-        iconClass={confirmConfig?.iconClass}
+        tone={confirmConfig?.tone}
+        busy={busyId !== null}
         onConfirm={confirmConfig?.onConfirm}
-        onCancel={confirmConfig?.onCancel}
+        onCancel={() => setConfirmConfig(null)}
       />
 
       <ToastContainer toasts={toasts} dismiss={dismissToast} />

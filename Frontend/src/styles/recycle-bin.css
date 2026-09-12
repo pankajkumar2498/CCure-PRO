@@ -1,0 +1,62 @@
+/* ============================================================================
+   Recycle bin — page-specific layout
+   ----------------------------------------------------------------------------
+   Layout and one semantic colour. Everything else on this page is either a
+   CCure primitive (CcureTable, CcureButton, CcureBadge, CcureAlert,
+   CcureLoader, CcureEmptyState), a security pattern (CcureScanStatus,
+   CcureConfirmDialog), or the shared application shell (`.page-inner`,
+   `.page-title-row`, `.page-title`, `.page-subtitle`), which many other pages
+   depend on and which is therefore untouched.
+
+   Nothing was deleted from the legacy stylesheets for this page. Every class it
+   used — `.data-table`, `.table-wrap`, `.action-btn`, `.action-btns`,
+   `.empty-state*`, `.btn*`, `.alert*`, `.spinner`, `.ip-code`, `.method-chip`,
+   `.muted`, `.confirm-*` — still has other consumers across the application.
+   The page stops *using* them; it does not get to remove them.
+
+   These rules mirror archived-scans.css deliberately. The two pages are twins —
+   same data source, same table, same row actions — and the previous divergence
+   between them was itself the defect.
+   ============================================================================ */
+
+.rb-toolbar {
+  display: flex;
+  gap: var(--ccure-space-sm);
+}
+
+/* The count line was inline `fontFamily: var(--mono)`. It is tabular
+   information beside a table, so it keeps the monospace treatment — expressed
+   once, here, rather than in the JSX. */
+.rb-count {
+  font-family: var(--ccure-font-mono, var(--mono));
+}
+
+.rb-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--ccure-space-4xl) 0;
+}
+
+.rb-message {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.rb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+}
+
+/* A target address is the cell an operator scans down the column for, so it
+   carries the weight the previous inline `fontWeight: 600` gave it. The
+   monospace comes from the column's `mono` flag, not from here. */
+.rb-target {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+/* Secondary tier, not a literal. The previous inline style was
+   `color: var(--text-muted)`, which is the legacy theme's token; this is the
+   CCure semantic equivalent and follows `data-theme` the same way. */
+.rb-muted {
+  color: var(--ccure-text-secondary);
+}

@@ -1,6 +1,28 @@
 /**
  * src/pages/ForgotPassword.jsx
- * Dark-themed password recovery request page.
+ * Password recovery request page.
+ *
+ * ── Security contract, unchanged by the Checkpoint 3C migration ─────────────
+ * `/auth/forgot-password` is deliberately not an account-existence oracle. The
+ * backend answers a uniform 200 whether or not the identifier resolves to an
+ * account, and CLAUDE.md records that "User not found." was once a fourth
+ * distinct failure message on this path and was removed for that reason.
+ *
+ * This page must not reintroduce the distinction. Concretely:
+ *
+ *   * one request per submission, whatever was typed — no probe, no pre-check,
+ *     nothing whose timing could be compared;
+ *   * one confirmation, rendered identically for a registered and an
+ *     unregistered identifier — the generic string below is the fallback, and
+ *     the backend's own `detail` is shown verbatim when it sends one;
+ *   * no wording anywhere that says an account was or was not found.
+ *
+ * src/__tests__/pages/ForgotPassword.test.jsx asserts all three, including a
+ * DOM-level comparison of the two outcomes.
+ *
+ * The migration changed presentation only. Every handler, piece of state and
+ * API call below is unchanged, and the endpoint, method and payload are
+ * identical.
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -8,6 +30,8 @@ import { forgotPassword } from "../api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
+import { CcureAlert, CcureButton, CcureInput } from "../design-system";
+import "../styles/forgot-password.css";
 
 export default function ForgotPassword() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
@@ -48,9 +72,15 @@ export default function ForgotPassword() {
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="forgot" />
 
-      {/* Right Form Panel */}
+      {/* Right Form Panel.
+          `cc-theme-dark` scopes the CCure semantic tokens to their dark values
+          for everything inside. The auth surface is a fixed dark panel —
+          `.auth-split-wrapper` hardcodes `background:#020617` and ignores
+          `data-theme` — so without this a CcureInput would render as a white
+          box with near-black text on a #0f172a card whenever the user's account
+          theme is light, which is the default. */}
       <div className="auth-form-panel">
-        <div className="auth-card">
+        <div className="auth-card cc-theme-dark">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
@@ -66,39 +96,42 @@ export default function ForgotPassword() {
           </p>
 
           {error && (
-            <div className="auth-error" role="alert">
-              <span>⚠</span> {error}
-            </div>
+            <CcureAlert variant="danger" className="fp-message">
+              {error}
+            </CcureAlert>
           )}
 
           {success ? (
-            <div className="auth-success" role="status">
-              ✓ {success}
-            </div>
+            // `variant="success"` gives role="status" — polite, matching the
+            // previous markup. It must stay polite: this is a confirmation,
+            // and it is the same confirmation either way.
+            <CcureAlert variant="success" className="fp-message">
+              {success}
+            </CcureAlert>
           ) : (
-            <form onSubmit={handleSubmit} className="auth-form">
-              <div className="field">
-                <label htmlFor="emailOrUsername">Email or Username</label>
-                <input
-                  id="emailOrUsername"
-                  type="text"
-                  autoComplete="username"
-                  value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
-                  placeholder="name@company.com or username"
-                  required
-                />
-              </div>
+            <form onSubmit={handleSubmit} className="auth-form fp-form">
+              <CcureInput
+                id="emailOrUsername"
+                name="emailOrUsername"
+                label="Email or Username"
+                // type="text", not "email": the endpoint takes either, and
+                // type="email" would make the browser reject a username before
+                // the request was ever made.
+                type="text"
+                required
+                autoComplete="username"
+                value={emailOrUsername}
+                onChange={(e) => setEmailOrUsername(e.target.value)}
+                placeholder="name@company.com or username"
+                // A placeholder disappears the moment the user types, so it
+                // cannot be the only guidance. The hint is wired through
+                // aria-describedby by CcureInput.
+                hint="Enter the email address or username on your account."
+              />
 
-              <button type="submit" className="auth-btn" disabled={loading}>
-                {loading ? (
-                  <>
-                    <span className="btn-spinner" /> Sending recovery link...
-                  </>
-                ) : (
-                  "Send recovery link →"
-                )}
-              </button>
+              <CcureButton type="submit" loading={loading} block size="lg">
+                {loading ? "Sending recovery link..." : "Send recovery link →"}
+              </CcureButton>
             </form>
           )}
 

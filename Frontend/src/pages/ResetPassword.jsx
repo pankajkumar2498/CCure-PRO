@@ -1,29 +1,36 @@
 /**
  * src/pages/ResetPassword.jsx
  * Dark-themed reset password page with complexity validation.
+ *
+ * ── Security contract, unchanged by the Checkpoint 3C migration ─────────────
+ * The reset token arrives as a query parameter because that is what an email
+ * client can click, and it reaches the API in a POST body and nowhere else: it
+ * is never rendered, never persisted, and never carried into an outgoing link.
+ *
+ * CLAUDE.md records two properties of `/auth/reset-password` this page must not
+ * undermine: completing a reset retires *every* outstanding token for the
+ * account, and all three failure branches answer identically because a distinct
+ * message would be an oracle over which links exist. The page therefore adds no
+ * wording of its own that separates "expired" from "already used" from "no such
+ * token" — it renders whatever single message the backend sends, and falls back
+ * to one generic string.
+ *
+ * The complexity rules below are the client-side mirror of the server's. They
+ * are unchanged; `gradePassword` in the design system computes the same four
+ * levels from the same four predicates, and `validate` still owns the refusal
+ * messages, so a rule can never be enforced in one place and not the other.
+ *
+ * src/__tests__/pages/ResetPassword.test.jsx asserts all of this and was
+ * written against the pre-migration page.
  */
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { resetPassword } from "../api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
-import {
-  ShieldLogoIcon,
-  EyeIcon,
-  EyeOffIcon,
-} from "../components/auth/AuthIcons";
-
-function strengthOf(pw) {
-  if (!pw) return { label: "", level: 0 };
-  let level = 0;
-  if (pw.length >= 12) level++;
-  if (/[A-Z]/.test(pw)) level++;
-  if (/[0-9]/.test(pw)) level++;
-  if (/[^a-zA-Z0-9]/.test(pw)) level++;
-
-  const labels = ["", "Weak", "Fair", "Good", "Strong"];
-  return { label: labels[level], level };
-}
+import { ShieldLogoIcon } from "../components/auth/AuthIcons";
+import { CcureAlert, CcureButton, CcurePasswordField } from "../design-system";
+import "../styles/auth.css";
 
 function validate(password, confirm) {
   if (password.length < 12) return "Password must be at least 12 characters.";
@@ -44,10 +51,6 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [capsLockPw, setCapsLockPw] = useState(false);
-  const [capsLockConfirm, setCapsLockConfirm] = useState(false);
 
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
@@ -60,16 +63,6 @@ export default function ResetPassword() {
       );
     }
   }, [token]);
-
-  const strength = strengthOf(password);
-
-  const handlePwKey = (e) => {
-    if (e.getModifierState) setCapsLockPw(e.getModifierState("CapsLock"));
-  };
-
-  const handleConfirmKey = (e) => {
-    if (e.getModifierState) setCapsLockConfirm(e.getModifierState("CapsLock"));
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -115,14 +108,24 @@ export default function ResetPassword() {
     }
   };
 
+  // The live match/mismatch feedback is a field-level error rather than loose
+  // text beside the input, so CcurePasswordField wires it through
+  // aria-describedby and aria-invalid. Previously it was a bare <span> that a
+  // screen reader never associated with the field it described.
+  const confirmMismatch = confirm && confirm !== password;
+
   return (
     <div className="auth-split-wrapper">
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="reset" />
 
-      {/* Right Form Panel */}
+      {/* Right Form Panel. `cc-theme-dark` scopes the CCure semantic tokens to
+          their dark values: the auth surface is a fixed dark panel that ignores
+          `data-theme`, so without it every migrated control would render light
+          on a dark card whenever the account theme is light, which is the
+          default. */}
       <div className="auth-form-panel">
-        <div className="auth-card">
+        <div className="auth-card cc-theme-dark">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
@@ -138,158 +141,55 @@ export default function ResetPassword() {
           </p>
 
           {error && (
-            <div className="auth-error" role="alert">
-              <span>⚠</span> {error}
-            </div>
+            <CcureAlert variant="danger" className="auth-message">
+              {error}
+            </CcureAlert>
           )}
 
           {success ? (
-            <div className="auth-success" role="status">
-              ✓ {success}
-            </div>
+            <CcureAlert variant="success" className="auth-message">
+              {success}
+            </CcureAlert>
           ) : !token ? (
-            <div style={{ textAlign: "center", marginTop: 20 }}>
-              <Link
-                to="/forgot-password"
-                className="auth-btn"
-                style={{ textDecoration: "none" }}
-              >
+            <div className="auth-inline-action">
+              <CcureButton as={Link} to="/forgot-password" block size="lg">
                 Request new reset link →
-              </Link>
+              </CcureButton>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="auth-form">
-              <div className="field">
-                <label htmlFor="password">New Password</label>
-                <div className="password-input-wrapper">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={handlePwKey}
-                    onKeyUp={handlePwKey}
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    tabIndex="-1"
-                    aria-label="Toggle password visibility"
-                    className="password-toggle-btn"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                  >
-                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                  </button>
-                </div>
-                {capsLockPw && (
-                  <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
-                )}
-                {password && (
-                  <>
-                    <div className="strength-bar" style={{ marginTop: 8 }}>
-                      {[1, 2, 3, 4].map((n) => (
-                        <span
-                          key={n}
-                          className={`strength-seg ${n <= strength.level ? `strength-${strength.level}` : ""}`}
-                        />
-                      ))}
-                      <span className="strength-label">{strength.label}</span>
-                    </div>
-                    <div
-                      className="field-hint"
-                      style={{
-                        marginTop: "6px",
-                        fontSize: "0.78rem",
-                        display: "flex",
-                        gap: "10px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: password.length >= 12 ? "#34d399" : "#64748b",
-                        }}
-                      >
-                        {password.length >= 12 ? "✓" : "•"} 12+ chars
-                      </span>
-                      <span
-                        style={{
-                          color: /[A-Z]/.test(password) ? "#34d399" : "#64748b",
-                        }}
-                      >
-                        {/[A-Z]/.test(password) ? "✓" : "•"} Uppercase
-                      </span>
-                      <span
-                        style={{
-                          color: /[0-9]/.test(password) ? "#34d399" : "#64748b",
-                        }}
-                      >
-                        {/[0-9]/.test(password) ? "✓" : "•"} Number
-                      </span>
-                      <span
-                        style={{
-                          color: /[^a-zA-Z0-9]/.test(password)
-                            ? "#34d399"
-                            : "#64748b",
-                        }}
-                      >
-                        {/[^a-zA-Z0-9]/.test(password) ? "✓" : "•"} Special char
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
+            <form onSubmit={handleSubmit} className="auth-form auth-stack">
+              <CcurePasswordField
+                id="password"
+                name="password"
+                label="New Password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                showStrength
+              />
 
-              <div className="field">
-                <label htmlFor="confirm">Confirm Password</label>
-                <div className="password-input-wrapper">
-                  <input
-                    id="confirm"
-                    type={showConfirm ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    onKeyDown={handleConfirmKey}
-                    onKeyUp={handleConfirmKey}
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    tabIndex="-1"
-                    aria-label="Toggle confirm password visibility"
-                    className="password-toggle-btn"
-                    onClick={() => setShowConfirm((prev) => !prev)}
-                  >
-                    {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
-                  </button>
-                </div>
-                {capsLockConfirm && (
-                  <div className="caps-lock-warning">⚠️ Caps Lock is ON</div>
-                )}
-                {confirm && confirm !== password && (
-                  <span className="field-hint field-hint--warn">
-                    Passwords don&apos;t match
-                  </span>
-                )}
-                {confirm && confirm === password && password && (
-                  <span className="field-hint field-hint--ok">
-                    ✓ Passwords match
-                  </span>
-                )}
-              </div>
+              <CcurePasswordField
+                id="confirm"
+                name="confirm"
+                label="Confirm Password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="••••••••"
+                required
+                error={confirmMismatch ? "Passwords don't match" : undefined}
+                hint={
+                  confirm && confirm === password && password
+                    ? "Passwords match"
+                    : undefined
+                }
+              />
 
-              <button type="submit" className="auth-btn" disabled={loading}>
-                {loading ? (
-                  <>
-                    <span className="btn-spinner" /> Saving password...
-                  </>
-                ) : (
-                  "Save password →"
-                )}
-              </button>
+              <CcureButton type="submit" loading={loading} block size="lg">
+                {loading ? "Saving password..." : "Save password →"}
+              </CcureButton>
             </form>
           )}
 

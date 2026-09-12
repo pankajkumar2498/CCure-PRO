@@ -11,13 +11,29 @@
  * Verification is not a login. It confirms control of the mailbox and nothing
  * more; the account still needs an administrator's approval before it can sign
  * in, and this page says so rather than implying access has been granted.
+ *
+ * ── Unchanged by the Checkpoint 3C migration ────────────────────────────────
+ * Every state, request, guard and message below is what it was before; the
+ * migration changed presentation only. Two behaviours are worth naming because
+ * they look like details and are not:
+ *
+ *   * `attempted` still guards the single-use token against StrictMode's
+ *     double mount — the row is deleted in the same transaction that flips
+ *     is_verified, so a second call would spend a token the first had already
+ *     consumed and report a valid link as invalid;
+ *   * the resend failure is still swallowed. The endpoint answers identically
+ *     whether or not the address exists, so a distinct failure state here
+ *     would rebuild the account-existence oracle the uniform response exists
+ *     to prevent.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
+import { CcureAlert, CcureButton, CcureInput } from "../design-system";
 import { verifyEmail, resendVerification } from "../api/auth";
+import "../styles/auth.css";
 
 export default function VerifyEmail() {
   const [params] = useSearchParams();
@@ -74,8 +90,10 @@ export default function VerifyEmail() {
   const shell = (title, body) => (
     <div className="auth-split-wrapper">
       <AuthHeroPanel pageType="register" />
+      {/* `cc-theme-dark` scopes the CCure semantic tokens to their dark values.
+          The auth surface is a fixed dark panel that ignores `data-theme`. */}
       <div className="auth-form-panel">
-        <div className="auth-card">
+        <div className="auth-card cc-theme-dark">
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
             <div className="auth-brand-text">
@@ -94,51 +112,59 @@ export default function VerifyEmail() {
   if (state === "working") {
     return shell(
       "Verifying your email…",
-      <p className="auth-sub">One moment while we confirm your link.</p>,
+      // role="status" so a user who cannot see the panel is told the page is
+      // waiting on the network rather than left with silence. Previously this
+      // was a plain paragraph and announced nothing at all.
+      <p className="auth-sub" role="status">
+        One moment while we confirm your link.
+      </p>,
     );
   }
 
   if (state === "verified") {
     return shell(
       "Email verified",
-      <>
+      <div className="auth-prose">
         <p className="auth-sub">{message || "You can now sign in."}</p>
-        <Link
-          to="/login"
-          className="auth-btn"
-          style={{ textDecoration: "none" }}
-        >
+        <CcureButton as={Link} to="/login" block size="lg">
           Continue to sign in
-        </Link>
-      </>,
+        </CcureButton>
+      </div>,
     );
   }
 
   if (state === "pending_approval") {
     return shell(
       "Email verified",
-      <>
+      <div className="auth-prose">
         <p className="auth-sub">
           {message ||
             "Your account is awaiting administrator approval; you will be able to sign in once it is approved."}
         </p>
-        <div
-          className="auth-error"
-          role="status"
-          style={{
-            background: "rgba(245,158,11,0.12)",
-            borderColor: "#f59e0b",
-            color: "#b45309",
-          }}
-        >
-          <span>ℹ</span> Confirming your email proves you control this mailbox.
-          It does not grant access on its own — an administrator approves new
-          accounts before sign-in is enabled.
-        </div>
-        <p className="auth-sub" style={{ marginTop: 16 }}>
-          <Link to="/login">Back to sign in</Link>
+        {/* This previously reused `.auth-error` with three inline overrides,
+            and the text colour it set — #b45309 on an amber tint over the dark
+            card — measured 3.02:1. The most important sentence on the page was
+            the least readable thing on it; the token layer resolves it against
+            the scoped-dark palette instead.
+
+            `role="status"` is set deliberately, overriding the assertive role
+            CcureAlert gives `warning`. This is a caveat attached to a success,
+            not an error: the user has just landed on the page and the message
+            is already the first thing on it, so announcing it assertively
+            interrupts a reader who is being told the very same thing anyway.
+            The pre-migration markup was explicitly `role="status"` and that
+            was right. */}
+        <CcureAlert variant="warning" role="status">
+          Confirming your email proves you control this mailbox. It does not
+          grant access on its own — an administrator approves new accounts
+          before sign-in is enabled.
+        </CcureAlert>
+        <p className="auth-sub">
+          <Link to="/login" className="auth-link">
+            Back to sign in
+          </Link>
         </p>
-      </>,
+      </div>,
     );
   }
 
@@ -147,50 +173,55 @@ export default function VerifyEmail() {
   // distinguishing them would leak which tokens exist.
   return shell(
     "This link is no longer valid",
-    <>
+    <div className="auth-prose">
       <p className="auth-sub">
         {message ||
           "Verification links expire after 24 hours and can be used only once."}
       </p>
-      <div className="field">
-        <label htmlFor="resend-email">
-          Enter your email to receive a new link
-        </label>
-        <input
-          id="resend-email"
-          type="email"
-          autoComplete="email"
-          value={resendEmail}
-          onChange={(e) => setResendEmail(e.target.value)}
-          placeholder="name@company.com"
-        />
-        {resendState === "bad-email" && (
-          <span className="field-hint field-hint--error">
-            Enter a valid email address.
-          </span>
-        )}
-      </div>
-      <button
+
+      <CcureInput
+        id="resend-email"
+        name="resend-email"
+        label="Enter your email to receive a new link"
+        type="email"
+        autoComplete="email"
+        value={resendEmail}
+        onChange={(e) => setResendEmail(e.target.value)}
+        placeholder="name@company.com"
+        error={
+          resendState === "bad-email"
+            ? "Enter a valid email address."
+            : undefined
+        }
+      />
+
+      <CcureButton
         type="button"
-        className="auth-btn"
+        block
+        size="lg"
         onClick={handleResend}
-        disabled={resendState === "sending" || resendState === "sent"}
+        loading={resendState === "sending"}
+        disabled={resendState === "sent"}
       >
         {resendState === "sent"
           ? "Check your inbox"
           : resendState === "sending"
             ? "Sending…"
             : "Send a new verification link"}
-      </button>
+      </CcureButton>
+
       {resendState === "sent" && (
-        <p className="auth-sub" style={{ marginTop: 12 }}>
+        <p className="auth-sub" role="status">
           If that address has an account awaiting verification, a new link is on
           its way.
         </p>
       )}
-      <p className="auth-sub" style={{ marginTop: 16 }}>
-        <Link to="/login">Back to sign in</Link>
+
+      <p className="auth-sub">
+        <Link to="/login" className="auth-link">
+          Back to sign in
+        </Link>
       </p>
-    </>,
+    </div>,
   );
 }

@@ -5,6 +5,20 @@ import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { PreferencesProvider } from "./context/PreferencesContext";
 import RootErrorBoundary from "./components/common/RootErrorBoundary";
+
+// ── Stylesheet order is load-bearing ─────────────────────────────────────────
+// The design system (UX4G tokens + CCure semantics + CCure components) must be
+// parsed BEFORE the legacy stylesheets.
+//
+// UX4G wraps its reset in `:where(…)`, which has zero specificity, so every
+// CCure rule already outranks it. But two zero-specificity rules — UX4G's
+// `:where(*,:before,:after)` and CCure's own `*` reset in theme.css — are
+// decided by source order alone. With the design system first, CCure's reset
+// wins the tie and unmigrated pages render exactly as they did.
+//
+// Reversing these two lines is not a formatting change; it silently hands the
+// reset to UX4G.
+import "./design-system";
 import "./styles/global.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

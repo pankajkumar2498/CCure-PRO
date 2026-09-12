@@ -1,10 +1,39 @@
 /**
- * src/components/layout/ProfileModal.jsx
+ * src/components/layout/ProfileModal.jsx — Checkpoint 3C batch 14.
  * ─────────────────────────────────────────────────────────────────────────────
- * Full-featured profile modal with tabs:
+ * The account dialog AppLayout mounts from the account menu ("My Account"):
  *   • Profile Info – view/edit name and email
- *   • Security     – change password, active sessions
- *   • Preferences  – theme, scan defaults, alerts
+ *   • Security     – change password, MFA, active sessions
+ *
+ * ── What is preserved ───────────────────────────────────────────────────────
+ * Every API call and its arguments: getProfile / updateProfile({full_name,
+ * email}), getSessions / revokeSession(id) / revokeOtherSessions(),
+ * enableMfa() → confirmMfa(code) → backup codes, disableMfa(password),
+ * refreshUser(true) after a successful confirm or disable, and the pruning of
+ * the session list to the current session afterwards (the server revokes the
+ * others; showing them would show sessions that no longer exist).
+ *
+ * ── What changed, and why ───────────────────────────────────────────────────
+ * The legacy dialog had `role="dialog"` and nothing else a dialog needs: no
+ * aria-modal, no focus trap, no focus restoration, no Escape, an icon-only
+ * close control with no name, tabs that were bare buttons, and an overlay
+ * click that discarded an in-progress MFA enrolment. On CcureModal + CcureTabs
+ * all of that is supplied by the primitives.
+ *
+ * Two deliberate behaviour changes, both security-motivated:
+ *   * MFA enrolment starts from an explicit "Set up MFA" button, not from a
+ *     checkbox `onChange` — a toggle a user can flip while tabbing past it
+ *     used to fire a POST that mints a new TOTP secret.
+ *   * "Sign out all other sessions" asks first. It is a session-wide
+ *     revocation and was one click with no way back.
+ * And one defect fixed: a failed `enableMfa` used to render its error only
+ * inside the wizard, which had not opened, so the failure was invisible.
+ *
+ * ── Secret material ─────────────────────────────────────────────────────────
+ * The TOTP secret and the backup codes are rendered as visible text ONLY
+ * while the enrolment step that needs them is on screen, inside <code>
+ * elements, and never in an attribute, a name, a title or a log. Leaving the
+ * step clears them from state, so they leave the DOM.
  */
 
 import { useState, useEffect } from "react";
@@ -22,37 +51,18 @@ import {
   confirmMfa as confirmMfaApi,
   disableMfa as disableMfaApi,
 } from "../../api/auth";
-
-/* ── Icons ───────────────────────────────────────────────────────────────── */
-const Icon = ({ d, size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d={d} />
-  </svg>
-);
-const IcoClose = () => <Icon d="M18 6L6 18M6 6l12 12" />;
-const IcoUser = () => (
-  <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-);
-const IcoShield = () => (
-  <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-);
-const IcoMonitor = () => (
-  <Icon d="M4 4h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM8 20h8M12 16v4" />
-);
-const IcoTrash = () => <Icon d="M3 6h18M19 6l-1 14H6L5 6M9 6V4h6v2" />;
-const IcoEdit = () => (
-  <Icon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-);
-const IcoCheck = () => <Icon d="M20 6L9 17l-5-5" />;
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureConfirmDialog,
+  CcureInput,
+  CcureModal,
+  CcurePasswordField,
+  CcureTabPanel,
+  CcureTabs,
+} from "../../design-system";
+import "../../styles/account-dialog.css";
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function formatDate(iso) {
@@ -100,6 +110,12 @@ function getInitials(name, username) {
     .slice(0, 2);
 }
 
+const TABS = [
+  { id: "profile", label: "Profile Info" },
+  { id: "security", label: "Security" },
+];
+const TABS_ID = "ac-tabs";
+
 /* ── Profile Tab ─────────────────────────────────────────────────────────── */
 function ProfileTab({ profile, onProfileUpdated }) {
   const [editing, setEditing] = useState(false);
@@ -118,6 +134,7 @@ function ProfileTab({ profile, onProfileUpdated }) {
   }, [profile]);
 
   const handleSave = async () => {
+    if (saving) return;
     setSaving(true);
     setError("");
     setSuccess(false);
@@ -137,135 +154,148 @@ function ProfileTab({ profile, onProfileUpdated }) {
     }
   };
 
-  if (!profile) return <div className="pm-loading">Loading profile…</div>;
+  if (!profile) {
+    return (
+      <p className="ac-loading" role="status">
+        Loading profile…
+      </p>
+    );
+  }
 
   return (
-    <div className="pm-tab-content">
-      {/* Avatar section */}
-      <div className="pm-avatar-section">
-        <div className="pm-avatar-large">
+    <div className="ac-panel">
+      <div className="ac-identity">
+        <div className="ac-avatar" aria-hidden="true">
           {getInitials(profile.full_name, profile.username)}
         </div>
-        <div className="pm-avatar-info">
-          <h3 className="pm-display-name">
+        <div>
+          <h3 className="ac-identity__name">
             {profile.full_name || profile.username}
           </h3>
-          <span className="pm-role-badge">{profile.role_name}</span>
-          <span className="pm-org-label">🏢 {profile.organization_name}</span>
+          <div className="ac-identity__meta">
+            <CcureBadge variant="primary">{profile.role_name}</CcureBadge>
+            <span className="ac-identity__org">
+              <span aria-hidden="true">🏢 </span>
+              {profile.organization_name}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Success banner */}
       {success && (
-        <div className="pm-alert pm-alert--success">
-          <IcoCheck /> Profile updated successfully
-        </div>
+        <CcureAlert variant="success">Profile updated successfully</CcureAlert>
       )}
-      {error && <div className="pm-alert pm-alert--error">{error}</div>}
+      {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
-      {/* Fields */}
-      <div className="pm-fields">
-        <div className="pm-field-row">
-          <div className="pm-field">
-            <label className="pm-label">Username</label>
-            <input
-              className="pm-input pm-input--readonly"
-              value={profile.username}
-              readOnly
-            />
-          </div>
-          <div className="pm-field">
-            <label className="pm-label">Account Status</label>
-            <div className="pm-status-pill">
-              <span
-                className={`pm-dot ${profile.is_active ? "pm-dot--active" : "pm-dot--inactive"}`}
-              />
-              {profile.is_active ? "Active" : "Inactive"}
+      <form
+        className="ac-fields"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (editing) handleSave();
+        }}
+      >
+        <div className="ac-fields__row">
+          <CcureInput
+            id="ac-username"
+            label="Username"
+            value={profile.username}
+            readOnly
+          />
+          <div className="ac-field">
+            <span className="ac-field__label" id="ac-status-label">
+              Account Status
+            </span>
+            <div aria-labelledby="ac-status-label">
+              <CcureBadge variant={profile.is_active ? "success" : "neutral"}>
+                {profile.is_active ? "Active" : "Inactive"}
+              </CcureBadge>
             </div>
           </div>
         </div>
 
-        <div className="pm-field">
-          <label className="pm-label">Full Name</label>
-          {editing ? (
-            <input
-              className="pm-input"
-              value={form.full_name}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, full_name: e.target.value }))
-              }
-              placeholder="Enter your full name"
-            />
-          ) : (
-            <div className="pm-field-value">
-              {profile.full_name || <span className="pm-empty">Not set</span>}
+        {editing ? (
+          <CcureInput
+            id="ac-full-name"
+            label="Full Name"
+            value={form.full_name}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, full_name: e.target.value }))
+            }
+            placeholder="Enter your full name"
+            autoComplete="name"
+            disabled={saving}
+          />
+        ) : (
+          <div className="ac-field">
+            <span className="ac-field__label">Full Name</span>
+            <div className="ac-field__value">
+              {profile.full_name || <span className="ac-empty">Not set</span>}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="pm-field">
-          <label className="pm-label">Email Address</label>
-          {editing ? (
-            <input
-              className="pm-input"
-              type="email"
-              value={form.email}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, email: e.target.value }))
-              }
-              placeholder="Enter email address"
-            />
-          ) : (
-            <div className="pm-field-value">{profile.email}</div>
-          )}
-        </div>
+        {editing ? (
+          <CcureInput
+            id="ac-email"
+            label="Email Address"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            placeholder="Enter email address"
+            autoComplete="email"
+            disabled={saving}
+          />
+        ) : (
+          <div className="ac-field">
+            <span className="ac-field__label">Email Address</span>
+            <div className="ac-field__value">{profile.email}</div>
+          </div>
+        )}
 
-        <div className="pm-field-row">
-          <div className="pm-field">
-            <label className="pm-label">Last Login</label>
-            <div className="pm-field-value">
+        <div className="ac-fields__row">
+          <div className="ac-field">
+            <span className="ac-field__label">Last Login</span>
+            <div className="ac-field__value">
               {formatDate(profile.last_login_at)}
             </div>
           </div>
-          <div className="pm-field">
-            <label className="pm-label">Member Since</label>
-            <div className="pm-field-value">
+          <div className="ac-field">
+            <span className="ac-field__label">Member Since</span>
+            <div className="ac-field__value">
               {formatDate(profile.created_at)}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Action buttons */}
-      <div className="pm-actions">
-        {editing ? (
-          <>
-            <button
-              className="pm-btn pm-btn--ghost"
-              onClick={() => {
-                setEditing(false);
-                setError("");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="pm-btn pm-btn--primary"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
-          </>
-        ) : (
-          <button
-            className="pm-btn pm-btn--outline"
-            onClick={() => setEditing(true)}
-          >
-            <IcoEdit /> Edit Profile
-          </button>
-        )}
-      </div>
+        <div className="ac-actions">
+          {editing ? (
+            <>
+              <CcureButton
+                variant="secondary"
+                onClick={() => {
+                  setEditing(false);
+                  setError("");
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </CcureButton>
+              <CcureButton
+                type="submit"
+                variant="primary"
+                loading={saving}
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save Changes"}
+              </CcureButton>
+            </>
+          ) : (
+            <CcureButton variant="secondary" onClick={() => setEditing(true)}>
+              Edit Profile
+            </CcureButton>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
@@ -279,6 +309,7 @@ function SecurityTab({ onOpenChangePassword }) {
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState(null);
   const [revokingOthers, setRevokingOthers] = useState(false);
+  const [confirmRevokeOthers, setConfirmRevokeOthers] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -306,6 +337,7 @@ function SecurityTab({ onOpenChangePassword }) {
   }, []);
 
   const handleRevoke = async (sessionId) => {
+    if (revoking) return;
     setRevoking(sessionId);
     try {
       await revokeSession(sessionId);
@@ -322,6 +354,7 @@ function SecurityTab({ onOpenChangePassword }) {
     // which session it kept — it may have kept none, if this client had no
     // refresh cookie to identify itself with — and guessing that here would
     // show a session that no longer exists.
+    if (revokingOthers) return;
     setRevokingOthers(true);
     setError("");
     setNotice("");
@@ -334,14 +367,28 @@ function SecurityTab({ onOpenChangePassword }) {
           ? "No other sessions were signed in."
           : `Signed out ${result.revoked} other session${result.revoked === 1 ? "" : "s"}.`,
       );
+      setConfirmRevokeOthers(false);
     } catch {
       setError("Failed to sign out other sessions");
+      setConfirmRevokeOthers(false);
     } finally {
       setRevokingOthers(false);
     }
   };
 
+  const clearEnrolment = () => {
+    // Leaving the wizard removes the secret and the codes from state, and so
+    // from the DOM.
+    setWizardStep(0);
+    setQrCode("");
+    setSecret("");
+    setConfirmCode("");
+    setBackupCodes([]);
+    setCopied(false);
+  };
+
   const handleStartMfaSetup = async () => {
+    if (setupLoading) return;
     setSetupLoading(true);
     setSetupError("");
     try {
@@ -359,8 +406,9 @@ function SecurityTab({ onOpenChangePassword }) {
     }
   };
 
-  const handleConfirmMfa = async () => {
-    if (!confirmCode.trim()) return;
+  const handleConfirmMfa = async (e) => {
+    e?.preventDefault?.();
+    if (!confirmCode.trim() || setupLoading) return;
     setSetupLoading(true);
     setSetupError("");
     try {
@@ -378,8 +426,9 @@ function SecurityTab({ onOpenChangePassword }) {
     }
   };
 
-  const handleDisableMfa = async () => {
-    if (!disablePassword) return;
+  const handleDisableMfa = async (e) => {
+    e?.preventDefault?.();
+    if (!disablePassword || disableLoading) return;
     setDisableLoading(true);
     setDisableError("");
     try {
@@ -404,497 +453,361 @@ function SecurityTab({ onOpenChangePassword }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleToggleChange = async (e) => {
-    const checked = e.target.checked;
-    if (checked) {
-      await handleStartMfaSetup();
-    } else {
-      setShowDisableForm(true);
-    }
-  };
-
   if (wizardStep > 0) {
     return (
-      <div className="pm-tab-content">
-        {/* Step Indicator */}
-        <div className="pm-mfa-steps">
-          <div
-            className={`pm-mfa-step-item ${wizardStep === 1 ? "pm-mfa-step-item--active" : ""}`}
+      <div className="ac-panel">
+        <ol className="ac-steps" aria-label="MFA setup progress">
+          <li
+            className={`ac-steps__item${wizardStep === 1 ? " ac-steps__item--active" : ""}`}
+            aria-current={wizardStep === 1 ? "step" : undefined}
           >
-            <span className="pm-mfa-step-num">1</span>
-            <span>Scan QR Code</span>
-          </div>
-          <div className="pm-mfa-step-line" />
-          <div
-            className={`pm-mfa-step-item ${wizardStep === 2 ? "pm-mfa-step-item--active" : ""}`}
+            <span className="ac-steps__num" aria-hidden="true">
+              1
+            </span>
+            Scan QR Code
+          </li>
+          <li
+            className={`ac-steps__item${wizardStep === 2 ? " ac-steps__item--active" : ""}`}
+            aria-current={wizardStep === 2 ? "step" : undefined}
           >
-            <span className="pm-mfa-step-num">2</span>
-            <span>Recovery Codes</span>
-          </div>
-        </div>
+            <span className="ac-steps__num" aria-hidden="true">
+              2
+            </span>
+            Recovery Codes
+          </li>
+        </ol>
 
         {wizardStep === 1 && (
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(79, 70, 229, 0.06), rgba(79, 70, 229, 0.02))",
-              border: "1px solid rgba(79, 70, 229, 0.18)",
-              padding: "20px",
-              borderRadius: "10px",
-            }}
+          <section
+            className="ac-mfa-card"
+            aria-labelledby="ac-mfa-wizard-title"
           >
-            <h5
-              style={{
-                margin: "0 0 12px 0",
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "var(--text)",
-              }}
-            >
+            <h4 className="ac-section__title" id="ac-mfa-wizard-title">
               MFA Setup Wizard
-            </h5>
+            </h4>
 
             {setupError && (
-              <div
-                className="pm-alert pm-alert--error"
-                style={{ marginBottom: "12px" }}
-              >
-                {setupError}
-              </div>
+              <CcureAlert variant="danger">{setupError}</CcureAlert>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "20px",
-                alignItems: "center",
-              }}
-            >
+            <div className="ac-mfa-enrol">
               {qrCode && (
-                <div
-                  style={{
-                    background: "white",
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                    display: "inline-block",
-                  }}
-                >
-                  <img
-                    src={qrCode}
-                    alt="Scan QR Code"
-                    style={{
-                      width: "150px",
-                      height: "150px",
-                      display: "block",
-                    }}
-                  />
+                <div className="ac-qr">
+                  <img src={qrCode} alt="QR code for your authenticator app" />
                 </div>
               )}
-              <div
-                style={{ flex: 1, fontSize: "13px", color: "var(--text-mid)" }}
-              >
-                <ol style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.6 }}>
+              <div className="ac-mfa-enrol__steps">
+                <ol className="ac-list">
                   <li>
                     Scan the QR code with an authenticator app (like Google
                     Authenticator, Authy, or Duo).
                   </li>
-                  <li style={{ marginTop: "4px" }}>
-                    Alternatively, enter the secret code manually:{" "}
-                    <code
-                      style={{
-                        color: "var(--accent)",
-                        background: "rgba(14, 165, 233, 0.1)",
-                        border: "1px solid rgba(14, 165, 233, 0.2)",
-                        padding: "3px 8px",
-                        borderRadius: "4px",
-                        fontSize: "12px",
-                        wordBreak: "break-all",
-                        display: "block",
-                        marginTop: "6px",
-                        fontFamily: "monospace",
-                        fontWeight: "600",
-                      }}
-                    >
-                      {secret}
-                    </code>
+                  <li>
+                    Alternatively, enter the secret code manually:
+                    {/* Visible text, by necessity: the user has to type it
+                        into the authenticator. It lives here and nowhere
+                        else — no attribute, no name, no title. */}
+                    <code className="ac-secret">{secret}</code>
                   </li>
-                  <li style={{ marginTop: "8px" }}>
+                  <li>
                     Enter the 6-digit code generated by your app below to
                     verify.
                   </li>
                 </ol>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    marginTop: "16px",
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="text"
-                    className="pm-input"
+                <form className="ac-inline-form" onSubmit={handleConfirmMfa}>
+                  <CcureInput
+                    id="ac-mfa-code"
+                    label="Verification code"
+                    fieldClassName="ac-inline-form__field ac-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     placeholder="6-digit code"
                     value={confirmCode}
                     onChange={(e) => setConfirmCode(e.target.value)}
                     maxLength={8}
-                    style={{
-                      width: "120px",
-                      height: "36px",
-                      textAlign: "center",
-                      letterSpacing: "2px",
-                      fontWeight: "bold",
-                    }}
-                  />
-                  <button
-                    className="pm-btn pm-btn--primary"
-                    onClick={handleConfirmMfa}
                     disabled={setupLoading}
-                    style={{ height: "36px" }}
+                  />
+                  <CcureButton
+                    type="submit"
+                    variant="primary"
+                    loading={setupLoading}
+                    disabled={setupLoading || !confirmCode.trim()}
                   >
                     {setupLoading ? "Verifying..." : "Verify & Enable"}
-                  </button>
-                  <button
-                    className="pm-btn pm-btn--ghost"
-                    onClick={() => setWizardStep(0)}
-                    style={{ height: "36px" }}
+                  </CcureButton>
+                  <CcureButton
+                    variant="secondary"
+                    onClick={clearEnrolment}
+                    disabled={setupLoading}
                   >
                     Cancel
-                  </button>
-                </div>
+                  </CcureButton>
+                </form>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {wizardStep === 2 && (
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02))",
-              border: "1px solid rgba(16, 185, 129, 0.18)",
-              padding: "20px",
-              borderRadius: "10px",
-            }}
+          <section
+            className="ac-mfa-card ac-mfa-card--done"
+            aria-labelledby="ac-mfa-done-title"
           >
-            <h5
-              style={{
-                margin: "0 0 8px 0",
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#16a34a",
-              }}
-            >
-              🎉 Multi-Factor Authentication Enabled!
-            </h5>
-            <p
-              style={{
-                margin: "0 0 16px 0",
-                fontSize: "13px",
-                color: "var(--text-mid)",
-              }}
-            >
+            <h4 className="ac-section__title" id="ac-mfa-done-title">
+              <span aria-hidden="true">🎉 </span>
+              Multi-Factor Authentication Enabled!
+            </h4>
+            <p className="ac-section__desc">
               Save these backup recovery codes. You can use them to sign in if
               you lose access to your authenticator device. Each code is
               single-use.
             </p>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: "8px",
-                marginBottom: "16px",
-              }}
-            >
-              {backupCodes.map((c, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: "14px",
-                    background: "var(--bg-white)",
-                    border: "1px solid var(--border)",
-                    padding: "6px 10px",
-                    borderRadius: "6px",
-                    textAlign: "center",
-                    color: "var(--text)",
-                    fontWeight: 700,
-                  }}
-                >
-                  {c}
-                </div>
+            <ul className="ac-codes" aria-label="Backup recovery codes">
+              {backupCodes.map((c) => (
+                <li key={c}>
+                  <code>{c}</code>
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                className="pm-btn pm-btn--outline"
-                onClick={handleCopyBackupCodes}
-                style={{ flex: 1 }}
-              >
+            <div className="ac-actions ac-actions--fill">
+              <CcureButton variant="secondary" onClick={handleCopyBackupCodes}>
                 {copied ? "Copied! ✓" : "Copy Codes"}
-              </button>
-              <button
-                className="pm-btn pm-btn--primary"
-                onClick={() => setWizardStep(0)}
-                style={{ flex: 1 }}
-              >
+              </CcureButton>
+              <CcureButton variant="primary" onClick={clearEnrolment}>
                 Done
-              </button>
+              </CcureButton>
             </div>
-          </div>
+            <span className="cc-sr-only" role="status" aria-live="polite">
+              {copied ? "Backup codes copied to the clipboard" : ""}
+            </span>
+          </section>
         )}
       </div>
     );
   }
 
   return (
-    <div className="pm-tab-content">
+    <div className="ac-panel">
       {/* Password section */}
-      <div className="pm-section">
-        <h4 className="pm-section-title">Password</h4>
-        <p className="pm-section-desc">
+      <section className="ac-section" aria-labelledby="ac-password-title">
+        <h4 className="ac-section__title" id="ac-password-title">
+          Password
+        </h4>
+        <p className="ac-section__desc">
           Regularly update your password to maintain account security.
         </p>
-        <button
-          className="pm-btn pm-btn--outline"
-          onClick={onOpenChangePassword}
-        >
-          🔐 Change Password
-        </button>
-      </div>
-
-      <div className="pm-divider" />
+        <CcureButton variant="secondary" onClick={onOpenChangePassword}>
+          Change Password
+        </CcureButton>
+      </section>
 
       {/* MFA Section */}
-      <div className="pm-mfa-card">
-        <div className="pm-mfa-header-row">
-          <div className="pm-mfa-title-block">
-            <h4 className="pm-section-title" style={{ margin: 0 }}>
+      <section className="ac-section ac-mfa" aria-labelledby="ac-mfa-title">
+        <div className="ac-mfa__head">
+          <div>
+            <h4 className="ac-section__title" id="ac-mfa-title">
               Multi-Factor Authentication (MFA)
             </h4>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                marginTop: "4px",
-              }}
-            >
+            <div className="ac-mfa__status">
               {mfaEnabled ? (
-                <span className="pm-glass-badge pm-glass-badge--enabled">
-                  <span className="pm-dot-green" />
-                  Enabled
-                </span>
+                <CcureBadge variant="success">Enabled</CcureBadge>
               ) : (
-                <span className="pm-glass-badge pm-glass-badge--disabled">
-                  <span className="pm-pulse-amber-dot" />
-                  Disabled
-                </span>
+                <CcureBadge variant="warning">Disabled</CcureBadge>
               )}
-              <span
-                style={{
-                  fontSize: "13px",
-                  color: "var(--text-muted)",
-                  fontWeight: "500",
-                }}
-              >
-                TOTP / Authenticator & Email Fallback
+              <span className="ac-mfa__kind">
+                TOTP / Authenticator &amp; Email Fallback
               </span>
             </div>
           </div>
-
-          <label className="pm-switch">
-            <input
-              type="checkbox"
-              className="pm-switch-input"
-              checked={mfaEnabled}
-              onChange={handleToggleChange}
-              disabled={setupLoading || disableLoading || showDisableForm}
-            />
-            <span className="pm-switch-track">
-              <span className="pm-switch-thumb" />
-            </span>
-          </label>
+          {/* An explicit action, never a toggle: a checkbox that starts an
+              enrolment on change fires a POST from a stray keypress. */}
+          {mfaEnabled ? (
+            <CcureButton
+              variant="secondary"
+              onClick={() => {
+                setShowDisableForm(true);
+                setDisableError("");
+              }}
+              disabled={disableLoading || showDisableForm}
+            >
+              Disable MFA
+            </CcureButton>
+          ) : (
+            <CcureButton
+              variant="primary"
+              onClick={handleStartMfaSetup}
+              loading={setupLoading}
+              disabled={setupLoading}
+            >
+              Set up MFA
+            </CcureButton>
+          )}
         </div>
 
-        <p
-          className="pm-section-desc font-normal"
-          style={{ margin: "8px 0 0 0" }}
-        >
+        <p className="ac-section__desc">
           Add an extra layer of security to your account using TOTP and email
           fallback OTP.
         </p>
 
+        {/* A failed enrolment start is reported HERE. The legacy dialog only
+            rendered this error inside the wizard, which had not opened, so a
+            failed start showed nothing at all. */}
+        {setupError && !showDisableForm && (
+          <CcureAlert variant="danger">{setupError}</CcureAlert>
+        )}
+
         {mfaEnabled && !showDisableForm && (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "var(--text-muted)",
-              margin: "8px 0 0 0",
-              fontStyle: "italic",
-            }}
-          >
-            To reconfigure, toggle off (requires password confirmation) and
-            enable again.
+          <p className="ac-hint">
+            To reconfigure, disable MFA (requires password confirmation) and set
+            it up again.
           </p>
         )}
 
         {showDisableForm && (
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(239, 68, 68, 0.02))",
-              border: "1px solid rgba(239, 68, 68, 0.18)",
-              padding: "16px",
-              borderRadius: "8px",
-              marginTop: "16px",
-            }}
+          <form
+            className="ac-mfa-card ac-mfa-card--danger"
+            onSubmit={handleDisableMfa}
+            aria-labelledby="ac-mfa-disable-title"
           >
-            <h5
-              style={{
-                margin: "0 0 8px 0",
-                color: "#dc2626",
-                fontSize: "14px",
-                fontWeight: 700,
-              }}
-            >
+            <h5 className="ac-section__title" id="ac-mfa-disable-title">
               Confirm Disabling MFA
             </h5>
-            <p
-              style={{
-                margin: "0 0 12px 0",
-                fontSize: "12.5px",
-                color: "var(--text-mid)",
-              }}
-            >
+            <p className="ac-section__desc">
               Enter your account password to confirm disabling Multi-Factor
               Authentication.
             </p>
 
             {disableError && (
-              <div
-                className="pm-alert pm-alert--error"
-                style={{ marginBottom: "12px" }}
-              >
-                {disableError}
-              </div>
+              <CcureAlert variant="danger">{disableError}</CcureAlert>
             )}
 
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <div className="pm-field" style={{ flex: 1, margin: 0 }}>
-                <input
-                  type="password"
-                  className="pm-input"
-                  placeholder="Confirm with your password"
-                  value={disablePassword}
-                  onChange={(e) => setDisablePassword(e.target.value)}
-                  style={{ height: "36px" }}
-                />
-              </div>
-              <button
-                className="pm-btn pm-btn--ghost"
+            <div className="ac-inline-form">
+              <CcurePasswordField
+                id="ac-mfa-disable-password"
+                label="Account password"
+                fieldClassName="ac-inline-form__field"
+                placeholder="Confirm with your password"
+                value={disablePassword}
+                onChange={(e) => setDisablePassword(e.target.value)}
+                autoComplete="current-password"
+                capsLockWarning={false}
+                disabled={disableLoading}
+              />
+              <CcureButton
+                variant="secondary"
                 onClick={() => {
                   setShowDisableForm(false);
                   setDisablePassword("");
                   setDisableError("");
                 }}
-                style={{ height: "36px", padding: "0 14px" }}
+                disabled={disableLoading}
               >
                 Cancel
-              </button>
-              <button
-                className="pm-btn pm-btn--primary"
-                onClick={handleDisableMfa}
-                disabled={disableLoading}
-                style={{
-                  background: "#dc2626",
-                  border: "none",
-                  height: "36px",
-                  padding: "0 14px",
-                  color: "white",
-                }}
+              </CcureButton>
+              <CcureButton
+                type="submit"
+                variant="danger"
+                loading={disableLoading}
+                disabled={disableLoading || !disablePassword}
               >
                 {disableLoading ? "Confirming..." : "Disable"}
-              </button>
+              </CcureButton>
             </div>
-          </div>
+          </form>
         )}
-      </div>
-
-      <div className="pm-divider" />
+      </section>
 
       {/* Sessions section */}
-      <div className="pm-section">
-        <h4 className="pm-section-title">Active Sessions</h4>
-        <p className="pm-section-desc">
+      <section className="ac-section" aria-labelledby="ac-sessions-title">
+        <h4 className="ac-section__title" id="ac-sessions-title">
+          Active Sessions
+        </h4>
+        <p className="ac-section__desc">
           These are all devices / browsers currently logged into your account.
           Signing in on a new device does not sign you out anywhere else, so
           anything here that you do not recognise should be revoked.
         </p>
 
-        {error && <div className="pm-alert pm-alert--error">{error}</div>}
-        {notice && <div className="pm-alert pm-alert--success">{notice}</div>}
+        {error && <CcureAlert variant="danger">{error}</CcureAlert>}
+        {notice && <CcureAlert variant="success">{notice}</CcureAlert>}
 
         {loading ? (
-          <div className="pm-loading">Loading sessions…</div>
+          <p className="ac-loading" role="status">
+            Loading sessions…
+          </p>
         ) : sessions.length === 0 ? (
-          <div className="pm-empty-state">No active sessions found.</div>
+          <p className="ac-empty">No active sessions found.</p>
         ) : (
-          <div className="pm-sessions">
-            {sessions.map((s) => (
-              <div
-                key={s.session_id}
-                className={`pm-session-card ${s.is_current ? "pm-session-card--current" : ""}`}
-              >
-                <div className="pm-session-icon">
-                  <IcoMonitor />
-                </div>
-                <div className="pm-session-info">
-                  <div className="pm-session-device">
-                    {formatDevice(s.device_info)}
-                    {s.is_current && (
-                      <span className="pm-current-badge">Current</span>
-                    )}
+          <ul className="ac-sessions" aria-label="Active sessions">
+            {sessions.map((s) => {
+              const device = formatDevice(s.device_info);
+              return (
+                <li
+                  key={s.session_id}
+                  className={`ac-session${s.is_current ? " ac-session--current" : ""}`}
+                >
+                  <div className="ac-session__info">
+                    <div className="ac-session__device">
+                      {device}
+                      {s.is_current && (
+                        <CcureBadge variant="primary" size="sm">
+                          Current
+                        </CcureBadge>
+                      )}
+                    </div>
+                    <div className="ac-session__meta">
+                      <span>IP: {s.ip_address || "Unknown"}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Issued: {formatDate(s.issued_at)}</span>
+                    </div>
+                    <div className="ac-session__meta">
+                      Expires: {formatDate(s.expires_at)}
+                    </div>
                   </div>
-                  <div className="pm-session-meta">
-                    <span>IP: {s.ip_address || "Unknown"}</span>
-                    <span>·</span>
-                    <span>Issued: {formatDate(s.issued_at)}</span>
-                  </div>
-                  <div className="pm-session-expires">
-                    Expires: {formatDate(s.expires_at)}
-                  </div>
-                </div>
-                {!s.is_current && (
-                  <button
-                    className="pm-revoke-btn"
-                    onClick={() => handleRevoke(s.session_id)}
-                    disabled={revoking === s.session_id}
-                    title="Revoke session"
-                  >
-                    {revoking === s.session_id ? "…" : <IcoTrash />}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+                  {!s.is_current && (
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Revoke session: ${device}, ${s.ip_address || "unknown IP"}`}
+                      onClick={() => handleRevoke(s.session_id)}
+                      loading={revoking === s.session_id}
+                      disabled={Boolean(revoking)}
+                    >
+                      Revoke
+                    </CcureButton>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
 
         {sessions.length > 1 && (
-          <button
-            className="pm-revoke-all-btn"
-            onClick={handleRevokeOthers}
+          <CcureButton
+            variant="danger"
+            onClick={() => setConfirmRevokeOthers(true)}
+            loading={revokingOthers}
             disabled={revokingOthers}
           >
             {revokingOthers ? "Signing out…" : "Sign out all other sessions"}
-          </button>
+          </CcureButton>
         )}
-      </div>
+      </section>
+
+      <CcureConfirmDialog
+        open={confirmRevokeOthers}
+        title="Sign out other sessions?"
+        subtitle="Every device and browser signed in to your account except this one will be signed out immediately."
+        warning="Anyone using those sessions — including you on another device — will have to sign in again."
+        confirmLabel="Sign out other sessions"
+        tone="danger"
+        busy={revokingOthers}
+        onConfirm={handleRevokeOthers}
+        onCancel={() => setConfirmRevokeOthers(false)}
+      />
     </div>
   );
 }
@@ -912,53 +825,47 @@ export default function ProfileModal({ onClose }) {
       .catch(() => setLoadError("Failed to load profile"));
   }, []);
 
-  const TABS = [
-    { id: "profile", label: "Profile Info", Icon: IcoUser },
-    { id: "security", label: "Security", Icon: IcoShield },
-  ];
-
   return (
     <>
-      <div className="pm-overlay" onClick={onClose} />
-      <div className="pm-modal" role="dialog" aria-label="Account Profile">
-        {/* Header */}
-        <div className="pm-header">
-          <div className="pm-header-left">
-            <IcoUser />
-            <span>My Account</span>
-          </div>
-          <button className="pm-close" onClick={onClose}>
-            <IcoClose />
-          </button>
-        </div>
+      <CcureModal
+        open
+        onClose={onClose}
+        title="My Account"
+        size="md"
+        className="ac-modal"
+        closeLabel="Close account dialog"
+        /* An overlay click must not discard an in-progress enrolment or a
+           half-typed password. Escape and the named close control remain. */
+        closeOnOverlayClick={false}
+      >
+        <CcureTabs
+          id={TABS_ID}
+          label="Account sections"
+          className="ac-tabs"
+          tabs={TABS}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
 
-        {/* Tabs */}
-        <div className="pm-tabs">
-          {TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              className={`pm-tab ${activeTab === id ? "pm-tab--active" : ""}`}
-              onClick={() => setActiveTab(id)}
-            >
-              <Icon /> {label}
-            </button>
-          ))}
-        </div>
+        {loadError && <CcureAlert variant="danger">{loadError}</CcureAlert>}
 
-        {/* Body */}
-        <div className="pm-body">
-          {loadError && (
-            <div className="pm-alert pm-alert--error">{loadError}</div>
-          )}
-
-          {activeTab === "profile" && (
-            <ProfileTab profile={profile} onProfileUpdated={setProfile} />
-          )}
-          {activeTab === "security" && (
-            <SecurityTab onOpenChangePassword={() => setShowChangePwd(true)} />
-          )}
-        </div>
-      </div>
+        <CcureTabPanel
+          id="profile"
+          tabsId={TABS_ID}
+          active={activeTab === "profile"}
+        >
+          <ProfileTab profile={profile} onProfileUpdated={setProfile} />
+        </CcureTabPanel>
+        <CcureTabPanel
+          id="security"
+          tabsId={TABS_ID}
+          active={activeTab === "security"}
+        >
+          {/* The nested dialog restores focus to the opener on close (its
+              own focus trap remembers it), so nothing is tracked here. */}
+          <SecurityTab onOpenChangePassword={() => setShowChangePwd(true)} />
+        </CcureTabPanel>
+      </CcureModal>
 
       {showChangePwd && (
         <ChangePasswordModal onClose={() => setShowChangePwd(false)} />

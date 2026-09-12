@@ -1,0 +1,519 @@
+/* ============================================================================
+   Account dialog (ProfileModal + ChangePasswordModal) — Checkpoint 3C batch 14
+   ----------------------------------------------------------------------------
+   Layout only. The dialogs are CcureModal; the tabs CcureTabs; every control
+   a CCure primitive. `ac-` is the account dialog, `acp-` the nested password
+   dialog. Tokens only; the legacy `pm-*` / `cpw-*` rules are retired with a
+   consumer census in the batch 14 checkpoint report.
+   ============================================================================ */
+
+.ac-modal .cc-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.ac-tabs {
+  margin-bottom: 0;
+}
+
+.ac-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+}
+
+.ac-loading,
+.ac-empty {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Identity block ────────────────────────────────────────────────────── */
+
+.ac-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+}
+
+.ac-avatar {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+  color: var(--ccure-on-primary);
+  font-weight: var(--ccure-weight-bold);
+  font-size: var(--ccure-text-lg);
+}
+
+.ac-identity__name {
+  margin: 0 0 var(--ccure-space-3xs);
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ac-identity__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+
+.ac-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.ac-fields__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--ccure-space-md);
+}
+
+.ac-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+}
+
+.ac-field__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.ac-field__value {
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.ac-empty {
+  font-style: italic;
+}
+
+.ac-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+}
+
+.ac-actions--fill > * {
+  flex: 1 1 0;
+}
+
+/* ── Sections (security tab) ───────────────────────────────────────────── */
+
+.ac-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ccure-space-sm);
+  padding-top: var(--ccure-space-lg);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+.ac-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ac-section__title {
+  margin: 0;
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ac-section__desc {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ac-hint {
+  margin: 0;
+  font-size: var(--ccure-text-xs);
+  font-style: italic;
+  color: var(--ccure-text-secondary);
+}
+
+/* ── MFA ───────────────────────────────────────────────────────────────── */
+
+.ac-mfa__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.ac-mfa__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+  margin-top: var(--ccure-space-3xs);
+}
+
+.ac-mfa__kind {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ac-mfa-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-md);
+  border: 1px solid var(--ccure-primary-soft);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-lg);
+}
+
+.ac-mfa-card--done {
+  border-color: var(--ccure-success-border);
+  background: var(--ccure-success-bg);
+}
+
+.ac-mfa-card--danger {
+  border-color: var(--ccure-danger-border);
+  background: var(--ccure-danger-bg);
+}
+
+.ac-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ac-steps__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+.ac-steps__item--active {
+  color: var(--ccure-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.ac-steps__num {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--ccure-radius-full);
+  border: 1px solid var(--ccure-border-strong);
+  font-size: var(--ccure-text-xs);
+}
+
+.ac-steps__item--active .ac-steps__num {
+  background: var(--ccure-primary);
+  border-color: var(--ccure-primary);
+  color: var(--ccure-on-primary);
+}
+
+.ac-mfa-enrol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-lg);
+  align-items: flex-start;
+}
+
+.ac-qr {
+  flex: 0 0 auto;
+  padding: var(--ccure-space-xs);
+  /* A QR code must stay dark-on-light for a camera to read it, in either
+     theme; the surface token is the light surface on both. */
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ac-qr img {
+  display: block;
+  width: 150px;
+  height: 150px;
+}
+
+.ac-mfa-enrol__steps {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+}
+
+.ac-list {
+  margin: 0;
+  padding-left: var(--ccure-space-lg);
+  line-height: var(--ccure-leading-relaxed);
+}
+
+.ac-secret {
+  display: block;
+  margin-top: var(--ccure-space-2xs);
+  padding: var(--ccure-space-3xs) var(--ccure-space-xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-primary-text);
+  background: var(--ccure-primary-soft);
+  border-radius: var(--ccure-radius-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.ac-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-xs);
+  margin-top: var(--ccure-space-sm);
+  width: 100%;
+}
+
+.ac-inline-form__field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.ac-code .cc-field__control {
+  font-family: var(--ccure-font-mono);
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+
+.ac-codes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ccure-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ac-codes li {
+  text-align: center;
+  padding: var(--ccure-space-2xs) var(--ccure-space-xs);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ac-codes code {
+  font-family: var(--ccure-font-mono);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+  user-select: all;
+}
+
+/* ── Sessions ──────────────────────────────────────────────────────────── */
+
+.ac-sessions {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+}
+
+.ac-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+  background: var(--ccure-surface);
+}
+
+.ac-session--current {
+  border-color: var(--ccure-primary-soft);
+  background: var(--ccure-primary-soft);
+}
+
+.ac-session__info {
+  min-width: 0;
+}
+
+.ac-session__device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.ac-session__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Change password dialog ────────────────────────────────────────────── */
+
+.acp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.acp-strength {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+}
+
+.acp-strength__bar {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+
+.acp-strength__seg {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-border);
+}
+
+.acp-strength__bar--weak .acp-strength__seg--on {
+  background: var(--ccure-danger-solid);
+}
+
+.acp-strength__bar--fair .acp-strength__seg--on {
+  background: var(--ccure-warning-solid);
+}
+
+.acp-strength__bar--good .acp-strength__seg--on {
+  background: var(--ccure-info-solid);
+}
+
+.acp-strength__bar--strong .acp-strength__seg--on {
+  background: var(--ccure-success-solid);
+}
+
+.acp-strength__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  min-width: 3.5em;
+}
+
+.acp-strength__label--weak {
+  color: var(--ccure-danger-text);
+}
+
+.acp-strength__label--fair {
+  color: var(--ccure-warning-text);
+}
+
+.acp-strength__label--good {
+  color: var(--ccure-info-text);
+}
+
+.acp-strength__label--strong {
+  color: var(--ccure-success-text);
+}
+
+.acp-reqs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.acp-req {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+.acp-req__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-border-strong);
+}
+
+.acp-req--ok {
+  color: var(--ccure-success-text);
+}
+
+.acp-req--ok .acp-req__dot {
+  background: var(--ccure-success-solid);
+}
+
+.acp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+}
+
+.acp-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-lg) 0;
+  text-align: center;
+  color: var(--ccure-text);
+}
+
+.acp-success__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-success-bg);
+  color: var(--ccure-success-text);
+  font-size: var(--ccure-text-xl);
+}
+
+.acp-success__title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+}
+
+.acp-success p {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+@media (max-width: 560px) {
+  .ac-codes {
+    grid-template-columns: 1fr;
+  }
+}

@@ -98,7 +98,19 @@ export default function useFocusTrap(ref, active, { initialFocus } = {}) {
       root;
     // rAF so the element is laid out before we focus it; focusing a node that
     // is still display:none silently does nothing.
-    const raf = requestAnimationFrame(() => target?.focus?.());
+    //
+    // By the time the frame fires, focus may already be inside the dialog: a
+    // child with autoFocus, or a user (or a test's userEvent.type) who clicked
+    // into a field first. Moving it then is a focus steal — the first stop in
+    // every CcureModal is its close button, so half a typed password would
+    // land on a button. Measured under CI load: the frame fired between two
+    // keystrokes, the field never filled, submit stayed disabled and the API
+    // mock was never called. Only place focus if nothing inside holds it.
+    const raf = requestAnimationFrame(() => {
+      const current = document.activeElement;
+      if (current && current !== root && root.contains(current)) return;
+      target?.focus?.();
+    });
 
     const onKeyDown = (e) => {
       if (e.key !== "Tab" || !isTopTrap(root)) return;

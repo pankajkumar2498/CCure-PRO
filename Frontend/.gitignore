@@ -1,0 +1,15 @@
+# ── UX4G generated assets ────────────────────────────────────────────────────
+# Both are produced by scripts/build-ux4g-assets.mjs from the pinned
+# ux4g-web-components package, which npm install already brings in. They are
+# build output, not source:
+#
+#   * the stylesheet is ~773 kB of generated CSS
+#   * the fonts are ~2.3 MB of binary lifted out of that CSS
+#
+# Committing them would put three megabytes of derived bytes under review on
+# every UX4G bump, and would let the checked-in copy drift from the package the
+# lockfile pins. The Docker build runs `npm install` and then `prebuild`, so the
+# image regenerates them itself and still reaches no network at runtime.
+src/design-system/tokens/ux4g.generated.css
+src/design-system/tokens/ux4g.generated.manifest.json
+public/assets/fonts/ux4g/

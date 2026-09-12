@@ -1,181 +1,214 @@
 /* ============================================================================
    audit-timeline.css — CCure Audit PRO
-   Dedicated styles for the modern Asset Activity Timeline
+   Asset Activity Timeline (components/assets/AuditTimeline.jsx).
+
+   Checkpoint 3C batch 11: every colour is a CCure semantic token. The sheet
+   previously mixed legacy theme variables with eleven literals (severity
+   tints, the old/new value boxes, an orange border) that did not follow the
+   theme. Severity and category badges are design-system primitives now, so
+   their rules are gone from here.
    ============================================================================ */
 
 /* ── Container & Layout ─────────────────────────────────────────────────── */
 .audit-timeline-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 1200px;
+  gap: var(--ccure-space-lg);
+  max-width: 75rem;
   margin: 0 auto;
 }
 
-/* ── Header & Filter Bar ────────────────────────────────────────────────── */
+/* ── Header ─────────────────────────────────────────────────────────────── */
 .audit-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 16px;
-  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ccure-border);
+  padding-bottom: var(--ccure-space-md);
+  margin-bottom: var(--ccure-space-xs);
+  gap: var(--ccure-space-md);
 }
 
-.audit-title-block h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 4px;
+.audit-title {
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  margin: 0 0 var(--ccure-space-2xs);
 }
 
 .audit-title-block p {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  margin: 0;
 }
 
 .audit-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--ccure-space-sm);
 }
 
 /* ── Category Filters ───────────────────────────────────────────────────── */
 .audit-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: var(--ccure-space-xs);
+  margin-bottom: var(--ccure-space-lg);
 }
 
 .audit-filter-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-muted);
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-2xs) var(--ccure-space-md);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-full);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background var(--ccure-duration-base) var(--ccure-ease),
+    border-color var(--ccure-duration-base) var(--ccure-ease),
+    color var(--ccure-duration-base) var(--ccure-ease);
   user-select: none;
 }
 
 .audit-filter-pill:hover {
-  border-color: var(--border-dark);
-  color: var(--text);
+  border-color: var(--ccure-border-strong);
+  color: var(--ccure-text);
 }
 
-.audit-filter-pill.active {
-  background: var(--bg-dark);
-  border-color: var(--bg-dark);
-  color: var(--text-white);
+.audit-filter-pill:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.audit-filter-pill[aria-pressed="true"] {
+  background: var(--ccure-primary);
+  border-color: var(--ccure-primary);
+  color: var(--ccure-on-primary);
 }
 
 .audit-filter-icon {
-  font-size: 0.9rem;
+  font-size: var(--ccure-text-base);
 }
 
 /* ── Scan Group Cards ───────────────────────────────────────────────────── */
+.audit-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
 .audit-group-card {
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-left-width: 4px;
+  border-radius: var(--ccure-radius-md);
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-  transition: box-shadow 0.2s ease;
+  box-shadow: var(--ccure-shadow-sm);
+  transition: box-shadow var(--ccure-duration-base) var(--ccure-ease);
 }
 
 .audit-group-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--ccure-shadow-md);
 }
 
-/* Dynamic Left Border based on severity */
-.audit-group-card {
-  border-left-width: 4px;
-}
 .audit-group-card--info {
-  border-left-color: var(--info);
+  border-left-color: var(--ccure-sev-info);
 }
 .audit-group-card--low {
-  border-left-color: var(--ok);
+  border-left-color: var(--ccure-sev-low);
 }
 .audit-group-card--medium {
-  border-left-color: var(--warn);
+  border-left-color: var(--ccure-sev-medium);
 }
 .audit-group-card--high {
-  border-left-color: #f97316;
-} /* Tailwind orange-500 */
+  border-left-color: var(--ccure-sev-high);
+}
 .audit-group-card--critical {
-  border-left-color: var(--danger);
+  border-left-color: var(--ccure-sev-critical);
 }
 
-/* Card Header (Clickable) */
+/* Card header — a button now, so it resets the button chrome. */
 .audit-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  width: 100%;
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
   cursor: pointer;
   user-select: none;
-  background: var(--bg-white);
-  transition: background 0.15s ease;
+  background: var(--ccure-surface);
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background var(--ccure-duration-fast) var(--ccure-ease);
 }
 
 .audit-group-header:hover {
-  background: var(--bg-app);
+  background: var(--ccure-surface-hover);
+}
+
+.audit-group-header:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: calc(-1 * var(--ccure-focus-ring-width));
 }
 
 .audit-group-info {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--ccure-space-md);
 }
 
 .audit-group-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: var(--bg-app);
-  border-radius: 8px;
-  font-size: 1.25rem;
-  border: 1px solid var(--border);
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-md);
+  font-size: var(--ccure-text-xl);
+  border: 1px solid var(--ccure-border);
 }
 
 .audit-group-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
+  display: block;
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
   margin-bottom: 2px;
 }
 
 .audit-group-subtitle {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  display: block;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
 }
 
 .audit-group-meta {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--ccure-space-lg);
 }
 
 .audit-group-time {
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ccure-space-2xs);
 }
 
 .audit-group-chevron {
-  color: var(--text-faint);
-  transition: transform 0.2s ease;
+  color: var(--ccure-text-secondary);
+  display: inline-flex;
+  transition: transform var(--ccure-duration-base) var(--ccure-ease);
 }
 
 .audit-group-card.expanded .audit-group-chevron {
@@ -184,17 +217,17 @@
 
 /* ── Events List ────────────────────────────────────────────────────────── */
 .audit-group-body {
-  border-top: 1px solid var(--border);
-  background: var(--bg-app);
+  border-top: 1px solid var(--ccure-border);
+  background: var(--ccure-surface-sunken);
   padding: 0;
 }
 
 .audit-event-row {
   display: flex;
   align-items: flex-start;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  gap: 16px;
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  border-bottom: 1px solid var(--ccure-border);
+  gap: var(--ccure-space-md);
 }
 
 .audit-event-row:last-child {
@@ -205,12 +238,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  font-size: 0.8rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  font-size: var(--ccure-text-sm);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -224,131 +257,100 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 6px;
-  gap: 12px;
+  margin-bottom: var(--ccure-space-2xs);
+  gap: var(--ccure-space-sm);
 }
 
 .audit-event-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-mid);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ccure-space-xs);
+}
+
+/* The "new discovery" marker: the dot for sighted users, the sr-only text
+   beside it in the markup for everyone else. */
+.audit-new-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-success-solid);
+  box-shadow: 0 0 4px var(--ccure-success-solid);
 }
 
 .audit-event-badges {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ccure-space-xs);
   flex-shrink: 0;
-}
-
-/* Severity Badges (Extending db-sev-badge from dashboard.css) */
-.audit-sev-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.audit-sev-badge--critical {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-.audit-sev-badge--high {
-  background: rgba(249, 115, 22, 0.1);
-  color: #f97316;
-}
-.audit-sev-badge--medium {
-  background: rgba(234, 179, 8, 0.1);
-  color: #eab308;
-}
-.audit-sev-badge--low {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-}
-.audit-sev-badge--info {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
-}
-
-.audit-category-badge {
-  font-size: 0.65rem;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
 }
 
 /* ── Change Display ─────────────────────────────────────────────────────── */
 .audit-change-display {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 0.8rem;
-  margin-top: 8px;
+  gap: var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  margin-top: var(--ccure-space-xs);
   flex-wrap: wrap;
 }
 
 .audit-value-box {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  color: var(--text-mid);
+  padding: var(--ccure-space-2xs) var(--ccure-space-sm);
+  border-radius: var(--ccure-radius-sm);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  color: var(--ccure-text);
   word-break: break-all;
   max-width: 100%;
 }
 
 .audit-value-box--old {
-  background: #fdf2f8; /* very light pink */
-  border-color: #fbcfe8;
-  color: #9d174d;
+  background: var(--ccure-danger-bg);
+  border-color: var(--ccure-danger-border);
+  color: var(--ccure-danger-text);
   text-decoration: line-through;
-  opacity: 0.8;
 }
 
 .audit-value-box--new {
-  background: #f0fdf4; /* very light green */
-  border-color: #bbf7d0;
-  color: #166534;
-  font-weight: 500;
+  background: var(--ccure-success-bg);
+  border-color: var(--ccure-success-border);
+  color: var(--ccure-success-text);
+  font-weight: var(--ccure-weight-medium);
 }
 
 .audit-change-arrow {
-  color: var(--text-faint);
-  font-size: 0.9rem;
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-base);
 }
 
 .audit-discovery-text {
-  font-size: 0.85rem;
-  color: var(--text);
-  margin-top: 4px;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  margin-top: var(--ccure-space-2xs);
 }
 
 /* ── Technical Details Toggle ───────────────────────────────────────────── */
 .audit-tech-toggle {
-  margin-top: 12px;
+  margin-top: var(--ccure-space-sm);
 }
 
 .audit-tech-btn {
   background: none;
   border: none;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 500;
+  color: var(--ccure-text-link);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-medium);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ccure-space-2xs);
   padding: 0;
 }
 
@@ -356,53 +358,107 @@
   text-decoration: underline;
 }
 
+.audit-tech-btn:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
 .audit-tech-panel {
-  margin-top: 8px;
-  background: var(--bg-dark);
-  border-radius: 6px;
-  padding: 12px;
+  margin-top: var(--ccure-space-xs);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-sm);
+  padding: var(--ccure-space-sm);
   overflow-x: auto;
 }
 
 .audit-tech-panel pre {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  color: var(--text-white);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Administrative trail ───────────────────────────────────────────────── */
+.audit-admin-trail {
+  position: relative;
+  padding-left: var(--ccure-space-lg);
+  border-left: 2px solid var(--ccure-border);
+  margin-top: var(--ccure-space-lg);
+}
+
+.audit-admin-entry {
+  margin-bottom: var(--ccure-space-lg);
+  position: relative;
+}
+
+.audit-admin-dot {
+  position: absolute;
+  left: calc(-1 * var(--ccure-space-lg) - 7px);
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+  border: 3px solid var(--ccure-surface);
+}
+
+.audit-admin-time {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-bottom: var(--ccure-space-2xs);
+}
+
+.audit-admin-action {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.audit-admin-actor {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-top: var(--ccure-space-2xs);
+}
+
+.audit-admin-actor-name {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.audit-admin-changes {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-top: var(--ccure-space-xs);
+}
+
+.audit-admin-changes-title {
+  font-weight: var(--ccure-weight-semibold);
+  margin-bottom: var(--ccure-space-2xs);
+}
+
+.audit-admin-pre {
+  margin: 0;
+  background: var(--ccure-surface-sunken);
+  padding: var(--ccure-space-xs);
+  border-radius: var(--ccure-radius-sm);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
   white-space: pre-wrap;
   word-break: break-all;
 }
 
 /* ── Empty State ────────────────────────────────────────────────────────── */
+/* CcureEmptyState supplies the layout; this only frames it as a panel. */
 .audit-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  background: var(--bg-white);
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-}
-
-.audit-empty-icon {
-  font-size: 2.5rem;
-  opacity: 0.5;
-  margin-bottom: 16px;
-}
-
-.audit-empty-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-mid);
-  margin-bottom: 8px;
-}
-
-.audit-empty-text {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  max-width: 400px;
+  background: var(--ccure-surface);
+  border: 1px dashed var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
@@ -410,20 +466,17 @@
   .audit-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: var(--ccure-space-sm);
   }
-
   .audit-group-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: var(--ccure-space-sm);
   }
-
   .audit-group-meta {
     width: 100%;
     justify-content: space-between;
   }
-
   .audit-event-header {
     flex-direction: column;
     align-items: flex-start;

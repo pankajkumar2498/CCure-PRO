@@ -1,4 +1,27 @@
-import React, { useState } from "react";
+/**
+ * src/components/assets/AuditTimeline.jsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The asset's activity timeline and administrative audit trail, rendered from
+ * the `/assets/{id}/changelog` payload. AssetDetail is its only consumer
+ * (SecurityDashboard's `AuditTimeline` is a separate, local component).
+ *
+ * Checkpoint 3C batch 11: presentation moved onto the CCure design system.
+ * The data reads, grouping, filtering and the two view modes are unchanged.
+ * What changed for assistive technology: the view switch is a real tab list,
+ * the category filters are toggle buttons that say whether they are pressed,
+ * a scan group's header is a button that says whether it is expanded, and the
+ * "new discovery" dot has a text equivalent. The sixteen inline styles and
+ * the `db-tabs` / `db-btn` borrowings from dashboard.css are gone; every
+ * colour comes from a CCure token, so the timeline follows the theme.
+ */
+import { useId, useState } from "react";
+import {
+  CcureBadge,
+  CcureButton,
+  CcureEmptyState,
+  CcureSeverityBadge,
+  CcureTabs,
+} from "../../design-system";
 import "../../styles/audit-timeline.css";
 
 function ago(iso) {
@@ -30,10 +53,10 @@ function formatTime(iso) {
   });
 }
 
-function TechDetailsPanel({ rawEvent }) {
+function TechDetailsPanel({ id, rawEvent }) {
   if (!rawEvent) return null;
   return (
-    <div className="audit-tech-panel">
+    <div className="audit-tech-panel" id={id}>
       <pre>{JSON.stringify(rawEvent, null, 2)}</pre>
     </div>
   );
@@ -41,40 +64,35 @@ function TechDetailsPanel({ rawEvent }) {
 
 function EventRow({ event, rawEvent }) {
   const [showTech, setShowTech] = useState(false);
-  const sevClass = event.severity
-    ? `audit-sev-badge--${event.severity.toLowerCase()}`
-    : "audit-sev-badge--info";
+  const techId = useId();
 
   return (
     <div className="audit-event-row">
-      <div className="audit-event-indicator">{event.icon || "📌"}</div>
+      <div className="audit-event-indicator" aria-hidden="true">
+        {event.icon || "📌"}
+      </div>
 
       <div className="audit-event-content">
         <div className="audit-event-header">
           <div className="audit-event-title">
             {event.event_title}
             {event.is_new_discovery && (
-              <span
-                style={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "var(--ok)",
-                  marginLeft: 4,
-                  boxShadow: "0 0 4px var(--ok)",
-                }}
-                title="New Discovery"
-              />
+              <>
+                {/* The dot alone was the only signal; a reader needs the words. */}
+                <span
+                  className="audit-new-dot"
+                  title="New Discovery"
+                  aria-hidden="true"
+                />
+                <span className="cc-sr-only">New discovery</span>
+              </>
             )}
           </div>
           <div className="audit-event-badges">
-            <span className={`audit-sev-badge ${sevClass}`}>
-              {event.severity}
-            </span>
-            <span className="audit-category-badge">
+            <CcureSeverityBadge severity={event.severity || "info"} />
+            <CcureBadge variant="neutral">
               {event.category.replace("_", " ")}
-            </span>
+            </CcureBadge>
           </div>
         </div>
 
@@ -83,10 +101,14 @@ function EventRow({ event, rawEvent }) {
         ) : event.change_type === "field_update" ? (
           <div className="audit-change-display">
             <div className="audit-value-box audit-value-box--old">
+              <span className="cc-sr-only">Previous value: </span>
               {event.old_value_display || "Unknown"}
             </div>
-            <div className="audit-change-arrow">→</div>
+            <div className="audit-change-arrow" aria-hidden="true">
+              →
+            </div>
             <div className="audit-value-box audit-value-box--new">
+              <span className="cc-sr-only">New value: </span>
               {event.new_value_display || "Unknown"}
             </div>
           </div>
@@ -98,11 +120,13 @@ function EventRow({ event, rawEvent }) {
           <button
             type="button"
             className="audit-tech-btn"
+            aria-expanded={showTech}
+            aria-controls={showTech ? techId : undefined}
             onClick={() => setShowTech(!showTech)}
           >
             {showTech ? "Hide Technical Details" : "View Technical Details"}
           </button>
-          {showTech && <TechDetailsPanel rawEvent={rawEvent} />}
+          {showTech && <TechDetailsPanel id={techId} rawEvent={rawEvent} />}
         </div>
       </div>
     </div>
@@ -111,6 +135,7 @@ function EventRow({ event, rawEvent }) {
 
 function ScanGroupCard({ group, rawChangelog }) {
   const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
 
   const sevClass = group.highest_severity
     ? `audit-group-card--${group.highest_severity.toLowerCase()}`
@@ -120,22 +145,31 @@ function ScanGroupCard({ group, rawChangelog }) {
     <div
       className={`audit-group-card ${sevClass} ${expanded ? "expanded" : ""}`}
     >
-      <div
+      {/* Was a `<div onClick>`: unreachable by keyboard and silent about its
+          state. A button with aria-expanded is both. */}
+      <button
+        type="button"
         className="audit-group-header"
+        aria-expanded={expanded}
+        aria-controls={expanded ? bodyId : undefined}
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="audit-group-info">
-          <div className="audit-group-icon">{group.group_icon}</div>
-          <div>
-            <div className="audit-group-title">{group.summary_title}</div>
-            <div className="audit-group-subtitle">{group.summary_subtitle}</div>
-          </div>
-        </div>
-        <div className="audit-group-meta">
-          <div className="audit-group-time">
+        <span className="audit-group-info">
+          <span className="audit-group-icon" aria-hidden="true">
+            {group.group_icon}
+          </span>
+          <span>
+            <span className="audit-group-title">{group.summary_title}</span>
+            <span className="audit-group-subtitle">
+              {group.summary_subtitle}
+            </span>
+          </span>
+        </span>
+        <span className="audit-group-meta">
+          <span className="audit-group-time">
             {ago(group.detected_at)} ({formatTime(group.detected_at)})
-          </div>
-          <div className="audit-group-chevron">
+          </span>
+          <span className="audit-group-chevron" aria-hidden="true">
             <svg
               width="16"
               height="16"
@@ -145,15 +179,16 @@ function ScanGroupCard({ group, rawChangelog }) {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              focusable="false"
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
 
       {expanded && (
-        <div className="audit-group-body">
+        <div className="audit-group-body" id={bodyId}>
           {group.events.map((event) => {
             const rawEvent = rawChangelog.find((r) => r.id === event.id);
             return (
@@ -166,17 +201,24 @@ function ScanGroupCard({ group, rawChangelog }) {
   );
 }
 
-export default function AuditTimeline({ changelogData }) {
+const VIEW_TABS = [
+  { id: "timeline", label: "Activity Timeline" },
+  { id: "admin", label: "Administrative Audit" },
+];
+
+export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [viewMode, setViewMode] = useState("timeline"); // timeline | admin
+  const Heading = `h${headingLevel}`;
 
   // If we haven't loaded or there's no data
   if (!changelogData || !changelogData.timeline) {
     return (
-      <div className="audit-empty">
-        <div className="audit-empty-icon">⏳</div>
-        <div className="audit-empty-title">Loading Timeline...</div>
-      </div>
+      <CcureEmptyState
+        icon="⏳"
+        title="Loading Timeline..."
+        className="audit-empty"
+      />
     );
   }
 
@@ -185,13 +227,12 @@ export default function AuditTimeline({ changelogData }) {
   // Render empty state if absolutely no events
   if (timeline.length === 0 && raw_changelog?.length === 0) {
     return (
-      <div className="audit-empty">
-        <div className="audit-empty-icon">📭</div>
-        <div className="audit-empty-title">No Audit Logs</div>
-        <div className="audit-empty-text">
-          No activity or changes have been recorded for this asset yet.
-        </div>
-      </div>
+      <CcureEmptyState
+        icon="📭"
+        title="No Audit Logs"
+        description="No activity or changes have been recorded for this asset yet."
+        className="audit-empty"
+      />
     );
   }
 
@@ -211,37 +252,39 @@ export default function AuditTimeline({ changelogData }) {
       {/* Header & Controls */}
       <div className="audit-header">
         <div className="audit-title-block">
-          <h3>Asset Activity Timeline</h3>
+          <Heading className="audit-title">Asset Activity Timeline</Heading>
           <p>Complete history of discoveries, changes, and lifecycle events.</p>
         </div>
         <div className="audit-controls">
-          <div className="db-tabs" style={{ marginBottom: 0 }}>
-            <button
-              className={`db-tab ${viewMode === "timeline" ? "active" : ""}`}
-              onClick={() => setViewMode("timeline")}
-            >
-              Activity Timeline
-            </button>
-            <button
-              className={`db-tab ${viewMode === "admin" ? "active" : ""}`}
-              onClick={() => setViewMode("admin")}
-            >
-              Administrative Audit
-            </button>
-          </div>
+          <CcureTabs
+            tabs={VIEW_TABS}
+            value={viewMode}
+            onChange={setViewMode}
+            label="Audit views"
+            className="audit-view-tabs"
+          />
         </div>
       </div>
 
       {viewMode === "timeline" ? (
         <>
-          {/* Category Filter Pills */}
+          {/* Category Filter Pills — toggle buttons that announce their state. */}
           {category_meta && Object.keys(category_meta).length > 0 && (
-            <div className="audit-filter-bar">
+            <div
+              className="audit-filter-bar"
+              role="group"
+              aria-label="Filter events by category"
+            >
               <button
-                className={`audit-filter-pill ${activeCategory === "all" ? "active" : ""}`}
+                type="button"
+                className="audit-filter-pill"
+                aria-pressed={activeCategory === "all"}
                 onClick={() => setActiveCategory("all")}
               >
-                <span className="audit-filter-icon">🔍</span> All Events
+                <span className="audit-filter-icon" aria-hidden="true">
+                  🔍
+                </span>{" "}
+                All Events
               </button>
               {Object.entries(category_meta).map(([catId, meta]) => {
                 // Only show categories that exist in our data
@@ -249,10 +292,14 @@ export default function AuditTimeline({ changelogData }) {
                 return (
                   <button
                     key={catId}
-                    className={`audit-filter-pill ${activeCategory === catId ? "active" : ""}`}
+                    type="button"
+                    className="audit-filter-pill"
+                    aria-pressed={activeCategory === catId}
                     onClick={() => setActiveCategory(catId)}
                   >
-                    <span className="audit-filter-icon">{meta.icon}</span>{" "}
+                    <span className="audit-filter-icon" aria-hidden="true">
+                      {meta.icon}
+                    </span>{" "}
                     {meta.label}
                   </button>
                 );
@@ -261,22 +308,22 @@ export default function AuditTimeline({ changelogData }) {
           )}
 
           {/* Timeline Groups */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="audit-groups">
             {filteredTimeline.length === 0 ? (
-              <div className="audit-empty" style={{ padding: "40px 20px" }}>
-                <div className="audit-empty-icon">🗂️</div>
-                <div className="audit-empty-title">No events match filter</div>
-                <div className="audit-empty-text">
-                  Try selecting a different category or viewing all events.
-                </div>
-                <button
-                  className="db-btn"
-                  style={{ marginTop: 16 }}
-                  onClick={() => setActiveCategory("all")}
-                >
-                  Clear Filters
-                </button>
-              </div>
+              <CcureEmptyState
+                icon="🗂️"
+                title="No events match filter"
+                description="Try selecting a different category or viewing all events."
+                className="audit-empty"
+                action={
+                  <CcureButton
+                    variant="secondary"
+                    onClick={() => setActiveCategory("all")}
+                  >
+                    Clear Filters
+                  </CcureButton>
+                }
+              />
             ) : (
               filteredTimeline.map((group) => (
                 <ScanGroupCard
@@ -290,102 +337,44 @@ export default function AuditTimeline({ changelogData }) {
         </>
       ) : (
         /* Administrative Audit Trail View */
-        <div
-          style={{
-            position: "relative",
-            paddingLeft: 20,
-            borderLeft: "2px solid var(--border)",
-            marginTop: 20,
-          }}
-        >
+        <div className="audit-admin-trail">
           {!admin_logs || admin_logs.length === 0 ? (
-            <div className="audit-empty" style={{ padding: "40px 20px" }}>
-              <div className="audit-empty-icon">🛡️</div>
-              <div className="audit-empty-title">No Administrative Actions</div>
-              <div className="audit-empty-text">
-                No users have performed administrative actions on this asset.
-              </div>
-            </div>
+            <CcureEmptyState
+              icon="🛡️"
+              title="No Administrative Actions"
+              description="No users have performed administrative actions on this asset."
+              className="audit-empty"
+            />
           ) : (
             admin_logs.map((log_entry) => (
-              <div
-                key={log_entry.id}
-                style={{ marginBottom: 20, position: "relative" }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    left: -27,
-                    top: 2,
-                    width: 12,
-                    height: 12,
-                    borderRadius: "50%",
-                    background: "var(--accent)",
-                    border: "3px solid var(--bg-white)",
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--text-faint)",
-                    marginBottom: 4,
-                  }}
-                >
+              <div key={log_entry.id} className="audit-admin-entry">
+                <div className="audit-admin-dot" aria-hidden="true" />
+                <div className="audit-admin-time">
                   {formatTime(log_entry.created_at)}
                 </div>
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    fontWeight: 700,
-                    color: "var(--text)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
+                <div className="audit-admin-action">
                   {log_entry.action
                     .replace(/_/g, " ")
                     .replace(/\b\w/g, (l) => l.toUpperCase())}
-                  <span
-                    className={`audit-sev-badge ${log_entry.status === "success" ? "audit-sev-badge--low" : "audit-sev-badge--critical"}`}
+                  <CcureBadge
+                    variant={
+                      log_entry.status === "success" ? "success" : "danger"
+                    }
                   >
                     {log_entry.status}
-                  </span>
+                  </CcureBadge>
                 </div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-mid)",
-                    marginTop: 4,
-                  }}
-                >
+                <div className="audit-admin-actor">
                   Actor:{" "}
-                  <span style={{ fontWeight: 600 }}>
+                  <span className="audit-admin-actor-name">
                     {log_entry.user_email}
                   </span>
                 </div>
                 {log_entry.changes &&
                   Object.keys(log_entry.changes).length > 0 && (
-                    <div
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                        marginTop: 8,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                        Changes:
-                      </div>
-                      <pre
-                        style={{
-                          margin: 0,
-                          background: "var(--bg-app)",
-                          padding: 8,
-                          borderRadius: 6,
-                          fontSize: "0.7rem",
-                          color: "var(--text-mid)",
-                        }}
-                      >
+                    <div className="audit-admin-changes">
+                      <div className="audit-admin-changes-title">Changes:</div>
+                      <pre className="audit-admin-pre">
                         {JSON.stringify(log_entry.changes, null, 2)}
                       </pre>
                     </div>

@@ -11,15 +11,33 @@
  *
  * The selected mode is stored in ScanContext.pipelineMode so every
  * downstream phase-result page knows whether to show the "Next Phase" CTA.
+ *
+ * Checkpoint 3C batch 11: presentation moved onto the CCure design system.
+ * Nothing about template selection changed — `handleCard` is verbatim, and
+ * the page still issues no request. What changed is what assistive technology
+ * is told: the search control has a name, the picker is a real dialog, the
+ * decorative icons are hidden, the badge no longer leads a card's accessible
+ * name, and the "coming soon" reason is announced rather than living only in
+ * a tooltip. Icon tones come from six semantic classes instead of twenty-two
+ * colour literals, so they follow the theme like everything else.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useScan } from "../context/ScanContext";
 import { getScanPipeline } from "../config/scanConfig";
 import AppLayout from "../components/layout/AppLayout";
-import Modal from "../components/layout/Modal";
+import {
+  CcureBadge,
+  CcureEmptyState,
+  CcureInput,
+  CcureModal,
+} from "../design-system";
+import "../styles/scan-templates.css";
 
 /* ─── SVG Icons ──────────────────────────────────────────────────────────── */
+/* Every icon here is decorative: the card's text carries its meaning. They are
+   hidden from assistive technology so a reader does not announce fourteen
+   unlabelled graphics on the way through the grid. */
 const Svg = ({ children, size = 16 }) => (
   <svg
     width={size}
@@ -30,6 +48,8 @@ const Svg = ({ children, size = 16 }) => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
   >
     {children}
   </svg>
@@ -41,217 +61,120 @@ const SvgSearch = () => (
   </Svg>
 );
 
-/* Card icons */
-const IcoWifi = ({ c, s = 32 }) => (
+/* Card icons — stroke is `currentColor`, so the tone class on the tile decides
+   the colour and the icon needs no colour prop of its own. */
+const CardSvg = ({ children, s = 32 }) => (
   <svg
     width={s}
     height={s}
     viewBox="0 0 24 24"
     fill="none"
-    stroke={c}
+    stroke="currentColor"
     strokeWidth="1.8"
     strokeLinecap="round"
     strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
   >
+    {children}
+  </svg>
+);
+const IcoWifi = (p) => (
+  <CardSvg {...p}>
     <path d="M5 12.55a11 11 0 0 1 14.08 0" />
     <path d="M1.42 9a16 16 0 0 1 21.16 0" />
     <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
     <line x1="12" y1="20" x2="12.01" y2="20" />
-  </svg>
+  </CardSvg>
 );
-const IcoDatabase = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoDatabase = (p) => (
+  <CardSvg {...p}>
     <ellipse cx="12" cy="5" rx="9" ry="3" />
     <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
     <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-  </svg>
+  </CardSvg>
 );
-const IcoLightning = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoLightning = (p) => (
+  <CardSvg {...p}>
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-  </svg>
+  </CardSvg>
 );
-const IcoNetwork = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoNetwork = (p) => (
+  <CardSvg {...p}>
     <rect x="2" y="2" width="6" height="6" rx="1" />
     <rect x="16" y="2" width="6" height="6" rx="1" />
     <rect x="9" y="16" width="6" height="6" rx="1" />
     <path d="M5 8v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
     <line x1="12" y1="12" x2="12" y2="16" />
-  </svg>
+  </CardSvg>
 );
-const IcoShield = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoShield = (p) => (
+  <CardSvg {...p}>
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     <line x1="12" y1="8" x2="12" y2="12" />
     <line x1="12" y1="16" x2="12.01" y2="16" />
-  </svg>
+  </CardSvg>
 );
-const IcoDir = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoDir = (p) => (
+  <CardSvg {...p}>
     <circle cx="12" cy="5" r="2" />
     <circle cx="4" cy="19" r="2" />
     <circle cx="20" cy="19" r="2" />
     <line x1="12" y1="7" x2="12" y2="13" />
     <line x1="12" y1="13" x2="4" y2="17" />
     <line x1="12" y1="13" x2="20" y2="17" />
-  </svg>
+  </CardSvg>
 );
-const IcoWebApp = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoWebApp = (p) => (
+  <CardSvg {...p}>
     <rect x="2" y="3" width="20" height="14" rx="2" />
     <line x1="8" y1="21" x2="16" y2="21" />
     <line x1="12" y1="17" x2="12" y2="21" />
     <polyline points="9 9 12 6 15 9" />
     <line x1="12" y1="6" x2="12" y2="13" />
-  </svg>
+  </CardSvg>
 );
-const IcoCloud = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoCloud = (p) => (
+  <CardSvg {...p}>
     <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-  </svg>
+  </CardSvg>
 );
-const IcoPolicy = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoPolicy = (p) => (
+  <CardSvg {...p}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
     <line x1="9" y1="13" x2="15" y2="13" />
     <line x1="9" y1="17" x2="15" y2="17" />
-  </svg>
+  </CardSvg>
 );
-const IcoLock = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoLock = (p) => (
+  <CardSvg {...p}>
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
+  </CardSvg>
 );
-const IcoPatch = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoPatch = (p) => (
+  <CardSvg {...p}>
     <path d="M12 20h9" />
     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-  </svg>
+  </CardSvg>
 );
-const IcoAgent = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoAgent = (p) => (
+  <CardSvg {...p}>
     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-  </svg>
+  </CardSvg>
 );
-const IcoOffline = ({ c, s = 32 }) => (
-  <svg
-    width={s}
-    height={s}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={c}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+const IcoOffline = (p) => (
+  <CardSvg {...p}>
     <rect x="2" y="7" width="20" height="14" rx="1" />
     <polyline points="16 2 12 6 8 2" />
-  </svg>
+  </CardSvg>
 );
 
 /* ─── Scan template definitions ──────────────────────────────────────────── */
+/* `tone` replaces the per-template `bg` / `color` literal pair. Six semantic
+   tones cover the thirteen templates; each resolves to CCure tokens in
+   scan-templates.css and therefore follows the theme. */
 const TEMPLATES = [
   // Row 1 — mapped (active) scans
   {
@@ -259,8 +182,7 @@ const TEMPLATES = [
     title: "Basic Network Scan",
     desc: "Identifies Only the Live Hosts in the Network.",
     Icon: IcoWifi,
-    bg: "#e8fdf0",
-    color: "#22c55e",
+    tone: "success",
     mapped: true,
     // badge:    "Guided Flow",
     // pipelineMode drives handleCard — links directly to SCAN_PIPELINES["basic"]
@@ -271,8 +193,7 @@ const TEMPLATES = [
     title: "Asset Discovery",
     desc: "Identifies Assets Live in the Network with Basic Information.",
     Icon: IcoDatabase,
-    bg: "#eff6ff",
-    color: "#3b82f6",
+    tone: "info",
     mapped: true,
     // badge:    "Phase 1 → 2",
     pipelineMode: "asset",
@@ -282,8 +203,7 @@ const TEMPLATES = [
     title: "Vulnerability Audit",
     desc: "Identifies hosts and performs a deep vulnerability audit.",
     Icon: IcoLightning,
-    bg: "#fefce8",
-    color: "#eab308",
+    tone: "warning",
     mapped: true,
     // badge:    "Full Pipeline",
     pipelineMode: "vulnerability_audit",
@@ -293,8 +213,7 @@ const TEMPLATES = [
     title: "Network Based Scanning",
     desc: "Test API endpoints and validate response data automatically.",
     Icon: IcoNetwork,
-    bg: "#f5f3ff",
-    color: "#8b5cf6",
+    tone: "primary",
     mapped: false,
   },
 
@@ -304,8 +223,7 @@ const TEMPLATES = [
     title: "Malware Scan",
     desc: "Perform rapid connectivity checks and network availability tests.",
     Icon: IcoShield,
-    bg: "#fff1f2",
-    color: "#ef4444",
+    tone: "danger",
     mapped: false,
   },
   {
@@ -313,8 +231,7 @@ const TEMPLATES = [
     title: "Active Directory Scan",
     desc: "Analyze network traffic suitable for any size infrastructure.",
     Icon: IcoDir,
-    bg: "#eff6ff",
-    color: "#3b82f6",
+    tone: "info",
     mapped: false,
   },
   {
@@ -322,8 +239,7 @@ const TEMPLATES = [
     title: "Web Application Scanning",
     desc: "Configure custom parameters using advanced rule settings.",
     Icon: IcoWebApp,
-    bg: "#fff7ed",
-    color: "#f97316",
+    tone: "warning",
     mapped: true,
     directRoute: "/web-scans/dashboard",
   },
@@ -332,8 +248,7 @@ const TEMPLATES = [
     title: "Cloud Scanning",
     desc: "Verify that code meets quality standards and best practices.",
     Icon: IcoCloud,
-    bg: "#f0f9ff",
-    color: "#0ea5e9",
+    tone: "info",
     mapped: false,
   },
 
@@ -343,8 +258,7 @@ const TEMPLATES = [
     title: "Policy Compliance Scanning",
     desc: "Evaluate hosts against security baseline configurations and standards.",
     Icon: IcoPolicy,
-    bg: "#f0fdf4",
-    color: "#16a34a",
+    tone: "success",
     mapped: true,
     directRoute: "/compliance",
   },
@@ -353,8 +267,7 @@ const TEMPLATES = [
     title: "Credential Validation",
     desc: "Scanning Hosts with Credentials.",
     Icon: IcoLock,
-    bg: "#fefce8",
-    color: "#ca8a04",
+    tone: "warning",
     mapped: true,
     // badge:    "SSH Auth",
     // Credentialed scan has its own dedicated route — no pipelineMode needed
@@ -365,8 +278,7 @@ const TEMPLATES = [
     title: "Patch Management",
     desc: "Analyze mobile app performance on Android and iOS platforms.",
     Icon: IcoPatch,
-    bg: "#f5f3ff",
-    color: "#7c3aed",
+    tone: "primary",
     mapped: false,
   },
   {
@@ -374,8 +286,7 @@ const TEMPLATES = [
     title: "Agent Based Monitoring",
     desc: "Automatically optimize system performance and resource utilization.",
     Icon: IcoAgent,
-    bg: "#fdf4ff",
-    color: "#a855f7",
+    tone: "primary",
     mapped: false,
     beta: true,
   },
@@ -386,33 +297,43 @@ const TEMPLATES = [
     title: "Offline Configuration Scan",
     desc: "Audit the configuration of network devices without connectivity.",
     Icon: IcoOffline,
-    bg: "#f8fafc",
-    color: "#64748b",
+    tone: "neutral",
     mapped: false,
   },
 ];
 
 /* ─── Scan Card ──────────────────────────────────────────────────────────── */
+/* The badges are rendered AFTER the title and description and positioned by
+   CSS, so a card's accessible name starts with what it is ("Malware Scan …
+   Soon, coming soon") rather than with its status ("Soon Malware Scan …").
+   The title is a span, not a heading: a <button> may only contain phrasing
+   content, and a heading inside a control announces as a heading, not as the
+   control's name. */
 function ScanCard({ tpl, onClick }) {
-  const { Icon, title, desc, bg, color, mapped, beta, badge } = tpl;
+  const { Icon, title, desc, tone, mapped, beta, badge } = tpl;
   return (
     <button
-      className={`scan-card ${mapped ? "scan-card--active" : "scan-card--disabled"}`}
+      type="button"
+      className={`tpl-card ${mapped ? "tpl-card--active" : "tpl-card--disabled"}`}
       onClick={() => mapped && onClick(tpl)}
       disabled={!mapped}
       title={!mapped ? "Coming soon" : undefined}
     >
-      {beta && <span className="scan-card-badge badge-beta">Beta</span>}
-      {!mapped && <span className="scan-card-badge badge-soon">Soon</span>}
-      {mapped && badge && (
-        <span className="scan-card-badge badge-api">{badge}</span>
-      )}
-
-      <div className="scan-card-icon" style={{ background: bg }}>
-        <Icon c={color} s={32} />
-      </div>
-      <h3 className="scan-card-title">{title}</h3>
-      <p className="scan-card-desc">{desc}</p>
+      <span className={`tpl-icon tpl-icon--${tone}`} aria-hidden="true">
+        <Icon s={32} />
+      </span>
+      <span className="tpl-card-title">{title}</span>
+      <span className="tpl-card-desc">{desc}</span>
+      <span className="tpl-card-badges">
+        {beta && <CcureBadge variant="info">Beta</CcureBadge>}
+        {!mapped && (
+          <>
+            <CcureBadge variant="neutral">Soon</CcureBadge>
+            <span className="cc-sr-only">, coming soon</span>
+          </>
+        )}
+        {mapped && badge && <CcureBadge variant="primary">{badge}</CcureBadge>}
+      </span>
     </button>
   );
 }
@@ -482,29 +403,32 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Search */}
-          <div className="search-wrap">
-            <span className="search-icon">
-              <SvgSearch />
-            </span>
-            <input
-              className="search-input"
+          {/* Search — named, not merely placeholdered. */}
+          <div className="tpl-search">
+            <CcureInput
+              id="tpl-search"
+              type="search"
+              aria-label="Search templates"
               placeholder="Search templates…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              adornment={<SvgSearch />}
             />
           </div>
 
           {/* Template grid */}
           {filtered.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-state-icon">🔍</span>
-              <p className="empty-state-title">
-                No templates match &quot;{search}&quot;
-              </p>
+            /* role="status": the result of a search is announced, not just
+               painted, so a keyboard user typing into the box hears that
+               nothing matched without leaving it. */
+            <div role="status">
+              <CcureEmptyState
+                icon="🔍"
+                title={`No templates match "${search}"`}
+              />
             </div>
           ) : (
-            <div className="scan-grid">
+            <div className="tpl-grid">
               {filtered.map((tpl) => (
                 <ScanCard key={tpl.id} tpl={tpl} onClick={handleCard} />
               ))}
@@ -513,13 +437,19 @@ export default function Dashboard() {
         </div>
       </AppLayout>
 
-      <Modal
-        isOpen={modalOpen}
+      {/* The picker the shell's New Scan button opens. CcureModal supplies
+          role="dialog", aria-modal, the title as accessible name, the focus
+          trap and Escape — the legacy Modal had the Escape and nothing else.
+          `closeLabel="Close"` keeps the control's existing accessible name. */}
+      <CcureModal
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Start New Scan"
         subtitle="Choose a scan type to begin your next assessment."
+        size="lg"
+        closeLabel="Close"
       >
-        <div className="modal-panel-grid">
+        <div className="tpl-grid tpl-grid--modal">
           {filtered.map((tpl) => (
             <ScanCard
               key={tpl.id}
@@ -531,7 +461,7 @@ export default function Dashboard() {
             />
           ))}
         </div>
-      </Modal>
+      </CcureModal>
     </>
   );
 }

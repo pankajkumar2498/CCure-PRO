@@ -32,3 +32,20 @@ regexTarget = "match"
 regexes = [
   '''(?i)(change_me|generate_me|your_|placeholder|example\.com|dummy|xxxx|<[^>]+>)''',
 ]
+
+# Global allowlist for two false positives the default rules raise on this
+# codebase, matched against the flagged text rather than the whole line.
+#
+# 1. The UX4G asset scripts and the design-system tests build the path
+#    tokens/ux4g.generated.css one segment per argument. The word
+#    "tokens" followed by a quoted string trips generic-api-key; the
+#    "secret" is a stylesheet filename.
+# 2. Register.test.jsx drives the password-strength validator with fixed
+#    literals, one per rule it must reject. They are test vectors, not
+#    credentials, and the test needs them spelled out.
+[allowlist]
+regexTarget = "match"
+regexes = [
+  '''ux4g\.generated\.(css|manifest\.json)''',
+  '''Str0ngPassphrase1''',
+]

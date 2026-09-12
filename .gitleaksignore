@@ -1,8 +1,0 @@
-# gitleaks false positives, by fingerprint (path:rule:line).
-#
-# The UX4G asset scripts assemble the generated stylesheet's path from its
-# directory segments one string per line. The segment named after the token
-# directory, followed by the filename on the next line, trips the
-# generic-api-key heuristic; the "secret" is a stylesheet filename.
-Frontend/scripts/verify-ux4g-assets.mjs:generic-api-key:33
-Frontend/scripts/build-ux4g-assets.mjs:generic-api-key:93

@@ -41,6 +41,9 @@ import {
   P1_DONE_SESSION,
   AMT_STUBS,
   AMT_STATS_UNLINKED,
+  NO_SCANS_READ,
+  NM_STUBS,
+  NM_EMPTY,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -1040,6 +1043,177 @@ const AMT_STATES = [
   },
 ];
 
+/* ── NetworkMap (batch 21) ────────────────────────────────────────────────── */
+/* The map is a vis-network canvas, and two things follow from that.
+
+   Drawing on a canvas is not a DOM mutation, so the runner's settle cannot
+   see it. The page fits the view 300 ms after building the graph and animates
+   the fit for 400 ms, which ends about when a capture would otherwise be
+   taken. A canvas state is therefore ready only once the canvas has existed
+   for 1.5 s and three consecutive readings of its pixels, 200 ms apart, are
+   identical. The readings are taken from outside, like every other ready
+   expression; the page carries no hook. Should the canvas ever refuse to be
+   read, the state falls back to waiting 2.5 s.
+
+   No state or probe touches the canvas itself. Node selection, the endpoint
+   evidence and guidance dialogs and asset navigation all start from a click
+   on a node, and are covered by the unit tests. The probes press only
+   controls that read or redraw: Refresh, Fit Screen, Expand All, Collapse
+   All, a subnet checkbox, the freshness window and the mask. */
+const NM_BASE = {
+  route: "/topology",
+  persona: ANALYST,
+  stubs: NM_STUBS,
+  tracked: [
+    ...PAGE_TRACKED,
+    "h2",
+    "h3",
+    "button",
+    "select",
+    "input",
+    "canvas",
+    "[role=status]",
+  ],
+};
+
+const nmCanvasReady = `(() => {
+  const w = window;
+  const canvas = document.querySelector("canvas");
+  if (!canvas || /Loading topology nodes/.test(document.body.innerText)) return false;
+  const now = performance.now();
+  if (!w.__nmCanvasSince) w.__nmCanvasSince = now;
+  let frame;
+  try {
+    frame = canvas.toDataURL();
+  } catch (e) {
+    return now - w.__nmCanvasSince > 2500;
+  }
+  w.__nmCanvasSteady = frame === w.__nmCanvasFrame ? (w.__nmCanvasSteady || 0) + 1 : 0;
+  w.__nmCanvasFrame = frame;
+  return now - w.__nmCanvasSince > 1500 && w.__nmCanvasSteady >= 3;
+})()`;
+
+const NM_PATH = "/api/topology/map";
+const nmButton = (re) =>
+  `el.tagName === 'BUTTON' && ${re}.test(el.textContent || '')`;
+const nmSelectWith = (option) =>
+  `el.tagName === 'SELECT' && [...el.options].some((o) => o.textContent === ${JSON.stringify(option)})`;
+
+const NM_PROBES = [
+  {
+    id: "refresh-by-keyboard",
+    tabTo: nmButton("/Refresh/"),
+    press: "Enter",
+    wait: 600,
+    expectRequest: {
+      path: NM_PATH,
+      query: { subnet_mask: "24", active_within_days: "30" },
+    },
+  },
+  // Enter redraws the view and requests nothing.
+  {
+    id: "fit-by-keyboard",
+    tabTo: nmButton("/Fit Screen/"),
+    press: "Enter",
+    wait: 600,
+  },
+  {
+    id: "expand-all-by-keyboard",
+    tabTo: nmButton("/Expand All/"),
+    press: "Enter",
+    wait: 400,
+    expect: hasText("/\\b14 Visible Nodes/"),
+  },
+  {
+    id: "collapse-all-by-keyboard",
+    tabTo: nmButton("/Collapse All/"),
+    press: "Enter",
+    wait: 400,
+    expect: hasText("/\\b7 Visible Nodes/"),
+  },
+  {
+    id: "subnet-checkbox-by-keyboard",
+    tabTo: "el.tagName === 'INPUT' && el.type === 'checkbox'",
+    press: "Space",
+    wait: 300,
+    expect: `document.querySelector("input[type=checkbox]") && !document.querySelector("input[type=checkbox]").checked`,
+  },
+  // On a closed <select>, the arrow keys step to the next or previous option.
+  {
+    id: "window-by-keyboard",
+    tabTo: nmSelectWith("Last 30 days"),
+    press: "ArrowRight",
+    wait: 600,
+    expectRequest: { path: NM_PATH, query: { active_within_days: "90" } },
+  },
+  {
+    id: "mask-by-keyboard",
+    tabTo: nmSelectWith("Class C (/24)"),
+    press: "ArrowLeft",
+    wait: 600,
+    expectRequest: { path: NM_PATH, query: { subnet_mask: "23" } },
+  },
+];
+
+const NM_STATES = [
+  {
+    ...NM_BASE,
+    id: "nm-org",
+    themes: BOTH,
+    ready: nmCanvasReady,
+    probes: NM_PROBES,
+  },
+  {
+    ...NM_BASE,
+    id: "nm-scan",
+    themes: LIGHT,
+    route: "/scan/nm-scan-7/topology-map",
+    ready: `${hasText("/Scan ID: nm-scan-7/")} && ${nmCanvasReady}`,
+  },
+  {
+    ...NM_BASE,
+    id: "nm-mobile",
+    themes: LIGHT,
+    viewport: [390, 2400],
+    ready: nmCanvasReady,
+  },
+  {
+    ...NM_BASE,
+    id: "nm-empty",
+    themes: LIGHT,
+    stubs: { "/topology/map": NM_EMPTY },
+    ready: hasText("/No Network Nodes Discovered/"),
+  },
+  {
+    ...NM_BASE,
+    id: "nm-error",
+    themes: LIGHT,
+    stubs: {
+      "/topology/map": {
+        __status: 500,
+        body: { detail: "Topology engine unavailable" },
+      },
+    },
+    ready: hasText("/Topology engine unavailable/"),
+  },
+  {
+    ...NM_BASE,
+    id: "nm-denied",
+    themes: LIGHT,
+    persona: NO_SCANS_READ,
+    stubs: {
+      "/topology/map": {
+        __status: 403,
+        body: {
+          detail:
+            "Insufficient privileges. Your role 'analyst' does not have 'scans:read' permission.",
+        },
+      },
+    },
+    ready: hasText("/does not have 'scans:read' permission/"),
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -1048,12 +1222,21 @@ export const STATES = [
   ...P2_STATES,
   ...P1_STATES,
   ...AMT_STATES,
+  ...NM_STATES,
 ];
 
-/** States whose output Batch 20 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 19) and the one page still importing
- *  dashboard.css. Batch 20 changes AMTIntegration only. */
-export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-", "p2-", "p1-"];
+/** States whose output Batch 21 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 20) and the one page still importing
+ *  dashboard.css. Batch 21 changes NetworkMap only. */
+export const REGRESSION_PREFIXES = [
+  "ar-",
+  "vb-",
+  "cw-",
+  "sd-",
+  "p2-",
+  "p1-",
+  "amt-",
+];
 
 /** States the sensitivity gate injects into. */
 export const SENSITIVITY_STATES = ["ar-assets", "vb-cve"];

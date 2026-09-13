@@ -35,6 +35,10 @@ import {
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
+  P1_STUBS,
+  P1_INTERACTIVE_SESSION,
+  P1_SCOPE_SESSION,
+  P1_DONE_SESSION,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -726,18 +730,175 @@ const P2_STATES = [
   },
 ];
 
+/* ── Phase1Results (batch 19) ─────────────────────────────────────────────── */
+/* "Run Port Scan" starts a port scan, and "View Port Scan Results" and
+   "Continue to Port Scan" lead to Phase 2, which can hand off to Phase 3. No
+   action or probe here touches any of the three: probes only select a host,
+   change the port-scan mode, toggle an exclusion and change the host filter.
+   Phase 1 itself never navigates on its own; every capture must end on a
+   Phase 1 route. */
+const P1_BASE = {
+  persona: ANALYST,
+  stubs: P1_STUBS,
+  tracked: [
+    ...PAGE_TRACKED,
+    "h2",
+    "input[type=checkbox]",
+    "input[type=text]",
+    "code",
+  ],
+};
+
+const p1Hosts = hasText("/10\\.20\\.0\\.11/");
+
+// The nearest ancestor naming the exclusion, legacy markup and migrated alike.
+const p1Near = (label, other) =>
+  `(() => { let n = el; for (let i = 0; i < 6 && n; i += 1, n = n.parentElement) { const t = n.textContent || ''; if (${label}.test(t)) return !${other}.test(t); } return false; })()`;
+
+const P1_PROBES = {
+  // Space on the table's checkbox for 10.20.0.11 drops it from the selection.
+  selectHost: {
+    id: "select-host-by-keyboard",
+    tabTo:
+      "el.type === 'checkbox' && !!el.closest('tr') && /10\\.20\\.0\\.11(?!\\d)/.test(el.closest('tr').textContent || '')",
+    press: "Space",
+    wait: 400,
+    expect: "/\\b3 hosts selected/.test(document.body.innerText)",
+  },
+  customMode: {
+    id: "custom-ports-mode-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && (el.textContent || '').trim() === 'Custom Ports'",
+    press: "Enter",
+    wait: 400,
+    expect: "!!document.querySelector('input[placeholder^=\"e.g. 22,80\"]')",
+  },
+  excludePorts: {
+    id: "exclude-ports-switch-by-keyboard",
+    tabTo: `el.type === 'checkbox' && !el.closest('tr') && ${p1Near("/Exclude Specific Ports/", "/Exclude Specific IPs/")}`,
+    press: "Space",
+    wait: 400,
+    expect: "!!document.querySelector('input[placeholder^=\"e.g. 2375\"]')",
+  },
+  filterAll: {
+    id: "host-filter-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && /^All \\(5\\)$/.test((el.textContent || '').trim())",
+    press: "Enter",
+    wait: 400,
+    expect: "/10\\.20\\.0\\.14/.test(document.body.innerText)",
+  },
+};
+
+const P1_STATES = [
+  {
+    ...P1_BASE,
+    id: "p1-basic",
+    route: "/scan/p1-basic/phase1",
+    themes: BOTH,
+    ready: `${hasText("/Scan completed/")} && ${p1Hosts}`,
+    probes: [P1_PROBES.filterAll],
+  },
+  {
+    ...P1_BASE,
+    id: "p1-asset-running",
+    route: "/scan/p1-asset/phase1",
+    themes: BOTH,
+    ready: `${hasText("/Port Scan Running/i")} && ${p1Hosts}`,
+    // Loaded once, then polled every 4 s while the port scan runs.
+    repeatable: ["^GET /api/scans/p1-asset -> "],
+  },
+  {
+    ...P1_BASE,
+    id: "p1-audit-running",
+    route: "/scan/p1-audit/phase1",
+    themes: LIGHT,
+    ready: `${hasText("/Port Scan Running/i")} && ${p1Hosts}`,
+    repeatable: ["^GET /api/scans/p1-audit -> "],
+  },
+  {
+    ...P1_BASE,
+    id: "p1-phase2-done",
+    route: "/scan/host-discovery",
+    themes: BOTH,
+    session: P1_DONE_SESSION,
+    ready: `${hasText("/Port Scan Complete/")} && ${p1Hosts}`,
+  },
+  {
+    ...P1_BASE,
+    id: "p1-interactive",
+    route: "/scan/host-discovery",
+    themes: BOTH,
+    session: P1_INTERACTIVE_SESSION,
+    ready: `${hasText("/Configure & Run Port Scan/")} && ${hasText("/\\b4 hosts selected/")}`,
+    probes: [
+      P1_PROBES.selectHost,
+      P1_PROBES.customMode,
+      P1_PROBES.excludePorts,
+    ],
+  },
+  {
+    ...P1_BASE,
+    id: "p1-scope",
+    route: "/scan/host-discovery",
+    themes: BOTH,
+    session: P1_SCOPE_SESSION,
+    ready: `${hasText("/Sensitive Ports Detected/")} && ${hasText("/Invalid IP, range, or CIDR format/")}`,
+  },
+  {
+    ...P1_BASE,
+    id: "p1-scope-mobile",
+    route: "/scan/host-discovery",
+    themes: LIGHT,
+    viewport: [390, 2400],
+    session: P1_SCOPE_SESSION,
+    ready: `${hasText("/Sensitive Ports Detected/")} && ${hasText("/Invalid IP, range, or CIDR format/")}`,
+  },
+  {
+    ...P1_BASE,
+    id: "p1-readonly",
+    route: "/scan/host-discovery",
+    themes: LIGHT,
+    persona: SCANS_READONLY,
+    session: P1_INTERACTIVE_SESSION,
+    ready: `${hasText("/Configure & Run Port Scan/")} && ${p1Hosts}`,
+  },
+  {
+    ...P1_BASE,
+    id: "p1-unreachable",
+    route: "/scan/p1-unreachable/phase1",
+    themes: BOTH,
+    ready: hasText("/Host is unavailable/"),
+  },
+  {
+    ...P1_BASE,
+    id: "p1-no-results",
+    route: "/scan/p1-no-results/phase1",
+    themes: LIGHT,
+    ready: hasText("/scanner worker was stopped/"),
+  },
+  {
+    ...P1_BASE,
+    id: "p1-load-error",
+    route: "/scan/p1-missing/phase1",
+    themes: LIGHT,
+    ready: hasText("/Scan not found/"),
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
   ...SD_STATES,
   ...CW_STATES,
   ...P2_STATES,
+  ...P1_STATES,
 ];
 
-/** States whose output Batch 18 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 and 17) and the one page still importing
- *  dashboard.css. Batch 18 changes Phase 2 only. */
-export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-"];
+/** States whose output Batch 19 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 18) and the one page still importing
+ *  dashboard.css. Batch 19 changes Phase 1 only. */
+export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-", "p2-"];
 
 /** States the sensitivity gate injects into. */
 export const SENSITIVITY_STATES = ["ar-assets", "vb-cve"];

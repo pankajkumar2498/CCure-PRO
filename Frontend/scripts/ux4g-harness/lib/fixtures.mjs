@@ -898,3 +898,187 @@ export const P2_RUNNING_SESSION = {
   cc_pipelineMode: "asset",
   cc_phase1Hosts: P2_PHASE1_HOSTS,
 };
+
+/* ── Phase1Results (batch 19) ─────────────────────────────────────────────── */
+/* Field names are the page's reads, checked against the host-discovery phase
+   the orchestrator stores: hosts from `_format_host(...).to_basic_dict()` and
+   the summary (`total_hosts`, `active_hosts`, `inactive_hosts`,
+   `scan_duration`, `discovery_profile`, `discovery_intensity`, and the
+   `fallback_*` counts written only at normal intensity). The summary has no
+   status key, so an unreachable target is an active count of zero. */
+const P1_HOSTS = [
+  {
+    ip_address: "10.20.0.11",
+    hostname: "files-01",
+    mac_address: "00:1A:2B:3C:4D:11",
+    vendor: "Dell Inc.",
+    discovery_method: "ARP",
+    response_time_ms: 0.84,
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.12",
+    hostname: "Unknown",
+    mdns_name: "printer-2f.local",
+    mac_address: "00:1A:2B:3C:4D:12",
+    vendor: "HP",
+    discovery_method: "ICMP",
+    response_time_ms: 3.27,
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.13",
+    hostname: "Unknown",
+    netbios_names: [{ name: "KIOSK-07" }],
+    mac_address: "N/A",
+    vendor: "N/A",
+    discovery_method: "TCP",
+    response_time_ms: 12.5,
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.14",
+    hostname: "Unknown",
+    mac_address: "N/A",
+    vendor: "N/A",
+    discovery_method: "ICMP",
+    is_active: false,
+  },
+  {
+    ip_address: "10.20.0.15",
+    hostname: "Unknown",
+    mac_address: "00:1A:2B:3C:4D:15",
+    vendor: "Raspberry Pi Trading",
+    discovery_method: "ARP",
+    response_time_ms: 1.9,
+    is_active: true,
+  },
+];
+
+const P1_SUMMARY = {
+  total_hosts: 5,
+  active_hosts: 4,
+  inactive_hosts: 1,
+  scan_duration: 12.84,
+  phase: 1,
+  scan_type: "ADAPTIVE",
+  discovery_profile: "BALANCED",
+  discovery_intensity: "normal",
+  fallback_targets_count: 2,
+  fallback_active_hosts: 1,
+};
+
+const P1_UNREACHABLE_HOST = {
+  ip_address: "10.20.0.50",
+  hostname: "Unknown",
+  mac_address: "N/A",
+  vendor: "N/A",
+  discovery_method: "ICMP",
+  is_active: false,
+};
+
+const p1Scan = (id, overrides = {}) => ({
+  id,
+  scan_no: 1101,
+  target: "10.20.0.0/28",
+  status: "complete",
+  pipeline_mode: "basic",
+  results: { phase1: { data: P1_HOSTS, summary: P1_SUMMARY } },
+  ...overrides,
+});
+
+export const P1_STUBS = {
+  // Host discovery only: completion banner and export panel.
+  "/scans/p1-basic": p1Scan("p1-basic"),
+  // Pipelines with a port scan still running. Phase 1 polls these every 4 s
+  // in automatic mode and never navigates on its own.
+  "/scans/p1-asset": p1Scan("p1-asset", {
+    scan_no: 1102,
+    status: "running",
+    pipeline_mode: "asset",
+    results: {
+      phase1: { data: P1_HOSTS, summary: P1_SUMMARY },
+      phase2: {},
+    },
+  }),
+  "/scans/p1-audit": p1Scan("p1-audit", {
+    scan_no: 1103,
+    status: "running",
+    pipeline_mode: "vulnerability_audit",
+    results: {
+      phase1: { data: P1_HOSTS, summary: P1_SUMMARY },
+      phase2: {},
+    },
+  }),
+  "/scans/p1-unreachable": p1Scan("p1-unreachable", {
+    scan_no: 1104,
+    target: "10.20.0.50",
+    pipeline_mode: "asset",
+    results: {
+      phase1: {
+        data: [P1_UNREACHABLE_HOST],
+        summary: {
+          total_hosts: 1,
+          active_hosts: 0,
+          inactive_hosts: 1,
+          scan_duration: 6.02,
+          phase: 1,
+          discovery_profile: "FAST",
+          discovery_intensity: "light",
+        },
+      },
+    },
+  }),
+  "/scans/p1-no-results": {
+    id: "p1-no-results",
+    scan_no: 1105,
+    status: "failed",
+    failure_reason:
+      "Host discovery did not complete: the scanner worker was stopped.",
+    results: { phase1: {} },
+  },
+  "/scans/p1-missing": { __status: 404, body: { detail: "Scan not found" } },
+};
+
+/* Scan context left in sessionStorage by a live pipeline. Phase 1 computes its
+   default host selection once, from the hosts in context at first render, so
+   the interactive states seed the context rather than load from the URL. */
+const P1_CONTEXT = {
+  cc_scanNo: 1103,
+  cc_target: "10.20.0.0/28",
+  cc_phase1Hosts: P1_HOSTS,
+  cc_phase1Summary: P1_SUMMARY,
+};
+
+export const P1_INTERACTIVE_SESSION = {
+  ...P1_CONTEXT,
+  cc_scanId: "p1-audit",
+  cc_pipelineMode: "vulnerability_audit",
+  cc_executionMode: "interactive",
+  cc_portScanIntensity: "deep",
+};
+
+// Custom ports including a sensitive one, exclusions set, one invalid IP.
+export const P1_SCOPE_SESSION = {
+  ...P1_INTERACTIVE_SESSION,
+  cc_portScanMode: "custom",
+  cc_customPorts: "22,80,2375,8000-8010",
+  cc_excludePorts: "2375, 6443",
+  cc_excludeIps: "10.20.0.13,10.20.0.0/33",
+};
+
+// An asset discovery whose port scan has already finished.
+export const P1_DONE_SESSION = {
+  ...P1_CONTEXT,
+  cc_scanId: "p1-asset",
+  cc_scanNo: 1102,
+  cc_pipelineMode: "asset",
+  cc_phase2Results: [
+    {
+      ip_address: "10.20.0.11",
+      is_active: true,
+      open_ports: [{ port: 22, service: "ssh", risk: "Low" }],
+    },
+  ],
+  cc_phase2Summary: { total_hosts: 4, hosts_with_ports: 1, scan_duration: 40 },
+};

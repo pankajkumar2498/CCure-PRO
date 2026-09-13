@@ -14,9 +14,21 @@
  *
  * For the VULNERABILITY AUDIT pipeline:
  *   Shows host table + "Continue to Port Scan" button (navigates to Phase2Results).
+ *
+ * Checkpoint 3C batch 19 — design-system migration. Presentation only: the
+ * load, the port-scan request and its guards, the port and address parsers,
+ * the default host selection, the 4-second poll and every navigation are the
+ * code that was here, and `__tests__/pages/scan/Phase1Results.test.jsx` pins
+ * them. "Run Port Scan" starts a port scan against the selected hosts with the
+ * options beneath it, so each of those controls is named for what it sends.
  */
-import React, { useState, useEffect } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useId, useState, useEffect } from "react";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
@@ -26,6 +38,13 @@ import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can } from "../../auth/permissions";
 import { parseExcludeIpsJS } from "../../utils/ipValidation";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/phase1-results.css";
 
 const SENSITIVE_PORTS = [2375, 2376, 6443, 10250];
 
@@ -209,6 +228,7 @@ export default function Phase1Results() {
     () => !!excludeIps,
   );
   const [excludeIpsError, setExcludeIpsError] = useState("");
+  const idBase = useId();
 
   const parseCustomPortsJS = (portsStr) => {
     if (!portsStr || !portsStr.trim()) {
@@ -623,8 +643,11 @@ export default function Phase1Results() {
   if (hydrating) {
     return (
       <AppLayout pageTitle="Discovery Results">
-        <div className="page-inner">
-          <p className="page-subtitle">Loading scan results…</p>
+        <div className="p1-page">
+          <h1 className="p1-title">Discovery Results</h1>
+          <p className="p1-loading" role="status">
+            Loading scan results…
+          </p>
         </div>
       </AppLayout>
     );
@@ -633,16 +656,14 @@ export default function Phase1Results() {
   if (hydrateError) {
     return (
       <AppLayout pageTitle="Discovery Results">
-        <div className="page-inner">
-          <div className="alert alert--error" style={{ margin: "16px 0" }}>
-            ⚠ {hydrateError}
-          </div>
-          <button
-            className="btn btn--ghost"
-            onClick={() => navigate("/history")}
-          >
-            ← Back to Scan History
-          </button>
+        <div className="p1-page">
+          <h1 className="p1-title">Discovery Results</h1>
+          <CcureAlert variant="danger" className="p1-alert">
+            {hydrateError}
+          </CcureAlert>
+          <CcureButton as={Link} to="/history" variant="secondary">
+            <span aria-hidden="true">←</span> Back to Scan History
+          </CcureButton>
         </div>
       </AppLayout>
     );
@@ -666,898 +687,583 @@ export default function Phase1Results() {
         : 2
     : 1;
 
+  const portScanHeadingId = `${idBase}-port-scan`;
+  const modeLabelId = `${idBase}-mode`;
+  const customPortsId = `${idBase}-custom-ports`;
+  const customPortsErrorId = `${idBase}-custom-ports-error`;
+  const excludePortsHeadingId = `${idBase}-exclude-ports`;
+  const excludePortsId = `${idBase}-exclude-ports-input`;
+  const excludeIpsHeadingId = `${idBase}-exclude-ips`;
+  const excludeIpsId = `${idBase}-exclude-ips-input`;
+  const excludeIpsErrorId = `${idBase}-exclude-ips-error`;
+
+  const hostColumns = [
+    ...(showCheckboxes
+      ? [
+          {
+            key: "select",
+            className: "p1-col-select",
+            header: (
+              <input
+                type="checkbox"
+                className="p1-check"
+                aria-label="Select all active hosts for port scan"
+                checked={
+                  activeHosts.length > 0 &&
+                  activeHosts.every((h) => selected.has(h.ip_address))
+                }
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelected(new Set(activeHosts.map((h) => h.ip_address)));
+                  } else {
+                    setSelected(new Set());
+                  }
+                }}
+                disabled={!canExecuteScans}
+              />
+            ),
+          },
+        ]
+      : []),
+    { key: "ip", header: "IP Address" },
+    { key: "hostname", header: "Hostname" },
+    { key: "mac", header: "MAC" },
+    { key: "vendor", header: "Vendor" },
+    { key: "method", header: "Method" },
+    ...(!isBasicScan ? [{ key: "response", header: "Response" }] : []),
+    { key: "status", header: "Status" },
+  ];
+
   return (
     <AppLayout pageTitle="Discovery Results" saveStatus={saveStatus}>
       <ScanStepper current={stepperCurrent} />
 
-      <div className="page-inner">
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="page-title-row">
+      <div className="p1-page">
+        <header className="p1-header">
           <div>
-            <h2 className="page-title">Discovery Results</h2>
-            <p className="page-subtitle">
-              Target: <code className="ip-code">{target}</code>
+            <h1 className="p1-title">Discovery Results</h1>
+            <p className="p1-subtitle">
+              Target: <code className="p1-mono">{target}</code>
               {scanId && (
-                <span className="muted"> · Scan No. {scanNo ?? "—"}</span>
+                <span className="p1-quiet"> · Scan No. {scanNo ?? "—"}</span>
               )}
             </p>
           </div>
-          <button
-            className="btn btn--ghost"
-            onClick={() => navigate("/dashboard")}
-          >
-            ← New Scan
-          </button>
-        </div>
+          <CcureButton as={Link} to="/dashboard" variant="ghost" size="sm">
+            <span aria-hidden="true">←</span> New Scan
+          </CcureButton>
+        </header>
 
         {error && (
-          <div className="alert alert--error" style={{ margin: "16px 0" }}>
-            ⚠ {error}
-          </div>
+          <CcureAlert variant="danger" className="p1-alert">
+            {error}
+          </CcureAlert>
         )}
 
-        {/* ── Unreachable Banner ───────────────────────────────────────────── */}
         {isUnreachable && (
-          <div
-            style={{
-              margin: "16px 0",
-              padding: "16px 20px",
-              borderRadius: 8,
-              background: "rgba(245, 158, 11, 0.08)",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              color: "#92400e",
-            }}
+          <CcureAlert
+            variant="warning"
+            live={false}
+            title="Host is unavailable/down/unreachable"
+            className="p1-alert"
           >
-            <span style={{ fontSize: 24 }}>⚠️</span>
-            <div>
-              <strong style={{ display: "block", fontSize: 16 }}>
-                Host is unavailable/down/unreachable
-              </strong>
-              <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                The discovery scan completed but the target did not respond.
-                Verify the IP address and network connectivity before
-                re-scanning.
-              </p>
-            </div>
-          </div>
+            The discovery scan completed but the target did not respond. Verify
+            the IP address and network connectivity before re-scanning.
+          </CcureAlert>
         )}
 
-        {/* ── Phase 1 summary bar ──────────────────────────────────────────── */}
         {phase1Summary && (
-          <div className="summary-bar">
-            <span className="summary-item">
-              <b>{phase1Summary.total_hosts}</b> Total
-            </span>
-            <span className="summary-item summary-item--active">
-              <b>{phase1Summary.active_hosts}</b> Active
-            </span>
-            <span className="summary-item">
-              <b>{phase1Summary.inactive_hosts}</b> Inactive
-            </span>
-            <span className="summary-item">
-              <b>{fmtNumber(phase1Summary.scan_duration)}s</b> Duration
-            </span>
+          <ul className="p1-summary">
+            <li className="p1-summary__item">
+              <strong>{phase1Summary.total_hosts}</strong> Total
+            </li>
+            <li className="p1-summary__item p1-summary__item--accent">
+              <strong>{phase1Summary.active_hosts}</strong> Active
+            </li>
+            <li className="p1-summary__item">
+              <strong>{phase1Summary.inactive_hosts}</strong> Inactive
+            </li>
+            <li className="p1-summary__item">
+              <strong>{fmtNumber(phase1Summary.scan_duration)}s</strong>{" "}
+              Duration
+            </li>
             {isAssetPipeline && phase1Summary.discovery_profile && (
-              <span className="summary-item" style={{ gap: 6 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                    background:
-                      phase1Summary.discovery_profile === "FAST"
-                        ? "rgba(34,211,238,0.12)"
-                        : phase1Summary.discovery_profile === "BALANCED"
-                          ? "rgba(245,158,11,0.12)"
-                          : "rgba(34,197,94,0.12)",
-                    color:
-                      phase1Summary.discovery_profile === "FAST"
-                        ? "#22d3ee"
-                        : phase1Summary.discovery_profile === "BALANCED"
-                          ? "#f59e0b"
-                          : "#22c55e",
-                    border:
-                      phase1Summary.discovery_profile === "FAST"
-                        ? "1px solid rgba(34,211,238,0.3)"
-                        : phase1Summary.discovery_profile === "BALANCED"
-                          ? "1px solid rgba(245,158,11,0.3)"
-                          : "1px solid rgba(34,197,94,0.3)",
-                  }}
+              <li className="p1-summary__item p1-summary__item--plain">
+                <CcureBadge
+                  variant={
+                    phase1Summary.discovery_profile === "FAST"
+                      ? "info"
+                      : phase1Summary.discovery_profile === "BALANCED"
+                        ? "warning"
+                        : "success"
+                  }
                 >
                   {phase1Summary.discovery_profile}
-                </span>
-              </span>
+                </CcureBadge>
+              </li>
             )}
             {isAssetPipeline &&
               phase1Summary.discovery_intensity === "normal" &&
               phase1Summary.fallback_targets_count != null && (
-                <span
-                  className="summary-item"
-                  style={{ fontSize: 12, color: "var(--text-muted)" }}
-                >
-                  Fallback: <b>{phase1Summary.fallback_active_hosts}</b>/
+                <li className="p1-summary__item">
+                  Fallback:{" "}
+                  <strong>{phase1Summary.fallback_active_hosts}</strong>/
                   {phase1Summary.fallback_targets_count} resolved
-                </span>
+                </li>
               )}
-          </div>
+          </ul>
         )}
 
-        {/* ── Port Scan Phase Banners & Controls ── */}
-        {hasPhase2 && !isUnreachable && (
-          <div style={{ margin: "16px 0" }}>
-            {phase2Done ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "14px 20px",
-                  borderRadius: 8,
-                  background: "rgba(34,197,94,0.08)",
-                  border: "1px solid rgba(34,197,94,0.3)",
-                }}
+        {hasPhase2 &&
+          !isUnreachable &&
+          (phase2Done ? (
+            <CcureAlert
+              variant="success"
+              title="Port Scan Complete"
+              className="p1-alert"
+            >
+              <p className="p1-done__text">
+                Phase 2 finished successfully. View the full port scan results
+                below.
+              </p>
+              <CcureButton
+                as={Link}
+                to="/scan/asset-discovery"
+                variant="primary"
+                size="sm"
               >
-                <span style={{ fontSize: 22 }}>✅</span>
-                <div style={{ flex: 1 }}>
-                  <strong style={{ display: "block", color: "#15803d" }}>
-                    Port Scan Complete
-                  </strong>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    Phase 2 finished successfully. View the full port scan
-                    results below.
-                  </span>
-                </div>
-                <button
-                  className="btn btn--primary"
-                  onClick={() => navigate("/scan/asset-discovery")}
-                >
-                  View Port Scan Results →
-                </button>
-              </div>
-            ) : executionMode === "interactive" ? (
-              <div
-                style={{
-                  padding: "20px",
-                  borderRadius: 8,
-                  background: "var(--bg-card)",
-                  border: "1px solid var(--border)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: 16,
-                  }}
-                >
-                  <div>
-                    <strong
-                      style={{
-                        display: "block",
-                        color: "var(--text)",
-                        fontSize: "1.1rem",
-                      }}
-                    >
-                      Configure & Run Port Scan
-                    </strong>
-                    <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                      Select hosts below to probe TCP/UDP services.{" "}
-                      <b>{selected.size}</b> host
+                View Port Scan Results <span aria-hidden="true">→</span>
+              </CcureButton>
+            </CcureAlert>
+          ) : executionMode === "interactive" ? (
+            <section
+              className="p1-portscan"
+              aria-labelledby={portScanHeadingId}
+            >
+              <div className="p1-portscan__head">
+                <div>
+                  <h2 id={portScanHeadingId} className="p1-portscan__title">
+                    Configure &amp; Run Port Scan
+                  </h2>
+                  <p className="p1-portscan__text">
+                    Select hosts below to probe TCP/UDP services.{" "}
+                    <span role="status">
+                      <strong>{selected.size}</strong> host
                       {selected.size !== 1 ? "s" : ""} selected.
                     </span>
-                  </div>
-                  <button
-                    className="btn btn--primary"
-                    onClick={runPortScan}
-                    disabled={
-                      selected.size === 0 ||
-                      assetLoading ||
-                      !canExecuteScans ||
-                      (portScanMode === "custom" && !!customPortsError)
-                    }
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  </p>
+                </div>
+                <CcureButton
+                  variant="primary"
+                  onClick={runPortScan}
+                  loading={assetLoading}
+                  disabled={
+                    selected.size === 0 ||
+                    assetLoading ||
+                    !canExecuteScans ||
+                    (portScanMode === "custom" && !!customPortsError)
+                  }
+                >
+                  {assetLoading ? (
+                    "Starting Port Scan..."
+                  ) : (
+                    <>
+                      Run Port Scan on Selected Hosts{" "}
+                      <span aria-hidden="true">→</span>
+                    </>
+                  )}
+                </CcureButton>
+              </div>
+
+              <div className="p1-portscan__body">
+                <div className="p1-field-row">
+                  <span id={modeLabelId} className="p1-label">
+                    Port Scan Mode:
+                  </span>
+                  <div
+                    className="p1-toggles"
+                    role="group"
+                    aria-labelledby={modeLabelId}
                   >
-                    {assetLoading ? (
-                      <>
-                        <span
-                          className="btn-spinner"
-                          style={{ width: 14, height: 14, borderWidth: 2 }}
-                        />
-                        Starting Port Scan...
-                      </>
-                    ) : (
-                      <>Run Port Scan on Selected Hosts →</>
-                    )}
-                  </button>
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      className="p1-toggle"
+                      aria-pressed={portScanMode === "intensity"}
+                      onClick={() => {
+                        setPortScanMode("intensity");
+                        setCustomPortsError("");
+                      }}
+                    >
+                      Intensity Profile
+                    </CcureButton>
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      className="p1-toggle"
+                      aria-pressed={portScanMode === "custom"}
+                      onClick={() => {
+                        setPortScanMode("custom");
+                        setCustomPortsError("");
+                      }}
+                    >
+                      Custom Ports
+                    </CcureButton>
+                  </div>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                    borderTop: "1px solid var(--border)",
-                    paddingTop: 16,
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 16 }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: "var(--text)",
+                {portScanMode === "intensity" ? (
+                  <p className="p1-note">
+                    Selected intensity:{" "}
+                    <strong>
+                      {portScanIntensity?.toUpperCase() || "NORMAL"}
+                    </strong>{" "}
+                    (change on setup screen)
+                  </p>
+                ) : (
+                  <div className="p1-field">
+                    <label htmlFor={customPortsId} className="p1-label">
+                      Custom ports
+                    </label>
+                    <input
+                      id={customPortsId}
+                      type="text"
+                      className="p1-input"
+                      value={customPorts || ""}
+                      onChange={(e) => {
+                        setCustomPorts(e.target.value);
+                        const { error: portErr } = parseCustomPortsJS(
+                          e.target.value,
+                        );
+                        setCustomPortsError(portErr);
                       }}
-                    >
-                      Port Scan Mode:
-                    </span>
+                      placeholder="e.g. 22,80,443,8000-8100"
+                      aria-invalid={customPortsError ? "true" : undefined}
+                      aria-describedby={
+                        customPortsError ? customPortsErrorId : undefined
+                      }
+                    />
                     <div
-                      style={{
-                        display: "flex",
-                        background: "rgba(255,255,255,0.05)",
-                        borderRadius: "6px",
-                        padding: "2px",
-                      }}
+                      className="p1-chips"
+                      role="group"
+                      aria-label="Quick select a port list"
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPortScanMode("intensity");
-                          setCustomPortsError("");
-                        }}
-                        style={{
-                          background:
-                            portScanMode === "intensity"
-                              ? "var(--btn-primary-bg, #3b82f6)"
-                              : "transparent",
-                          color:
-                            portScanMode === "intensity"
-                              ? "#ffffff"
-                              : "var(--text-muted)",
-                          border: "none",
-                          borderRadius: "4px",
-                          padding: "4px 12px",
-                          fontSize: "0.8rem",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        Intensity Profile
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPortScanMode("custom");
-                          setCustomPortsError("");
-                        }}
-                        style={{
-                          background:
-                            portScanMode === "custom"
-                              ? "var(--btn-primary-bg, #3b82f6)"
-                              : "transparent",
-                          color:
-                            portScanMode === "custom"
-                              ? "#ffffff"
-                              : "var(--text-muted)",
-                          border: "none",
-                          borderRadius: "4px",
-                          padding: "4px 12px",
-                          fontSize: "0.8rem",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        Custom Ports
-                      </button>
+                      <span className="p1-hint" aria-hidden="true">
+                        Quick Select:
+                      </span>
+                      {Object.entries(PORT_PROFILES)
+                        .filter(([k]) => k !== "custom")
+                        .map(([k, prof]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className="p1-chip"
+                            onClick={() => {
+                              setCustomPorts(prof.ports);
+                              setCustomPortsError("");
+                            }}
+                          >
+                            {prof.label.split(" ")[0]}
+                          </button>
+                        ))}
                     </div>
+                    {customPortsError && (
+                      <p id={customPortsErrorId} className="p1-error">
+                        <span aria-hidden="true">⚠</span> {customPortsError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="p1-exclusion">
+                  <div className="p1-exclusion__head">
+                    <div>
+                      <h3
+                        id={excludePortsHeadingId}
+                        className="p1-exclusion__title"
+                      >
+                        <span aria-hidden="true">🚫</span> Exclude Specific
+                        Ports
+                      </h3>
+                      <p
+                        id={`${excludePortsHeadingId}-hint`}
+                        className="p1-hint"
+                      >
+                        Exclude sensitive or firewalled ports from scanning
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      className="p1-switch"
+                      checked={excludePortsEnabled}
+                      onChange={(e) =>
+                        handleExcludeToggleChange(e.target.checked)
+                      }
+                      aria-labelledby={excludePortsHeadingId}
+                      aria-describedby={`${excludePortsHeadingId}-hint`}
+                    />
                   </div>
 
-                  {portScanMode === "intensity" ? (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: "var(--text-muted)",
-                        background: "rgba(255,255,255,0.02)",
-                        padding: "10px 14px",
-                        borderRadius: "6px",
-                        border: "1px dashed var(--border)",
-                      }}
-                    >
-                      Selected intensity:{" "}
-                      <span style={{ fontWeight: "700", color: "var(--text)" }}>
-                        {portScanIntensity?.toUpperCase() || "NORMAL"}
-                      </span>{" "}
-                      (change on setup screen)
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "center",
-                        }}
-                      >
-                        <input
-                          type="text"
-                          className="ns-input"
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            borderRadius: "6px",
-                            border: "1px solid var(--border)",
-                            background: "rgba(0,0,0,0.2)",
-                            color: "var(--text)",
-                            fontSize: "0.88rem",
-                          }}
-                          value={customPorts || ""}
-                          onChange={(e) => {
-                            setCustomPorts(e.target.value);
-                            const { error: portErr } = parseCustomPortsJS(
-                              e.target.value,
-                            );
-                            setCustomPortsError(portErr);
-                          }}
-                          placeholder="e.g. 22,80,443,8000-8100"
-                        />
-                      </div>
+                  {excludePortsEnabled && (
+                    <div className="p1-exclusion__body">
+                      <label htmlFor={excludePortsId} className="p1-label">
+                        Ports to exclude
+                      </label>
+                      <input
+                        id={excludePortsId}
+                        type="text"
+                        className="p1-input"
+                        value={excludePorts || ""}
+                        onChange={(e) => setExcludePorts(e.target.value)}
+                        placeholder="e.g. 2375,2376,6443,10250 or 80-90"
+                        disabled={assetLoading || !canExecuteScans}
+                      />
 
-                      <div
-                        className="ns-chips"
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "center",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "var(--text-muted)",
-                            marginRight: 4,
-                          }}
-                        >
-                          Quick Select:
-                        </span>
-                        {Object.entries(PORT_PROFILES)
-                          .filter(([k]) => k !== "custom")
-                          .map(([k, prof]) => (
-                            <button
-                              key={k}
-                              type="button"
-                              className="ns-chip"
-                              onClick={() => {
-                                setCustomPorts(prof.ports);
-                                setCustomPortsError("");
-                              }}
-                              style={{
-                                padding: "3px 8px",
-                                fontSize: "0.75rem",
-                              }}
-                            >
-                              {prof.label.split(" ")[0]}
-                            </button>
+                      {excludeTokens.length > 0 && (
+                        <ul className="p1-tags" aria-label="Excluded ports">
+                          {excludeTokens.map((token, idx) => (
+                            <li key={`${token}-${idx}`} className="p1-tag">
+                              {token}
+                              <button
+                                type="button"
+                                className="p1-tag__remove"
+                                aria-label={`Remove ${token} from excluded ports`}
+                                onClick={() => handleRemoveExcludeToken(token)}
+                                disabled={assetLoading || !canExecuteScans}
+                              >
+                                <span aria-hidden="true">×</span>
+                              </button>
+                            </li>
                           ))}
-                      </div>
+                        </ul>
+                      )}
 
-                      {customPortsError && (
-                        <div
-                          style={{
-                            color: "#ef4444",
-                            fontSize: "0.8rem",
-                            marginTop: 4,
-                          }}
+                      <div className="p1-chips">
+                        <span className="p1-hint">Quick:</span>
+                        <button
+                          type="button"
+                          className="p1-chip"
+                          onClick={() =>
+                            setExcludePorts("2375,2376,6443,10250")
+                          }
+                          disabled={assetLoading || !canExecuteScans}
                         >
-                          ⚠ {customPortsError}
-                        </div>
+                          Sensitive Ports
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p1-exclusion">
+                  <div className="p1-exclusion__head">
+                    <div>
+                      <h3
+                        id={excludeIpsHeadingId}
+                        className="p1-exclusion__title"
+                      >
+                        <span aria-hidden="true">🚫</span> Exclude Specific IPs
+                        / Subnets
+                      </h3>
+                      <p id={`${excludeIpsHeadingId}-hint`} className="p1-hint">
+                        Exclude sensitive target hosts or subnets from scanning
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      className="p1-switch"
+                      checked={excludeIpsEnabled}
+                      onChange={(e) =>
+                        handleExcludeIpsToggleChange(e.target.checked)
+                      }
+                      aria-labelledby={excludeIpsHeadingId}
+                      aria-describedby={`${excludeIpsHeadingId}-hint`}
+                    />
+                  </div>
+
+                  {excludeIpsEnabled && (
+                    <div className="p1-exclusion__body">
+                      <label htmlFor={excludeIpsId} className="p1-label">
+                        IP addresses or subnets to exclude
+                      </label>
+                      <input
+                        id={excludeIpsId}
+                        type="text"
+                        className="p1-input"
+                        value={excludeIps || ""}
+                        onChange={(e) => setExcludeIps(e.target.value)}
+                        placeholder="e.g. 10.180.12.10,10.190.0.0/16"
+                        disabled={assetLoading || !canExecuteScans}
+                        aria-invalid={excludeIpsError ? "true" : undefined}
+                        aria-describedby={
+                          excludeIpsError ? excludeIpsErrorId : undefined
+                        }
+                      />
+
+                      {excludeIpsError && (
+                        <p id={excludeIpsErrorId} className="p1-error">
+                          <span aria-hidden="true">⚠</span> {excludeIpsError}
+                        </p>
                       )}
                     </div>
                   )}
-
-                  {/* Exclude Ports Section */}
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: 16,
-                      marginTop: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <div>
-                        <strong
-                          style={{
-                            display: "block",
-                            color: "var(--text)",
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          🚫 Exclude Specific Ports
-                        </strong>
-                        <span
-                          style={{ fontSize: 12, color: "var(--text-muted)" }}
-                        >
-                          Exclude sensitive or firewalled ports from scanning
-                        </span>
-                      </div>
-                      <div className="ns-switch-wrapper">
-                        <label className="ns-switch">
-                          <input
-                            type="checkbox"
-                            checked={excludePortsEnabled}
-                            onChange={(e) =>
-                              handleExcludeToggleChange(e.target.checked)
-                            }
-                          />
-                          <span className="ns-slider round"></span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {excludePortsEnabled && (
-                      <div
-                        style={{
-                          marginTop: "12px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <input
-                            type="text"
-                            className="ns-input"
-                            style={{
-                              flex: 1,
-                              padding: "8px 12px",
-                              borderRadius: "6px",
-                              border: "1px solid var(--border)",
-                              background: "rgba(0,0,0,0.2)",
-                              color: "var(--text)",
-                              fontSize: "0.88rem",
-                            }}
-                            value={excludePorts || ""}
-                            onChange={(e) => setExcludePorts(e.target.value)}
-                            placeholder="e.g. 2375,2376,6443,10250 or 80-90"
-                            disabled={assetLoading || !canExecuteScans}
-                          />
-                        </div>
-
-                        {excludeTokens.length > 0 && (
-                          <div
-                            className="ns-exclude-tags-wrap"
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "6px",
-                            }}
-                          >
-                            {excludeTokens.map((token, idx) => (
-                              <span
-                                key={`${token}-${idx}`}
-                                className="ns-exclude-tag"
-                              >
-                                {token}
-                                <button
-                                  type="button"
-                                  className="ns-exclude-tag-remove"
-                                  onClick={() =>
-                                    handleRemoveExcludeToken(token)
-                                  }
-                                  disabled={assetLoading || !canExecuteScans}
-                                >
-                                  ×
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <div
-                          className="ns-chips"
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            alignItems: "center",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 12,
-                              color: "var(--text-muted)",
-                              marginRight: 4,
-                            }}
-                          >
-                            Quick:
-                          </span>
-                          <button
-                            type="button"
-                            className="ns-chip"
-                            onClick={() =>
-                              setExcludePorts("2375,2376,6443,10250")
-                            }
-                            disabled={assetLoading || !canExecuteScans}
-                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
-                          >
-                            Sensitive Ports
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Exclude IPs Section */}
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: 16,
-                      marginTop: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <div>
-                        <strong
-                          style={{
-                            display: "block",
-                            color: "var(--text)",
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          🚫 Exclude Specific IPs / Subnets
-                        </strong>
-                        <span
-                          style={{ fontSize: 12, color: "var(--text-muted)" }}
-                        >
-                          Exclude sensitive target hosts or subnets from
-                          scanning
-                        </span>
-                      </div>
-                      <div className="ns-switch-wrapper">
-                        <label className="ns-switch">
-                          <input
-                            type="checkbox"
-                            checked={excludeIpsEnabled}
-                            onChange={(e) =>
-                              handleExcludeIpsToggleChange(e.target.checked)
-                            }
-                          />
-                          <span className="ns-slider round"></span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {excludeIpsEnabled && (
-                      <div
-                        style={{
-                          marginTop: "12px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <input
-                            type="text"
-                            className="ns-input"
-                            style={{
-                              flex: 1,
-                              padding: "8px 12px",
-                              borderRadius: "6px",
-                              border: "1px solid var(--border)",
-                              background: "rgba(0,0,0,0.2)",
-                              color: "var(--text)",
-                              fontSize: "0.88rem",
-                            }}
-                            value={excludeIps || ""}
-                            onChange={(e) => setExcludeIps(e.target.value)}
-                            placeholder="e.g. 10.180.12.10,10.190.0.0/16"
-                            disabled={assetLoading || !canExecuteScans}
-                          />
-                        </div>
-
-                        {excludeIpsError && (
-                          <div
-                            style={{
-                              color: "#ef4444",
-                              fontSize: "0.8rem",
-                              marginTop: 4,
-                            }}
-                          >
-                            ⚠ {excludeIpsError}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Sensitive Ports Warning Banner */}
-                  {sensitivePortsFound && (
-                    <div
-                      className="ns-sensitive-banner"
-                      style={{
-                        marginTop: "12px",
-                        background: "rgba(245,158,11,0.08)",
-                        borderLeft: "3px solid #f59e0b",
-                        color: "#fbbf24",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <div style={{ fontWeight: "600", marginBottom: "4px" }}>
-                        ⚠️ Sensitive Ports Detected
-                      </div>
-                      <p style={{ margin: 0, color: "#d4d4d8" }}>
-                        Your selection includes sensitive ports (Docker API{" "}
-                        <code>2375/2376</code>, Kubernetes{" "}
-                        <code>6443/10250</code>). Scanning them can trigger
-                        intrusion detection systems or crash services.
-                      </p>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "14px 20px",
-                  borderRadius: 8,
-                  background: "rgba(99,102,241,0.08)",
-                  border: "1px solid rgba(99,102,241,0.3)",
-                }}
-              >
-                <span
-                  className="btn-spinner"
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderWidth: 3,
-                    flexShrink: 0,
-                  }}
-                />
-                <div>
-                  <strong style={{ display: "block", color: "#6366f1" }}>
-                    Port Scan Running…
-                  </strong>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    Phase 2 is running automatically in the background. This
-                    page will update when it completes.
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* ── Sub-progress bar (automatic mode only) ── */}
-        {executionMode === "automatic" && hasPhase2 && (
-          <div className="asset-pipeline-progress">
-            <div className="app-progress-track">
-              <div
-                className={`app-progress-fill ${phase2Polling ? "app-progress-fill--animated" : ""}`}
-                style={{
-                  width: phase2Done ? "100%" : phase2Polling ? "65%" : "50%",
-                }}
-              />
+                {sensitivePortsFound && (
+                  <CcureAlert
+                    variant="warning"
+                    title="Sensitive Ports Detected"
+                    className="p1-alert"
+                  >
+                    Your selection includes sensitive ports (Docker API{" "}
+                    <code className="p1-mono">2375/2376</code>, Kubernetes{" "}
+                    <code className="p1-mono">6443/10250</code>). Scanning them
+                    can trigger intrusion detection systems or crash services.
+                  </CcureAlert>
+                )}
+              </div>
+            </section>
+          ) : (
+            <div className="p1-running" role="status">
+              <span className="p1-spinner" aria-hidden="true" />
+              <div>
+                <h2 className="p1-running__title">Port Scan Running…</h2>
+                <p className="p1-running__text">
+                  Phase 2 is running automatically in the background. This page
+                  will update when it completes.
+                </p>
+              </div>
             </div>
-            <div className="app-progress-labels">
-              <span className="app-progress-label app-progress-label--done">
-                ✓ Discovery
-              </span>
-              <span
-                className={`app-progress-label ${phase2Polling ? "app-progress-label--active" : phase2Done ? "app-progress-label--done" : "app-progress-label--pending"}`}
+          ))}
+
+        {executionMode === "automatic" && hasPhase2 && (
+          <div className="p1-pipeline">
+            <div
+              className={`p1-pipeline__track p1-pipeline__track--${phase2Done ? "done" : phase2Polling ? "polling" : "pending"}`}
+              aria-hidden="true"
+            >
+              <div className="p1-pipeline__fill" />
+            </div>
+            <ol className="p1-pipeline__steps">
+              <li className="p1-step p1-step--done">✓ Discovery</li>
+              <li
+                className={`p1-step p1-step--${phase2Polling ? "active" : phase2Done ? "done" : "pending"}`}
               >
                 {phase2Done
                   ? "✓ Port Scan"
                   : phase2Polling
                     ? "● Port Scan"
                     : "○ Port Scan"}
-              </span>
-            </div>
+              </li>
+            </ol>
           </div>
         )}
 
-        {/* ── Filter tabs (non-asset pipelines) ────────────────────────────── */}
         {!isAssetPipeline && (
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 12,
-              flexWrap: "wrap",
-            }}
+            className="p1-filters"
+            role="group"
+            aria-label="Discovered hosts to show"
           >
-            <div className="filter-tabs">
-              {[
-                ["active", `Active (${activeHosts.length})`],
-                ["all", `All (${phase1Hosts.length})`],
-              ].map(([val, lbl]) => (
-                <button
-                  key={val}
-                  className={`filter-tab ${filter === val ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilter(val)}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
+            {[
+              ["active", `Active (${activeHosts.length})`],
+              ["all", `All (${phase1Hosts.length})`],
+            ].map(([val, lbl]) => (
+              <CcureButton
+                key={val}
+                variant="secondary"
+                size="sm"
+                className="p1-toggle"
+                aria-pressed={filter === val}
+                onClick={() => setFilter(val)}
+              >
+                {lbl}
+              </CcureButton>
+            ))}
           </div>
         )}
 
-        {/* ── Discovery hosts table ─────────────────────────────────────────── */}
-        <div className="results-table-wrap">
-          <table className="results-table">
-            <thead>
-              <tr>
-                {showCheckboxes && (
-                  <th style={{ width: 40, paddingRight: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={
-                        activeHosts.length > 0 &&
-                        activeHosts.every((h) => selected.has(h.ip_address))
-                      }
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelected(
-                            new Set(activeHosts.map((h) => h.ip_address)),
-                          );
-                        } else {
-                          setSelected(new Set());
-                        }
-                      }}
-                      disabled={!canExecuteScans}
-                      style={{ cursor: "pointer" }}
-                    />
-                  </th>
-                )}
-                <th>IP Address</th>
-                <th>Hostname</th>
-                <th>MAC</th>
-                <th>Vendor</th>
-                <th>Method</th>
-                {!isBasicScan && <th>Response</th>}
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(isAssetPipeline ? activeHosts : displayHosts).map((h) => {
-                let displayHost = h.hostname;
-                if (!displayHost || displayHost === "Unknown") {
-                  if (h.mdns_name) displayHost = h.mdns_name;
-                  else if (h.netbios_names && h.netbios_names.length)
-                    displayHost = h.netbios_names[0]?.name;
-                }
-                displayHost = textValue(displayHost, "");
+        <div className="p1-card">
+          <CcureTable
+            caption="Discovered hosts"
+            columns={hostColumns}
+            density="compact"
+          >
+            {(isAssetPipeline ? activeHosts : displayHosts).map((h) => {
+              let displayHost = h.hostname;
+              if (!displayHost || displayHost === "Unknown") {
+                if (h.mdns_name) displayHost = h.mdns_name;
+                else if (h.netbios_names && h.netbios_names.length)
+                  displayHost = h.netbios_names[0]?.name;
+              }
+              displayHost = textValue(displayHost, "");
 
-                return (
-                  <React.Fragment key={h.ip_address}>
-                    <tr
-                      className={h.is_active ? "row--active" : "row--inactive"}
+              return (
+                <tr
+                  key={h.ip_address}
+                  className={h.is_active ? undefined : "p1-row--inactive"}
+                >
+                  {showCheckboxes && (
+                    <td className="p1-col-select">
+                      <input
+                        type="checkbox"
+                        className="p1-check"
+                        aria-label={`Select ${h.ip_address} for port scan`}
+                        checked={selected.has(h.ip_address)}
+                        onChange={() => toggleHost(h.ip_address)}
+                        disabled={!h.is_active || !canExecuteScans}
+                      />
+                    </td>
+                  )}
+                  <td>
+                    <code className="p1-mono">{h.ip_address}</code>
+                  </td>
+                  <td>{displayHost || <span className="p1-quiet">—</span>}</td>
+                  <td>
+                    {textValue(
+                      h.mac_address,
+                      <span className="p1-quiet">—</span>,
+                    )}
+                  </td>
+                  <td>
+                    {textValue(h.vendor, <span className="p1-quiet">—</span>)}
+                  </td>
+                  <td>
+                    {textValue(
+                      h.discovery_method,
+                      <span className="p1-quiet">—</span>,
+                    )}
+                  </td>
+                  {!isBasicScan && (
+                    <td>
+                      {h.response_time_ms != null ? (
+                        `${fmtNumber(h.response_time_ms)} ms`
+                      ) : (
+                        <span className="p1-quiet">—</span>
+                      )}
+                    </td>
+                  )}
+                  <td>
+                    <span
+                      className={`p1-status p1-status--${h.is_active ? "up" : "down"}`}
                     >
-                      {showCheckboxes && (
-                        <td style={{ paddingRight: 0 }}>
-                          <input
-                            type="checkbox"
-                            checked={selected.has(h.ip_address)}
-                            onChange={() => toggleHost(h.ip_address)}
-                            disabled={!h.is_active || !canExecuteScans}
-                            style={{ cursor: "pointer" }}
-                          />
-                        </td>
-                      )}
-                      <td>
-                        <code className="ip-code">{h.ip_address}</code>
-                      </td>
-                      <td>{displayHost || <span className="muted">—</span>}</td>
-                      <td>
-                        {textValue(
-                          h.mac_address,
-                          <span className="muted">—</span>,
-                        )}
-                      </td>
-                      <td>
-                        {textValue(h.vendor, <span className="muted">—</span>)}
-                      </td>
-                      <td>
-                        {textValue(
-                          h.discovery_method,
-                          <span className="muted">—</span>,
-                        )}
-                      </td>
-                      {!isBasicScan && (
-                        <td>
-                          {h.response_time_ms != null ? (
-                            `${fmtNumber(h.response_time_ms)} ms`
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                      )}
-                      <td>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            padding: h.is_active ? "2px 8px" : "2px 6px",
-                            background: h.is_active
-                              ? "rgba(34,197,94,0.1)"
-                              : "transparent",
-                            color: h.is_active ? "#15803d" : "inherit",
-                            borderRadius: 12,
-                          }}
-                        >
-                          <span
-                            className={`status-dot ${h.is_active ? "status-dot--up" : "status-dot--down"}`}
-                            style={{ margin: 0 }}
-                          />
-                          {h.is_active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      <span className="p1-status__dot" aria-hidden="true" />
+                      {h.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </CcureTable>
         </div>
 
-        {/* ── Basic Scan: completion + export ──────────────────────────────── */}
         {phase1Summary && !canProceedToPhase2 && (
           <>
-            <div
-              className="alert alert--success"
-              style={{ marginTop: 20, marginBottom: 8 }}
-            >
-              ✓ Scan completed. Export report available below.
-            </div>
+            <CcureAlert variant="success" live={false} className="p1-alert">
+              Scan completed. Export report available below.
+            </CcureAlert>
             <ExportPanel
               results={phase1Hosts}
               summary={phase1Summary}
@@ -1569,23 +1275,22 @@ export default function Phase1Results() {
           </>
         )}
 
-        {/* ── Vulnerability Audit pipeline: proceed button ─────────────────── */}
         {canProceedToPhase2 &&
           !isAssetPipeline &&
           executionMode !== "interactive" &&
           executionMode !== "automatic" && (
-            <div className="phase-action-bar">
-              <p className="muted" style={{ fontSize: "0.85rem" }}>
+            <div className="p1-actions">
+              <p className="p1-quiet p1-small">
                 Continue to Port Scan to choose hosts and intensity on the same
                 page.
               </p>
-              <button
-                className="btn btn--primary"
+              <CcureButton
+                variant="primary"
                 onClick={proceedToNextPhase}
                 disabled={!canExecuteScans}
               >
                 Continue to Port Scan
-              </button>
+              </CcureButton>
             </div>
           )}
       </div>

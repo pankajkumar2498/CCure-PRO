@@ -3,15 +3,23 @@
  * Export options for Phase 1 (discovery) and Phase 3 (vulnerability) results:
  *   • JSON  — client-side Blob download (full scan data)
  *   • CSV   — client-side Blob download (host summary, adapts to data available)
- *   • PDF   — GET /reports/download/{scanId}?fmt=JSON  (backend FileResponse)
+ *   • PDF   — GET /reports/download/{scanId}?fmt=JSON|XML  (backend FileResponse;
+ *             JSON is the executive report, XML the technical one — both PDF)
  *   • Copy  — copies plain-text summary to clipboard
  *
  * Automatically detects phase 1 vs phase 3 data based on available fields.
+ *
+ * Checkpoint 3C batch 15: rendered on CcureCard, CcureButton and CcureAlert.
+ * Every builder below — CSV rows, JSON payload, clipboard lines, filenames,
+ * the PDF request — is unchanged and pinned byte for byte by
+ * __tests__/components/scan/ExportPanel.test.jsx.
  */
 import { useState } from "react";
 import api from "../../api/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
+import { CcureAlert, CcureButton, CcureCard } from "../../design-system";
+import "../../styles/export-panel.css";
 
 export default function ExportPanel({
   results,
@@ -28,7 +36,10 @@ export default function ExportPanel({
   const { user } = useAuth();
   const canReadReports = can(user, "reports", "read");
   const [copied, setCopied] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
+  // Which PDF format is being fetched, or null. Both PDF exports are disabled
+  // while either is in flight; only the one asked for is marked busy.
+  const [pdfLoadingFmt, setPdfLoadingFmt] = useState(null);
+  const pdfLoading = pdfLoadingFmt !== null;
   const [pdfError, setPdfError] = useState("");
   const displayNo = scanNo ?? "N/A";
   const fileNo = scanNo ?? Date.now();
@@ -357,7 +368,7 @@ export default function ExportPanel({
       setTimeout(() => setPdfError(""), 3000);
       return;
     }
-    setPdfLoading(true);
+    setPdfLoadingFmt(fmt);
     setPdfError("");
     try {
       const res = await api.get(`/reports/download/${scanId}`, {
@@ -382,7 +393,7 @@ export default function ExportPanel({
       setPdfError(detail);
       setTimeout(() => setPdfError(""), 4000);
     } finally {
-      setPdfLoading(false);
+      setPdfLoadingFmt(null);
     }
   };
 
@@ -393,13 +404,9 @@ export default function ExportPanel({
       setTimeout(() => setPdfError(""), 3000);
       return;
     }
-    console.log("copySummary debug:", {
-      pipelineMode,
-      isPhase1,
-      isPhase2,
-      isPhase3,
-      results: results.slice(0, 1),
-    });
+    // A debug `console.log` of the first host — address, MAC, hostname — used
+    // to sit here and ran on every click. Nothing reads the browser console
+    // on purpose, which is exactly why scan data must not be written there.
     let lines;
     if (isPhase1) {
       // Phase 1 summary
@@ -509,10 +516,21 @@ export default function ExportPanel({
           ),
       ];
     }
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    });
+    // A refused write (permission, focus) used to be an unhandled rejection,
+    // and a missing Clipboard API a TypeError: either way the button did
+    // nothing and said nothing.
+    const copyFailed = () => {
+      setPdfError("Could not copy the summary to the clipboard.");
+      setTimeout(() => setPdfError(""), 4000);
+    };
+    try {
+      navigator.clipboard.writeText(lines.join("\n")).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }, copyFailed);
+    } catch {
+      copyFailed();
+    }
   };
 
   const trigger = (blob, filename) => {
@@ -524,102 +542,75 @@ export default function ExportPanel({
     URL.revokeObjectURL(url);
   };
 
-  const btnStyle = {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 4,
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "1px solid var(--border)",
-    background: "var(--bg-white)",
-    cursor: "pointer",
-    fontFamily: "var(--font)",
-    transition: "all 0.15s",
-    minWidth: 80,
-  };
+  /* Named by what each produces. The PDF exports send the historical format
+     names the backend still reads — JSON is the executive report, XML the
+     technical one — and both have always produced a PDF, so the old
+     "PDF/XML · XML report" described a file nobody ever received. */
+  const exportActions = [
+    { key: "json", label: "JSON", sub: "Full data", action: downloadJSON },
+    { key: "csv", label: "CSV", sub: "Spreadsheet", action: downloadCSV },
+    {
+      key: "pdf-executive",
+      label: "Executive PDF",
+      sub: "Summary report",
+      action: () => downloadPDF("JSON"),
+      fmt: "JSON",
+    },
+    {
+      key: "pdf-technical",
+      label: "Technical PDF",
+      sub: "Detailed report",
+      action: () => downloadPDF("XML"),
+      fmt: "XML",
+    },
+    {
+      key: "copy",
+      label: copied ? "Copied!" : "Copy",
+      sub: "Summary",
+      action: copySummary,
+    },
+  ];
 
   return (
-    <div className="export-panel">
-      <p className="section-title" style={{ marginBottom: 12 }}>
-        ⬇ Export Results
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
-          {
-            label: "JSON",
-            icon: "{ }",
-            sub: "Full data",
-            action: downloadJSON,
-            disabled: !canReadReports,
-          },
-          {
-            label: "CSV",
-            icon: "⊞",
-            sub: "Spreadsheet",
-            action: downloadCSV,
-            disabled: !canReadReports,
-          },
-          {
-            label: "PDF",
-            icon: pdfLoading ? "⏳" : "📄",
-            sub: "Report",
-            action: () => downloadPDF("JSON"),
-            disabled: pdfLoading || !canReadReports,
-          },
-          {
-            label: "PDF/XML",
-            icon: pdfLoading ? "⏳" : "🗂",
-            sub: "XML report",
-            action: () => downloadPDF("XML"),
-            disabled: pdfLoading || !canReadReports,
-          },
-          {
-            label: copied ? "Copied!" : "Copy",
-            icon: copied ? "✓" : "⎘",
-            sub: "Summary",
-            action: copySummary,
-            disabled: !canReadReports,
-          },
-        ].map((b) => (
-          <button
-            key={b.label}
-            style={{
-              ...btnStyle,
-              opacity: b.disabled ? 0.6 : 1,
-              cursor: b.disabled ? "not-allowed" : "pointer",
-            }}
-            onClick={b.action}
-            disabled={b.disabled}
-            onMouseEnter={(e) => {
-              if (!b.disabled)
-                e.currentTarget.style.background = "var(--bg-app)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--bg-white)";
-            }}
-          >
-            <span style={{ fontSize: "1.1rem" }}>{b.icon}</span>
-            <span
-              style={{
-                fontSize: "0.8rem",
-                fontWeight: 700,
-                color: "var(--text-mid)",
-              }}
+    <CcureCard className="xp" title="Export results" headingLevel={3}>
+      <div className="xp__actions">
+        {exportActions.map((b) => {
+          const isPdf = b.fmt !== undefined;
+          return (
+            <CcureButton
+              key={b.key}
+              variant="secondary"
+              className="xp__btn"
+              onClick={b.action}
+              disabled={!canReadReports || (isPdf && pdfLoading)}
+              loading={isPdf && pdfLoadingFmt === b.fmt}
             >
-              {b.label}
-            </span>
-            <span style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}>
-              {b.sub}
-            </span>
-          </button>
-        ))}
+              <span className="xp__label">{b.label}</span>{" "}
+              <span className="xp__sub">{b.sub}</span>
+            </CcureButton>
+          );
+        })}
       </div>
-      {pdfError && (
-        <div className="alert alert--error" style={{ marginTop: 10 }}>
-          ⚠ {pdfError}
-        </div>
+
+      {/* A disabled control that does not say why is a dead end — and a
+          disabled button cannot take focus, so nothing else will say it. */}
+      {!canReadReports && (
+        <p className="xp__note">
+          Your role does not include permission to export reports.
+        </p>
       )}
-    </div>
+
+      {pdfError && (
+        <CcureAlert variant="danger" className="xp__alert">
+          {pdfError}
+        </CcureAlert>
+      )}
+
+      {/* Rendered empty from the start: a live region that appears together
+          with its message is frequently not announced. */}
+      <span className="cc-sr-only" role="status" aria-live="polite">
+        {copied ? "Summary copied to the clipboard." : ""}
+      </span>
+    </CcureCard>
   );
 }

@@ -1,12 +1,20 @@
 /**
  * src/components/layout/ScanStepper.jsx
  *
- * Enhanced stepper with live pipeline status indicators.
- * Shows: ✓ completed | ● active (pulsing) | ○ pending
- * Driven by `pipelineState` from context for real-time updates.
+ * The scan pipeline's steps and where the scan has got to. Driven by
+ * `pipelineState` from ScanContext, with the page's `current` as fallback.
+ * Consumed by Phase1Results, Phase2Results and Phase3Results.
+ *
+ * Checkpoint 3C batch 15: an ordered list with `aria-current="step"`, the
+ * shape batch 8 gave the web-scan pipeline. A step's state is in words —
+ * Complete, Scanning…, Failed, or its description — and the tick, the "!",
+ * the step number and the separators are hidden from assistive technology
+ * because they only repeat those words. Layout and colour: scan-stepper.css.
  */
+import { CcureBadge } from "../../design-system";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { getScanPipeline } from "../../config/scanConfig";
+import "../../styles/scan-stepper.css";
 
 const ALL_STEPS = [
   { n: 1, label: "Discovery", sub: "Find live hosts", stateKey: "DISCOVERY" },
@@ -35,6 +43,13 @@ const STATE_TO_STEP = {
   [PIPELINE_STATES.COMPLETE]: 5,
 };
 
+const RUNNING_STATES = new Set([
+  PIPELINE_STATES.DISCOVERY,
+  PIPELINE_STATES.PORT_SCAN,
+  PIPELINE_STATES.VULN_SCAN,
+  PIPELINE_STATES.TOPOLOGY_MAP,
+]);
+
 export default function ScanStepper({ current }) {
   const { scanId, scanNo, pipelineMode, pipelineState } = useScan();
 
@@ -56,86 +71,68 @@ export default function ScanStepper({ current }) {
 
   // Use pipeline state to derive step status, fall back to `current` prop
   const activeStep = STATE_TO_STEP[pipelineState] ?? current ?? 0;
-  const isRunning = [
-    PIPELINE_STATES.DISCOVERY,
-    PIPELINE_STATES.PORT_SCAN,
-    PIPELINE_STATES.VULN_SCAN,
-    PIPELINE_STATES.TOPOLOGY_MAP,
-  ].includes(pipelineState);
+  const isRunning = RUNNING_STATES.has(pipelineState);
 
   return (
-    <div className="stepper">
-      {steps.map((s, i) => {
-        const done = activeStep > s.n;
-        const active = activeStep === s.n;
-        const isError = pipelineState === PIPELINE_STATES.ERROR && active;
+    <div className="sst">
+      <ol className="sst__steps" aria-label="Scan pipeline">
+        {steps.map((s, i) => {
+          const done = activeStep > s.n;
+          const active = activeStep === s.n;
+          const isError = pipelineState === PIPELINE_STATES.ERROR && active;
+          const running = active && isRunning;
 
-        let stepClass = "stepper-step";
-        if (done) stepClass += " stepper-step--done";
-        if (active) stepClass += " stepper-step--active";
-        if (isError) stepClass += " stepper-step--error";
-        if (active && isRunning) stepClass += " stepper-step--running";
+          const state = isError
+            ? "error"
+            : running
+              ? "running"
+              : done
+                ? "done"
+                : active
+                  ? "active"
+                  : "pending";
 
-        return (
-          <div key={s.n} style={{ display: "flex", alignItems: "center" }}>
-            <div className={stepClass}>
-              <div className="stepper-num">
-                {done ? "✓" : isError ? "!" : s.n}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  lineHeight: 1.2,
-                }}
-              >
+          const caption = running
+            ? "Scanning…"
+            : isError
+              ? "Failed"
+              : done
+                ? "Complete"
+                : s.sub;
+
+          const previousDone = i > 0 && activeStep > steps[i - 1].n;
+
+          return (
+            <li
+              key={s.n}
+              className={`sst__step sst__step--${state}`}
+              aria-current={active ? "step" : undefined}
+            >
+              {i > 0 && (
                 <span
-                  style={{
-                    fontSize: "0.82rem",
-                    fontWeight: active ? 700 : 500,
-                  }}
+                  className={`sst__sep${previousDone ? " sst__sep--done" : ""}`}
+                  aria-hidden="true"
                 >
-                  {s.label}
+                  ›
                 </span>
-                <span
-                  style={{ fontSize: "0.7rem", color: "var(--text-faint)" }}
-                >
-                  {active && isRunning
-                    ? "Scanning…"
-                    : isError
-                      ? "Failed"
-                      : done
-                        ? "Complete"
-                        : s.sub}
+              )}
+              <span className="sst__body">
+                <span className="sst__marker" aria-hidden="true">
+                  {done ? "✓" : isError ? "!" : s.n}
                 </span>
-              </div>
-            </div>
-            {i < steps.length - 1 && (
-              <span
-                className={`stepper-arrow ${done ? "stepper-arrow--done" : ""}`}
-              >
-                ›
+                <span className="sst__text">
+                  <span className="sst__label">{s.label}</span>
+                  <span className="sst__caption">{caption}</span>
+                </span>
               </span>
-            )}
-          </div>
-        );
-      })}
+            </li>
+          );
+        })}
+      </ol>
       {scanId && (
-        <span
-          style={{
-            marginLeft: "auto",
-            fontFamily: "var(--mono)",
-            fontSize: "0.75rem",
-            color: "var(--text-faint)",
-            background: "var(--bg-app)",
-            border: "1px solid var(--border)",
-            padding: "2px 10px",
-            borderRadius: 4,
-            flexShrink: 0,
-          }}
-        >
+        <CcureBadge mono size="md" className="sst__scan-no">
           Scan No. {scanNo ?? "-"}
-        </span>
+        </CcureBadge>
       )}
     </div>
   );

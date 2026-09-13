@@ -1569,15 +1569,13 @@ describe("AssetDetail — accessibility and design-system expectations", () => {
   it("renders no inline styles beyond the data-driven risk ring", async () => {
     const user = userEvent.setup();
     const { container } = await renderPage({ changelog: CHANGELOG });
-    /* Allowances: the risk ring (data-driven), and CVELink — the legacy
-       shared component that still renders its own inline style (recorded
-       debt, batch 10 §11.3), hosted in `.ad-cve-id` and the drawer title. */
+    /* Allowance: the risk ring (data-driven). CVELink used to be a second
+       one — it rendered its own inline colour (batch 10 §11.3) — and batch 15
+       retired that, so `.ad-cve-id` and the drawer title are no longer
+       excused. */
     const styled = () =>
       [...container.querySelectorAll("[style]")].filter(
-        (el) =>
-          !el.closest(
-            ".ad-riskring, .ad-cve-id, .ad-drawer-title, [data-allow-inline]",
-          ),
+        (el) => !el.closest(".ad-riskring, [data-allow-inline]"),
       );
     expect(styled()).toHaveLength(0);
     await user.click(tab("Services & Ports (2)"));

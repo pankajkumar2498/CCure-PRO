@@ -1,0 +1,52 @@
+/* ============================================================================
+   ExportPanel — Checkpoint 3C batch 15
+   ----------------------------------------------------------------------------
+   Layout only, for the export card on Phase1Results and Phase2Results.
+   `xp` = export panel. The card, buttons and alert are CCure primitives;
+   tokens only. The legacy panel had no stylesheet — every rule was inline.
+   ============================================================================ */
+
+.xp {
+  margin-top: var(--ccure-space-md);
+}
+
+.xp__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+}
+
+.xp__btn {
+  min-width: 7rem;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading). Stacking label over description happens there, so the button's
+   accessible name still reads "Executive PDF Summary report" in order. */
+.xp__btn > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  line-height: var(--ccure-leading-tight);
+}
+
+.xp__label {
+  font-weight: var(--ccure-weight-bold);
+}
+
+.xp__sub {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-regular);
+  color: var(--ccure-text-secondary);
+}
+
+.xp__note {
+  margin: var(--ccure-space-sm) 0 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.xp__alert {
+  margin-top: var(--ccure-space-sm);
+}

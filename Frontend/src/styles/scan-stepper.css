@@ -1,0 +1,184 @@
+/* ============================================================================
+   ScanStepper — Checkpoint 3C batch 15
+   ----------------------------------------------------------------------------
+   Layout and state colour for the scan pipeline stepper on the three phase
+   result pages. `sst` = scan stepper. Tokens only; the legacy `.stepper*`
+   rules in scan.css and animations.css are retired with a consumer census in
+   the batch 15 checkpoint report.
+
+   A step's state is carried by its caption; colour and the marker glyph only
+   reinforce it (WCAG 1.4.1).
+   ============================================================================ */
+
+.sst {
+  display: flex;
+  align-items: stretch;
+  gap: var(--ccure-space-md);
+  min-height: 3rem;
+  padding: 0 var(--ccure-space-2xl);
+  background: var(--ccure-surface);
+  border-bottom: 1px solid var(--ccure-border);
+  font-family: var(--ccure-font);
+  overflow-x: auto;
+}
+
+.sst__steps {
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sst__step {
+  display: flex;
+  align-items: stretch;
+}
+
+.sst__sep {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-border-strong);
+}
+
+.sst__sep--done {
+  color: var(--ccure-success-text);
+}
+
+.sst__body {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  padding: 0 var(--ccure-space-md);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: border-color var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.sst__marker {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text-secondary);
+  background: var(--ccure-surface-sunken);
+  border: 1.5px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-full);
+  transition:
+    background var(--ccure-duration-base) var(--ccure-ease),
+    border-color var(--ccure-duration-base) var(--ccure-ease),
+    color var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.sst__text {
+  display: flex;
+  flex-direction: column;
+  line-height: var(--ccure-leading-tight);
+}
+
+.sst__label {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text);
+}
+
+.sst__caption {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Done ──────────────────────────────────────────────────────────────── */
+.sst__step--done .sst__marker {
+  color: var(--ccure-success-text);
+  background: var(--ccure-success-bg);
+  border-color: var(--ccure-success-border);
+}
+
+.sst__step--done .sst__caption {
+  color: var(--ccure-success-text);
+}
+
+/* ── Active and running ─────────────────────────────────────────────────── */
+.sst__step--active .sst__body,
+.sst__step--running .sst__body {
+  border-bottom-color: var(--ccure-primary);
+}
+
+.sst__step--active .sst__label,
+.sst__step--running .sst__label,
+.sst__step--error .sst__label {
+  font-weight: var(--ccure-weight-bold);
+}
+
+.sst__step--active .sst__marker,
+.sst__step--running .sst__marker {
+  color: var(--ccure-primary-text);
+  background: var(--ccure-primary-soft);
+  border-color: var(--ccure-primary);
+}
+
+.sst__step--running .sst__caption {
+  color: var(--ccure-primary-text);
+}
+
+/* The running step is the only one that is changing, so it is the only one
+   that moves. */
+.sst__step--running .sst__marker {
+  animation: sst-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sst-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--ccure-primary-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--ccure-primary-soft);
+  }
+}
+
+/* ── Failed ─────────────────────────────────────────────────────────────── */
+.sst__step--error .sst__body {
+  border-bottom-color: var(--ccure-danger-solid);
+}
+
+.sst__step--error .sst__marker {
+  color: var(--ccure-danger-text);
+  background: var(--ccure-danger-bg);
+  border-color: var(--ccure-danger-border);
+}
+
+.sst__step--error .sst__caption {
+  color: var(--ccure-danger-text);
+}
+
+/* ── Scan number ────────────────────────────────────────────────────────── */
+.sst__scan-no {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sst__step--running .sst__marker {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--ccure-primary-soft);
+  }
+
+  .sst__body,
+  .sst__marker {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .sst {
+    padding: 0 var(--ccure-space-md);
+  }
+}

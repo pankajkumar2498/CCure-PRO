@@ -38,6 +38,11 @@ const KEYS = {
     unmodifiedText: " ",
   },
   Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+  ArrowRight: {
+    key: "ArrowRight",
+    code: "ArrowRight",
+    windowsVirtualKeyCode: 39,
+  },
 };
 
 export function parseArgs(argv) {
@@ -203,6 +208,10 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
   await S("Page.addScriptToEvaluateOnNewDocument", { source: freezeScript() });
   const seed = sessionSeedScript(origin, state.session);
   if (seed) await S("Page.addScriptToEvaluateOnNewDocument", { source: seed });
+  // A state may prepare the document before the application boots — router
+  // state, for instance, that a real navigation would have carried.
+  if (state.init)
+    await S("Page.addScriptToEvaluateOnNewDocument", { source: state.init });
   if (injection)
     await S("Page.addScriptToEvaluateOnNewDocument", {
       source: INJECTIONS[injection].script,

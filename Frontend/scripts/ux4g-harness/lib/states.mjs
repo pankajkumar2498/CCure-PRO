@@ -25,6 +25,12 @@ import {
   VB_FINDINGS_NULL_CVSS,
   VB_FINDING_DETAIL,
   SD_STUBS,
+  SD_STUBS_EMPTY,
+  SD_STUBS_ERROR,
+  SD_STUBS_NULL_CVSS,
+  DASHBOARD_ADMIN,
+  DASHBOARD_RESTRICTED,
+  NO_DASHBOARD,
   CW_STUBS,
 } from "./fixtures.mjs";
 
@@ -324,7 +330,7 @@ const VB_STATES = [
   },
 ];
 
-/* ── Regression sweep: pages Batch 16 must not change ─────────────────────── */
+/* ── Shared selectors for pages still on dashboard.css ────────────────────── */
 const SHARED_TRACKED = [
   "h1",
   ".db-page-header",
@@ -338,15 +344,206 @@ const SHARED_TRACKED = [
   ".db-tag",
 ];
 
+/* ── SecurityDashboard (batch 17) ─────────────────────────────────────────── */
+const SD_BASE = {
+  route: "/dashboard",
+  persona: ANALYST,
+  stubs: SD_STUBS,
+  tracked: [...PAGE_TRACKED, "h2"],
+};
+
+const sdReady = hasText("/CVE-2026-1111/");
+
+// Section titles are upper-cased by CSS on the legacy page and innerText
+// reports the rendered case, so text readiness checks are case-insensitive.
+const sdText = (source) => hasText(`/${source}/i`);
+
+// The date-range control was a <div> before batch 17. The innermost element
+// carrying the text is clicked and the click bubbles to whichever owns it.
+const sdDateToggle = `[...document.querySelectorAll("button, div, span")].filter((e) => /^(📅\\s*)?Last 30 days/.test((e.textContent || "").trim())).pop()`;
+
+// React Router reads navigation state from history.state.usr; seeded before
+// the app boots, this is exactly what the registration flow hands the page.
+const SD_WELCOME_INIT = `(() => { try { if (!history.state || !history.state.usr) history.replaceState({ usr: { isNewRegistration: true }, key: "harness", idx: 0 }, ""); } catch (e) {} })();`;
+
+const SD_PROBES = {
+  dateMenu: {
+    id: "date-range-menu-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && /Last 30 days/.test(el.textContent || '')",
+    press: "Enter",
+    wait: 400,
+    expect: "/Year to date/.test(document.body.innerText)",
+    then: [
+      {
+        press: "Escape",
+        wait: 400,
+        expect: "!/Year to date/.test(document.body.innerText)",
+      },
+    ],
+  },
+  metricCard: {
+    id: "metric-card-by-keyboard",
+    tabTo:
+      "(el.tagName === 'A' || el.tagName === 'BUTTON') && /Critical Findings/.test(el.textContent || '')",
+    press: "Enter",
+    wait: 800,
+    expect:
+      "location.pathname === '/vulnerabilities' && location.search === '?severity=Critical'",
+  },
+  assetRow: {
+    id: "top-asset-row-by-keyboard",
+    tabTo:
+      "el.tagName === 'A' && /\\/assets\\/a-1$/.test(el.getAttribute('href') || '')",
+    press: "Enter",
+    wait: 800,
+    expect: "location.pathname === '/assets/a-1'",
+  },
+  cveRow: {
+    id: "top-cve-row-by-keyboard",
+    tabTo:
+      "el.tagName === 'A' && /search=CVE-2026-1111/.test(el.getAttribute('href') || '')",
+    press: "Enter",
+    wait: 800,
+    expect: "location.search === '?search=CVE-2026-1111'",
+  },
+  tabs: {
+    id: "tabs-by-keyboard",
+    tabTo: "el.getAttribute('role') === 'tab'",
+    press: "ArrowRight",
+    wait: 400,
+    expect:
+      "((document.querySelector('[role=tab][aria-selected=true]') || {}).textContent || '').trim() === 'Assets'",
+  },
+  welcomeEscape: {
+    id: "welcome-dialog-escape",
+    tabTo:
+      "el.tagName === 'BUTTON' && !!el.closest('[role=dialog], .modal-panel')",
+    press: "Escape",
+    wait: 500,
+    expect: "!/Welcome to CCure Audit PRO/i.test(document.body.innerText)",
+  },
+};
+
+const SD_TABS = [
+  ["assets", "Assets", "Asset Registry — Quick View"],
+  ["vulns", "Vulnerabilities", "Vulnerability Intelligence — Quick View"],
+  ["scans", "Scans", "Scan Activity & History"],
+  ["compliance", "Compliance", "Compliance & Security Posture"],
+];
+
 const SD_STATES = [
   {
+    ...SD_BASE,
     id: "sd-default",
-    route: "/dashboard",
     themes: BOTH,
-    persona: ANALYST,
-    stubs: SD_STUBS,
-    tracked: SHARED_TRACKED,
-    ready: hasText("/CVE-2026-1111/"),
+    ready: sdReady,
+    probes: [SD_PROBES.dateMenu, SD_PROBES.metricCard],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-asset-row-keyboard",
+    themes: LIGHT,
+    ready: sdReady,
+    probes: [SD_PROBES.assetRow],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-cve-row-keyboard",
+    themes: LIGHT,
+    ready: sdReady,
+    probes: [SD_PROBES.cveRow],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-tabs-keyboard",
+    themes: LIGHT,
+    ready: sdReady,
+    probes: [SD_PROBES.tabs],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-date-menu",
+    themes: LIGHT,
+    ready: sdReady,
+    actions: [{ click: sdDateToggle }, { waitFor: hasText("/Year to date/") }],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-admin",
+    themes: BOTH,
+    persona: DASHBOARD_ADMIN,
+    ready: `${sdReady} && ${sdText("scan started")}`,
+  },
+  {
+    ...SD_BASE,
+    id: "sd-restricted",
+    themes: LIGHT,
+    persona: DASHBOARD_RESTRICTED,
+    ready: hasText("/Informational only/"),
+  },
+  {
+    ...SD_BASE,
+    id: "sd-noaccess",
+    themes: LIGHT,
+    persona: NO_DASHBOARD,
+    ready: "location.pathname === '/scan'",
+    readyTimeout: 10000,
+  },
+  {
+    ...SD_BASE,
+    id: "sd-empty",
+    themes: LIGHT,
+    stubs: SD_STUBS_EMPTY,
+    ready: hasText("/No assets found/"),
+  },
+  {
+    ...SD_BASE,
+    id: "sd-error",
+    themes: LIGHT,
+    stubs: SD_STUBS_ERROR,
+    ready: hasText("/No assets found/"),
+  },
+  {
+    ...SD_BASE,
+    id: "sd-nullcvss",
+    themes: LIGHT,
+    stubs: SD_STUBS_NULL_CVSS,
+    ready: hasText("/CVE-2026-4444/"),
+    readyTimeout: 8000,
+  },
+  {
+    ...SD_BASE,
+    id: "sd-welcome",
+    themes: BOTH,
+    init: SD_WELCOME_INIT,
+    ready: `${sdText("Welcome to CCure Audit PRO")} && ${sdReady}`,
+    probes: [SD_PROBES.welcomeEscape],
+  },
+  {
+    ...SD_BASE,
+    id: "sd-mobile",
+    themes: LIGHT,
+    viewport: [390, 1600],
+    ready: sdReady,
+  },
+  ...SD_TABS.map(([id, label, heading]) => ({
+    ...SD_BASE,
+    id: `sd-tab-${id}`,
+    themes: LIGHT,
+    ready: sdReady,
+    actions: [
+      { click: byText("button", `/^${label}$/`) },
+      { waitFor: sdText(heading) },
+    ],
+  })),
+  {
+    ...SD_BASE,
+    id: "sd-tab-audit",
+    themes: LIGHT,
+    persona: DASHBOARD_ADMIN,
+    ready: sdReady,
+    actions: [{ click: byText("button", "/^Audit$/") }, { waitFor: "true" }],
   },
 ];
 
@@ -389,8 +586,10 @@ const CW_STATES = CW_TABS.map(([id, label]) => ({
 
 export const STATES = [...AR_STATES, ...VB_STATES, ...SD_STATES, ...CW_STATES];
 
-/** States whose output Batch 16 must leave byte-for-byte unchanged. */
-export const REGRESSION_PREFIXES = ["sd-", "cw-"];
+/** States whose output Batch 17 must leave byte-for-byte unchanged. Batch 16
+ *  gated `sd-` and `cw-`; batch 17 changes the dashboard, so the gate is the
+ *  pages batch 16 migrated plus the one page still importing dashboard.css. */
+export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-"];
 
 /** States the sensitivity gate injects into. */
 export const SENSITIVITY_STATES = ["ar-assets", "vb-cve"];

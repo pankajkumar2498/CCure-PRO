@@ -47,6 +47,19 @@ export const FINDINGS_READONLY = persona(
   BASE_PERMISSIONS.filter((p) => p !== "findings:update"),
 );
 
+/* SecurityDashboard gates its widgets on read permissions. These cover the
+   audit timeline (audit:read), a dashboard-only reader, and the redirect a
+   user without dashboard:read receives. */
+export const DASHBOARD_ADMIN = persona([...BASE_PERMISSIONS, "audit:read"]);
+export const DASHBOARD_RESTRICTED = persona([
+  "dashboard:read",
+  "scans:read",
+  "notifications:read",
+]);
+export const NO_DASHBOARD = persona(
+  BASE_PERMISSIONS.filter((p) => p !== "dashboard:read"),
+);
+
 /* ── Shell ────────────────────────────────────────────────────────────────── */
 export const DASHBOARD_SUMMARY = {
   severity: {
@@ -405,54 +418,223 @@ export const VB_FINDING_DETAIL = {
   },
 };
 
-/* ── SecurityDashboard (regression sweep) ─────────────────────────────────── */
+/* ── SecurityDashboard (batch 17) ─────────────────────────────────────────── */
+const SD_CVES = [
+  {
+    id: "CVE-2026-1111",
+    title: "Chrome use-after-free",
+    cvss_v3_score: 9.8,
+    priority_label: "P0",
+    severity: "Critical",
+    affected_assets: 3,
+    in_kev: true,
+  },
+  {
+    id: "CVE-2026-2222",
+    title: "OpenSSL denial of service",
+    cvss_v3_score: 7.5,
+    priority_label: "P2",
+    severity: "High",
+    affected_assets: 1,
+    in_kev: false,
+  },
+];
+
+// Every panel carries data, so every widget renders its populated form.
 export const SD_STUBS = {
   "/dashboard/risk-breakdown": {
+    priority_distribution: { p0_kev: 3, p2_cvss_9: 4 },
     finding_status: { open: 90, accepted: 20, fixed: 15 },
   },
   "/dashboard/top-assets": { assets: AR_ASSETS.assets },
-  "/dashboard/top-cves": {
-    cves: [
+  "/dashboard/top-cves": { cves: SD_CVES },
+  "/dashboard/services-exposure": {
+    services: [
       {
-        id: "CVE-2026-1111",
-        title: "Chrome use-after-free",
-        cvss_v3_score: 9.8,
-        priority_label: "P0",
-        severity: "Critical",
-        affected_assets: 3,
-        in_kev: true,
+        service_name: "telnet",
+        port: 23,
+        protocol: "tcp",
+        asset_count: 2,
+        is_high_risk: true,
       },
       {
-        id: "CVE-2026-2222",
-        title: "OpenSSL denial of service",
-        cvss_v3_score: 7.5,
-        priority_label: "P2",
-        severity: "High",
-        affected_assets: 1,
-        in_kev: false,
+        service_name: "ssh",
+        port: 22,
+        protocol: "tcp",
+        asset_count: 12,
+        is_high_risk: false,
+      },
+      {
+        service_name: "https",
+        port: 443,
+        protocol: "tcp",
+        asset_count: 5,
+        is_high_risk: false,
       },
     ],
   },
-  "/dashboard/services-exposure": { services: AR_SERVICES.services },
-  "/dashboard/tls-health": { expiring_in_30d: 1, expired: 1, total: 3 },
-  "/dashboard/http-headers": {},
-  "/dashboard/compliance": { frameworks: [] },
-  "/dashboard/asset-breakdown": { os_distribution: [], totals: {} },
+  "/dashboard/tls-health": {
+    expiring_in_30d: 1,
+    expired: 1,
+    total: 3,
+    total_tls_services: 3,
+    grade_distribution: { A: 1, C: 1, F: 1 },
+  },
+  "/dashboard/http-headers": {
+    coverage: {
+      strict_transport_security: { pct: 80 },
+      content_security_policy: { pct: 30 },
+      x_frame_options: { pct: 55 },
+    },
+  },
+  "/dashboard/compliance": {
+    frameworks: [
+      { id: "iso27001", name: "ISO/IEC 27001", score: 72.4 },
+      { id: "nist_csf_v2", name: "NIST CSF 2.0", score: 55 },
+    ],
+  },
+  "/dashboard/asset-breakdown": {
+    totals: { total: 42, managed: 37, unmanaged: 5, active: 40, offline: 2 },
+    os_distribution: [
+      { os_family: "Linux", count: 20 },
+      { os_family: "Windows", count: 22 },
+    ],
+  },
   "/dashboard/scan-activity": {
     scans: [
       {
         id: "s-1",
-        scan_no: 42,
-        target: "10.180.6.0/24",
-        status: "complete",
+        scan_type: "network",
+        pipeline_mode: "vulnerability_audit",
+        target_str: "10.180.6.0/24",
+        status: "running",
+        current_phase: "PORT_SCAN",
+        progress_pct: 40,
+        queued_at: ago(0.01),
+      },
+      {
+        id: "s-2",
+        scan_type: "network",
         pipeline_mode: "basic",
-        started_at: ago(1),
-        completed_at: ago(0.9),
+        target_str: "10.180.5.0/24",
+        status: "complete",
+        active_hosts: 12,
+        critical_count: 3,
+        high_count: 5,
+        queued_at: ago(1),
+      },
+      {
+        id: "s-3",
+        scan_type: "credentialed",
+        target_str: "10.180.5.10",
+        status: "failed",
+        scan_name: "cred-audit",
+        queued_at: ago(2),
       },
     ],
   },
+  "/dashboard/insights": {
+    insights: [
+      {
+        id: "i-1",
+        severity: "high",
+        icon: "⚠",
+        title: "Cleartext telnet exposed",
+        detail: "2 assets accept telnet connections.",
+      },
+    ],
+  },
+  "/admin/audit-logs": {
+    logs: [
+      {
+        id: "l-1",
+        action: "scan_started",
+        username: "alice",
+        resource_type: "scan",
+        status: "success",
+        created_at: ago(0.05),
+      },
+      {
+        id: "l-2",
+        action: "finding_fixed",
+        user_id: "u-000000abcdef",
+        resource_type: "finding",
+        status: "success",
+        created_at: ago(1),
+      },
+    ],
+  },
+  "/notifications": {
+    notifications: [
+      {
+        id: "n-1",
+        type: "scan_completed",
+        title: "Scan finished",
+        message: "10.180.5.0/24",
+        is_read: false,
+        created_at: ago(0.02),
+      },
+    ],
+    total: 1,
+  },
+};
+
+const SD_PANELS = [
+  "/dashboard/summary",
+  "/dashboard/risk-breakdown",
+  "/dashboard/top-assets",
+  "/dashboard/top-cves",
+  "/dashboard/services-exposure",
+  "/dashboard/tls-health",
+  "/dashboard/http-headers",
+  "/dashboard/compliance",
+  "/dashboard/asset-breakdown",
+  "/dashboard/scan-activity",
+  "/dashboard/insights",
+];
+
+// A new organisation: every panel answers, and answers with nothing.
+export const SD_STUBS_EMPTY = {
+  "/dashboard/summary": {
+    severity: { total: 0 },
+    assets: {},
+    scans: {},
+    kev: {},
+  },
+  "/dashboard/risk-breakdown": {},
+  "/dashboard/top-assets": { assets: [] },
+  "/dashboard/top-cves": { cves: [] },
+  "/dashboard/services-exposure": { services: [] },
+  "/dashboard/tls-health": {},
+  "/dashboard/http-headers": {},
+  "/dashboard/compliance": { frameworks: [] },
+  "/dashboard/asset-breakdown": { totals: {}, os_distribution: [] },
+  "/dashboard/scan-activity": { scans: [] },
   "/dashboard/insights": { insights: [] },
   "/admin/audit-logs": { logs: [] },
+  "/notifications": { notifications: [], total: 0 },
+};
+
+// Every panel fails. The page settles every request independently.
+export const SD_STUBS_ERROR = {
+  ...Object.fromEntries(SD_PANELS.map((p) => [p, { __status: 500 }])),
+  "/admin/audit-logs": { __status: 500 },
+};
+
+// A CVE NVD scored only under v2 — the batch 16 crash, on the landing page.
+export const SD_STUBS_NULL_CVSS = {
+  ...SD_STUBS,
+  "/dashboard/top-cves": {
+    cves: [
+      ...SD_CVES,
+      {
+        ...SD_CVES[1],
+        id: "CVE-2026-4444",
+        title: "Legacy CVE with only a v2 score",
+        cvss_v3_score: null,
+      },
+    ],
+  },
 };
 
 /* ── ComplianceWorkspace (regression sweep) ───────────────────────────────── */

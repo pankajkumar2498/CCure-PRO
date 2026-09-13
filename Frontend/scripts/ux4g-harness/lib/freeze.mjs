@@ -1,7 +1,7 @@
 /**
  * What makes two captures of the same build byte-identical.
  *
- * Injected before any page script runs. Three sources of run-to-run variation
+ * Injected before any page script runs. Four sources of run-to-run variation
  * are removed, and each is a real one on these pages:
  *
  *   * the clock — "3d ago", certificate expiry bands and "Last updated" all read
@@ -9,12 +9,21 @@
  *   * animation — skeleton shimmer, pulses and transitions are resolved to their
  *     end state so a capture never lands mid-frame
  *   * Math.random — replaced by a seeded generator
+ *   * background polls — an interval of LONG_INTERVAL_MS or more never fires
+ *     (batch 17: the dashboard refreshes scan activity every 30 seconds, and a
+ *     capture that takes longer than that would log one more request than a
+ *     capture that does not). Initial loads never wait on an interval, and the
+ *     id returned still works with clearInterval.
  *
  * It also records the time of the last DOM mutation, which is how the runner
  * decides a page has settled.
  */
 
 export const FIXED_TIME = Date.parse("2026-09-12T10:00:00Z");
+
+/** Intervals at or above this many milliseconds are treated as background
+ *  polls and never fire during a capture. */
+export const LONG_INTERVAL_MS = 10000;
 
 const FREEZE_CSS = `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}`;
 
@@ -39,6 +48,12 @@ export function freezeScript({ fixedTime = FIXED_TIME } = {}) {
     seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
+
+  const RealSetInterval = window.setInterval.bind(window);
+  window.setInterval = (fn, ms, ...rest) =>
+    Number(ms) >= ${LONG_INTERVAL_MS}
+      ? RealSetInterval(() => {}, 2147483647)
+      : RealSetInterval(fn, ms, ...rest);
 
   window.__harnessLastMutation = performance.now();
   const start = () => {

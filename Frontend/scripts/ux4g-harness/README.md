@@ -28,6 +28,14 @@ Nothing a capture does can reach a real system:
 - Off-origin requests and WebSockets are blocked and recorded.
 - `Date` is frozen at `2026-09-12T10:00:00Z`, `Math.random` is seeded, and
   animations and transitions are switched off.
+- Background polls never fire. An interval of 10 seconds or more
+  (`LONG_INTERVAL_MS`) is registered but does not run, so a capture's request
+  log does not depend on how many seconds the capture took. Initial loads do
+  not wait on an interval, so nothing a page shows is lost.
+- The shell's notification stream is SSE. The harness answers it 404 and the
+  shell retries on a backoff timer, so a capture logs one, two or three
+  attempts depending on its length. `compare.mjs` compares repeated attempts
+  as one; `report.json` keeps them all.
 
 ## Workflow
 
@@ -128,6 +136,11 @@ notes beside the state.
 - a `ready` expression;
 - optional actions and keyboard probes;
 - the selectors whose style and geometry are tracked.
+
+A state can also carry `viewport`, `readyTimeout`, `session` (sessionStorage
+entries) and `init`, a script evaluated before the application boots, which
+is how router state a real navigation would have carried gets seeded. Probes
+can press `Tab`, `Enter`, `Space`, `Escape` and `ArrowRight`.
 
 States record what the page does, never what a build is expected to do. The
 same catalogue runs before and after a change.

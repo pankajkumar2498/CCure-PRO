@@ -48,6 +48,23 @@ function screenshotDelta(a, b) {
   };
 }
 
+/* The shell's notification stream (SSE) is answered 404 and the shell retries
+   it on a backoff timer, so how many attempts a capture logs depends on how
+   long the capture ran — measured at 1, 2 or 3 across 62 captures of one
+   unchanged build (batch 17). Repeated attempts compare as one; the raw log in
+   report.json keeps every attempt. */
+const RETRIED_STREAMS = [/^GET \/api\/notifications\/stream(?:\?\S*)? -> /];
+
+export const comparableRequests = (lines) => {
+  const seen = new Set();
+  return lines.filter((line) => {
+    if (!RETRIED_STREAMS.some((re) => re.test(line))) return true;
+    if (seen.has(line)) return false;
+    seen.add(line);
+    return true;
+  });
+};
+
 export const CATEGORIES = {
   names: (r) => r.names,
   headings: (r) => r.headings,
@@ -69,7 +86,7 @@ export const CATEGORIES = {
   theme: (r) => r.theme,
   styles: (r) => r.styles,
   rects: (r) => r.rects,
-  requests: (r) => r.log.requests,
+  requests: (r) => comparableRequests(r.log.requests),
   writes: (r) => r.log.refusedWrites,
   offOrigin: (r) => r.log.offOrigin,
   csp: (r) => r.log.csp,

@@ -44,6 +44,9 @@ import {
   NO_SCANS_READ,
   NM_STUBS,
   NM_EMPTY,
+  SCANS_ADMIN,
+  SH_STUBS,
+  SH_STUBS_EMPTY,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -1214,6 +1217,221 @@ const NM_STATES = [
   },
 ];
 
+/* ── ScanHistory (batch 22) ───────────────────────────────────────────────── */
+/* The live stream is a finite replay (fixtures.mjs), so every state waits for
+   the page's own fallback to settle on "Live sync polling". From then on the
+   list is fetched every 5 s and the stream was opened twice before that, so
+   both requests repeat for as long as a capture runs.
+
+   Archive and Delete send their request on the first press, with no
+   confirmation, and confirming Re-run or Stop would send one too. Probes only
+   Tab to those controls; the states that open the re-run and stop
+   confirmations send nothing, and the harness refuses every write anyway. */
+const SH_TRACKED = [
+  ...PAGE_TRACKED,
+  "h2",
+  "button",
+  "input",
+  "[role=status]",
+  "[role=progressbar]",
+];
+
+const SH_BASE = {
+  route: "/history",
+  persona: SCANS_ADMIN,
+  stubs: SH_STUBS,
+  tracked: SH_TRACKED,
+  repeatable: ["^GET /api/scans\\?", "^GET /api/scans/events\\?"],
+};
+
+const shPolling = hasText("/Live sync polling/");
+const shRows = `document.querySelectorAll("table tbody tr").length > 0`;
+const shHistoryReady = `${shPolling} && ${shRows}`;
+// innerText follows text-transform, and the legacy card label is uppercased.
+const shMonitorReady = `${shPolling} && ${hasText("/Overall Progress/i")}`;
+const shButton = (re) =>
+  `el.tagName === 'BUTTON' && ${re}.test((el.textContent || '').trim())`;
+const shRowButton = (re) =>
+  `[...document.querySelectorAll("table tbody tr button")].find((b) => ${re}.test((b.textContent || "").trim()))`;
+const shDialogOpen = `!!document.querySelector("[role=dialog]")`;
+
+const SH_PROBES = {
+  // Tab only: each of these sends a write, or opens a confirmation, on Enter.
+  rerun: { id: "rerun-reachable", tabTo: shButton("/^Re-run/") },
+  archive: { id: "archive-reachable", tabTo: shButton("/^Archive/") },
+  remove: { id: "delete-reachable", tabTo: shButton("/^Delete/") },
+  stop: { id: "stop-reachable", tabTo: shButton("/^Stop Scan/") },
+  nextPage: {
+    id: "next-page-by-keyboard",
+    tabTo: shButton("/^Next$/"),
+    press: "Enter",
+    wait: 400,
+    expect: hasText("/Page 2 of 2/"),
+  },
+  sortTarget: {
+    id: "sort-target-by-keyboard",
+    tabTo: shButton("/^Target/"),
+    press: "Enter",
+    wait: 400,
+    expect: `!!document.querySelector('[aria-sort="ascending"]')`,
+  },
+  statusFailed: {
+    id: "status-failed-by-keyboard",
+    tabTo: shButton("/^Failed$/"),
+    press: "Enter",
+    wait: 400,
+    expect: `[...document.querySelectorAll("table tbody tr")].every((r) => /Failed/.test(r.textContent || ""))`,
+  },
+  ownerMine: {
+    id: "owner-mine-by-keyboard",
+    tabTo: shButton("/^My scans$/"),
+    press: "Enter",
+    wait: 800,
+    expectRequest: {
+      path: "/api/scans",
+      query: { scope: "active", created_by: "me" },
+    },
+  },
+  syncNow: {
+    id: "sync-now-by-keyboard",
+    tabTo: shButton("/Sync now/"),
+    press: "Enter",
+    wait: 800,
+    expectRequest: { path: "/api/scans", query: { scope: "active" } },
+  },
+  escapeDialog: {
+    id: "confirmation-escape",
+    tabTo: `el.tagName === 'BUTTON' && /^Cancel$/.test((el.textContent || '').trim()) && !!el.closest("[role=dialog]")`,
+    press: "Escape",
+    wait: 400,
+    expect: `!document.querySelector("[role=dialog]")`,
+  },
+};
+
+const SH_STATES = [
+  {
+    ...SH_BASE,
+    id: "sh-history",
+    themes: BOTH,
+    ready: shHistoryReady,
+    probes: [
+      SH_PROBES.rerun,
+      SH_PROBES.archive,
+      SH_PROBES.remove,
+      SH_PROBES.nextPage,
+      SH_PROBES.sortTarget,
+      SH_PROBES.statusFailed,
+      SH_PROBES.ownerMine,
+      SH_PROBES.syncNow,
+    ],
+  },
+  {
+    ...SH_BASE,
+    id: "sh-completed",
+    themes: LIGHT,
+    route: "/history?status=complete",
+    ready: shHistoryReady,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-monitor",
+    themes: BOTH,
+    route: "/monitor",
+    ready: shMonitorReady,
+    probes: [SH_PROBES.stop],
+  },
+  {
+    ...SH_BASE,
+    id: "sh-mobile",
+    themes: LIGHT,
+    viewport: [390, 2400],
+    ready: shHistoryReady,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-loading",
+    themes: LIGHT,
+    stubs: {
+      "/scans": { __pending: true },
+      "/scans/events": { __pending: true },
+    },
+    ready: `${hasText("/Live sync connecting/")} && !document.querySelector("table")`,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-empty",
+    themes: LIGHT,
+    stubs: SH_STUBS_EMPTY,
+    ready: `${shPolling} && ${hasText("/No scans yet/")}`,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-error",
+    themes: LIGHT,
+    stubs: {
+      "/scans": { __status: 500 },
+      "/scans/events": { __status: 500 },
+    },
+    ready: `${shPolling} && ${hasText("/Failed to load scan history/")}`,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-readonly",
+    themes: LIGHT,
+    persona: DASHBOARD_RESTRICTED,
+    ready: shHistoryReady,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-denied",
+    themes: LIGHT,
+    persona: NO_SCANS_READ,
+    stubs: {
+      "/scans": {
+        __status: 403,
+        body: {
+          detail:
+            "Insufficient privileges. Your role 'analyst' does not have 'scans:read' permission.",
+        },
+      },
+      "/scans/events": { __status: 403 },
+    },
+    ready: `${shPolling} && ${hasText("/Failed to load scan history/")}`,
+  },
+  {
+    ...SH_BASE,
+    id: "sh-detail",
+    themes: LIGHT,
+    ready: shHistoryReady,
+    actions: [
+      { click: shRowButton("/^View/") },
+      { waitFor: hasText("/Discovery Results/i") },
+    ],
+  },
+  {
+    ...SH_BASE,
+    id: "sh-rerun-confirm",
+    themes: LIGHT,
+    ready: shHistoryReady,
+    actions: [{ click: shRowButton("/^Re-run/") }, { waitFor: shDialogOpen }],
+    probes: [SH_PROBES.escapeDialog],
+  },
+  {
+    ...SH_BASE,
+    id: "sh-stop-confirm",
+    themes: LIGHT,
+    route: "/monitor",
+    ready: shMonitorReady,
+    actions: [
+      {
+        click: `[...document.querySelectorAll("button")].find((b) => /^Stop Scan/.test((b.textContent || "").trim()))`,
+      },
+      { waitFor: shDialogOpen },
+    ],
+    probes: [SH_PROBES.escapeDialog],
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -1223,11 +1441,12 @@ export const STATES = [
   ...P1_STATES,
   ...AMT_STATES,
   ...NM_STATES,
+  ...SH_STATES,
 ];
 
-/** States whose output Batch 21 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 20) and the one page still importing
- *  dashboard.css. Batch 21 changes NetworkMap only. */
+/** States whose output Batch 22 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 21) and the one page still importing
+ *  dashboard.css. Batch 22 changes ScanHistory only. */
 export const REGRESSION_PREFIXES = [
   "ar-",
   "vb-",
@@ -1236,6 +1455,7 @@ export const REGRESSION_PREFIXES = [
   "p2-",
   "p1-",
   "amt-",
+  "nm-",
 ];
 
 /** States the sensitivity gate injects into. */

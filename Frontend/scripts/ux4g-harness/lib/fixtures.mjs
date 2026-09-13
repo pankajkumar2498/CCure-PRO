@@ -1478,3 +1478,205 @@ export const NM_STUBS = {
   "/topology/map": NM_TOPOLOGY,
   "/topology/map/nm-scan-7": NM_TOPOLOGY,
 };
+
+/* ── ScanHistory (batch 22) ───────────────────────────────────────────────── */
+/* Field names are the page's reads from GET /scans and GET /scans/{id}. The
+   router matches paths, so `/scans` answers every filter.
+
+   `/scans/events` answers with a finite replay of the backend's stream —
+   `connected`, a `scans` snapshot, a `heartbeat` — and then the response
+   ends. The page treats an ended stream as a failure: it reconnects once
+   2.5 s later, receives the same replay, and on the second end falls back to
+   polling GET /scans every 5 s. Every capture therefore settles on "Live sync
+   polling", which is deterministic, while still exercising the stream's
+   request and its event parsing.
+
+   No state or probe archives, deletes, re-runs or stops a scan. The harness
+   refuses every write, and the probes only Tab to those controls; opening the
+   re-run and stop confirmations sends nothing. */
+export const SCANS_ADMIN = persona([
+  ...BASE_PERMISSIONS,
+  "scans:archive",
+  "scans:recycle",
+]);
+
+const shScan = (no, fields = {}) => ({
+  id: `sh-${no}`,
+  scan_no: no,
+  target: `10.30.1.${no - 2100}`,
+  scan_type: "network",
+  pipeline_mode: "basic",
+  phase: 1,
+  status: "complete",
+  scan_duration: 42.5,
+  progress_percentage: 100,
+  summary: { active_hosts: 3 },
+  created_by: 202,
+  started_by: { user_id: 202, display_name: "Priya Nair" },
+  started_at: ago(10),
+  completed_at: ago(10),
+  updated_at: ago(10),
+  ...fields,
+});
+
+const SH_MINE = {
+  created_by: 101,
+  started_by: { user_id: 101, display_name: "Harness Operator" },
+};
+
+export const SH_SCANS = [
+  shScan(2116, {
+    status: "running",
+    pipeline_mode: "vulnerability_audit",
+    phase: 2,
+    progress_percentage: 66,
+    scan_duration: 640.2,
+    summary: { active_hosts: 4 },
+    started_at: ago(1 / 48),
+    completed_at: null,
+    ...SH_MINE,
+  }),
+  shScan(2115, {
+    status: "running",
+    pipeline_mode: "asset",
+    phase: 1,
+    progress_percentage: 40,
+    scan_duration: 95.8,
+    summary: { active_hosts: 7, vulnerabilities: 3 },
+    target: "10.30.2.0/24",
+    started_at: ago(1 / 96),
+    completed_at: null,
+  }),
+  shScan(2114, {
+    scan_duration: 38.4,
+    summary: { active_hosts: 12 },
+    completed_at: ago(1 / 48),
+    ...SH_MINE,
+  }),
+  shScan(2113, {
+    pipeline_mode: "asset",
+    phase: 2,
+    scan_duration: 312.6,
+    summary: { active_hosts: 9 },
+    completed_at: ago(0.25),
+  }),
+  shScan(2112, {
+    status: "failed",
+    pipeline_mode: "vulnerability_audit",
+    phase: 3,
+    scan_duration: 1204,
+    summary: {},
+    completed_at: ago(1),
+  }),
+  shScan(2111, {
+    status: "unreachable",
+    scan_duration: 4.1,
+    summary: { active_hosts: 0 },
+    completed_at: ago(2),
+  }),
+  shScan(2110, {
+    status: "cancelled",
+    pipeline_mode: "asset",
+    phase: 2,
+    completed_at: ago(3),
+    ...SH_MINE,
+  }),
+  shScan(2109, {
+    scan_type: "credentialed",
+    pipeline_mode: null,
+    completed_at: ago(4),
+  }),
+  shScan(2108, {
+    target: "10.30.1.8, 10.30.1.80",
+    targets: ["10.30.1.8", "10.30.1.80"],
+    completed_at: ago(5),
+  }),
+  shScan(2107, { status: "canceled", completed_at: ago(6) }),
+  shScan(2106, {
+    pipeline_mode: "asset",
+    phase: 2,
+    completed_at: ago(8),
+  }),
+  shScan(2105, { status: "failed", completed_at: ago(9) }),
+  shScan(2104, {
+    pipeline_mode: "vulnerability_audit",
+    phase: 3,
+    completed_at: ago(12),
+  }),
+  shScan(2103, {
+    status: "unreachable",
+    pipeline_mode: "asset",
+    completed_at: ago(15),
+  }),
+  shScan(2102, { completed_at: ago(20) }),
+  shScan(2101, { completed_at: ago(28) }),
+];
+
+const SH_DETAIL = {
+  ...SH_SCANS[2],
+  summary: {
+    scan_duration: 38.4,
+    active_hosts: 12,
+    hosts_scanned: 254,
+    coverage_percent: 100,
+  },
+  results: {
+    phase1: {
+      data: [
+        {
+          is_active: true,
+          ip_address: "10.30.1.21",
+          hostname: "files-01",
+          mac_address: "00:1A:2B:3C:4D:21",
+          vendor: "Dell Inc.",
+          host_risk_level: "High",
+          host_risk_score: 7.8,
+          open_ports: [
+            { port: 22, service: "ssh" },
+            { port: 445, service: "microsoft-ds" },
+          ],
+          cves: [
+            {
+              cve_id: "CVE-2024-6387",
+              severity: "High",
+              description: "OpenSSH signal handler race condition",
+            },
+          ],
+          suppressed_cves: [{ cve_id: "CVE-2023-38408" }],
+        },
+        {
+          is_active: true,
+          ip_address: "10.30.1.40",
+          hostname: "Unknown",
+          mac_address: "00:1A:2B:3C:4D:40",
+          vendor: "HP",
+          open_ports: [],
+        },
+      ],
+    },
+  },
+};
+
+const eventStream = (events) =>
+  events
+    .map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`)
+    .join("");
+
+const shStream = (scans) => ({
+  __eventStream: eventStream([
+    ["connected", { scope: "active" }],
+    ["scans", { scans, total: scans.length, skip: 0, limit: 200 }],
+    ["heartbeat", { ts: ago(0) }],
+  ]),
+});
+
+export const SH_STUBS = {
+  "/scans": { scans: SH_SCANS, total: SH_SCANS.length, skip: 0, limit: 200 },
+  "/scans/events": shStream(SH_SCANS),
+  "/scans/sh-2114": SH_DETAIL,
+};
+
+export const SH_STUBS_EMPTY = {
+  "/scans": { scans: [], total: 0, skip: 0, limit: 200 },
+  "/scans/events": shStream([]),
+};

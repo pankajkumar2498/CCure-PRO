@@ -1,19 +1,25 @@
 /**
  * src/pages/ScanHistory.jsx
  * Production-grade scan history with:
- *   • Custom confirm dialogs (Re-run / Archive / Delete) — no browser confirm/alert
+ *   • Custom confirm dialogs (Re-run / Stop) — no browser confirm/alert
  *   • Toast notifications for success / error feedback
  *   • Re-run shows scan details + live-network warning before executing
- *   • Archive confirms with scan context + restore hint
- *   • Delete shows danger dialog + recycle-bin explanation
- * APIs: GET /scans, GET /scans/{id}, DELETE /scans/{id}, POST /scan/host-discovery (re-run)
+ * APIs: GET /scans, GET /scans/{id}, the /scans/events stream,
+ *       DELETE /scans/{id}, POST /scans/{id}/archive, POST /scans/{id}/stop,
+ *       POST /scan/host-discovery (re-run)
+ *
+ * Checkpoint 3C batch 22 — on the design system. Requests, the live stream's
+ * reconnect and polling fallback, filtering, sorting, paging, permissions and
+ * every action are unchanged, and pinned by
+ * src/__tests__/pages/ScanHistory.test.jsx, written against the page before
+ * migration. Archive and Delete still act on the first press; only Re-run and
+ * Stop ask first.
  */
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import RiskBadge from "../components/scan/RiskBadge";
 import { useAuth } from "../context/AuthContext";
-// ... (omitting some imports for brevity in thought, but I will provide the full block)
 import { useScan } from "../context/ScanContext";
 import { usePreferences } from "../context/PreferencesContext";
 import {
@@ -29,45 +35,25 @@ import api from "../api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
 import { can, denyMessage } from "../auth/permissions";
 import CVELink from "../components/common/CVELink";
+import { useToasts, ToastContainer } from "../components/common/Toast";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcureModal,
+  CcurePagination,
+  CcureScanProgress,
+  CcureScanStatus,
+  CcureSeverityBadge,
+  CcureTable,
+} from "../design-system";
+import "../styles/scan-history.css";
 
 /* ── constants ── */
-const STATUS_STYLE = {
-  complete: {
-    color: "#22c55e",
-    bg: "rgba(34,197,94,.1)",
-    border: "rgba(34,197,94,.25)",
-  },
-  completed: {
-    color: "#22c55e",
-    bg: "rgba(34,197,94,.1)",
-    border: "rgba(34,197,94,.25)",
-  },
-  running: {
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,.1)",
-    border: "rgba(245,158,11,.25)",
-  },
-  failed: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  cancelled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  canceled: {
-    color: "#ef4444",
-    bg: "rgba(239,68,68,.1)",
-    border: "rgba(239,68,68,.25)",
-  },
-  unreachable: {
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,.1)",
-    border: "rgba(245,158,11,.25)",
-  },
-};
 const STATUS_LABELS = {
   complete: "Completed",
   completed: "Completed",
@@ -126,6 +112,7 @@ const fmtSummaryValue = (key, value) => {
 };
 
 const isCred = (scan) => scan.scan_type === "credentialed";
+const scanNumber = (scan) => scan?.scan_no ?? scan?.display_id ?? "-";
 const scanLabel = (scan) =>
   `Scan No. ${scan?.scan_no ?? scan?.display_id ?? "-"}`;
 const phaseLabel = (scan) =>
@@ -248,88 +235,47 @@ const mergeScanSnapshot = (current, incoming) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TOAST SYSTEM
-   ══════════════════════════════════════════════════════════════════════════ */
-let _toastId = 0;
-function useToasts() {
-  const [toasts, setToasts] = useState([]);
-
-  const push = useCallback((msg, type = "info", duration = 4000) => {
-    const id = ++_toastId;
-    setToasts((prev) => [...prev, { id, msg, type }]);
-    setTimeout(() => {
-      setToasts((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
-      );
-      setTimeout(
-        () => setToasts((prev) => prev.filter((t) => t.id !== id)),
-        220,
-      );
-    }, duration);
-  }, []);
-
-  const dismiss = useCallback((id) => {
-    setToasts((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
-    );
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 220);
-  }, []);
-
-  return { toasts, push, dismiss };
-}
-
-const TOAST_ICONS = { success: "✓", error: "✕", info: "ℹ" };
-
-function ToastContainer({ toasts, dismiss }) {
-  if (!toasts.length) return null;
-  return (
-    <div className="toast-container">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`toast toast--${t.type}${t.exiting ? " toast--exit" : ""}`}
-          onClick={() => dismiss(t.id)}
-          style={{ cursor: "pointer" }}
-        >
-          <span className="toast-icon">{TOAST_ICONS[t.type]}</span>
-          <span className="toast-msg">{t.msg}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
    CONFIRM DIALOG COMPONENT
    ══════════════════════════════════════════════════════════════════════════ */
-function ConfirmDialog({ config, onConfirm, onCancel }) {
-  const {
-    type,
-    title,
-    subtitle,
-    meta,
-    warning,
-    confirmLabel,
-    confirmClass,
-    icon,
-    iconClass,
-  } = config;
-  const [busy, setBusy] = useState(false);
-  const btnRef = useRef(null);
-
-  // Focus confirm button on mount
+/* Built on CcureModal rather than CcureConfirmDialog, because it keeps this
+   page's confirmation exactly: the scan's details, the confirm button focused
+   on open, Escape and a click outside both cancelling, and both buttons
+   disabled while the request runs. */
+/* CcureModal's own click-outside dismissal reads the React event's
+   `currentTarget` after dispatch has finished, by which point React has
+   cleared it, so it never closes (recorded as deferred). Both of this page's
+   dialogs closed on a click outside them before migration, so the page listens
+   for a click whose target is that dialog's own overlay instead. */
+function useCloseOnOverlayClick(dialogClass, onClose) {
   useEffect(() => {
-    btnRef.current?.focus();
+    const onClick = (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.classList.contains("cc-modal__overlay") &&
+        target.firstElementChild?.classList.contains(dialogClass)
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [dialogClass, onClose]);
+}
+
+function ConfirmDialog({ config, onConfirm, onCancel }) {
+  const { type, title, subtitle, meta, warning, confirmLabel, confirmClass } =
+    config;
+  const [busy, setBusy] = useState(false);
+  const confirmRef = useRef(null);
+
+  // Focus confirm button on mount. The focus trap records what to restore on
+  // close before this runs, and focuses the same button itself a frame later.
+  useEffect(() => {
+    confirmRef.current?.focus();
   }, []);
 
-  // ESC to cancel
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  useCloseOnOverlayClick("sh-confirm", onCancel);
 
   const handleConfirm = async () => {
     setBusy(true);
@@ -341,76 +287,56 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
   };
 
   return (
-    <div
-      className="confirm-overlay"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div
-        className="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cdlg-title"
-      >
-        {/* Header */}
-        <div className="confirm-dialog-header">
-          <div
-            className={`confirm-dialog-icon confirm-dialog-icon--${iconClass}`}
-          >
-            {icon}
-          </div>
-          <div className="confirm-dialog-titles">
-            <div className="confirm-dialog-title" id="cdlg-title">
-              {title}
-            </div>
-            <div className="confirm-dialog-subtitle">{subtitle}</div>
-          </div>
-        </div>
-
-        {/* Scan meta */}
-        {meta && meta.length > 0 && (
-          <div className="confirm-dialog-meta">
-            {meta.map(([label, value]) => (
-              <div className="confirm-meta-row" key={label}>
-                <span className="confirm-meta-label">{label}</span>
-                <span className="confirm-meta-value">{value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Warning banner */}
-        {warning && (
-          <div
-            className={`confirm-dialog-warning${type === "delete" ? " confirm-dialog-warning--danger" : ""}`}
-          >
-            <span style={{ flexShrink: 0 }}>
-              {type === "delete" ? "⚠️" : "ℹ️"}
-            </span>
-            <span>{warning}</span>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="confirm-dialog-footer">
-          <button
-            className="confirm-btn confirm-btn--cancel"
-            onClick={onCancel}
-            disabled={busy}
-          >
+    <CcureModal
+      open
+      onClose={onCancel}
+      closeOnOverlayClick={false}
+      size="md"
+      className="sh-confirm"
+      title={
+        <>
+          <span aria-hidden="true">{config.icon}</span> {title}
+        </>
+      }
+      subtitle={subtitle}
+      initialFocus={confirmRef}
+      footer={
+        <>
+          <CcureButton variant="secondary" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
-            ref={btnRef}
-            className={`confirm-btn confirm-btn--${confirmClass}`}
+          </CcureButton>
+          <CcureButton
+            ref={confirmRef}
+            variant={confirmClass === "danger" ? "danger" : "primary"}
             onClick={handleConfirm}
-            disabled={busy}
+            loading={busy}
           >
-            {busy ? <span className="confirm-btn-spinner" /> : null}
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </CcureButton>
+        </>
+      }
+    >
+      {meta && meta.length > 0 && (
+        <dl className="sh-confirm__meta">
+          {meta.map(([label, value]) => (
+            <div className="sh-confirm__row" key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {warning && (
+        <CcureAlert
+          variant={type === "delete" ? "danger" : "info"}
+          live={false}
+          className="sh-confirm__warning"
+        >
+          {warning}
+        </CcureAlert>
+      )}
+    </CcureModal>
   );
 }
 
@@ -437,154 +363,122 @@ function DetailModal({ scanId, onClose, onOpenFullResults }) {
       .finally(() => setLoading(false));
   }, [scanId]);
 
+  useCloseOnOverlayClick("sh-detail", onClose);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">
-            {detail ? scanLabel(detail) : "Scan Details"}
-          </h2>
-          <button className="modal-close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
+    <CcureModal
+      open
+      onClose={onClose}
+      closeOnOverlayClick={false}
+      size="lg"
+      className="sh-detail"
+      title={detail ? scanLabel(detail) : "Scan Details"}
+    >
+      {loading && (
+        <CcureLoader
+          className="sh-detail__state"
+          label="Loading scan details…"
+        />
+      )}
+      {error && (
+        <CcureAlert variant="danger" className="sh-detail__alert">
+          {error}
+        </CcureAlert>
+      )}
 
-        {loading && (
-          <div
-            style={{ display: "flex", justifyContent: "center", padding: 40 }}
-          >
-            <div className="spinner" />
-          </div>
-        )}
-        {error && (
-          <div className="alert alert--error" style={{ margin: 20 }}>
-            {error}
-          </div>
-        )}
-
-        {detail && (
-          <div className="modal-body">
-            {/* Meta grid */}
-            <div className="detail-meta">
-              <div className="dm-item">
-                <span className="dm-label">Target</span>
-                <code className="ip-code">{detail.target}</code>
-              </div>
-              <div className="dm-item">
-                <span className="dm-label">Scan Type</span>
-                <span>{scanTypeLabel(detail)}</span>
-              </div>
-              <div className="dm-item">
-                <span className="dm-label">Phase</span>
-                <span>
-                  {isCred(detail)
-                    ? "Credentialed"
-                    : PHASE_LABELS[detail.phase] || detail.phase}
-                </span>
-              </div>
-              <div className="dm-item">
-                <span className="dm-label">Status</span>
-                <StatusBadge status={detail.status} />
-              </div>
-              <div className="dm-item">
-                <span className="dm-label">Duration</span>
-                <span style={{ fontFamily: "var(--mono)" }}>
-                  {fmtDur(detail.scan_duration)}
-                </span>
-              </div>
-              <div className="dm-item">
-                <span className="dm-label">Completed</span>
-                <span>{fmtDate(getScanDisplayDate(detail))}</span>
-              </div>
+      {detail && (
+        <div className="sh-detail__body">
+          <dl className="sh-detail__meta">
+            <div>
+              <dt>Target</dt>
+              <dd className="sh-mono">{detail.target}</dd>
             </div>
+            <div>
+              <dt>Scan Type</dt>
+              <dd>{scanTypeLabel(detail)}</dd>
+            </div>
+            <div>
+              <dt>Phase</dt>
+              <dd>
+                {isCred(detail)
+                  ? "Credentialed"
+                  : PHASE_LABELS[detail.phase] || detail.phase}
+              </dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>
+                <CcureScanStatus status={normalizeStatus(detail.status)} />
+              </dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd className="sh-mono">{fmtDur(detail.scan_duration)}</dd>
+            </div>
+            <div>
+              <dt>Completed</dt>
+              <dd>{fmtDate(getScanDisplayDate(detail))}</dd>
+            </div>
+          </dl>
 
-            {/* Why a scan failed used to live only in the database, so the UI
-                could say "Failed" and nothing more. */}
-            {detail.failure_reason && (
-              <div className="alert alert--error" style={{ margin: "12px 0" }}>
-                {detail.failure_reason}
-              </div>
-            )}
+          {/* Why a scan failed used to live only in the database, so the UI
+              could say "Failed" and nothing more. */}
+          {detail.failure_reason && (
+            <CcureAlert
+              variant="danger"
+              live={false}
+              className="sh-detail__alert"
+            >
+              {detail.failure_reason}
+            </CcureAlert>
+          )}
 
-            {/* Summary */}
-            {summaryEntries.length > 0 && (
-              <div className="detail-section">
-                <h4 className="section-title" style={{ marginBottom: 8 }}>
-                  Summary
-                </h4>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 3 }}
-                >
-                  {summaryEntries.map(([k, v]) => (
-                    <div
-                      key={k}
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        padding: "5px 0",
-                        borderBottom: "1px solid #f1f5f9",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                          minWidth: 160,
-                        }}
-                      >
-                        {k.replace(/_/g, " ")}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        {fmtSummaryValue(k, v)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {summaryEntries.length > 0 && (
+            <section className="sh-detail__section">
+              <h3 className="sh-detail__heading">Summary</h3>
+              <dl className="sh-detail__summary">
+                {summaryEntries.map(([k, v]) => (
+                  <div key={k} className="sh-detail__summary-row">
+                    <dt>{k.replace(/_/g, " ")}</dt>
+                    <dd>{fmtSummaryValue(k, v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
-            {/* Phase results */}
-            {detail.results &&
-              Object.entries(detail.results).map(([pk, pd]) => {
-                const hosts = (pd?.data || []).filter((h) => h.is_active);
-                if (!hosts.length) return null;
-                return (
-                  <div key={pk} className="detail-section">
-                    <h4 className="section-title" style={{ marginBottom: 8 }}>
-                      {PHASE_LABELS[pk.replace("phase", "")] || pk} Results
-                      <span
-                        className="muted"
-                        style={{ marginLeft: 8, fontSize: 11 }}
-                      >
-                        ({hosts.length} host{hosts.length !== 1 ? "s" : ""})
-                      </span>
-                    </h4>
+          {detail.results &&
+            Object.entries(detail.results).map(([pk, pd]) => {
+              const hosts = (pd?.data || []).filter((h) => h.is_active);
+              if (!hosts.length) return null;
+              return (
+                <section key={pk} className="sh-detail__section">
+                  <h3 className="sh-detail__heading">
+                    {PHASE_LABELS[pk.replace("phase", "")] || pk} Results
+                    <span className="sh-muted sh-detail__count">
+                      ({hosts.length} host{hosts.length !== 1 ? "s" : ""})
+                    </span>
+                  </h3>
+                  <ul className="sh-hosts">
                     {hosts.map((h) => (
-                      <div key={h.ip_address} className="detail-host">
-                        <div className="detail-host-header">
-                          <code className="ip-code">{h.ip_address}</code>
+                      <li key={h.ip_address} className="sh-host">
+                        <div className="sh-host__header">
+                          <span className="sh-mono sh-host__ip">
+                            {h.ip_address}
+                          </span>
                           {h.hostname && h.hostname !== "Unknown" && (
-                            <span className="muted small"> {h.hostname}</span>
+                            <span className="sh-muted">{h.hostname}</span>
                           )}
                           {/* MAC and vendor are the headline result of a LAN
                               discovery scan; omitting them here meant the only
                               view reachable from history hid them. */}
                           {(h.mac_address || h.mac) && (
-                            <code
-                              className="ip-code"
-                              style={{ fontSize: 11, opacity: 0.85 }}
-                            >
+                            <span className="sh-mono sh-muted">
                               {String(h.mac_address || h.mac).toLowerCase()}
-                            </code>
+                            </span>
                           )}
                           {h.vendor && h.vendor !== "Unknown" && (
-                            <span className="muted small">{h.vendor}</span>
+                            <span className="sh-muted">{h.vendor}</span>
                           )}
                           {h.host_risk_level && (
                             <RiskBadge
@@ -593,40 +487,21 @@ function DetailModal({ scanId, onClose, onOpenFullResults }) {
                             />
                           )}
                           {h.open_ports?.length > 0 && (
-                            <span
-                              style={{
-                                fontFamily: "var(--mono)",
-                                fontSize: 11,
-                                background: "var(--bg-app)",
-                                border: "1px solid var(--border)",
-                                padding: "2px 7px",
-                                borderRadius: 3,
-                              }}
-                            >
+                            <CcureBadge variant="neutral">
                               {h.open_ports.length} ports
-                            </span>
+                            </CcureBadge>
                           )}
                           {h.cves?.length > 0 && (
-                            <span
-                              style={{
-                                fontFamily: "var(--mono)",
-                                fontSize: 11,
-                                color: "#f97316",
-                              }}
-                            >
+                            <CcureBadge variant="warning">
                               {h.cves.length} verified
-                            </span>
+                            </CcureBadge>
                           )}
                           {/* Candidates the scan examined and ruled out. Shown
                               so this count reconciles with the report, which
                               lists the same suppressed candidates. */}
                           {h.suppressed_cves?.length > 0 && (
                             <span
-                              className="muted"
-                              style={{
-                                fontFamily: "var(--mono)",
-                                fontSize: 11,
-                              }}
+                              className="sh-muted sh-mono"
                               title="Candidate CVEs ruled out: the affected product or version is not present on this host"
                             >
                               {h.suppressed_cves.length} ruled out
@@ -634,106 +509,90 @@ function DetailModal({ scanId, onClose, onOpenFullResults }) {
                           )}
                         </div>
                         {h.open_ports?.length > 0 && (
-                          <div className="port-pills" style={{ marginTop: 8 }}>
+                          <ul className="sh-ports">
                             {h.open_ports.map((p, i) => (
-                              <span key={i} className="port-pill">
-                                <code>{p.port}</code> {p.service}
-                              </span>
+                              <li key={i} className="sh-port">
+                                <span className="sh-mono">{p.port}</span>{" "}
+                                {p.service}
+                              </li>
                             ))}
-                          </div>
+                          </ul>
                         )}
                         {h.cves?.length > 0 && (
-                          <div className="cve-list" style={{ marginTop: 10 }}>
+                          <ul className="sh-cves">
                             {h.cves.slice(0, 5).map((rawCve, i) => {
                               const cve = normCve(rawCve);
                               return (
-                                <div key={i} className="cve-row">
+                                <li key={i} className="sh-cve">
                                   <CVELink cveId={cve.cve_id} />
-                                  <span className="cve-sev">
-                                    {cve.severity}
-                                  </span>
-                                  <span className="cve-desc">
+                                  <CcureSeverityBadge severity={cve.severity} />
+                                  <span className="sh-cve__desc">
                                     {cve.description}
                                   </span>
-                                </div>
+                                </li>
                               );
                             })}
-                            {h.cves.length > 5 && (
-                              <p
-                                className="muted"
-                                style={{ fontSize: 12, marginTop: 4 }}
-                              >
-                                +{h.cves.length - 5} more
-                              </p>
-                            )}
-                          </div>
+                          </ul>
                         )}
-                      </div>
+                        {h.cves?.length > 5 && (
+                          <p className="sh-muted sh-more">
+                            +{h.cves.length - 5} more
+                          </p>
+                        )}
+                      </li>
                     ))}
-                  </div>
-                );
-              })}
+                  </ul>
+                </section>
+              );
+            })}
 
-            {/* The modal is a summary. The full results view — sortable host
-                table, Active/All filters, and the JSON/CSV/Copy exports — used
-                to be unreachable for any scan that was not still in session. */}
-            {detail.results?.phase1?.data?.length > 0 && (
-              <div className="detail-section">
-                <button
-                  className="btn btn--primary"
-                  onClick={() => onOpenFullResults(detail)}
-                >
-                  Open full results &amp; exports →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+          {/* The modal is a summary. The full results view — sortable host
+              table, Active/All filters, and the JSON/CSV/Copy exports — used
+              to be unreachable for any scan that was not still in session. */}
+          {detail.results?.phase1?.data?.length > 0 && (
+            <div className="sh-detail__actions">
+              <CcureButton onClick={() => onOpenFullResults(detail)}>
+                Open full results &amp; exports{" "}
+                <span aria-hidden="true">→</span>
+              </CcureButton>
+            </div>
+          )}
+        </div>
+      )}
+    </CcureModal>
   );
 }
 
 /* ── sub-components ── */
-function StatusBadge({ status }) {
-  const normalized = normalizeStatus(status);
-  const s = STATUS_STYLE[normalized] || STATUS_STYLE.running;
+function FilterGroup({ label, children }) {
+  const labelId = useId();
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 9px",
-        borderRadius: 4,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        color: s.color,
-        fontSize: 11,
-        fontFamily: "var(--mono)",
-        letterSpacing: ".05em",
-      }}
-    >
-      {STATUS_LABELS[normalized] || status}
-    </span>
+    <div className="sh-filter">
+      <span className="sh-filter__label" id={labelId}>
+        {label}
+      </span>
+      <div
+        className="sh-filter__options"
+        role="group"
+        aria-labelledby={labelId}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
-function ScanProgress({ scan }) {
-  const progress = getScanProgress(scan);
-  const status = normalizeStatus(scan.status);
-
+function FilterOption({ active, children, ...rest }) {
   return (
-    <div
-      className="history-progress"
-      aria-label={`Scan progress ${Math.round(progress)}%`}
+    <CcureButton
+      variant="secondary"
+      size="sm"
+      className="sh-filter__option"
+      aria-pressed={active}
+      {...rest}
     >
-      <div className="history-progress-track">
-        <div
-          className={`history-progress-fill history-progress-fill--${status}`}
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <span className="history-progress-text">{Math.round(progress)}%</span>
-    </div>
+      {children}
+    </CcureButton>
   );
 }
 
@@ -744,80 +603,79 @@ function ScanMonitorCard({ scan, onStop, onView }) {
   const progress = getScanProgress(scan);
   const status = normalizeStatus(scan.status);
   const summary = scan.summary || {};
+  const number = scanNumber(scan);
 
   return (
-    <div className="monitor-card">
-      <div className="monitor-card-header">
-        <div className="monitor-card-title">
-          <code className="ip-code">
-            {scan.scan_no ?? scan.display_id ?? "-"}
-          </code>
-          <span className="monitor-card-target" title={scan.target}>
+    <CcureCard
+      className="sh-monitor-card"
+      title={
+        <>
+          <span className="sh-mono">{number}</span>{" "}
+          <span className="sh-monitor-card__target" title={scan.target}>
             {scan.target}
           </span>
+        </>
+      }
+      actions={<CcureScanStatus status={status} />}
+      footer={
+        <>
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            onClick={() => onView(scan)}
+            aria-label={`View Detailed Results for scan ${number}`}
+          >
+            View Detailed Results
+          </CcureButton>
+          <CcureButton
+            variant="danger"
+            size="sm"
+            onClick={() => onStop(scan)}
+            aria-label={`Stop Scan ${number}`}
+          >
+            Stop Scan
+          </CcureButton>
+        </>
+      }
+    >
+      <dl className="sh-monitor-card__meta">
+        <div>
+          <dt>Phase:</dt>
+          <dd>{phaseLabel(scan)}</dd>
         </div>
-        <StatusBadge status={scan.status} />
-      </div>
-
-      <div className="monitor-card-body">
-        <div className="monitor-card-meta">
-          <div className="monitor-meta-item">
-            <span className="label">Phase:</span>
-            <span className="value">{phaseLabel(scan)}</span>
-          </div>
-          <div className="monitor-meta-item">
-            <span className="label">Duration:</span>
-            <span className="value">{fmtDur(scan.scan_duration)}</span>
-          </div>
-          <div className="monitor-meta-item">
-            <span className="label">Type:</span>
-            <span className="value">{scanTypeLabel(scan)}</span>
-          </div>
+        <div>
+          <dt>Duration:</dt>
+          <dd>{fmtDur(scan.scan_duration)}</dd>
         </div>
-
-        <div className="monitor-card-progress">
-          <div className="progress-label">
-            <span>Overall Progress</span>
-            <span>{Math.round(progress)}%</span>
-          </div>
-          <div className="progress-track">
-            <div
-              className={`progress-fill progress-fill--${status}`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+        <div>
+          <dt>Type:</dt>
+          <dd>{scanTypeLabel(scan)}</dd>
         </div>
+      </dl>
 
-        {summary.active_hosts !== undefined && (
-          <div className="monitor-card-stats">
-            <div className="monitor-stat">
-              <span className="stat-value">{summary.active_hosts}</span>
-              <span className="stat-label">Active Hosts</span>
-            </div>
-            {summary.vulnerabilities !== undefined && (
-              <div className="monitor-stat">
-                <span className="stat-value" style={{ color: "#ef4444" }}>
-                  {summary.vulnerabilities}
-                </span>
-                <span className="stat-label">Findings</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <CcureScanProgress
+        value={progress}
+        status={status}
+        label="Overall Progress"
+      />
 
-      <div className="monitor-card-footer">
-        <button className="btn btn--ghost btn--sm" onClick={() => onView(scan)}>
-          View Detailed Results
-        </button>
-        <button
-          className="btn btn--danger btn--sm"
-          onClick={() => onStop(scan)}
-        >
-          Stop Scan
-        </button>
-      </div>
-    </div>
+      {summary.active_hosts !== undefined && (
+        <ul className="sh-monitor-card__stats">
+          <li>
+            <strong className="sh-stat__value">{summary.active_hosts}</strong>{" "}
+            <span className="sh-stat__label">Active Hosts</span>
+          </li>
+          {summary.vulnerabilities !== undefined && (
+            <li>
+              <strong className="sh-stat__value sh-stat__value--danger">
+                {summary.vulnerabilities}
+              </strong>{" "}
+              <span className="sh-stat__label">Findings</span>
+            </li>
+          )}
+        </ul>
+      )}
+    </CcureCard>
   );
 }
 
@@ -1256,435 +1114,360 @@ export default function ScanHistory({ mode = "history" }) {
     if (page > totalPages) setPage(1);
   }, [totalPages, page]);
 
+  /* ── Presentation ── */
+  const openStopDialog = (s) => {
+    setDialog({
+      type: "stop",
+      scan: s,
+      config: {
+        type: "delete", // Reuse danger style
+        icon: "⏹",
+        iconClass: "danger",
+        title: "Stop Scan?",
+        subtitle: `Are you sure you want to terminate ${scanLabel(s)}?`,
+        warning:
+          "Stopping a scan will immediately terminate all active probes. Any results gathered so far will be saved, but the scan will be marked as cancelled.",
+        confirmLabel: "Stop Scan",
+        confirmClass: "danger",
+      },
+    });
+  };
+
+  const rowActions = (scan) => {
+    const isRunning = normalizeStatus(scan.status) === "running";
+    const number = scanNumber(scan);
+    return (
+      <div className="sh-actions">
+        {canReadScans && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            onClick={() => handleView(scan)}
+            title="View scan details"
+            aria-label={`View scan ${number}`}
+          >
+            View
+          </CcureButton>
+        )}
+
+        {/* Re-run — disabled for running scans */}
+        {canExecuteScans && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            onClick={() => openRerunDialog(scan)}
+            disabled={isRunning}
+            title={
+              isRunning
+                ? "Scan is already running"
+                : "Re-run this scan against the same target"
+            }
+            aria-label={`Re-run scan ${number}`}
+          >
+            Re-run
+          </CcureButton>
+        )}
+
+        {/* Archive — disabled for running scans */}
+        {canArchiveScans && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            onClick={() => handleConfirmArchive({ scan })}
+            disabled={isRunning}
+            title={
+              isRunning
+                ? "Cannot archive a running scan"
+                : "Move to archived scans"
+            }
+            aria-label={`Archive scan ${number}`}
+          >
+            Archive
+          </CcureButton>
+        )}
+
+        {/* Delete */}
+        {canRecycleScans && (
+          <CcureButton
+            variant="danger"
+            size="sm"
+            onClick={() => handleConfirmDelete({ scan })}
+            title="Move to Recycle Bin"
+            aria-label={`Delete scan ${number}`}
+          >
+            Delete
+          </CcureButton>
+        )}
+      </div>
+    );
+  };
+
+  const columns = [
+    {
+      key: "scan_no",
+      header: "Scan No.",
+      sortable: true,
+      isRowHeader: true,
+      mono: true,
+      nowrap: true,
+      cell: (scan) => scanNumber(scan),
+    },
+    {
+      key: "target",
+      header: "Target",
+      sortable: true,
+      mono: true,
+      cell: (scan) => <span className="sh-target">{scan.target}</span>,
+    },
+    {
+      key: "type",
+      header: "Type",
+      sortable: true,
+      cell: (scan) => (
+        <CcureBadge variant="neutral">{scanTypeLabel(scan)}</CcureBadge>
+      ),
+    },
+    {
+      key: "started_by",
+      header: "Started By",
+      sortable: true,
+      cell: (scan) => getScanStartedByLabel(scan, user),
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      cell: (scan) => (
+        <div className="sh-status">
+          <CcureScanStatus status={normalizeStatus(scan.status)} />
+          <CcureScanProgress
+            className="sh-progress"
+            value={getScanProgress(scan)}
+            status={normalizeStatus(scan.status)}
+            label={`Scan ${scanNumber(scan)} progress`}
+          />
+        </div>
+      ),
+    },
+    {
+      key: "active_hosts",
+      header: "Active Hosts",
+      sortable: true,
+      mono: true,
+      cell: (scan) => {
+        const summary = scan.summary || {};
+        return summary.active_hosts !== undefined ? (
+          <span className="sh-hosts-count">{summary.active_hosts}</span>
+        ) : (
+          <span className="sh-muted">—</span>
+        );
+      },
+    },
+    {
+      key: "duration",
+      header: "Duration",
+      sortable: true,
+      mono: true,
+      nowrap: true,
+      cell: (scan) => fmtDur(scan.scan_duration),
+    },
+    {
+      key: "date",
+      header: "Date",
+      sortable: true,
+      mono: true,
+      nowrap: true,
+      cell: (scan) => (
+        <span className="sh-muted">{fmtDate(getScanDisplayDate(scan))}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "end",
+      cell: rowActions,
+    },
+  ];
+
   return (
     <AppLayout pageTitle={isMonitor ? "Active Scans" : "Scan History"}>
-      <div className="page-inner">
+      <div className="sh-page">
         {/* Page header */}
-        <div className="page-title-row">
+        <header className="sh-header">
           <div>
-            <h2 className="page-title">
+            <h1 className="sh-title">
               {isMonitor ? "Active Scans" : "Scan History"}
-            </h2>
-            <p className="page-subtitle" style={{ fontFamily: "var(--mono)" }}>
+            </h1>
+            <p className="sh-subtitle">
               {isMonitor
                 ? `${visible.length} active operation${visible.length !== 1 ? "s" : ""}`
                 : `${total} scan${total !== 1 ? "s" : ""} · ${user?.username}`}
             </p>
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-            }}
-          >
-            <div
-              className={`history-live history-live--${liveState}`}
+          <div className="sh-header__actions">
+            <p
+              className={`sh-live sh-live--${liveState}`}
+              role="status"
               title={
                 lastLiveAt
                   ? `Last update ${lastLiveAt.toLocaleTimeString()}`
                   : ""
               }
             >
-              <span className="history-live-dot" />
+              <span className="sh-live__dot" aria-hidden="true" />
               <span>{LIVE_LABELS[liveState]}</span>
-            </div>
-            <button
-              className="btn btn--ghost"
+            </p>
+            <CcureButton
+              variant="ghost"
               onClick={() => load()}
-              disabled={refreshing}
+              loading={refreshing}
             >
-              {refreshing ? (
-                <span className="btn-spinner btn-spinner--dark" />
-              ) : (
-                "Sync now"
-              )}
-            </button>
+              Sync now
+            </CcureButton>
           </div>
-        </div>
+        </header>
 
         {/* Filters */}
-        <div className="filter-bar">
+        <div className="sh-filters">
           {!isMonitor && (
-            <div className="filter-group">
-              <label htmlFor="scan-search">Search</label>
-              <input
-                id="scan-search"
-                type="search"
-                className="input"
-                placeholder="Target IP or scan no…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-            </div>
+            <CcureInput
+              id="scan-search"
+              type="search"
+              label="Search"
+              fieldClassName="sh-filters__search"
+              placeholder="Target IP or scan no…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
           )}
-          <div className="filter-group">
-            <label>Status</label>
-            <div className="filter-tabs">
-              {/* "unreachable" is a real terminal outcome the backend sets when
-                  no target answered. Without a tab for it those scans could
-                  only be found under "All". */}
-              {(isMonitor
-                ? ["running"]
-                : ["all", "complete", "unreachable", "failed", "cancelled"]
-              ).map((s) => (
-                <button
-                  key={s}
-                  className={`filter-tab ${filterStatus === s ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilterStatus(s)}
-                  disabled={isMonitor}
+          <FilterGroup label="Status">
+            {/* "unreachable" is a real terminal outcome the backend sets when
+                no target answered. Without a tab for it those scans could
+                only be found under "All". */}
+            {(isMonitor
+              ? ["running"]
+              : ["all", "complete", "unreachable", "failed", "cancelled"]
+            ).map((s) => (
+              <FilterOption
+                key={s}
+                active={filterStatus === s}
+                onClick={() => setFilterStatus(s)}
+                disabled={isMonitor}
+              >
+                {s === "all" ? "All" : STATUS_LABELS[s]}
+              </FilterOption>
+            ))}
+          </FilterGroup>
+          {!isMonitor && (
+            <FilterGroup label="Owner">
+              {["all", "mine"].map((o) => (
+                <FilterOption
+                  key={o}
+                  active={filterOwner === o}
+                  onClick={() => setFilterOwner(o)}
                 >
-                  {s === "all" ? "All" : STATUS_LABELS[s]}
-                </button>
+                  {o === "all" ? "All scans" : "My scans"}
+                </FilterOption>
               ))}
-            </div>
-          </div>
-          {!isMonitor && (
-            <div className="filter-group">
-              <label>Owner</label>
-              <div className="filter-tabs">
-                {["all", "mine"].map((o) => (
-                  <button
-                    key={o}
-                    className={`filter-tab ${filterOwner === o ? "filter-tab--active" : ""}`}
-                    onClick={() => setFilterOwner(o)}
-                  >
-                    {o === "all" ? "All scans" : "My scans"}
-                  </button>
-                ))}
-              </div>
-            </div>
+            </FilterGroup>
           )}
           {!isMonitor && (
-            <div className="filter-group">
-              <label>Time range</label>
-              <div className="filter-tabs">
-                {[
-                  ["all", "All time"],
-                  ["1h", "1 hr"],
-                  ["24h", "24 hrs"],
-                  ["7d", "7 days"],
-                  ["30d", "30 days"],
-                ].map(([v, l]) => (
-                  <button
-                    key={v}
-                    className={`filter-tab ${filterDate === v ? "filter-tab--active" : ""}`}
-                    onClick={() => setFilterDate(v)}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterGroup label="Time range">
+              {[
+                ["all", "All time"],
+                ["1h", "1 hr"],
+                ["24h", "24 hrs"],
+                ["7d", "7 days"],
+                ["30d", "30 days"],
+              ].map(([v, l]) => (
+                <FilterOption
+                  key={v}
+                  active={filterDate === v}
+                  onClick={() => setFilterDate(v)}
+                >
+                  {l}
+                </FilterOption>
+              ))}
+            </FilterGroup>
           )}
         </div>
 
-        {error && <div className="alert alert--error">{error}</div>}
+        {error && (
+          <CcureAlert variant="danger" className="sh-message">
+            {error}
+          </CcureAlert>
+        )}
 
         {loading && (
-          <div
-            style={{ display: "flex", justifyContent: "center", padding: 60 }}
-          >
-            <div className="spinner" />
+          <div className="sh-state">
+            <CcureLoader label="Loading scan history…" />
           </div>
         )}
 
         {!loading && !error && visible.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-state-icon">{isMonitor ? "📡" : "📋"}</span>
-            <p className="empty-state-title">
-              {isMonitor
+          <CcureEmptyState
+            icon={isMonitor ? "📡" : "📋"}
+            title={
+              isMonitor
                 ? "No active scans running right now."
                 : filterStatus !== "all" || filterDate !== "all"
                   ? "No scans match your filters."
-                  : "No scans yet."}
-            </p>
-            <button
-              className="btn btn--primary"
-              style={{ marginTop: 16 }}
-              onClick={() => navigate("/scan")}
-            >
-              {isMonitor ? "Launch new scan" : "Start your first scan"} →
-            </button>
-          </div>
+                  : "No scans yet."
+            }
+            action={
+              <CcureButton onClick={() => navigate("/scan")}>
+                {isMonitor ? "Launch new scan" : "Start your first scan"}{" "}
+                <span aria-hidden="true">→</span>
+              </CcureButton>
+            }
+          />
         )}
 
         {!loading && visible.length > 0 && isMonitor && (
-          <div className="monitor-grid">
+          <div className="sh-monitor-grid">
             {visible.map((scan) => (
               <ScanMonitorCard
                 key={scan.id}
                 scan={scan}
                 onView={handleView}
-                onStop={(s) => {
-                  setDialog({
-                    type: "stop",
-                    scan: s,
-                    config: {
-                      type: "delete", // Reuse danger style
-                      icon: "⏹",
-                      iconClass: "danger",
-                      title: "Stop Scan?",
-                      subtitle: `Are you sure you want to terminate ${scanLabel(s)}?`,
-                      warning:
-                        "Stopping a scan will immediately terminate all active probes. Any results gathered so far will be saved, but the scan will be marked as cancelled.",
-                      confirmLabel: "Stop Scan",
-                      confirmClass: "danger",
-                    },
-                  });
-                }}
+                onStop={openStopDialog}
               />
             ))}
           </div>
         )}
 
         {!loading && visible.length > 0 && !isMonitor && (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {[
-                    ["scan_no", "Scan No."],
-                    ["target", "Target"],
-                    ["type", "Type"],
-                    ["started_by", "Started By"],
-                    ["status", "Status"],
-                    ["active_hosts", "Active Hosts"],
-                    ["duration", "Duration"],
-                    ["date", "Date"],
-                  ].map(([key, label]) => (
-                    <th key={key}>
-                      <button
-                        type="button"
-                        className="th-sort"
-                        onClick={() => toggleSort(key)}
-                        aria-sort={
-                          sort.key === key
-                            ? sort.dir === "asc"
-                              ? "ascending"
-                              : "descending"
-                            : "none"
-                        }
-                        title={`Sort by ${label}`}
-                      >
-                        {label}
-                        <span className="th-sort-icon" aria-hidden="true">
-                          {sort.key === key
-                            ? sort.dir === "asc"
-                              ? "▲"
-                              : "▼"
-                            : "↕"}
-                        </span>
-                      </button>
-                    </th>
-                  ))}
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((scan) => {
-                  const summary = scan.summary || {};
-                  const isRunning = normalizeStatus(scan.status) === "running";
-
-                  return (
-                    <tr key={scan.id}>
-                      <td>
-                        <code className="ip-code" style={{ fontSize: 12 }}>
-                          {scan.scan_no ?? scan.display_id ?? "-"}
-                        </code>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {scan.target}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="method-chip">
-                          {scanTypeLabel(scan)}
-                        </span>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            fontFamily: "var(--sans)",
-                            fontSize: 13,
-                            color: "var(--text)",
-                          }}
-                        >
-                          {getScanStartedByLabel(scan, user)}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="history-status-cell">
-                          <StatusBadge status={scan.status} />
-                          <ScanProgress scan={scan} />
-                        </div>
-                      </td>
-                      <td>
-                        {summary.active_hosts !== undefined ? (
-                          <span
-                            style={{
-                              color: "var(--ok)",
-                              fontFamily: "var(--mono)",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {summary.active_hosts}
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          style={{ fontFamily: "var(--mono)", fontSize: 13 }}
-                        >
-                          {fmtDur(scan.scan_duration)}
-                        </span>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: 12,
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          {fmtDate(getScanDisplayDate(scan))}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="action-btns">
-                          {/* View */}
-                          {canReadScans && (
-                            <button
-                              className="action-btn"
-                              onClick={() => handleView(scan)}
-                              title="View scan details"
-                            >
-                              View
-                            </button>
-                          )}
-
-                          {/* Re-run — disabled for running scans */}
-                          {canExecuteScans && (
-                            <button
-                              className="action-btn action-btn--rerun"
-                              onClick={() => openRerunDialog(scan)}
-                              disabled={isRunning}
-                              title={
-                                isRunning
-                                  ? "Scan is already running"
-                                  : "Re-run this scan against the same target"
-                              }
-                            >
-                              Re-run
-                            </button>
-                          )}
-
-                          {/* Archive — disabled for running scans */}
-                          {canArchiveScans && (
-                            <button
-                              className="action-btn"
-                              onClick={() => handleConfirmArchive({ scan })}
-                              disabled={isRunning}
-                              title={
-                                isRunning
-                                  ? "Cannot archive a running scan"
-                                  : "Move to archived scans"
-                              }
-                            >
-                              Archive
-                            </button>
-                          )}
-
-                          {/* Delete */}
-                          {canRecycleScans && (
-                            <button
-                              className="action-btn action-btn--danger"
-                              onClick={() => handleConfirmDelete({ scan })}
-                              title="Move to Recycle Bin"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="sh-table">
+            <CcureTable
+              caption={`Scan history — ${sorted.length} scan${sorted.length !== 1 ? "s" : ""}`}
+              columns={columns}
+              rows={paginated}
+              rowKey={(scan) => scan.id}
+              density="comfortable"
+              sort={{
+                key: sort.key,
+                direction: sort.dir === "asc" ? "ascending" : "descending",
+              }}
+              // The next direction is this page's own rule (text ascending
+              // first, numbers and dates descending first), not the table's.
+              onSortChange={({ key }) => toggleSort(key)}
+            />
 
             {totalPages > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "12px 16px",
-                  borderTop: "1px solid var(--border)",
-                }}
-              >
-                <span
-                  style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}
-                >
-                  Showing {(page - 1) * rowsPerPage + 1} to{" "}
-                  {Math.min(page * rowsPerPage, sorted.length)} of{" "}
-                  {sorted.length}
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    className="btn btn--ghost"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => p - 1)}
-                    style={{ padding: "4px 10px" }}
-                  >
-                    Previous
-                  </button>
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "0 8px",
-                    }}
-                  >
-                    Page {page} of {totalPages}
-                  </span>
-                  <button
-                    className="btn btn--ghost"
-                    disabled={page === totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                    style={{ padding: "4px 10px" }}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+              <CcurePagination
+                page={page}
+                pageSize={rowsPerPage}
+                total={sorted.length}
+                onPageChange={setPage}
+                label="Scan history pages"
+                itemNoun="scans"
+              />
             )}
           </div>
         )}
 
         {sorted.length > 0 && sorted.length < total && totalPages <= 1 && (
-          <p
-            className="muted"
-            style={{
-              textAlign: "center",
-              marginTop: 16,
-              fontSize: 13,
-              fontFamily: "var(--mono)",
-            }}
-          >
+          <p className="sh-footnote">
             Showing {sorted.length} of {total} scans
           </p>
         )}

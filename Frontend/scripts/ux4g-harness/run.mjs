@@ -135,6 +135,13 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
           .map(([k, v]) => `${k}=${v}`)
           .join("&");
         const r = route(ctx, request.method, u.pathname);
+        if (r.pending) {
+          // Left paused until the capture closes its target.
+          log.requests.push(
+            `${request.method} ${u.pathname}${q ? `?${q}` : ""} -> pending`,
+          );
+          return;
+        }
         const status = r.status || 200;
         log.requests.push(
           `${request.method} ${u.pathname}${q ? `?${q}` : ""} -> ${status}`,
@@ -146,9 +153,14 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
           requestId,
           responseCode: status,
           responseHeaders: [
-            { name: "Content-Type", value: "application/json" },
+            {
+              name: "Content-Type",
+              value: r.contentType || "application/json",
+            },
           ],
-          body: Buffer.from(JSON.stringify(r.body ?? {})).toString("base64"),
+          body: Buffer.from(r.raw ?? JSON.stringify(r.body ?? {})).toString(
+            "base64",
+          ),
         });
         return;
       }

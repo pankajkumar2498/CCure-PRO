@@ -35,6 +35,20 @@ export function route(state, method, pathname) {
   const stubs = { ...SHELL_STUBS, ...(state.stubs || {}) };
   if (Object.prototype.hasOwnProperty.call(stubs, p)) {
     const s = stubs[p];
+    // Never answered: the request stays open for the whole capture, so a page
+    // can be measured while it is still loading.
+    if (s && typeof s === "object" && s.__pending === true) {
+      return { pending: true };
+    }
+    // A finite server-sent event stream: the recorded events, then the end of
+    // the response. Answered in full, so a capture is deterministic.
+    if (s && typeof s === "object" && "__eventStream" in s) {
+      return {
+        status: s.__status || 200,
+        raw: s.__eventStream,
+        contentType: "text/event-stream",
+      };
+    }
     if (s && typeof s === "object" && "__status" in s) {
       return {
         status: s.__status,

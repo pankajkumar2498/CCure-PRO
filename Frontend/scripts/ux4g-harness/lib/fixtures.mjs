@@ -1,0 +1,481 @@
+/**
+ * Fixed API responses. Field names are the ones the pages read. Dates are
+ * relative to the frozen clock in freeze.mjs, so "3d ago" and certificate
+ * expiry bands render the same way on every run.
+ */
+import { FIXED_TIME } from "./freeze.mjs";
+
+const DAY = 86400000;
+export const ago = (days) => new Date(FIXED_TIME - days * DAY).toISOString();
+export const ahead = (days) => new Date(FIXED_TIME + days * DAY).toISOString();
+
+/* ── Personas ─────────────────────────────────────────────────────────────── */
+const BASE_PERMISSIONS = [
+  "dashboard:read",
+  "scans:read",
+  "scans:execute",
+  "assets:read",
+  "assets:update",
+  "findings:read",
+  "findings:update",
+  "reports:read",
+  "notifications:read",
+  "compliance:read",
+  "compliance:attest",
+  "compliance:manage",
+  "compliance:export_report",
+];
+
+const persona = (permissions) => ({
+  id: 101,
+  username: "harness",
+  email: "harness@example.test",
+  full_name: "Harness Operator",
+  org_id: "o-1",
+  organization_name: "Harness Org",
+  role: { name: "analyst", permissions },
+  is_active: true,
+  is_verified: true,
+  mfa_enabled: false,
+});
+
+export const ANALYST = persona(BASE_PERMISSIONS);
+export const ASSETS_READONLY = persona(
+  BASE_PERMISSIONS.filter((p) => p !== "assets:update"),
+);
+export const FINDINGS_READONLY = persona(
+  BASE_PERMISSIONS.filter((p) => p !== "findings:update"),
+);
+
+/* ── Shell ────────────────────────────────────────────────────────────────── */
+export const DASHBOARD_SUMMARY = {
+  severity: {
+    critical: 12,
+    high: 30,
+    medium: 55,
+    low: 20,
+    info: 8,
+    total: 125,
+    deltas: { critical: 2, high: -1, medium: 0, low: 1 },
+  },
+  assets: {
+    total: 42,
+    new_24h: 2,
+    risk_delta_7d: -3,
+    avg_risk_score: 47,
+    risk_level: "medium",
+    unmanaged: 5,
+  },
+  scans: { running: 1, queued: 0, last_24h: 4, quota_limit_24h: 50 },
+  kev: { open_count: 3 },
+};
+
+export const SHELL_STUBS = {
+  "/dashboard/summary": DASHBOARD_SUMMARY,
+  "/scan/quota": {
+    plan: "pro",
+    scans_used_24h: 3,
+    scans_limit_24h: 10,
+    concurrent_running: 1,
+    concurrent_limit: 2,
+    max_ips_per_scan: 1024,
+    quota_exceeded: false,
+    concurrent_exceeded: false,
+  },
+  "/notifications/summary": { total_unread: 2, by_category: { scan: 2 } },
+  "/notifications": { notifications: [], total: 0 },
+};
+
+/* ── AssetRegistry ────────────────────────────────────────────────────────── */
+export const AR_ASSETS = {
+  assets: [
+    {
+      id: "a-1",
+      ip_address: "10.180.5.10",
+      hostname: "ws-01",
+      fqdn: "ws-01.corp.test",
+      os_family: "windows",
+      os_name: "Windows 11 Pro",
+      os_confidence: 95,
+      device_category: "endpoint",
+      risk_level: "critical",
+      risk_score: 91,
+      open_ports_count: 7,
+      is_managed: false,
+      owner: "alice",
+      emp_id: "E-1001",
+      serial: "SN-ABC",
+      tags: ["finance", "dmz/prod"],
+      last_seen_at: ago(0.1),
+      vuln_counts: { critical: 3, high: 5, medium: 9 },
+    },
+    {
+      id: "a-2",
+      ip_address: "10.180.5.11",
+      hostname: "srv-02",
+      fqdn: "srv-02.corp.test",
+      os_family: "linux",
+      os_name: "Ubuntu 24.04",
+      os_confidence: 88,
+      device_category: "server",
+      risk_level: "medium",
+      risk_score: 44,
+      open_ports_count: 3,
+      is_managed: true,
+      owner: "bob",
+      emp_id: "E-1002",
+      serial: "SN-DEF",
+      tags: [],
+      last_seen_at: ago(1),
+      vuln_counts: { critical: 0, high: 1, medium: 4 },
+    },
+    {
+      id: "a-3",
+      ip_address: "10.180.5.12",
+      hostname: null,
+      fqdn: null,
+      os_family: null,
+      os_name: null,
+      os_confidence: null,
+      device_category: "iot",
+      risk_level: "low",
+      risk_score: 12,
+      open_ports_count: null,
+      is_managed: false,
+      owner: null,
+      emp_id: null,
+      serial: null,
+      tags: ["iot"],
+      last_seen_at: ago(3),
+      vuln_counts: { critical: 0, high: 0, medium: 1 },
+    },
+  ],
+  total: 3,
+};
+
+export const AR_SERVICES = {
+  services: [
+    {
+      service_name: "ssh",
+      port: 22,
+      protocol: "tcp",
+      asset_count: 12,
+      risk_level: "Medium",
+      risk_reason: "Remote administration",
+      last_seen: ago(0.2),
+    },
+    {
+      service_name: "https",
+      port: 443,
+      protocol: "tcp",
+      asset_count: 5,
+      risk_level: "High",
+      risk_reason: "Self-signed certificates",
+      last_seen: ago(1),
+    },
+    {
+      service_name: "snmp",
+      port: 161,
+      protocol: "udp",
+      asset_count: 3,
+      risk_level: "Critical",
+      risk_reason: "Default community string",
+      last_seen: ago(2),
+    },
+  ],
+  total: 3,
+};
+
+export const AR_SERVICE_ASSETS = {
+  assets: [
+    {
+      asset_id: "a-1",
+      asset_hostname: "ws-01",
+      asset_ip: "10.180.5.10",
+      asset_type: "endpoint",
+      state: "open",
+      service_product: "OpenSSH",
+      service_version: "9.6",
+      last_scan_time: ago(0.2),
+    },
+    {
+      asset_id: "a-2",
+      asset_hostname: "srv-02",
+      asset_ip: "10.180.5.11",
+      asset_type: "server",
+      state: "filtered",
+      service_product: null,
+      service_version: null,
+      last_scan_time: ago(1),
+    },
+  ],
+  total: 2,
+};
+
+export const AR_CERTS = {
+  certificates: [
+    {
+      id: "c-1",
+      asset_id: "a-1",
+      asset_ip: "10.180.5.10",
+      asset_hostname: "ws-01",
+      port: 443,
+      protocol: "tcp",
+      protocol_version: "TLSv1.2",
+      cipher_suite: "ECDHE-RSA-AES256-GCM-SHA384",
+      cert_subject: { common_name: "ws-01.corp.test" },
+      cert_issuer: { common_name: "CCure Internal CA" },
+      cert_not_after: ago(40),
+      cert_is_expired: true,
+      cert_is_self_signed: true,
+      is_weak_cipher: true,
+      grade: "F",
+      issues: ["expired"],
+    },
+    {
+      id: "c-2",
+      asset_id: "a-2",
+      asset_ip: "10.180.5.11",
+      asset_hostname: "srv-02",
+      port: 8443,
+      protocol: "tcp",
+      protocol_version: "TLSv1.3",
+      cipher_suite: "TLS_AES_256_GCM_SHA384",
+      cert_subject: { common_name: "srv-02.corp.test" },
+      cert_issuer: { common_name: "CCure Internal CA" },
+      cert_not_after: ahead(12),
+      cert_is_expired: false,
+      cert_is_self_signed: false,
+      is_weak_cipher: false,
+      grade: "C",
+      issues: [],
+    },
+    {
+      id: "c-3",
+      asset_id: "a-2",
+      asset_ip: "10.180.5.11",
+      asset_hostname: "srv-02",
+      port: 443,
+      protocol: "tcp",
+      protocol_version: "TLSv1.3",
+      cipher_suite: "TLS_AES_128_GCM_SHA256",
+      cert_subject: "srv-02.example.test",
+      cert_issuer: "Public CA",
+      cert_not_after: ahead(260),
+      cert_is_expired: false,
+      cert_is_self_signed: false,
+      is_weak_cipher: false,
+      grade: "A",
+      issues: [],
+    },
+  ],
+  total: 3,
+};
+
+/* ── VulnerabilityBrowser ─────────────────────────────────────────────────── */
+export const VB_GROUPS = {
+  groups: [
+    {
+      component: "google-chrome",
+      component_version: "120.0.1",
+      fixed_version: "131.0.2",
+      finding_count: 1736,
+      kev_count: 4,
+      in_kev: true,
+      exploit_count: 2,
+      verified_exploit: true,
+      canary_confirmed: true,
+      ransomware_linked: false,
+      max_cvss: 9.8,
+      severity: "Critical",
+      remediation: "Upgrade to 131.0.2",
+      asset: { id: "a-1", ip_address: "10.180.5.10", hostname: "ws-01" },
+    },
+    {
+      component: "openssl",
+      component_version: "3.0.1",
+      fixed_version: null,
+      finding_count: 12,
+      kev_count: 0,
+      in_kev: false,
+      exploit_count: 0,
+      verified_exploit: false,
+      canary_confirmed: false,
+      ransomware_linked: true,
+      max_cvss: 7.5,
+      severity: "High",
+      remediation: null,
+      asset: { id: "a-2", ip_address: "10.180.5.11", hostname: "srv-02" },
+    },
+  ],
+  total: 2,
+};
+
+export const VB_FINDINGS = {
+  findings: [
+    {
+      id: "f-1",
+      vuln_id: "CVE-2026-1111",
+      title: "Chrome use-after-free",
+      severity: "Critical",
+      cvss_v3_score: 9.8,
+      priority_label: "P0",
+      in_kev: true,
+      status: "open",
+      first_found_at: ago(10),
+      asset: { id: "a-1", ip_address: "10.180.5.10", hostname: "ws-01" },
+    },
+    {
+      id: "f-2",
+      vuln_id: "CVE-2026-2222",
+      title: "OpenSSL denial of service",
+      severity: "High",
+      cvss_v3_score: 7.5,
+      priority_label: "P2",
+      in_kev: false,
+      status: "open",
+      first_found_at: ago(1),
+      asset: { id: "a-2", ip_address: "10.180.5.11", hostname: "srv-02" },
+    },
+    {
+      id: "f-3",
+      vuln_id: "CVE-2026-3333",
+      title: "curl header injection",
+      severity: "Medium",
+      cvss_v3_score: 5.3,
+      priority_label: "P3",
+      in_kev: false,
+      status: "accepted",
+      first_found_at: ago(30),
+      asset: { id: "a-2", ip_address: "10.180.5.11", hostname: null },
+    },
+  ],
+  total: 3,
+};
+
+export const VB_FINDINGS_NULL_CVSS = {
+  findings: [
+    ...VB_FINDINGS.findings,
+    {
+      id: "f-4",
+      vuln_id: "CVE-2026-4444",
+      title: "Legacy CVE with only a v2 score",
+      severity: "Medium",
+      cvss_v3_score: null,
+      priority_label: "P4",
+      in_kev: false,
+      status: "open",
+      first_found_at: ago(5),
+      asset: { id: "a-3", ip_address: "10.180.5.12", hostname: null },
+    },
+  ],
+  total: 4,
+};
+
+export const VB_FINDING_DETAIL = {
+  id: "f-1",
+  status: "open",
+  proof: "Server: nginx/1.27.0",
+  plugin_output: null,
+  first_found_at: ago(10),
+  last_found_at: ago(1),
+  fixed_at: null,
+  remediation_notes: "Patch window agreed with the desktop team.",
+  vulnerability: {
+    id: "CVE-2026-1111",
+    title: "Chrome use-after-free",
+    severity: "Critical",
+    priority_label: "P0",
+    in_kev: true,
+    has_exploit: true,
+    cvss_v3_score: 9.8,
+    epss_score: 0.123,
+    priority_score: 97.4,
+    description: "A crafted page executes code in the renderer.",
+    cvss_v3_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+    cwe_ids: ["CWE-416"],
+    references: ["https://nvd.nist.gov/vuln/detail/CVE-2026-1111"],
+  },
+  asset: {
+    id: "a-1",
+    ip_address: "10.180.5.10",
+    hostname: "ws-01",
+    risk_score: 91,
+    risk_level: "critical",
+  },
+};
+
+/* ── SecurityDashboard (regression sweep) ─────────────────────────────────── */
+export const SD_STUBS = {
+  "/dashboard/risk-breakdown": {
+    finding_status: { open: 90, accepted: 20, fixed: 15 },
+  },
+  "/dashboard/top-assets": { assets: AR_ASSETS.assets },
+  "/dashboard/top-cves": {
+    cves: [
+      {
+        id: "CVE-2026-1111",
+        title: "Chrome use-after-free",
+        cvss_v3_score: 9.8,
+        priority_label: "P0",
+        severity: "Critical",
+        affected_assets: 3,
+        in_kev: true,
+      },
+      {
+        id: "CVE-2026-2222",
+        title: "OpenSSL denial of service",
+        cvss_v3_score: 7.5,
+        priority_label: "P2",
+        severity: "High",
+        affected_assets: 1,
+        in_kev: false,
+      },
+    ],
+  },
+  "/dashboard/services-exposure": { services: AR_SERVICES.services },
+  "/dashboard/tls-health": { expiring_in_30d: 1, expired: 1, total: 3 },
+  "/dashboard/http-headers": {},
+  "/dashboard/compliance": { frameworks: [] },
+  "/dashboard/asset-breakdown": { os_distribution: [], totals: {} },
+  "/dashboard/scan-activity": {
+    scans: [
+      {
+        id: "s-1",
+        scan_no: 42,
+        target: "10.180.6.0/24",
+        status: "complete",
+        pipeline_mode: "basic",
+        started_at: ago(1),
+        completed_at: ago(0.9),
+      },
+    ],
+  },
+  "/dashboard/insights": { insights: [] },
+  "/admin/audit-logs": { logs: [] },
+};
+
+/* ── ComplianceWorkspace (regression sweep) ───────────────────────────────── */
+export const CW_STUBS = {
+  "/compliance/summary": {
+    score_pct: 72,
+    weighted_score_pct: 70,
+    kpis: {
+      passed: 40,
+      failed: 10,
+      exceptions: 2,
+      manual_review: 5,
+      not_assessed: 3,
+      total_controls: 60,
+    },
+  },
+  "/compliance/marketplace": { data: [] },
+  "/compliance/policies": { data: [] },
+  "/compliance/frameworks/cfw_iso27001_2022/controls": {
+    controls: [],
+    total: 0,
+  },
+  "/compliance/findings": { data: [] },
+  "/compliance/credentials": [],
+  "/compliance/remediations/requests": { data: [] },
+};

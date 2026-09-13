@@ -1,0 +1,47 @@
+/**
+ * Answers `/api` from fixtures. Every write except the session refresh is
+ * refused with 403 and recorded, so a capture can never change anything and a
+ * write the page attempts is visible in the report rather than silent.
+ */
+import { SHELL_STUBS } from "./fixtures.mjs";
+
+export function route(state, method, pathname) {
+  const p = pathname.replace(/^\/api/, "");
+
+  if (method === "POST" && p === "/auth/refresh") {
+    return {
+      body: { access_token: "harness-token", token_type: "bearer" },
+      kind: "session",
+    };
+  }
+  if (method !== "GET") {
+    return {
+      status: 403,
+      body: { detail: "harness: writes are refused" },
+      kind: "refusedWrite",
+    };
+  }
+  if (p === "/auth/me") return { body: state.persona };
+  if (p === "/user/preferences") {
+    return {
+      body: {
+        theme: state.theme,
+        sidebar_collapsed: false,
+        default_rows_per_page: 10,
+      },
+    };
+  }
+
+  const stubs = { ...SHELL_STUBS, ...(state.stubs || {}) };
+  if (Object.prototype.hasOwnProperty.call(stubs, p)) {
+    const s = stubs[p];
+    if (s && typeof s === "object" && "__status" in s) {
+      return {
+        status: s.__status,
+        body: s.body ?? { detail: "harness stub failure" },
+      };
+    }
+    return { body: s };
+  }
+  return { status: 404, body: { detail: "not stubbed" }, kind: "unstubbed" };
+}

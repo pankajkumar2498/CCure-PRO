@@ -661,3 +661,240 @@ export const CW_STUBS = {
   "/compliance/credentials": [],
   "/compliance/remediations/requests": { data: [] },
 };
+
+/* ── Phase2Results (batch 18) ─────────────────────────────────────────────── */
+/* Field names are the page's reads, checked against the port scan the
+   orchestrator stores: hosts from `_format_host`, the summary written by the
+   port-scan phase (`total_hosts`, `hosts_with_ports`, `scan_duration`,
+   `custom_ports`). The page chooses which hosts the vulnerability audit
+   scans, so these cover each way a host can qualify: TCP services, UDP
+   services only, active with nothing detected, and inactive. */
+export const SCANS_READONLY = persona(
+  BASE_PERMISSIONS.filter((p) => p !== "scans:execute"),
+);
+
+const P2_PHASE1_HOSTS = [
+  {
+    ip_address: "10.20.0.11",
+    hostname: "files-01",
+    mac_address: "00:1A:2B:3C:4D:11",
+    vendor: "Dell Inc.",
+    discovery_method: "ARP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.12",
+    hostname: "Unknown",
+    mdns_name: "printer-2f.local",
+    mac_address: "00:1A:2B:3C:4D:12",
+    vendor: "HP",
+    discovery_method: "ICMP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.13",
+    hostname: "Unknown",
+    netbios_names: [{ name: "KIOSK-07" }],
+    mac_address: "N/A",
+    vendor: "N/A",
+    discovery_method: "TCP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.20.0.14",
+    hostname: "Unknown",
+    mac_address: "N/A",
+    vendor: "N/A",
+    discovery_method: "ICMP",
+    is_active: false,
+  },
+  {
+    ip_address: "10.20.0.15",
+    hostname: "Unknown",
+    mac_address: "00:1A:2B:3C:4D:15",
+    vendor: "Raspberry Pi Trading",
+    discovery_method: "ARP",
+    is_active: true,
+  },
+];
+
+const P2_PHASE2_HOSTS = [
+  {
+    ip_address: "10.20.0.11",
+    hostname: "files-01",
+    is_active: true,
+    os_guess: "Windows Server 2022",
+    os_fingerprint_full: {
+      os: "Windows Server 2022",
+      confidence: "High",
+      match_score: 42,
+    },
+    netbios_names: [{ name: "FILES-01" }],
+    netbios_workgroup: "CORP",
+    device_category: "server",
+    firewall_likely: true,
+    firewall_confidence: "Medium",
+    open_ports: [
+      { port: 22, service: "ssh", version: "OpenSSH 9.6", risk: "Low" },
+      {
+        port: 445,
+        service: "microsoft-ds",
+        risk: "High",
+        cves: ["CVE-2026-2001", "CVE-2026-2002"],
+      },
+      {
+        port: 3389,
+        service: "ms-wbt-server",
+        banner: "Remote Desktop",
+        risk: "Critical",
+        cves: ["CVE-2026-3001"],
+      },
+    ],
+  },
+  {
+    ip_address: "10.20.0.12",
+    hostname: "Unknown",
+    mdns_name: "printer-2f.local",
+    mdns_services: ["_ipp._tcp.local", "_printer._tcp.local"],
+    is_active: true,
+    os_guess: "Embedded",
+    os_confidence: "Medium",
+    snmp_device_type: "Printer",
+    open_ports: [
+      { port: 9100, service: "jetdirect", risk: "Medium" },
+      { port: 80, service: "http", banner: "HP HTTP Server", risk: "Info" },
+    ],
+    udp_services: [
+      {
+        port: 161,
+        service: "snmp",
+        state: "open",
+        risk: "High",
+        banner: "public community",
+      },
+      { port: 5353, service: "mdns", state: "open|filtered", risk: "Low" },
+    ],
+    snmp_info: {
+      sys_name: "PRN-2F",
+      sys_location: "Floor 2, east wing",
+      vendor: "HP",
+      interfaces: [
+        {
+          index: 1,
+          description: "eth0",
+          type: "ethernetCsmacd",
+          mac: "00:1A:2B:3C:4D:12",
+          admin_up: true,
+          oper_up: true,
+        },
+        {
+          index: 2,
+          description: "wlan0",
+          type: "ieee80211",
+          mac: "00:1A:2B:3C:4D:99",
+          admin_up: true,
+          oper_up: false,
+        },
+      ],
+      ip_addresses: [{ address: "10.20.0.12", netmask: "255.255.255.0" }],
+    },
+  },
+  {
+    ip_address: "10.20.0.13",
+    hostname: "KIOSK-07",
+    is_active: true,
+    udp_services: [
+      { port: 137, service: "netbios-ns", state: "open|filtered", risk: "Low" },
+    ],
+  },
+  { ip_address: "10.20.0.15", hostname: "Unknown", is_active: true },
+  { ip_address: "10.20.0.14", hostname: "Unknown", is_active: false },
+];
+
+const P2_SUMMARY = {
+  total_hosts: 5,
+  active_hosts: 4,
+  inactive_hosts: 1,
+  hosts_with_ports: 2,
+  scan_duration: 84.37,
+  phase: 2,
+  scan_type: "NORMAL",
+  custom_ports: "22,80,161,443,445,3389,9100,8000-8100",
+};
+
+const P2_UNREACHABLE_HOST = {
+  ip_address: "10.20.0.50",
+  hostname: "Unknown",
+  mac_address: "N/A",
+  vendor: "N/A",
+  discovery_method: "ICMP",
+  is_active: false,
+};
+
+const p2Scan = (id, overrides = {}) => ({
+  id,
+  scan_no: 1042,
+  target: "10.20.0.0/28",
+  status: "complete",
+  pipeline_mode: "asset",
+  results: {
+    phase1: { data: P2_PHASE1_HOSTS },
+    phase2: { data: P2_PHASE2_HOSTS, summary: P2_SUMMARY },
+  },
+  ...overrides,
+});
+
+export const P2_STUBS = {
+  // Asset discovery: no phase 3, so automatic mode stays on the page.
+  "/scans/p2-asset": p2Scan("p2-asset"),
+  // A full audit pipeline, only ever loaded with interactive mode seeded.
+  "/scans/p2-audit": p2Scan("p2-audit", {
+    scan_no: 1043,
+    pipeline_mode: "vulnerability_audit",
+  }),
+  "/scans/p2-unreachable": p2Scan("p2-unreachable", {
+    scan_no: 1044,
+    target: "10.20.0.50",
+    results: {
+      phase1: { data: [P2_UNREACHABLE_HOST] },
+      phase2: {
+        data: [P2_UNREACHABLE_HOST],
+        summary: {
+          total_hosts: 1,
+          active_hosts: 0,
+          inactive_hosts: 1,
+          hosts_with_ports: 0,
+          scan_duration: 12.5,
+          phase: 2,
+          status: "unreachable",
+        },
+      },
+    },
+  }),
+  "/scans/p2-no-results": {
+    id: "p2-no-results",
+    scan_no: 1045,
+    status: "failed",
+    failure_reason:
+      "Port scan did not complete: the scanner worker was stopped.",
+    results: { phase1: { data: P2_PHASE1_HOSTS }, phase2: {} },
+  },
+  "/scans/p2-missing": { __status: 404, body: { detail: "Scan not found" } },
+  "/scans/p2-running": {
+    id: "p2-running",
+    scan_no: 1046,
+    status: "running",
+    pipeline_mode: "asset",
+    results: { phase1: { data: P2_PHASE1_HOSTS }, phase2: {} },
+  },
+};
+
+/* The scan context a running asset discovery leaves in sessionStorage:
+   discovered hosts, no port-scan results yet. */
+export const P2_RUNNING_SESSION = {
+  cc_scanId: "p2-running",
+  cc_scanNo: 1046,
+  cc_target: "10.20.0.0/28",
+  cc_pipelineMode: "asset",
+  cc_phase1Hosts: P2_PHASE1_HOSTS,
+};

@@ -213,14 +213,22 @@ export function census(opts) {
   /* ── Pointer-only affordances ────────────────────────────────────────────
      An element that shows a pointer cursor but is not a control and sits
      inside no control is a click target a keyboard cannot reach. Only the
-     outermost such element is counted (cursor inherits to its children). */
-  const INTERACTIVE =
-    "a[href],button,input,select,textarea,summary,label,[role=button],[role=link],[role=tab],[role=checkbox],[role=menuitem],[role=option],[role=switch],[tabindex]";
+     outermost such element is counted (cursor inherits to its children).
+
+     Batch 18: `[tabindex]` used to count as a control in the ancestor test.
+     The application shell renders `<main tabIndex={-1}>` (the skip link's
+     target) around every page, so every element on every page sat "inside a
+     control" and this list was always empty. A focusable container is not a
+     control. An element is exempt when it is, or sits inside, a real control,
+     or when it is itself reachable by Tab. */
+  const CONTROL =
+    "a[href],button,input,select,textarea,summary,label,[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=switch]";
+  const TABBABLE_SELF = '[tabindex]:not([tabindex^="-"])';
   const clickable = [];
   for (const el of document.body.querySelectorAll("*")) {
     if (!visible(el)) continue;
     if (getComputedStyle(el).cursor !== "pointer") continue;
-    if (el.matches(INTERACTIVE) || el.closest(INTERACTIVE)) continue;
+    if (el.matches(TABBABLE_SELF) || el.closest(CONTROL)) continue;
     const parent = el.parentElement;
     if (parent && getComputedStyle(parent).cursor === "pointer") continue;
     clickable.push(`${pathOf(el)}:${short(textOf(el), 32)}`);

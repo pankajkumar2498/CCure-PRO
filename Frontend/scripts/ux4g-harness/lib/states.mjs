@@ -32,6 +32,9 @@ import {
   DASHBOARD_RESTRICTED,
   NO_DASHBOARD,
   CW_STUBS,
+  SCANS_READONLY,
+  P2_STUBS,
+  P2_RUNNING_SESSION,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -584,12 +587,157 @@ const CW_STATES = CW_TABS.map(([id, label]) => ({
       : [{ click: cwTabClick(label) }, { waitFor: "true" }],
 }));
 
-export const STATES = [...AR_STATES, ...VB_STATES, ...SD_STATES, ...CW_STATES];
+/* ── Phase2Results (batch 18) ─────────────────────────────────────────────── */
+/* Phase 3 starts scans from an effect on mount, and Phase 2 hands off to it in
+   automatic mode whenever the pipeline has a phase 3. So no state here pairs
+   automatic mode with such a pipeline: scans that include phase 3 are only
+   loaded with interactive mode seeded, and no probe ever presses "Run
+   Vulnerability Audit". guard.mjs makes a Phase 3 mount impossible regardless. */
+const P2_BASE = {
+  persona: ANALYST,
+  stubs: P2_STUBS,
+  tracked: [...PAGE_TRACKED, "h2", "h3", "input[type=checkbox]", "code"],
+};
 
-/** States whose output Batch 17 must leave byte-for-byte unchanged. Batch 16
- *  gated `sd-` and `cw-`; batch 17 changes the dashboard, so the gate is the
- *  pages batch 16 migrated plus the one page still importing dashboard.css. */
-export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-"];
+const P2_INTERACTIVE = { cc_executionMode: "interactive" };
+
+const p2Ready = `${hasText("/Hosts scanned/")} && ${hasText("/10\\.20\\.0\\.11/")}`;
+
+// The legacy card header and the migrated disclosure button both toggle.
+const p2Toggles = `[...document.querySelectorAll(".host-card-header, .p2-host__toggle")]`;
+const P2_EXPAND = [
+  { click: `${p2Toggles}[0]` },
+  { waitFor: hasText("/Target OS Fingerprint/i") },
+  { click: `${p2Toggles}[1]` },
+  { waitFor: hasText("/UDP Services/i") },
+];
+
+const P2_PROBES = {
+  hostDetails: {
+    id: "host-details-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && /10\\.20\\.0\\.11(?!\\d)/.test((el.closest('.host-card, .p2-host') || {}).textContent || '')",
+    press: "Enter",
+    wait: 500,
+    expect: "/Target OS Fingerprint/i.test(document.body.innerText)",
+    then: [
+      {
+        press: "Enter",
+        wait: 400,
+        expect: "!/Target OS Fingerprint/i.test(document.body.innerText)",
+      },
+    ],
+  },
+  // Space on the table's checkbox for 10.20.0.11 drops it from the queue.
+  selectHost: {
+    id: "select-host-by-keyboard",
+    tabTo:
+      "el.type === 'checkbox' && !!el.closest('tr') && /10\\.20\\.0\\.11(?!\\d)/.test(el.closest('tr').textContent || '')",
+    press: "Space",
+    wait: 400,
+    expect:
+      "/2 hosts queued for vulnerability audit/.test(document.body.innerText)",
+  },
+  auditProfile: {
+    id: "audit-profile-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && (el.textContent || '').trim() === 'Deep'",
+    press: "Enter",
+    wait: 400,
+    expect:
+      "((b) => !!b && (b.getAttribute('aria-pressed') === 'true' || b.classList.contains('filter-tab--active')))([...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Deep'))",
+  },
+};
+
+const P2_STATES = [
+  {
+    ...P2_BASE,
+    id: "p2-results",
+    route: "/scan/p2-asset/phase2",
+    themes: BOTH,
+    ready: p2Ready,
+    probes: [P2_PROBES.hostDetails],
+  },
+  {
+    ...P2_BASE,
+    id: "p2-expanded",
+    route: "/scan/p2-asset/phase2",
+    themes: BOTH,
+    ready: p2Ready,
+    actions: P2_EXPAND,
+  },
+  {
+    ...P2_BASE,
+    id: "p2-expanded-mobile",
+    route: "/scan/p2-asset/phase2",
+    themes: LIGHT,
+    viewport: [390, 2600],
+    ready: p2Ready,
+    actions: P2_EXPAND,
+  },
+  {
+    ...P2_BASE,
+    id: "p2-interactive",
+    route: "/scan/p2-audit/phase2",
+    themes: BOTH,
+    session: P2_INTERACTIVE,
+    ready: hasText("/3 hosts queued for vulnerability audit/"),
+    probes: [P2_PROBES.selectHost, P2_PROBES.auditProfile],
+  },
+  {
+    ...P2_BASE,
+    id: "p2-readonly",
+    route: "/scan/p2-audit/phase2",
+    themes: LIGHT,
+    persona: SCANS_READONLY,
+    session: P2_INTERACTIVE,
+    ready: hasText("/3 hosts queued for vulnerability audit/"),
+  },
+  {
+    ...P2_BASE,
+    id: "p2-unreachable",
+    route: "/scan/p2-unreachable/phase2",
+    themes: BOTH,
+    ready: hasText("/Host is unavailable/"),
+  },
+  {
+    ...P2_BASE,
+    id: "p2-no-results",
+    route: "/scan/p2-no-results/phase2",
+    themes: LIGHT,
+    ready: hasText("/scanner worker was stopped/"),
+  },
+  {
+    ...P2_BASE,
+    id: "p2-load-error",
+    route: "/scan/p2-missing/phase2",
+    themes: LIGHT,
+    ready: hasText("/Scan not found/"),
+  },
+  {
+    ...P2_BASE,
+    id: "p2-running",
+    route: "/scan/asset-discovery",
+    themes: BOTH,
+    session: P2_RUNNING_SESSION,
+    ready: hasText("/Port Scan Running/i"),
+    // GET /scans/{id} every 4 s until results arrive (compare.mjs).
+    repeatable: ["^GET /api/scans/p2-running -> "],
+  },
+];
+
+export const STATES = [
+  ...AR_STATES,
+  ...VB_STATES,
+  ...SD_STATES,
+  ...CW_STATES,
+  ...P2_STATES,
+];
+
+/** States whose output Batch 18 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 and 17) and the one page still importing
+ *  dashboard.css. Batch 18 changes Phase 2 only. */
+export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-"];
 
 /** States the sensitivity gate injects into. */
 export const SENSITIVITY_STATES = ["ar-assets", "vb-cve"];

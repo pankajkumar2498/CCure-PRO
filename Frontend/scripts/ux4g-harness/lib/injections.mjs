@@ -97,4 +97,12 @@ export const INJECTIONS = {
     expect: ["rects", "screenshot"],
     script: css("h1{margin-top:23px!important}"),
   },
+  // Batch 18: a click-only element inside <main>, which is exactly where the
+  // pointer census could not see before (see `clickable` in measure.mjs).
+  "pointer-only-target": {
+    expect: ["clickable"],
+    script: observe(
+      "const main = document.querySelector('main'); if (main && !main.querySelector('[data-harness-pointer]')) { const d = document.createElement('div'); d.setAttribute('data-harness-pointer', ''); d.style.cursor = 'pointer'; d.textContent = 'Harness pointer-only target'; d.addEventListener('click', () => {}); main.prepend(d); }",
+    ),
+  },
 };

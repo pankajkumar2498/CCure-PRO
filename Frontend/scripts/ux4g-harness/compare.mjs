@@ -55,10 +55,19 @@ function screenshotDelta(a, b) {
    report.json keeps every attempt. */
 const RETRIED_STREAMS = [/^GET \/api\/notifications\/stream(?:\?\S*)? -> /];
 
-export const comparableRequests = (lines) => {
+/* A state can name further requests that repeat on a timer (`repeatable`,
+   regular-expression sources matched against the logged line). Batch 18: a
+   Phase 2 scan that is still running polls GET /scans/{id} every 4 seconds
+   with no upper bound, so the count again depends on how long the capture ran.
+   Only the state that declares a pattern collapses it. */
+export const comparableRequests = (lines, repeatable = []) => {
+  const patterns = [
+    ...RETRIED_STREAMS,
+    ...repeatable.map((source) => new RegExp(source)),
+  ];
   const seen = new Set();
   return lines.filter((line) => {
-    if (!RETRIED_STREAMS.some((re) => re.test(line))) return true;
+    if (!patterns.some((re) => re.test(line))) return true;
     if (seen.has(line)) return false;
     seen.add(line);
     return true;
@@ -86,7 +95,7 @@ export const CATEGORIES = {
   theme: (r) => r.theme,
   styles: (r) => r.styles,
   rects: (r) => r.rects,
-  requests: (r) => comparableRequests(r.log.requests),
+  requests: (r) => comparableRequests(r.log.requests, r.repeatable),
   writes: (r) => r.log.refusedWrites,
   offOrigin: (r) => r.log.offOrigin,
   csp: (r) => r.log.csp,
@@ -96,6 +105,7 @@ export const CATEGORIES = {
     exceptions: r.log.exceptions,
     consoleErrors: r.log.consoleErrors,
     unstubbed: r.log.unstubbed,
+    blockedNavigations: r.log.blockedNavigations,
   }),
   screenshot: (r) => r.screenshot,
 };

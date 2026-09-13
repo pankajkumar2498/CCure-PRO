@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url";
 
 import { launchChrome, sleep } from "./lib/chrome.mjs";
 import { freezeScript, sessionSeedScript } from "./lib/freeze.mjs";
+import { routeGuardScript } from "./lib/guard.mjs";
 import { census, focusSnapshot } from "./lib/measure.mjs";
 import { route } from "./lib/router.mjs";
 import { STATES } from "./lib/states.mjs";
@@ -206,6 +207,10 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
     patterns: [{ urlPattern: "*", requestStage: "Request" }],
   });
   await S("Page.addScriptToEvaluateOnNewDocument", { source: freezeScript() });
+  // Before any state script: no capture may mount a Phase 3 route (guard.mjs).
+  await S("Page.addScriptToEvaluateOnNewDocument", {
+    source: routeGuardScript(),
+  });
   const seed = sessionSeedScript(origin, state.session);
   if (seed) await S("Page.addScriptToEvaluateOnNewDocument", { source: seed });
   // A state may prepare the document before the application boots — router
@@ -360,6 +365,10 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
     probes[p.id] = result;
   }
 
+  const blockedNavigations =
+    (await safeEval("(window.__harnessBlockedNavigations || []).slice()")) ||
+    [];
+
   off();
   await cdp.send("Target.closeTarget", { targetId }).catch(() => {});
   await cdp
@@ -375,6 +384,7 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
     screenshotFile,
     tabOrder,
     probes,
+    repeatable: state.repeatable || [],
     log: {
       requests: sorted(log.requests),
       refusedWrites: sorted(log.refusedWrites),
@@ -383,6 +393,7 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
       csp: sorted(log.csp),
       exceptions: sorted(log.exceptions),
       consoleErrors: sorted(log.consoleErrors),
+      blockedNavigations: sorted(blockedNavigations),
     },
   };
 }
@@ -422,7 +433,7 @@ export async function runCapture({
         if (!quiet) {
           const l = r.log;
           console.log(
-            `${state.id}.${theme}: ready=${r.ready} actions=[${r.actions.join(",")}] requests=${l.requests.length} unstubbed=${l.unstubbed.length} writes=${l.refusedWrites.length} offOrigin=${l.offOrigin.length} csp=${l.csp.length} exceptions=${l.exceptions.length} contrastFails=${r.contrast.fails.length} db=${r.classes.dbElements}`,
+            `${state.id}.${theme}: ready=${r.ready} actions=[${r.actions.join(",")}] requests=${l.requests.length} unstubbed=${l.unstubbed.length} writes=${l.refusedWrites.length} offOrigin=${l.offOrigin.length} csp=${l.csp.length} exceptions=${l.exceptions.length} blocked=${l.blockedNavigations.length} contrastFails=${r.contrast.fails.length} db=${r.classes.dbElements}`,
           );
         }
       }
@@ -448,7 +459,7 @@ if (
     );
     process.exit(2);
   }
-  const { dir } = await runCapture({
+  const { dir, report } = await runCapture({
     base: args.base.replace(/\/$/, ""),
     label: args.label,
     out: args.out,
@@ -457,4 +468,14 @@ if (
     injection: args.inject || null,
   });
   console.log(`report: ${path.join(dir, "report.json")}`);
+  const blocked = Object.entries(report.states).filter(
+    ([, s]) => s.log.blockedNavigations.length,
+  );
+  if (blocked.length) {
+    for (const [key, s] of blocked)
+      console.error(
+        `BLOCKED NAVIGATION in ${key}: ${s.log.blockedNavigations.join(", ")}`,
+      );
+    process.exit(1);
+  }
 }

@@ -36,6 +36,13 @@ Nothing a capture does can reach a real system:
   shell retries on a backoff timer, so a capture logs one, two or three
   attempts depending on its length. `compare.mjs` compares repeated attempts
   as one; `report.json` keeps them all.
+- No capture can mount a Phase 3 route (`lib/guard.mjs`). Phase 3 starts scans
+  from an effect on mount, and Phase 2 hands off to it in automatic mode.
+  `history.pushState` and `replaceState` refuse `/scan/vulnerability-audit`,
+  `/scan/advanced-scan` and `/scan/{id}/phase3` with a `DataCloneError`, which
+  React Router rethrows before its listener runs, so the route never renders;
+  a document loaded at such a URL stops before the application boots. A refusal
+  is recorded under `blockedNavigations` and makes `run.mjs` exit 1.
 
 ## Workflow
 
@@ -88,6 +95,7 @@ Pass them in order. A later gate means nothing if an earlier one failed.
 | `inline-script`          | csp                 |
 | `off-origin-image`       | csp                 |
 | `layout-shift`           | rects, screenshot   |
+| `pointer-only-target`    | clickable           |
 
 ## What a capture records
 
@@ -103,8 +111,10 @@ These are the categories in `compare.mjs`:
   (gradients, images) are counted as unknown, not passed.
 - **classes.** Legacy `db-*` usage: element count, token count, class names and
   per-element signatures. Also design-system element counts.
-- **clickable.** Elements with a pointer cursor that are not controls and sit
-  inside no control.
+- **clickable.** Elements with a pointer cursor that are not controls, sit
+  inside no control and are not themselves reachable by Tab. A focusable
+  container is not a control: until batch 18 `[tabindex]` counted as one, and
+  the shell's `<main tabIndex={-1}>` hid every page from this list.
 - **inline, styles, rects, overflow.** Inline styles, plus computed style and
   geometry of each state's tracked selectors, and horizontal overflow.
 - **text, url, theme, errorBoundary.** A hash of the visible text, the final
@@ -141,6 +151,10 @@ A state can also carry `viewport`, `readyTimeout`, `session` (sessionStorage
 entries) and `init`, a script evaluated before the application boots, which
 is how router state a real navigation would have carried gets seeded. Probes
 can press `Tab`, `Enter`, `Space`, `Escape` and `ArrowRight`.
+
+`repeatable` lists regular-expression sources for requests a state makes on a
+timer with no upper bound, such as the Phase 2 poll of a running scan. Those
+lines compare as one in that state only; `report.json` keeps every one.
 
 States record what the page does, never what a build is expected to do. The
 same catalogue runs before and after a change.

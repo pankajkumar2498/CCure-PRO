@@ -39,6 +39,8 @@ import {
   P1_INTERACTIVE_SESSION,
   P1_SCOPE_SESSION,
   P1_DONE_SESSION,
+  AMT_STUBS,
+  AMT_STATS_UNLINKED,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -886,6 +888,158 @@ const P1_STATES = [
   },
 ];
 
+/* ── AMTIntegration (batch 20) ────────────────────────────────────────────── */
+/* The import replaces the organisation's AMT inventory, and the drop zone and
+   the file input both open the native file chooser. No action or probe here
+   activates either of them, Upload & Sync or Export CSV: probes only Tab to
+   the file input, to Export and to an asset link. Opening a category and
+   turning a page are reads. A persona without assets:update never reaches the
+   page: the route sends it to /dashboard. */
+const AMT_BASE = {
+  route: "/admin/amt",
+  persona: ANALYST,
+  stubs: AMT_STUBS,
+  tracked: [
+    ...PAGE_TRACKED,
+    "h2",
+    "h3",
+    "button",
+    "input",
+    "a[href^='/assets/']",
+  ],
+};
+
+// Statistics have settled: Refresh Stats is disabled while they load.
+const amtLoaded = `[...document.querySelectorAll("button")].some((b) => /Refresh Stats/.test(b.textContent || "") && !b.disabled)`;
+const amtReady = `${amtLoaded} && ${hasText("/Linked & Active/")}`;
+
+// The first element in document order carrying the Shadow IT label. The click
+// bubbles to whichever element owns it (a <div> before batch 20).
+const amtShadowIt = `[...document.querySelectorAll("span")].find((e) => /^Shadow IT \\(Unmanaged Rogue\\)/.test((e.textContent || "").trim()))`;
+
+const amtOpenShadowIt = (until) => [
+  { click: amtShadowIt },
+  { waitFor: hasText(until) },
+];
+
+const AMT_DRILLDOWN_PATH = "/api/assets/reconciliation/drilldown";
+
+const AMT_PROBES = {
+  // Tab only. Enter or Space here would open the file chooser.
+  fileInput: {
+    id: "file-input-reachable",
+    tabTo: "el.tagName === 'INPUT' && el.type === 'file'",
+  },
+  category: {
+    id: "category-by-keyboard",
+    tabTo:
+      "el.tagName === 'BUTTON' && /^Shadow IT \\(Unmanaged Rogue\\)/.test((el.textContent || '').trim())",
+    press: "Enter",
+    wait: 600,
+    expectRequest: {
+      path: AMT_DRILLDOWN_PATH,
+      query: { category: "shadow_it" },
+    },
+  },
+  // Tab only. Enter would leave the page.
+  assetLink: {
+    id: "asset-link-reachable",
+    tabTo:
+      "el.tagName === 'A' && /\\/assets\\/amt-a-1$/.test(el.getAttribute('href') || '')",
+  },
+  // Tab only. Enter would start a download.
+  exportButton: {
+    id: "export-reachable",
+    tabTo: "el.tagName === 'BUTTON' && /Export CSV/.test(el.textContent || '')",
+  },
+  nextPage: {
+    id: "next-page-by-keyboard",
+    tabTo: "el.tagName === 'BUTTON' && /Next/.test(el.textContent || '')",
+    press: "Enter",
+    wait: 600,
+    expectRequest: { path: AMT_DRILLDOWN_PATH, query: { skip: "10" } },
+  },
+};
+
+const AMT_STATES = [
+  {
+    ...AMT_BASE,
+    id: "amt-overview",
+    themes: BOTH,
+    ready: amtReady,
+    probes: [AMT_PROBES.fileInput, AMT_PROBES.category],
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-drilldown",
+    themes: BOTH,
+    ready: amtReady,
+    actions: amtOpenShadowIt("/kiosk-lobby-02/"),
+    probes: [
+      AMT_PROBES.assetLink,
+      AMT_PROBES.exportButton,
+      AMT_PROBES.nextPage,
+    ],
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-drilldown-mobile",
+    themes: LIGHT,
+    viewport: [390, 2400],
+    ready: amtReady,
+    actions: amtOpenShadowIt("/kiosk-lobby-02/"),
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-drilldown-empty",
+    themes: LIGHT,
+    stubs: {
+      ...AMT_STUBS,
+      "/assets/reconciliation/drilldown": {
+        total: 0,
+        skip: 0,
+        limit: 10,
+        data: [],
+      },
+    },
+    ready: amtReady,
+    actions: amtOpenShadowIt("/No assets match the current filters/"),
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-drilldown-error",
+    themes: LIGHT,
+    stubs: {
+      ...AMT_STUBS,
+      "/assets/reconciliation/drilldown": { __status: 500 },
+    },
+    ready: amtReady,
+    actions: amtOpenShadowIt("/Failed to load drilldown details/"),
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-unlinked",
+    themes: LIGHT,
+    stubs: { ...AMT_STUBS, "/assets/coverage-stats": AMT_STATS_UNLINKED },
+    ready: `${amtLoaded} && ${hasText("/CMDB Integration Inactive/")}`,
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-error",
+    themes: BOTH,
+    stubs: { ...AMT_STUBS, "/assets/coverage-stats": { __status: 500 } },
+    ready: `${amtLoaded} && ${hasText("/Failed to load inventory coverage statistics/")}`,
+  },
+  {
+    ...AMT_BASE,
+    id: "amt-denied",
+    themes: LIGHT,
+    persona: ASSETS_READONLY,
+    stubs: SD_STUBS,
+    ready: `location.pathname === "/dashboard" && ${sdReady}`,
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -893,12 +1047,13 @@ export const STATES = [
   ...CW_STATES,
   ...P2_STATES,
   ...P1_STATES,
+  ...AMT_STATES,
 ];
 
-/** States whose output Batch 19 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 18) and the one page still importing
- *  dashboard.css. Batch 19 changes Phase 1 only. */
-export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-", "p2-"];
+/** States whose output Batch 20 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 19) and the one page still importing
+ *  dashboard.css. Batch 20 changes AMTIntegration only. */
+export const REGRESSION_PREFIXES = ["ar-", "vb-", "cw-", "sd-", "p2-", "p1-"];
 
 /** States the sensitivity gate injects into. */
 export const SENSITIVITY_STATES = ["ar-assets", "vb-cve"];

@@ -1082,3 +1082,79 @@ export const P1_DONE_SESSION = {
   ],
   cc_phase2Summary: { total_hosts: 4, hosts_with_ports: 1, scan_duration: 40 },
 };
+
+/* ── AMTIntegration (batch 20) ────────────────────────────────────────────── */
+/* Field names are the page's reads, checked against the backend:
+   `/assets/coverage-stats` returns these seven keys, and
+   `/assets/reconciliation/drilldown` returns `{ total, skip, limit, data }`
+   with `_serialize_asset` rows for the asset categories. The router matches
+   paths, not query strings, so one drilldown answers every category and every
+   page; the captures open Shadow IT, an asset category. The import and the CSV
+   export are never exercised: the harness refuses every write, and no state
+   or probe activates the file chooser, Upload & Sync or Export CSV. */
+export const AMT_STATS = {
+  configured: true,
+  total_scanned: 40,
+  total_inventory: 50,
+  fully_audited: 36,
+  shadow_it: 4,
+  coverage_gap: 14,
+  coverage_percentage: 72,
+};
+
+// What the backend returns before any inventory has been imported.
+export const AMT_STATS_UNLINKED = {
+  configured: false,
+  total_scanned: 40,
+  total_inventory: 0,
+  fully_audited: 0,
+  shadow_it: 40,
+  coverage_gap: 0,
+  coverage_percentage: 0,
+};
+
+const AMT_ASSETS = [
+  {
+    id: "amt-a-1",
+    ip_address: "10.20.5.21",
+    mac_address: "00:1A:2B:3C:5D:21",
+    hostname: "kiosk-lobby-02",
+    risk_score: 78,
+    risk_level: "high",
+    owner: null,
+    first_seen_at: ago(12),
+  },
+  {
+    id: "amt-a-2",
+    ip_address: "10.20.5.34",
+    mac_address: "00:1A:2B:3C:5D:34",
+    hostname: null,
+    risk_score: 41,
+    risk_level: "medium",
+    owner: "facilities",
+    first_seen_at: ago(3),
+  },
+  {
+    id: "amt-a-3",
+    ip_address: "10.20.5.40",
+    mac_address: null,
+    hostname: "cam-dock-01",
+    risk_score: 15,
+    risk_level: "low",
+    owner: null,
+    first_seen_at: null,
+  },
+];
+
+// 23 results, so the drilldown shows its page controls.
+export const AMT_DRILLDOWN = {
+  total: 23,
+  skip: 0,
+  limit: 10,
+  data: AMT_ASSETS,
+};
+
+export const AMT_STUBS = {
+  "/assets/coverage-stats": AMT_STATS,
+  "/assets/reconciliation/drilldown": AMT_DRILLDOWN,
+};

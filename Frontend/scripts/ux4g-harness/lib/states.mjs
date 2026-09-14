@@ -32,6 +32,8 @@ import {
   DASHBOARD_RESTRICTED,
   NO_DASHBOARD,
   CW_STUBS,
+  CW26A_WAIVERS,
+  CW26A_MANY,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -624,6 +626,99 @@ const CW_STATES = CW_TABS.map(([id, label]) => ({
       ? []
       : [{ click: cwTabClick(label) }, { waitFor: "true" }],
 }));
+
+/* ── ComplianceWorkspace Exceptions (batch 26a) ───────────────────────────── */
+/* The Exceptions tab: one read of pending findings, paged in the browser.
+   Nothing here presses a control that writes. There is no failed-read state:
+   the workspace reports a failed read through console.error on every build,
+   which the harness would count as a console error, so the unit tests pin
+   that path instead. */
+const CW26A_BASE = {
+  route: "/compliance",
+  persona: ANALYST,
+  stubs: { ...CW_STUBS, "/compliance/findings": CW26A_WAIVERS },
+  tracked: [...PAGE_TRACKED, "h2", "nav", "table"],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW26A_OPEN = [
+  { click: cwTabClick("Exceptions") },
+  { waitFor: hasText("/Compensating control documented/") },
+];
+const cw26aButton = (name) =>
+  `[...document.querySelectorAll("button")].find((b) => /^${name}$/.test((b.textContent || "").trim()))`;
+// Chooses a framework in the header's selector the way a person's choice
+// would reach React, and returns the selector (a script click opens nothing).
+const cwChooseFramework = (id) => `(() => {
+  const select = [...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === "all"));
+  if (!select) return null;
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, ${JSON.stringify(id)});
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  return select;
+})()`;
+
+const CW26A_STATES = [
+  {
+    ...CW26A_BASE,
+    id: "cw26a-populated",
+    themes: BOTH,
+    actions: CW26A_OPEN,
+    probes: [
+      {
+        id: "page-size-focus",
+        tabTo:
+          "el.tagName === 'SELECT' && [...el.options].map((o) => o.value).join(',') === '10,25,50,100'",
+      },
+    ],
+  },
+  {
+    ...CW26A_BASE,
+    id: "cw26a-paged",
+    themes: BOTH,
+    stubs: { ...CW_STUBS, "/compliance/findings": CW26A_MANY },
+    actions: [
+      { click: cwTabClick("Exceptions") },
+      { waitFor: hasText("/CTRL-25/") },
+      { click: cw26aButton("Next") },
+      { waitFor: hasText("/Page 2 of 3/i") },
+    ],
+    probes: [
+      {
+        id: "next-by-keyboard",
+        tabTo:
+          "el.tagName === 'BUTTON' && /^Next$/.test((el.textContent || '').trim())",
+        press: "Enter",
+        expect: hasText("/Page 3 of 3/i"),
+      },
+    ],
+  },
+  {
+    ...CW26A_BASE,
+    id: "cw26a-loading",
+    themes: BOTH,
+    stubs: { ...CW_STUBS, "/compliance/findings": { __pending: true } },
+    actions: [{ click: cwTabClick("Exceptions") }, { waitFor: "true" }],
+  },
+  {
+    ...CW26A_BASE,
+    id: "cw26a-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    actions: CW26A_OPEN,
+  },
+  {
+    ...CW26A_BASE,
+    id: "cw26a-framework",
+    themes: LIGHT,
+    actions: [
+      { click: cwChooseFramework("cfw_nist_csf_v2") },
+      {
+        waitFor:
+          "[...document.querySelectorAll('select')].some((s) => s.value === 'cfw_nist_csf_v2')",
+      },
+      ...CW26A_OPEN,
+    ],
+  },
+];
 
 /* ── Phase2Results (batch 18) ─────────────────────────────────────────────── */
 /* Phase 3 starts scans from an effect on mount, and Phase 2 hands off to it in
@@ -2152,11 +2247,14 @@ export const STATES = [
   ...CR_STATES,
   ...P3_STATES,
   ...NS_STATES,
+  ...CW26A_STATES,
 ];
 
-/** States whose output Batch 25 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 24) and the one page still importing
- *  dashboard.css. Batch 25 changes NewScan only. */
+/** States whose output Batch 26A must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 25) and ComplianceWorkspace outside its
+ *  Exceptions tab. Batch 26A changes that tab only, so `cw-exceptions` is the
+ *  one state under these prefixes it is expected to change; the regression
+ *  gate names the other cw- states individually. */
 export const REGRESSION_PREFIXES = [
   "ar-",
   "vb-",
@@ -2169,6 +2267,7 @@ export const REGRESSION_PREFIXES = [
   "sh-",
   "cr-",
   "p3-",
+  "ns-",
 ];
 
 /** States the sensitivity gate injects into. */

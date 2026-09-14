@@ -3,15 +3,23 @@
  * Compliance baselines, controls, rules, exceptions, and scoring dashboards.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import axiosInstance from "../api/axiosInstance";
 import AppLayout from "../components/layout/AppLayout";
 import Modal from "../components/layout/Modal";
 import { useAuth } from "../context/AuthContext";
 import { useToasts, ToastContainer } from "../components/common/Toast";
+import {
+  CcureBadge,
+  CcureButton,
+  CcurePagination,
+  CcureTable,
+  CcureTableStatus,
+} from "../design-system";
 import "../styles/dashboard.css";
 import "../styles/compliance.css";
 import "../styles/scan.css";
+import "../styles/compliance-exceptions.css";
 
 function Skeleton({ h = 14, w = "100%", style }) {
   return (
@@ -409,6 +417,107 @@ const FRAMEWORK_CATALOGUE = [
 // thirteen, because showing a framework the API will refuse is worse than
 // showing one fewer for a moment.
 const FALLBACK_ACTIVE_FRAMEWORK_IDS = ["cfw_iso27001_2022", "cfw_nist_csf_v2"];
+
+// The Exceptions tab: the pending findings the workspace has already read,
+// paged in the browser. Nothing here writes. CcurePagination has no first or
+// last page control, which the tab has always offered, so those two buttons
+// sit beside it.
+function ExceptionsPanel({ exceptions, pagination, loading }) {
+  const headingId = useId();
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    cardRef,
+    totalPages,
+    displayPage,
+    paginatedItems,
+  } = pagination;
+
+  const columns = [
+    {
+      key: "control_id",
+      header: "Control ID",
+      isRowHeader: true,
+      mono: true,
+      cell: (exc) => exc.control_id,
+    },
+    {
+      key: "asset_id",
+      header: "Asset ID",
+      mono: true,
+      cell: (exc) => exc.asset_id || "Global",
+    },
+    {
+      key: "reason",
+      header: "Waiver Reason",
+      cell: (exc) => exc.evidence?.note || exc.reason || "—",
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (exc) => <CcureBadge variant="info">{exc.status}</CcureBadge>,
+    },
+  ];
+
+  return (
+    <section ref={cardRef} className="cwx-panel" aria-labelledby={headingId}>
+      <h2 id={headingId} className="cwx-panel__title">
+        Exceptions
+      </h2>
+
+      <div className="cwx-panel__paging">
+        <CcurePagination
+          page={page}
+          pageSize={pageSize}
+          total={exceptions.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50, 100]}
+          label="Exceptions pagination"
+          itemNoun="waivers"
+          disabled={loading}
+        />
+        <div className="cwx-panel__jump" role="group" aria-label="Jump to page">
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            disabled={loading || displayPage === 1}
+            onClick={() => setPage(1)}
+          >
+            First page
+          </CcureButton>
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            disabled={loading || displayPage === totalPages}
+            onClick={() => setPage(totalPages)}
+          >
+            Last page
+          </CcureButton>
+        </div>
+      </div>
+
+      <CcureTableStatus
+        loading={loading}
+        count={exceptions.length}
+        noun="waivers"
+      />
+      <CcureTable
+        caption="Pending exceptions and waivers"
+        columns={columns}
+        rows={paginatedItems}
+        rowKey={(exc) => exc.id}
+        loading={loading}
+        emptyMessage="No pending exceptions or waivers recorded."
+      />
+    </section>
+  );
+}
 
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
@@ -4383,61 +4492,11 @@ export default function ComplianceWorkspace() {
             })()}
 
           {activeTab === "exceptions" && (
-            <div
-              ref={exceptionsPagination.cardRef}
-              className="db-card"
-              style={{ padding: 0 }}
-            >
-              <PaginationBar
-                currentPage={exceptionsPagination.page}
-                pageSize={exceptionsPagination.pageSize}
-                totalItems={exceptions.length}
-                totalPages={exceptionsPagination.totalPages}
-                onPageChange={exceptionsPagination.setPage}
-                onPageSizeChange={exceptionsPagination.setPageSize}
-                loading={loading}
-                itemLabel="waivers"
-                sizerOptions={[10, 25, 50, 100]}
-              />
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead>
-                    <tr>
-                      <th>Control ID</th>
-                      <th>Asset ID</th>
-                      <th>Waiver Reason</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exceptions.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          style={{ textAlign: "center", padding: "24px" }}
-                        >
-                          No pending exceptions or waivers recorded.
-                        </td>
-                      </tr>
-                    )}
-                    {exceptionsPagination.paginatedItems.map((exc) => (
-                      <tr key={exc.id}>
-                        <td className="mono" style={{ fontWeight: 600 }}>
-                          {exc.control_id}
-                        </td>
-                        <td className="mono">{exc.asset_id || "Global"}</td>
-                        <td>{exc.evidence?.note || exc.reason || "—"}</td>
-                        <td>
-                          <span className="db-status db-status--queued">
-                            {exc.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ExceptionsPanel
+              exceptions={exceptions}
+              pagination={exceptionsPagination}
+              loading={loading}
+            />
           )}
 
           {activeTab === "credentials" && (

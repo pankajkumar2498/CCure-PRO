@@ -662,6 +662,45 @@ export const CW_STUBS = {
   "/compliance/remediations/requests": { data: [] },
 };
 
+/* ── ComplianceWorkspace Exceptions (batch 26a) ───────────────────────────── */
+// Pending waivers as GET /compliance/findings?status=pending answers them. The
+// note outranks the reason, a missing asset reads "Global", and a waiver with
+// neither a note nor a reason reads a dash.
+export const CW26A_WAIVERS = {
+  data: [
+    {
+      id: "cw26a-1",
+      control_id: "A.5.1",
+      asset_id: "asset-7",
+      status: "pending",
+      evidence: { note: "Compensating control documented" },
+      reason: "Superseded by the note",
+    },
+    {
+      id: "cw26a-2",
+      control_id: "A.8.2",
+      asset_id: null,
+      status: "pending",
+      reason: "Legacy system, retired in Q4",
+    },
+    { id: "cw26a-3", control_id: "A.8.8", status: "pending" },
+  ],
+};
+
+// Sixty waivers: three pages at the default page size of 25.
+export const CW26A_MANY = {
+  data: Array.from({ length: 60 }, (_, i) => {
+    const n = String(i + 1).padStart(2, "0");
+    return {
+      id: `cw26a-many-${n}`,
+      control_id: `CTRL-${n}`,
+      asset_id: `asset-${n}`,
+      status: "pending",
+      reason: `Waiver ${n}`,
+    };
+  }),
+};
+
 /* ── Phase2Results (batch 18) ─────────────────────────────────────────────── */
 /* Field names are the page's reads, checked against the port scan the
    orchestrator stores: hosts from `_format_host`, the summary written by the

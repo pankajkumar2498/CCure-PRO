@@ -2,22 +2,30 @@
  * src/pages/scan/CredentialedResults.jsx
  * Displays credentialed scan report.
  * Can hydrate from router state (fresh scan) or GET /scans/{id} (history).
+ *
+ * Checkpoint 3C batch 23 — on the design system. The report's sources, the
+ * ticket, the progress socket and its polling fallback, masking and navigation
+ * are unchanged, and pinned by
+ * src/__tests__/pages/scan/CredentialedResults.test.jsx, written against the
+ * page before migration.
  */
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
 import CVELink from "../../components/common/CVELink";
-
-const SEV_COLOR = {
-  Critical: "#ff4d4d",
-  High: "#f97316",
-  Medium: "#f59e0b",
-  Low: "#22c55e",
-  Info: "#60a5fa",
-};
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureInput,
+  CcureProgress,
+  CcureSeverityBadge,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/credentialed-results.css";
 
 const STAGES = [
   { id: "connecting", label: "Connection", icon: "🔌" },
@@ -37,169 +45,92 @@ const STAGES = [
 const EXPOSURE_META = {
   exposed: {
     label: "Exposed",
-    color: "#ff4d4d",
+    variant: "danger",
     title: "Listening and confirmed reachable from the scanner",
   },
   host_only: {
     label: "Host-only",
-    color: "#22c55e",
+    variant: "success",
     title: "Bound to loopback — not reachable from the network",
   },
   filtered: {
     label: "Filtered",
-    color: "#60a5fa",
+    variant: "info",
     title: "Listening on the host but not reachable from the scanner",
   },
   undetermined: {
     label: "Not tested",
-    color: "var(--text-muted)",
+    variant: "neutral",
     title:
       "No network port scan was performed against this host, so reachability is unknown",
   },
 };
 
+/* A glyph repeats what its text already says, so assistive technology skips
+   it. It stays in the page for sighted readers. */
+function Glyph({ children }) {
+  return (
+    <span className="cr-glyph" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
 function ExposureBadge({ exposure }) {
   const meta = EXPOSURE_META[exposure] || EXPOSURE_META.undetermined;
   return (
-    <span
-      title={meta.title}
-      style={{
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: 0.3,
-        padding: "2px 7px",
-        borderRadius: 4,
-        color: meta.color,
-        border: `1px solid ${meta.color}`,
-        opacity: exposure === "undetermined" ? 0.75 : 1,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <CcureBadge variant={meta.variant} title={meta.title}>
       {meta.label}
-    </span>
+    </CcureBadge>
   );
 }
 
 /* ── helpers ── */
 function KV({ k, v, danger, warn, mono }) {
+  const tone = danger
+    ? " cr-kv__value--danger"
+    : warn
+      ? " cr-kv__value--warning"
+      : "";
   return (
-    <div className="kv-row">
-      <span className="kv-key">{k}</span>
-      <span
-        className="kv-val"
-        style={{
-          color: danger ? "#ff4d4d" : warn ? "#f59e0b" : undefined,
-          fontFamily: mono ? "var(--mono)" : undefined,
-          fontSize: mono ? 12 : undefined,
-        }}
-      >
+    <div className="cr-kv">
+      <dt className="cr-kv__key">{k}</dt>
+      <dd className={`cr-kv__value${mono ? " cr-kv__value--mono" : ""}${tone}`}>
         {v}
-      </span>
+      </dd>
     </div>
   );
 }
 
-function Section({ title, defaultOpen = false, children }) {
+/* A report section: a heading whose button shows or hides the body. The body
+   is rendered only while open, as before — raw evidence, and the masked
+   environment variables in it, are not in the page until asked for. */
+function Section({ title, icon, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
+  const bodyId = useId();
   return (
-    <div style={{ marginBottom: 10 }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 14px",
-          background: "var(--bg-app)",
-          border: "1px solid var(--border)",
-          borderRadius: open ? "8px 8px 0 0" : 8,
-          cursor: "pointer",
-          fontFamily: "var(--font)",
-          fontWeight: 600,
-          fontSize: "0.84rem",
-          color: "var(--text-mid)",
-          transition: "background 0.12s",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = "var(--bg-app)")
-        }
-      >
-        <span>{title}</span>
-        <span style={{ color: "var(--text-faint)", fontSize: "0.75rem" }}>
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
-      {open && (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderTop: "none",
-            borderRadius: "0 0 8px 8px",
-            padding: "16px",
-            background: "var(--bg-white)",
-          }}
+    <section className="cr-section">
+      <h2 className="cr-section__heading">
+        <button
+          type="button"
+          className="cr-section__toggle"
+          aria-expanded={open}
+          aria-controls={open ? bodyId : undefined}
+          onClick={() => setOpen((o) => !o)}
         >
+          {icon ? <Glyph>{icon}</Glyph> : null}
+          <span className="cr-section__title">{title}</span>
+          <span className="cr-section__chevron" aria-hidden="true">
+            {open ? "▲" : "▼"}
+          </span>
+        </button>
+      </h2>
+      {open && (
+        <div id={bodyId} className="cr-section__body">
           {children}
         </div>
       )}
-    </div>
-  );
-}
-
-function CredTable({ head, rows }) {
-  return (
-    <div style={{ overflowX: "auto" }}>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.82rem",
-        }}
-      >
-        <thead>
-          <tr>
-            {head.map((h) => (
-              <th
-                key={h}
-                style={{
-                  padding: "7px 10px",
-                  background: "var(--bg-app)",
-                  fontWeight: 600,
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  borderBottom: "1px solid var(--border)",
-                  textAlign: "left",
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} style={row._style || {}}>
-              {row.cells.map((cell, j) => (
-                <td
-                  key={j}
-                  style={{
-                    padding: "7px 10px",
-                    borderBottom: "1px solid #f1f5f9",
-                    ...(cell.style || {}),
-                  }}
-                >
-                  {cell.content}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    </section>
   );
 }
 
@@ -418,233 +349,96 @@ export default function CredentialedResults() {
 
     return (
       <AppLayout pageTitle="Credentialed Scan In Progress">
-        <div className="page-inner">
-          <div className="page-title-row">
-            <div>
-              <h2 className="page-title">🔐 Credentialed Scan In Progress</h2>
-              <p className="page-subtitle">
+        <div className="cr-page">
+          <header className="cr-header">
+            <div className="cr-header__text">
+              <h1 className="cr-title">
+                <Glyph>🔐</Glyph> Credentialed Scan In Progress
+              </h1>
+              <p className="cr-subtitle">
                 Target:{" "}
-                <code className="ip-code">
+                <code className="cr-code">
                   {stateResult?.target || scanIdParam}
                 </code>
-                <span className="muted">
+                <span className="cr-muted">
                   {" "}
                   · Scan No. {stateResult?.scan_no || "-"}
                 </span>
               </p>
             </div>
-          </div>
+          </header>
 
-          <div
-            className="pipeline-progress-card"
-            style={{ marginTop: 20, padding: "16px 20px" }}
-          >
-            <div
-              className="pipeline-progress-header"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                marginBottom: 12,
-              }}
-            >
-              <div className="pipeline-pulse" />
-              <div style={{ flex: 1 }}>
-                <h3
-                  className="pipeline-progress-title"
-                  style={{ fontSize: "0.95rem" }}
-                >
-                  {progress.message}
-                </h3>
-                <p
-                  className="pipeline-progress-desc"
-                  style={{ fontSize: "0.8rem", marginTop: 2 }}
-                >
+          <section className="cr-progress">
+            <div className="cr-progress__intro">
+              <span className="cr-progress__pulse" aria-hidden="true" />
+              <div>
+                <h2 className="cr-progress__message">{progress.message}</h2>
+                <p className="cr-progress__desc">
                   Performing authenticated system inspection via SSH. This
                   typically takes 30-90 seconds.
                 </p>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <span
-                  style={{
-                    fontSize: "1.5rem",
-                    fontWeight: 800,
-                    color: "var(--accent)",
-                  }}
-                >
-                  {progress.percentage}%
-                </span>
-              </div>
             </div>
 
-            <div
-              className="progress-bar progress-bar--pipeline"
-              style={{ height: 4 }}
-            >
-              <div
-                className="progress-fill progress-fill--animated"
-                style={{
-                  width: `${progress.percentage}%`,
-                  transition: "width 0.5s ease-out",
-                }}
-              />
-            </div>
+            <CcureProgress
+              value={progress.percentage}
+              label="Credentialed scan progress"
+            />
 
-            {/* Stage Stepper */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginTop: 30,
-                marginBottom: 20,
-                padding: "0 10px",
-              }}
-            >
+            <ol className="cr-stages" aria-label="Scan stages">
               {STAGES.map((s, idx) => {
                 const isDone = idx < currentStageIndex;
                 const isActive = idx === currentStageIndex;
                 return (
-                  <div
+                  <li
                     key={s.id}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 8,
-                      flex: 1,
-                      position: "relative",
-                    }}
+                    className={`cr-stage${isDone ? " cr-stage--done" : ""}${isActive ? " cr-stage--active" : ""}`}
+                    aria-current={isActive ? "step" : undefined}
                   >
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: isDone
-                          ? "var(--ok)"
-                          : isActive
-                            ? "var(--accent)"
-                            : "var(--bg-app)",
-                        color:
-                          isDone || isActive ? "#fff" : "var(--text-faint)",
-                        border: `2px solid ${isDone ? "var(--ok)" : isActive ? "var(--accent)" : "var(--border)"}`,
-                        zIndex: 2,
-                        fontSize: 14,
-                        transition: "all 0.3s",
-                      }}
-                    >
+                    <span className="cr-stage__marker" aria-hidden="true">
                       {isDone ? "✓" : s.icon}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: isActive ? 700 : 500,
-                        color: isActive
-                          ? "var(--accent)"
-                          : isDone
-                            ? "var(--text)"
-                            : "var(--text-faint)",
-                        textAlign: "center",
-                      }}
-                    >
-                      {s.label}
                     </span>
-                    {idx < STAGES.length - 1 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: 16,
-                          left: "60%",
-                          width: "80%",
-                          height: 2,
-                          background: isDone ? "var(--ok)" : "var(--border)",
-                          zIndex: 1,
-                        }}
-                      />
-                    )}
-                  </div>
+                    <span className="cr-stage__label">{s.label}</span>
+                    {isDone ? (
+                      <span className="cc-sr-only"> (completed)</span>
+                    ) : null}
+                  </li>
                 );
               })}
-            </div>
+            </ol>
 
-            {/* Live Logs */}
-            <div style={{ marginTop: 20 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 8,
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--ok)",
-                    animation: "pulse 1.5s infinite",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Live Activity
-                </span>
-              </div>
+            <div className="cr-activity">
+              <p className="cr-activity__label">
+                <span className="cr-activity__dot" aria-hidden="true" />
+                Live Activity
+              </p>
+              {/* A log region announces each new line politely, and it is
+                  focusable so its scroll can be driven from the keyboard. */}
               <div
                 ref={logRef}
-                style={{
-                  background: "#0f172a",
-                  color: "#e2e8f0",
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  fontFamily: "var(--mono)",
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                  maxHeight: 180,
-                  overflowY: "auto",
-                  border: "1px solid #334155",
-                  boxShadow: "inset 0 2px 4px rgba(0,0,0,0.3)",
-                }}
+                className="cr-log"
+                role="log"
+                aria-label="Live activity"
+                tabIndex={0}
               >
                 {progress.logs.length === 0 ? (
-                  <div style={{ color: "#64748b", fontStyle: "italic" }}>
-                    Waiting for activity...
-                  </div>
+                  <p className="cr-log__empty">Waiting for activity...</p>
                 ) : (
-                  progress.logs.map((log, i) => (
-                    <div
-                      key={i}
-                      style={{ display: "flex", gap: 12, marginBottom: 2 }}
-                    >
-                      <span style={{ color: "#64748b", flexShrink: 0 }}>
-                        [{log.time}]
-                      </span>
-                      <span
-                        style={{
-                          color: log.text.includes("failed")
-                            ? "#fca5a5"
-                            : "#94a3b8",
-                        }}
+                  <ol className="cr-log__lines">
+                    {progress.logs.map((log, i) => (
+                      <li
+                        key={i}
+                        className={`cr-log__line${log.text.includes("failed") ? " cr-log__line--failed" : ""}`}
                       >
-                        {log.text}
-                      </span>
-                    </div>
-                  ))
+                        <span className="cr-log__time">[{log.time}]</span>
+                        <span className="cr-log__text">{log.text}</span>
+                      </li>
+                    ))}
+                  </ol>
                 )}
               </div>
             </div>
-          </div>
+          </section>
         </div>
       </AppLayout>
     );
@@ -660,73 +454,46 @@ export default function CredentialedResults() {
 
     return (
       <AppLayout pageTitle="Credentialed Results">
-        <div className="page-inner">
-          <div className="page-title-row">
-            <h2 className="page-title">Credentialed Scan Results</h2>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                className="btn btn--ghost"
+        <div className="cr-page">
+          <header className="cr-header">
+            <h1 className="cr-title">Credentialed Scan Results</h1>
+            <div className="cr-header__actions">
+              <CcureButton
+                variant="secondary"
                 onClick={() => navigate("/history")}
               >
                 History
-              </button>
-              <button
-                className="btn btn--primary"
-                onClick={() => navigate("/scan/credentialed")}
-              >
+              </CcureButton>
+              <CcureButton onClick={() => navigate("/scan/credentialed")}>
                 New Scan
-              </button>
+              </CcureButton>
             </div>
-          </div>
+          </header>
 
           {isUnreachable ? (
-            <div
-              style={{
-                margin: "16px 0",
-                padding: "16px 20px",
-                borderRadius: 8,
-                background: "rgba(245, 158, 11, 0.08)",
-                border: "1px solid rgba(245, 158, 11, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                gap: 16,
-                color: "#92400e",
-              }}
+            <CcureAlert
+              variant="warning"
+              title="Host is unavailable/down/unreachable"
             >
-              <span style={{ fontSize: 24 }}>⚠️</span>
-              <div>
-                <strong style={{ display: "block", fontSize: 16 }}>
-                  Host is unavailable/down/unreachable
-                </strong>
-                <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                  The credentialed scan failed because the host could not be
-                  reached via SSH. Verify the IP address, network connectivity,
-                  and firewall rules.
-                </p>
-              </div>
-            </div>
+              The credentialed scan failed because the host could not be reached
+              via SSH. Verify the IP address, network connectivity, and firewall
+              rules.
+            </CcureAlert>
           ) : (
-            <div className="alert alert--error">
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                ⚠ Scan Failed
-              </div>
+            <CcureAlert variant="danger" title="Scan Failed">
               {error}
-            </div>
+            </CcureAlert>
           )}
 
-          <div className="empty-state" style={{ marginTop: 40 }}>
-            <p className="muted">
+          <div className="cr-failure">
+            <p className="cr-muted">
               {isUnreachable
                 ? "Please ensure the target is powered on and accessible from the scanning engine."
                 : "Please verify your SSH credentials and ensure the host is reachable."}
             </p>
-            <button
-              className="btn btn--primary"
-              style={{ marginTop: 20 }}
-              onClick={() => navigate("/scan/credentialed")}
-            >
+            <CcureButton onClick={() => navigate("/scan/credentialed")}>
               Try Again
-            </button>
+            </CcureButton>
           </div>
         </div>
       </AppLayout>
@@ -829,7 +596,6 @@ export default function CredentialedResults() {
 
   const osLabel = detected_os === "windows" ? "Windows" : "Linux";
   const osIcon = detected_os === "windows" ? "🪟" : "🐧";
-  const osBadgeClr = detected_os === "windows" ? "#0078d4" : "#f97316";
 
   const overallRisk = (() => {
     if (severity_summary.Critical > 0) return "Critical";
@@ -940,112 +706,148 @@ export default function CredentialedResults() {
       ? ["Username", "Role / Type", "Status", "Password Required", "Last Logon"]
       : ["Username", "UID", "Shell", "Home", "Type"];
 
-  const usersTableRows = filteredUsers.map((u) => {
-    if (detected_os === "windows") {
-      const isAdmin =
-        u.is_admin === true || String(u.is_admin).toLowerCase() === "true";
-      const isEnabled = String(u.enabled).toLowerCase() === "true";
-      const isPwdRequired = String(u.pwd_required).toLowerCase() === "true";
-      const lastLogon =
-        u.last_logon && u.last_logon !== "None" && u.last_logon !== "null"
-          ? u.last_logon
-          : "—";
+  // The same reading of each account the table has always shown, as columns.
+  const describeWindowsUser = (u) => {
+    const isAdmin =
+      u.is_admin === true || String(u.is_admin).toLowerCase() === "true";
+    const isEnabled = String(u.enabled).toLowerCase() === "true";
+    const isPwdRequired = String(u.pwd_required).toLowerCase() === "true";
+    const lastLogon =
+      u.last_logon && u.last_logon !== "None" && u.last_logon !== "null"
+        ? u.last_logon
+        : "—";
 
-      const nameLower = String(u.username || "").toLowerCase();
-      const isSystem = [
-        "guest",
-        "defaultaccount",
-        "wdagutilityaccount",
-        "sshd",
-      ].includes(nameLower);
+    const nameLower = String(u.username || "").toLowerCase();
+    const isSystem = [
+      "guest",
+      "defaultaccount",
+      "wdagutilityaccount",
+      "sshd",
+    ].includes(nameLower);
 
-      let typeLabel = "User";
-      let typeStyle = {};
-      if (isAdmin) {
-        typeLabel = "Admin";
-        typeStyle = { color: "#ff4d4d", fontWeight: 600 };
-      } else if (isSystem) {
-        typeLabel = "System";
-        typeStyle = { color: "var(--text-faint)" };
-      }
+    let typeLabel = "User";
+    if (isAdmin) {
+      typeLabel = "Admin";
+    } else if (isSystem) {
+      typeLabel = "System";
+    }
+    return {
+      isAdmin,
+      isEnabled,
+      isPwdRequired,
+      lastLogon,
+      isSystem,
+      typeLabel,
+    };
+  };
 
-      return {
-        _style: isAdmin ? { background: "rgba(239, 68, 68, 0.03)" } : {},
-        cells: [
+  const usersColumns =
+    detected_os === "windows"
+      ? [
           {
-            content: (
-              <code
-                style={{ fontSize: 12, fontWeight: isAdmin ? 600 : undefined }}
+            key: "username",
+            header: usersTableHead[0],
+            isRowHeader: true,
+            mono: true,
+            cell: (u) => (
+              <span
+                className={describeWindowsUser(u).isAdmin ? "cr-strong" : ""}
               >
                 {u.username}
-              </code>
-            ),
-          },
-          { content: <span style={typeStyle}>{typeLabel}</span> },
-          {
-            content: isEnabled ? (
-              <span style={{ color: "var(--ok)", fontWeight: 500 }}>
-                Active
-              </span>
-            ) : (
-              <span
-                className="muted"
-                style={{
-                  textDecoration: "line-through",
-                  color: "var(--text-faint)",
-                }}
-              >
-                Disabled
               </span>
             ),
           },
           {
-            content: isPwdRequired ? (
-              <span>Yes</span>
-            ) : (
-              <span style={{ color: "#f59e0b", fontWeight: 500 }}>⚠ No</span>
-            ),
-          },
-          {
-            content: (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  fontFamily: "var(--mono)",
-                }}
-              >
-                {lastLogon}
-              </span>
-            ),
-          },
-        ],
-      };
-    } else {
-      return {
-        _style: u.is_root ? { color: "#ff4d4d" } : {},
-        cells: [
-          { content: <code style={{ fontSize: 12 }}>{u.username}</code> },
-          { content: u.uid, style: { fontSize: 11 } },
-          {
-            content: u.shell,
-            style: { fontSize: 11, color: "var(--text-muted)" },
-          },
-          {
-            content: u.home,
-            style: { fontSize: 11, color: "var(--text-muted)" },
-          },
-          {
-            content: u.is_root ? "⚠ root" : u.is_system ? "system" : "user",
-            style: {
-              fontSize: 11,
-              color: u.is_system ? "var(--text-faint)" : undefined,
+            key: "type",
+            header: usersTableHead[1],
+            cell: (u) => {
+              const { isAdmin, isSystem, typeLabel } = describeWindowsUser(u);
+              return (
+                <span
+                  className={
+                    isAdmin
+                      ? "cr-tone-danger cr-strong"
+                      : isSystem
+                        ? "cr-muted"
+                        : ""
+                  }
+                >
+                  {typeLabel}
+                </span>
+              );
             },
           },
-        ],
-      };
-    }
-  });
+          {
+            key: "enabled",
+            header: usersTableHead[2],
+            cell: (u) =>
+              describeWindowsUser(u).isEnabled ? (
+                <span className="cr-tone-success">Active</span>
+              ) : (
+                <span className="cr-muted cr-struck">Disabled</span>
+              ),
+          },
+          {
+            key: "pwd_required",
+            header: usersTableHead[3],
+            cell: (u) =>
+              describeWindowsUser(u).isPwdRequired ? (
+                <span>Yes</span>
+              ) : (
+                <span className="cr-tone-warning">
+                  <Glyph>⚠</Glyph> No
+                </span>
+              ),
+          },
+          {
+            key: "last_logon",
+            header: usersTableHead[4],
+            mono: true,
+            cell: (u) => (
+              <span className="cr-muted">
+                {describeWindowsUser(u).lastLogon}
+              </span>
+            ),
+          },
+        ]
+      : [
+          {
+            key: "username",
+            header: usersTableHead[0],
+            isRowHeader: true,
+            mono: true,
+            cell: (u) => (
+              <span className={u.is_root ? "cr-tone-danger" : ""}>
+                {u.username}
+              </span>
+            ),
+          },
+          { key: "uid", header: usersTableHead[1], mono: true },
+          {
+            key: "shell",
+            header: usersTableHead[2],
+            cell: (u) => <span className="cr-muted">{u.shell}</span>,
+          },
+          {
+            key: "home",
+            header: usersTableHead[3],
+            cell: (u) => <span className="cr-muted">{u.home}</span>,
+          },
+          {
+            key: "kind",
+            header: usersTableHead[4],
+            cell: (u) =>
+              u.is_root ? (
+                <span className="cr-tone-danger">
+                  <Glyph>⚠</Glyph> root
+                </span>
+              ) : u.is_system ? (
+                <span className="cr-muted">system</span>
+              ) : (
+                "user"
+              ),
+          },
+        ];
 
   const hasAdvancedEvidence = Boolean(
     sudo_rules_raw ||
@@ -1057,156 +859,120 @@ export default function CredentialedResults() {
 
   return (
     <AppLayout pageTitle="Credentialed Results">
-      <div className="page-inner">
+      <div className="cr-page">
         {/* Page header */}
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">🔐 Credentialed Scan Results</h2>
-            <p className="page-subtitle">
-              <code className="ip-code">{target}</code>
-              {username && <span className="muted"> · user: {username}</span>}
+        <header className="cr-header">
+          <div className="cr-header__text">
+            <h1 className="cr-title">
+              <Glyph>🔐</Glyph> Credentialed Scan Results
+            </h1>
+            <p className="cr-subtitle">
+              <code className="cr-code">{target}</code>
+              {username && (
+                <span className="cr-muted"> · user: {username}</span>
+              )}
               {scan_duration && (
-                <span className="muted"> · {scan_duration}s</span>
+                <span className="cr-muted"> · {scan_duration}s</span>
               )}
               {scan_id && (
-                <span className="muted">
+                <span className="cr-muted">
                   {" "}
                   · Scan No. {scan_no ?? display_id ?? "-"}
                 </span>
               )}
               {os_type_was_auto && (
-                <span
-                  style={{
-                    marginLeft: 8,
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    fontSize: 11,
-                    background: osBadgeClr + "22",
-                    color: osBadgeClr,
-                    border: `1px solid ${osBadgeClr}44`,
-                    fontWeight: 600,
-                  }}
-                >
-                  {osIcon} {osLabel} (auto-detected)
-                </span>
+                <CcureBadge variant="info" className="cr-os-badge">
+                  <Glyph>{osIcon}</Glyph> {osLabel} (auto-detected)
+                </CcureBadge>
               )}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btn--ghost"
+          <div className="cr-header__actions">
+            <CcureButton
+              variant="secondary"
               onClick={() => navigate("/scan/credentialed")}
             >
-              ← New Scan
-            </button>
-            <button
-              className="btn btn--ghost"
+              <Glyph>←</Glyph> New Scan
+            </CcureButton>
+            <CcureButton
+              variant="secondary"
               onClick={() => navigate("/history")}
             >
               History
-            </button>
+            </CcureButton>
           </div>
-        </div>
+        </header>
 
-        {/* Summary bar */}
-        <div className="summary-bar" style={{ flexWrap: "wrap" }}>
-          <span className="summary-item">
+        {/* Summary */}
+        <ul className="cr-summary" aria-label="Summary">
+          <li className="cr-summary__item">
             <RiskBadge level={overallRisk} />
-          </span>
-          <span className="summary-item">
-            <b>{system_info.os_name || osLabel}</b>
-          </span>
-          <span className="summary-item muted">
+          </li>
+          <li className="cr-summary__item">
+            <strong>{system_info.os_name || osLabel}</strong>
+          </li>
+          <li className="cr-summary__item cr-muted">
             {detected_os === "windows" ? (
               <>
                 Build{" "}
-                <b>
+                <strong>
                   {system_info.os_build || system_info.os_version_id || "—"}
-                </b>
+                </strong>
               </>
             ) : (
               <>
-                Kernel <b>{system_info.kernel_version || "—"}</b>
+                Kernel <strong>{system_info.kernel_version || "—"}</strong>
               </>
             )}
-          </span>
-          <span className="summary-item">
-            <b>{package_count}</b> packages
-          </span>
-          <span
-            className="summary-item"
-            style={{ color: cve_count > 0 ? "#f97316" : "var(--ok)" }}
+          </li>
+          <li className="cr-summary__item">
+            <strong>{package_count}</strong> packages
+          </li>
+          <li
+            className={`cr-summary__item ${cve_count > 0 ? "cr-tone-warning" : "cr-tone-success"}`}
           >
-            <b>{cve_count}</b> CVE{cve_count !== 1 ? "s" : ""}
-          </span>
+            <strong>{cve_count}</strong> CVE{cve_count !== 1 ? "s" : ""}
+          </li>
           {brute_force_warning && (
-            <span className="summary-item" style={{ color: "#ff4d4d" }}>
-              ⚠ Brute-force activity detected
-            </span>
+            <li className="cr-summary__item cr-tone-danger">
+              <Glyph>⚠</Glyph> Brute-force activity detected
+            </li>
           )}
-        </div>
+        </ul>
 
         {/* Host selector — only when the scan covered more than one host */}
         {allReports.length > 1 && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-              margin: "0 0 14px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "var(--text-muted)",
-                marginRight: 4,
-              }}
-            >
+          <div className="cr-hosts" role="group" aria-label="Audited hosts">
+            <span className="cr-hosts__label">
               {allReports.length} hosts audited:
             </span>
             {allReports.map((r, i) => {
               const isActive = i === hostIndex;
               const worst = r.severity_summary || {};
-              const dot = worst.Critical
-                ? SEV_COLOR.Critical
+              const band = worst.Critical
+                ? "critical"
                 : worst.High
-                  ? SEV_COLOR.High
+                  ? "high"
                   : worst.Medium
-                    ? SEV_COLOR.Medium
-                    : "var(--ok)";
+                    ? "medium"
+                    : "clear";
               return (
-                <button
+                <CcureButton
                   key={r.target || i}
+                  variant="secondary"
+                  size="sm"
+                  className="cr-toggle cr-host"
+                  aria-pressed={isActive}
                   onClick={() => setHostIndex(i)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "5px 11px",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontFamily: "var(--mono)",
-                    cursor: "pointer",
-                    background: isActive ? "var(--accent)" : "var(--bg-card)",
-                    color: isActive ? "#fff" : "var(--text)",
-                    border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
-                    fontWeight: isActive ? 700 : 500,
-                  }}
                 >
                   <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: isActive ? "#fff" : dot,
-                    }}
+                    className={`cr-host__dot cr-host__dot--${band}`}
+                    aria-hidden="true"
                   />
                   {r.target}
-                  <span style={{ opacity: 0.7 }}>({r.cve_count ?? 0})</span>
-                </button>
+                  <span className="cr-toggle__count">({r.cve_count ?? 0})</span>
+                  <span className="cc-sr-only"> CVEs</span>
+                </CcureButton>
               );
             })}
           </div>
@@ -1215,41 +981,43 @@ export default function CredentialedResults() {
         {/* Hosts that could not be audited. Silently omitting them would let a
             partial scan read as a complete one. */}
         {hostsFailed.length > 0 && (
-          <div
-            className="alert alert--warn"
-            style={{ marginBottom: 14, fontSize: 13, lineHeight: 1.55 }}
+          <CcureAlert
+            variant="warning"
+            live={false}
+            title={
+              <>
+                {hostsFailed.length} host
+                {hostsFailed.length !== 1 ? "s" : ""} could not be audited
+              </>
+            }
           >
-            <strong>
-              ⚠ {hostsFailed.length} host
-              {hostsFailed.length !== 1 ? "s" : ""} could not be audited
-            </strong>
-            <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+            <ul className="cr-failed-hosts">
               {hostsFailed.map((h) => (
                 <li key={h.target}>
-                  <code>{h.target}</code> — {h.reason}
+                  <code className="cr-code">{h.target}</code> — {h.reason}
                 </li>
               ))}
             </ul>
-            <p style={{ margin: "6px 0 0", opacity: 0.85 }}>
+            <p className="cr-failed-hosts__note">
               These hosts are unassessed. Their absence from the findings below
               is not evidence that they are clean.
             </p>
-          </div>
+          </CcureAlert>
         )}
 
         {/* Assessment coverage — what this scan did and did not examine */}
         {Object.keys(coverage).length > 0 && (
-          <Section title="🧭 Assessment coverage — what this scan examined">
-            <p
-              className="muted"
-              style={{ fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.6 }}
-            >
+          <Section
+            icon="🧭"
+            title="Assessment coverage — what this scan examined"
+          >
+            <p className="cr-note">
               Coverage bounds every conclusion in this report. A check this
               policy does not perform cannot produce a finding here, so an empty
               section means &quot;not looked for&quot;, not &quot;not
               present&quot;.
             </p>
-            <div style={{ display: "grid", gap: "0 24px" }}>
+            <dl className="cr-kv-list">
               {coverage.authenticated_checks && (
                 <KV
                   k="Authenticated checks"
@@ -1291,23 +1059,33 @@ export default function CredentialedResults() {
                 }
                 danger={!inventory_complete}
               />
-            </div>
+            </dl>
             {Object.keys(collection_errors).length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <h4 className="section-title">Collection errors</h4>
-                <CredTable
-                  head={["Section", "Reason"]}
-                  rows={Object.entries(collection_errors).map(
-                    ([section, reason]) => ({
-                      cells: [
-                        { content: <code>{section}</code> },
-                        {
-                          content: String(reason),
-                          style: { color: "#f59e0b", fontSize: 12 },
-                        },
-                      ],
-                    }),
-                  )}
+              <div className="cr-subsection">
+                <h3 className="cr-subheading">Collection errors</h3>
+                <CcureTable
+                  caption="Collection errors"
+                  density="compact"
+                  rows={Object.entries(collection_errors)}
+                  rowKey={([section]) => section}
+                  columns={[
+                    {
+                      key: "section",
+                      header: "Section",
+                      isRowHeader: true,
+                      mono: true,
+                      cell: ([section]) => section,
+                    },
+                    {
+                      key: "reason",
+                      header: "Reason",
+                      cell: ([, reason]) => (
+                        <span className="cr-tone-warning">
+                          {String(reason)}
+                        </span>
+                      ),
+                    },
+                  ]}
                 />
               </div>
             )}
@@ -1315,14 +1093,8 @@ export default function CredentialedResults() {
         )}
 
         {/* System Info */}
-        <Section title="🖥 System Information" defaultOpen>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: "0 24px",
-            }}
-          >
+        <Section icon="🖥" title="System Information" defaultOpen>
+          <dl className="cr-kv-grid">
             <KV k="OS" v={system_info.os_name || "—"} />
             <KV k="Version" v={system_info.os_version_id || "—"} />
             <KV k="Kernel" v={system_info.kernel_version || "—"} mono />
@@ -1345,42 +1117,40 @@ export default function CredentialedResults() {
                 <KV k="RAM Used" v={system_info.memory_summary.used} />
               </>
             )}
-          </div>
+          </dl>
           {system_info.disk_usage?.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <h4 className="section-title">Disk Usage</h4>
-              <CredTable
-                head={[
-                  "Filesystem",
-                  "Size",
-                  "Used",
-                  "Available",
-                  "Use%",
-                  "Mount",
+            <div className="cr-subsection">
+              <h3 className="cr-subheading">Disk Usage</h3>
+              <CcureTable
+                caption="Disk usage"
+                density="compact"
+                rows={system_info.disk_usage}
+                rowKey={(d, i) => i}
+                columns={[
+                  {
+                    key: "filesystem",
+                    header: "Filesystem",
+                    isRowHeader: true,
+                    mono: true,
+                  },
+                  { key: "size", header: "Size" },
+                  { key: "used", header: "Used" },
+                  { key: "available", header: "Available" },
+                  {
+                    key: "use_pct",
+                    header: "Use%",
+                    cell: (d) => (
+                      <span
+                        className={
+                          parseInt(d.use_pct) > 80 ? "cr-tone-warning" : ""
+                        }
+                      >
+                        {d.use_pct}
+                      </span>
+                    ),
+                  },
+                  { key: "mounted_on", header: "Mount", mono: true },
                 ]}
-                rows={system_info.disk_usage.map((d) => ({
-                  cells: [
-                    {
-                      content: (
-                        <code style={{ fontSize: 11 }}>{d.filesystem}</code>
-                      ),
-                    },
-                    { content: d.size },
-                    { content: d.used },
-                    { content: d.available },
-                    {
-                      content: d.use_pct,
-                      style: {
-                        color: parseInt(d.use_pct) > 80 ? "#f97316" : undefined,
-                      },
-                    },
-                    {
-                      content: (
-                        <code style={{ fontSize: 11 }}>{d.mounted_on}</code>
-                      ),
-                    },
-                  ],
-                }))}
               />
             </div>
           )}
@@ -1388,155 +1158,103 @@ export default function CredentialedResults() {
 
         {/* CVEs */}
         {cve_count > 0 && (
-          <Section title={`⚠ CVE Findings (${cve_count})`} defaultOpen>
-            {/* Severity summary chips */}
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                marginBottom: 12,
-              }}
-            >
+          <Section icon="⚠" title={`CVE Findings (${cve_count})`} defaultOpen>
+            {/* Severity summary */}
+            <ul className="cr-sev-summary" aria-label="Findings by severity">
               {Object.entries(severity_summary)
                 .filter(([, n]) => n > 0)
                 .map(([sev, n]) => (
-                  <span
-                    key={sev}
-                    style={{
-                      fontFamily: "var(--mono)",
-                      fontSize: 12,
-                      color: SEV_COLOR[sev] || "var(--text-muted)",
-                    }}
-                  >
+                  <li key={sev} className="cr-sev-summary__item">
+                    <span
+                      className={`cr-sev-dot cr-sev-dot--${String(sev).toLowerCase()}`}
+                      aria-hidden="true"
+                    />
                     {n} {sev}
-                  </span>
+                  </li>
                 ))}
-            </div>
+            </ul>
 
-            {/* Filter tabs */}
+            {/* Severity filter */}
             <div
-              style={{
-                display: "flex",
-                gap: 6,
-                flexWrap: "wrap",
-                marginBottom: 12,
-              }}
+              className="cr-filter"
+              role="group"
+              aria-label="Filter findings by severity"
             >
               {SEV_ORDER.map((sev) => (
-                <button
+                <CcureButton
                   key={sev}
+                  variant="secondary"
+                  size="sm"
+                  className="cr-toggle"
+                  aria-pressed={cveFilter === sev}
                   onClick={() => setCveFilter(sev)}
-                  style={{
-                    padding: "4px 12px",
-                    borderRadius: 5,
-                    border: `1px solid ${SEV_COLOR[sev] || "var(--border)"}`,
-                    background:
-                      cveFilter === sev
-                        ? SEV_COLOR[sev] || "var(--accent)"
-                        : "transparent",
-                    color:
-                      cveFilter === sev
-                        ? "#fff"
-                        : SEV_COLOR[sev] || "var(--text-muted)",
-                    fontFamily: "var(--font)",
-                    fontSize: "0.78rem",
-                    cursor: "pointer",
-                    transition: "all 0.12s",
-                  }}
                 >
                   {sev}
                   {sev !== "All" && severity_summary[sev] > 0 && (
-                    <span style={{ marginLeft: 4, opacity: 0.8 }}>
+                    <span className="cr-toggle__count">
                       ({severity_summary[sev]})
                     </span>
                   )}
-                </button>
+                </CcureButton>
               ))}
             </div>
 
-            <div className="cve-list">
+            <ul className="cr-findings">
               {filteredCves.map((cve, i) => (
-                <div
-                  key={i}
-                  className="cve-row"
-                  style={{
-                    flexDirection: "column",
-                    gap: 4,
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <CVELink
-                      cveId={cve.cve_id}
-                      style={{ color: SEV_COLOR[cve.severity] || "#60a5fa" }}
-                    />
-                    <span
-                      className="cve-sev"
-                      style={{ color: SEV_COLOR[cve.severity] }}
-                    >
-                      {cve.severity}
-                    </span>
+                <li key={i} className="cr-finding">
+                  <div className="cr-finding__head">
+                    <CVELink cveId={cve.cve_id} className="cr-finding__id" />
+                    <CcureSeverityBadge severity={cve.severity} />
                     {cve.cvss_score && (
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 11,
-                          color: "var(--text-muted)",
-                        }}
-                      >
+                      <span className="cr-mono cr-muted">
                         CVSS {cve.cvss_score}
                       </span>
                     )}
                     {cve.package && (
-                      <span
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: 11,
-                          color: "var(--text-faint)",
-                        }}
-                      >
+                      <span className="cr-mono cr-muted">
                         {cve.package} {cve.installed_ver}
                       </span>
                     )}
                     {cve.fixed_ver && (
-                      <span style={{ fontSize: 11, color: "var(--ok)" }}>
-                        → fixed in {cve.fixed_ver}
+                      <span className="cr-tone-success">
+                        <Glyph>→</Glyph> fixed in {cve.fixed_ver}
                       </span>
                     )}
                   </div>
-                  <span className="cve-desc">{cve.description}</span>
-                </div>
+                  <p className="cr-finding__desc">{cve.description}</p>
+                </li>
               ))}
-            </div>
+            </ul>
           </Section>
         )}
 
         {/* Security Audit */}
         <Section
-          title="🔒 Security Audit"
+          icon="🔒"
+          title="Security Audit"
           defaultOpen={security_issues.length > 0 || sudo_nopasswd}
         >
           {security_issues.length > 0 && (
-            <ul className="issue-list" style={{ marginBottom: 12 }}>
+            <ul className="cr-issues">
               {security_issues.map((iss, i) => (
-                <li key={i} style={{ color: "#f97316" }}>
+                <li key={i} className="cr-issue">
                   {iss}
                 </li>
               ))}
             </ul>
           )}
-          <div className="kv-grid">
+          <dl className="cr-kv-grid">
             <KV
               k="NOPASSWD Sudo"
-              v={sudo_nopasswd ? "⚠ YES — any command without password" : "No"}
+              v={
+                sudo_nopasswd ? (
+                  <>
+                    <Glyph>⚠</Glyph> YES — any command without password
+                  </>
+                ) : (
+                  "No"
+                )
+              }
               danger={sudo_nopasswd}
             />
             <KV
@@ -1551,131 +1269,127 @@ export default function CredentialedResults() {
             />
             <KV
               k="Failed Logins"
-              v={`${failed_login_count}${brute_force_warning ? " ⚠ possible brute force" : ""}`}
+              v={
+                <>
+                  {failed_login_count}
+                  {brute_force_warning && (
+                    <>
+                      {" "}
+                      <Glyph>⚠</Glyph> possible brute force
+                    </>
+                  )}
+                </>
+              }
               danger={brute_force_warning}
             />
-          </div>
+          </dl>
           {Object.keys(hardening_audits).length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <h4 className="section-title">OS Hardening & Auditing</h4>
-              <CredTable
-                head={[
-                  "Configuration / Audit",
-                  "Status",
-                  "Audit Findings Detail",
+            <div className="cr-subsection">
+              <h3 className="cr-subheading">OS Hardening & Auditing</h3>
+              <CcureTable
+                caption="OS hardening and auditing"
+                density="compact"
+                rows={Object.entries(hardening_audits)}
+                rowKey={([key]) => key}
+                columns={[
+                  {
+                    key: "label",
+                    header: "Configuration / Audit",
+                    isRowHeader: true,
+                    cell: ([key, audit]) => audit.label || key,
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    cell: ([, audit]) => (
+                      <CcureBadge
+                        variant={
+                          audit.status === "PASS"
+                            ? "success"
+                            : audit.status === "FAIL"
+                              ? "danger"
+                              : "warning"
+                        }
+                      >
+                        {audit.status}
+                      </CcureBadge>
+                    ),
+                  },
+                  {
+                    key: "detail",
+                    header: "Audit Findings Detail",
+                    cell: ([, audit]) => audit.detail || "—",
+                  },
                 ]}
-                rows={Object.entries(hardening_audits).map(([key, audit]) => {
-                  const isPass = audit.status === "PASS";
-                  const isFail = audit.status === "FAIL";
-                  const statusBg = isPass
-                    ? "rgba(22, 163, 74, 0.15)"
-                    : isFail
-                      ? "rgba(239, 68, 68, 0.15)"
-                      : "rgba(245, 158, 11, 0.15)";
-                  const statusColor = isPass
-                    ? "#16a34a"
-                    : isFail
-                      ? "#ef4444"
-                      : "#f59e0b";
-
-                  return {
-                    cells: [
-                      {
-                        content: (
-                          <span style={{ fontWeight: 600 }}>
-                            {audit.label || key}
-                          </span>
-                        ),
-                      },
-                      {
-                        content: (
-                          <span
-                            style={{
-                              padding: "2px 8px",
-                              borderRadius: 4,
-                              fontSize: 10,
-                              fontWeight: "bold",
-                              backgroundColor: statusBg,
-                              color: statusColor,
-                              display: "inline-block",
-                            }}
-                          >
-                            {audit.status}
-                          </span>
-                        ),
-                      },
-                      { content: <span>{audit.detail || "—"}</span> },
-                    ],
-                  };
-                })}
               />
             </div>
           )}
           {suid_binaries.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <h4 className="section-title">SUID Binaries</h4>
-              <div
-                style={{
-                  maxHeight: 160,
-                  overflowY: "auto",
-                  fontFamily: "var(--mono)",
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  lineHeight: 1.6,
-                }}
+            <div className="cr-subsection">
+              <h3 className="cr-subheading">SUID Binaries</h3>
+              <ul
+                className="cr-paths cr-scroll"
+                tabIndex={0}
+                aria-label="SUID binaries"
               >
                 {suid_binaries.map((b, i) => (
-                  <div key={i}>{b}</div>
+                  <li key={i}>{b}</li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
         </Section>
 
         {/* Running Services */}
         {running_services.length > 0 && (
-          <Section title={`⚙️ Running Services (${running_services.length})`}>
-            <div style={{ marginBottom: 12 }}>
-              <input
-                type="text"
+          <Section
+            icon="⚙️"
+            title={`Running Services (${running_services.length})`}
+          >
+            <div className="cr-toolbar">
+              <CcureInput
+                type="search"
+                label="Search services"
                 placeholder="Search services..."
                 value={servicesSearch}
                 onChange={(e) => setServicesSearch(e.target.value)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "0.85rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text)",
-                  width: "100%",
-                  maxWidth: "320px",
-                  outline: "none",
-                }}
+                fieldClassName="cr-search"
               />
             </div>
             {filteredServices.length === 0 ? (
-              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
+              <p className="cr-note">
                 No services matching &quot;{servicesSearch}&quot;
               </p>
             ) : (
-              <CredTable
-                head={["Service", "Status", "Description"]}
-                rows={filteredServices.map((svc) => ({
-                  cells: [
-                    {
-                      content: <code style={{ fontSize: 11 }}>{svc.name}</code>,
-                    },
-                    {
-                      content: svc.sub_state || "running",
-                      style: { color: "var(--ok)", fontSize: 11 },
-                    },
-                    {
-                      content: svc.description,
-                      style: { fontSize: 12, color: "var(--text-muted)" },
-                    },
-                  ],
-                }))}
+              <CcureTable
+                caption="Running services"
+                density="compact"
+                rows={filteredServices}
+                rowKey={(svc, i) => i}
+                columns={[
+                  {
+                    key: "name",
+                    header: "Service",
+                    isRowHeader: true,
+                    mono: true,
+                  },
+                  {
+                    key: "sub_state",
+                    header: "Status",
+                    cell: (svc) => (
+                      <span className="cr-tone-success">
+                        {svc.sub_state || "running"}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "description",
+                    header: "Description",
+                    cell: (svc) => (
+                      <span className="cr-muted">{svc.description}</span>
+                    ),
+                  },
+                ]}
               />
             )}
           </Section>
@@ -1684,25 +1398,23 @@ export default function CredentialedResults() {
         {/* Listening sockets — read from the host, not from a port scan */}
         {open_ports_credentialed.length > 0 && (
           <Section
-            title={`🔌 Listening sockets — host socket table (${open_ports_credentialed.length})`}
+            icon="🔌"
+            title={`Listening sockets — host socket table (${open_ports_credentialed.length})`}
           >
-            <p
-              className="muted"
-              style={{ fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.6 }}
-            >
+            <p className="cr-note">
               {exposure_summary.correlated_with_port_scan ? (
                 <>
                   These are the sockets the host reports it is listening on,
                   correlated with the port scan.{" "}
-                  <strong style={{ color: "#ff4d4d" }}>
+                  <strong className="cr-tone-danger">
                     {exposure_summary.listeners_exposed || 0} exposed
                   </strong>
                   {", "}
-                  <strong style={{ color: "#60a5fa" }}>
+                  <strong className="cr-tone-info">
                     {exposure_summary.listeners_filtered || 0} filtered
                   </strong>
                   {", "}
-                  <strong style={{ color: "#22c55e" }}>
+                  <strong className="cr-tone-success">
                     {exposure_summary.listeners_host_only || 0} host-only
                   </strong>
                   .
@@ -1716,78 +1428,73 @@ export default function CredentialedResults() {
                 </>
               )}
             </p>
-            <div style={{ marginBottom: 12 }}>
-              <input
-                type="text"
+            <div className="cr-toolbar">
+              <CcureInput
+                type="search"
+                label="Search listening sockets"
                 placeholder="Search ports, IPs, or processes..."
                 value={portsSearch}
                 onChange={(e) => setPortsSearch(e.target.value)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "0.85rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text)",
-                  width: "100%",
-                  maxWidth: "320px",
-                  outline: "none",
-                }}
+                fieldClassName="cr-search"
               />
             </div>
             {filteredPorts.length === 0 ? (
-              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
+              <p className="cr-note">
                 No open ports matching &quot;{portsSearch}&quot;
               </p>
             ) : (
-              <CredTable
-                head={["Exposure", "Local Addr", "Port", "Process", "Software"]}
-                rows={filteredPorts.map((p) => ({
-                  cells: [
-                    { content: <ExposureBadge exposure={p.exposure} /> },
-                    {
-                      content: (
-                        <code style={{ fontSize: 11 }}>{p.local_addr}</code>
-                      ),
-                    },
-                    { content: <code style={{ fontSize: 12 }}>{p.port}</code> },
-                    {
-                      content: (
-                        <>
-                          {p.process}
-                          {p.pid && (
-                            <span
-                              className="muted"
-                              style={{ fontSize: 10, marginLeft: 5 }}
-                            >
-                              pid {p.pid}
-                            </span>
-                          )}
-                        </>
-                      ),
-                      style: { fontSize: 11 },
-                    },
-                    {
-                      // What is actually answering on the port, read from the
-                      // binary itself. Absent when the process is protected or
-                      // ships no version resource — shown as unknown rather
-                      // than left blank, which reads as "nothing there".
-                      content: p.product ? (
+              <CcureTable
+                caption="Listening sockets"
+                density="compact"
+                rows={filteredPorts}
+                rowKey={(p, i) => i}
+                columns={[
+                  {
+                    key: "exposure",
+                    header: "Exposure",
+                    cell: (p) => <ExposureBadge exposure={p.exposure} />,
+                  },
+                  { key: "local_addr", header: "Local Addr", mono: true },
+                  {
+                    key: "port",
+                    header: "Port",
+                    isRowHeader: true,
+                    mono: true,
+                  },
+                  {
+                    key: "process",
+                    header: "Process",
+                    cell: (p) => (
+                      <>
+                        {p.process}
+                        {p.pid && (
+                          <span className="cr-muted cr-pid">pid {p.pid}</span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    // What is actually answering on the port, read from the
+                    // binary itself. Absent when the process is protected or
+                    // ships no version resource — shown as unknown rather
+                    // than left blank, which reads as "nothing there".
+                    key: "software",
+                    header: "Software",
+                    cell: (p) =>
+                      p.product ? (
                         <>
                           {p.product}
                           {p.version && (
-                            <code style={{ fontSize: 11, marginLeft: 6 }}>
+                            <code className="cr-code cr-version">
                               {p.version}
                             </code>
                           )}
                         </>
                       ) : (
-                        <span className="muted">Not identified</span>
+                        <span className="cr-muted">Not identified</span>
                       ),
-                      style: { fontSize: 11 },
-                    },
-                  ],
-                }))}
+                  },
+                ]}
               />
             )}
           </Section>
@@ -1798,122 +1505,74 @@ export default function CredentialedResults() {
           <Section
             title={`Packages with Vulnerabilities (${packagesWithCves.length})`}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 12,
-                marginBottom: 12,
-              }}
-            >
-              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            <div className="cr-toolbar cr-toolbar--split">
+              <p className="cr-note">
                 Showing only packages that match vulnerability findings.
               </p>
-              <input
-                type="text"
+              <CcureInput
+                type="search"
+                label="Search packages"
                 placeholder="Search packages..."
                 value={packagesSearch}
                 onChange={(e) => setPackagesSearch(e.target.value)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "0.85rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text)",
-                  width: "100%",
-                  maxWidth: "320px",
-                  outline: "none",
-                }}
+                fieldClassName="cr-search"
               />
             </div>
             {filteredPackages.length === 0 ? (
-              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
+              <p className="cr-note">
                 No packages matching &quot;{packagesSearch}&quot;
               </p>
             ) : (
-              <CredTable
-                head={["Affected Packages", "Version", "Manager", "CVE"]}
-                rows={filteredPackages.map((pkg) => {
-                  const pkgCves = cves.filter(
-                    (c) =>
-                      String(c.package || "").toLowerCase() ===
-                      String(pkg.name || "").toLowerCase(),
-                  );
-                  const uniqueCveIds = Array.from(
-                    new Set(pkgCves.map((c) => c.cve_id)),
-                  ).filter(Boolean);
-
-                  return {
-                    _style: { background: "rgba(249,115,22,0.07)" },
-                    cells: [
-                      {
-                        content: (
-                          <span style={{ fontWeight: 600, color: "#f97316" }}>
-                            {pkg.name}
-                          </span>
-                        ),
-                      },
-                      {
-                        content: (
-                          <code style={{ fontSize: 11 }}>{pkg.version}</code>
-                        ),
-                      },
-                      {
-                        content: pkg.manager,
-                        style: { fontSize: 11, color: "var(--text-muted)" },
-                      },
-                      {
-                        content:
-                          uniqueCveIds.length > 0 ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: "4px 8px",
-                                alignItems: "center",
-                              }}
-                            >
-                              {uniqueCveIds.map((cveId, idx) => (
-                                <span
-                                  key={cveId}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <CVELink
-                                    cveId={cveId}
-                                    style={{
-                                      color: "#f97316",
-                                      fontWeight: 600,
-                                      fontSize: "0.82rem",
-                                    }}
-                                  />
-                                  {idx < uniqueCveIds.length - 1 && (
-                                    <span
-                                      style={{
-                                        color: "var(--text-faint)",
-                                        marginLeft: 4,
-                                      }}
-                                    >
-                                      ,
-                                    </span>
-                                  )}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span style={{ color: "var(--text-faint)" }}>
-                              —
-                            </span>
-                          ),
-                      },
-                    ],
-                  };
-                })}
+              <CcureTable
+                caption="Packages with vulnerabilities"
+                density="compact"
+                rows={filteredPackages}
+                rowKey={(pkg, i) => i}
+                columns={[
+                  {
+                    key: "name",
+                    header: "Affected Packages",
+                    isRowHeader: true,
+                    cell: (pkg) => (
+                      <span className="cr-tone-warning cr-strong">
+                        {pkg.name}
+                      </span>
+                    ),
+                  },
+                  { key: "version", header: "Version", mono: true },
+                  {
+                    key: "manager",
+                    header: "Manager",
+                    cell: (pkg) => (
+                      <span className="cr-muted">{pkg.manager}</span>
+                    ),
+                  },
+                  {
+                    key: "cves",
+                    header: "CVE",
+                    cell: (pkg) => {
+                      const pkgCves = cves.filter(
+                        (c) =>
+                          String(c.package || "").toLowerCase() ===
+                          String(pkg.name || "").toLowerCase(),
+                      );
+                      const uniqueCveIds = Array.from(
+                        new Set(pkgCves.map((c) => c.cve_id)),
+                      ).filter(Boolean);
+                      return uniqueCveIds.length > 0 ? (
+                        <ul className="cr-cve-links">
+                          {uniqueCveIds.map((cveId) => (
+                            <li key={cveId}>
+                              <CVELink cveId={cveId} className="cr-cve-link" />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="cr-muted">—</span>
+                      );
+                    },
+                  },
+                ]}
               />
             )}
           </Section>
@@ -1921,86 +1580,72 @@ export default function CredentialedResults() {
 
         {/* Users */}
         {users.length > 0 && (
-          <Section title={`👤 Users (${filteredUsers.length})`}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-                flexWrap: "wrap",
-                marginBottom: 12,
-              }}
-            >
-              <input
-                type="text"
+          <Section icon="👤" title={`Users (${filteredUsers.length})`}>
+            <div className="cr-toolbar cr-toolbar--split">
+              <CcureInput
+                type="search"
+                label="Search users"
                 placeholder="Search users..."
                 value={usersSearch}
                 onChange={(e) => setUsersSearch(e.target.value)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "0.85rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text)",
-                  width: "100%",
-                  maxWidth: "320px",
-                  outline: "none",
-                }}
+                fieldClassName="cr-search"
               />
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
+              <label className="cr-check">
                 <input
                   type="checkbox"
+                  className="cr-check__input"
                   checked={showSystemUsers}
                   onChange={(e) => setShowSystemUsers(e.target.checked)}
-                  style={{ cursor: "pointer" }}
                 />
                 Show system & service accounts
               </label>
             </div>
             {filteredUsers.length === 0 ? (
-              <p className="muted" style={{ padding: "12px 0", fontSize: 13 }}>
+              <p className="cr-note">
                 No users matching &quot;{usersSearch}&quot;
               </p>
             ) : (
-              <CredTable head={usersTableHead} rows={usersTableRows} />
+              <CcureTable
+                caption="Users"
+                density="compact"
+                rows={filteredUsers}
+                rowKey={(u, i) => i}
+                columns={usersColumns}
+              />
             )}
           </Section>
         )}
 
         {/* Local Groups */}
         {local_groups.length > 0 && (
-          <Section title={`👤 Local Groups (${local_groups.length})`}>
-            <CredTable
-              head={["Group Name", "GID", "Members"]}
-              rows={local_groups.map((g) => ({
-                cells: [
-                  {
-                    content: <span style={{ fontWeight: 600 }}>{g.name}</span>,
-                  },
-                  { content: <code>{g.gid || "—"}</code> },
-                  {
-                    content: (
-                      <span>
-                        {Array.isArray(g.members) && g.members.length > 0
-                          ? g.members.join(", ")
-                          : "—"}
-                      </span>
-                    ),
-                  },
-                ],
-              }))}
+          <Section icon="👤" title={`Local Groups (${local_groups.length})`}>
+            <CcureTable
+              caption="Local groups"
+              density="compact"
+              rows={local_groups}
+              rowKey={(g, i) => i}
+              columns={[
+                {
+                  key: "name",
+                  header: "Group Name",
+                  isRowHeader: true,
+                  cell: (g) => <span className="cr-strong">{g.name}</span>,
+                },
+                {
+                  key: "gid",
+                  header: "GID",
+                  mono: true,
+                  cell: (g) => g.gid || "—",
+                },
+                {
+                  key: "members",
+                  header: "Members",
+                  cell: (g) =>
+                    Array.isArray(g.members) && g.members.length > 0
+                      ? g.members.join(", ")
+                      : "—",
+                },
+              ]}
             />
           </Section>
         )}
@@ -2010,76 +1655,60 @@ export default function CredentialedResults() {
           suspicious_scheduled_tasks?.length > 0) ||
           (detected_os !== "windows" && cron_info_raw)) && (
           <Section
+            icon="📅"
             title={
               detected_os === "windows"
-                ? `📅 Scheduled Tasks (${suspicious_scheduled_tasks.length})`
-                : "📅 Scheduled Cron Jobs"
+                ? `Scheduled Tasks (${suspicious_scheduled_tasks.length})`
+                : "Scheduled Cron Jobs"
             }
           >
             {detected_os === "windows" ? (
-              <CredTable
-                head={["Task Name", "Path", "State"]}
-                rows={suspicious_scheduled_tasks.map((t) => ({
-                  cells: [
-                    {
-                      content: (
-                        <span style={{ fontWeight: 600 }}>
-                          {t.TaskName || "—"}
-                        </span>
-                      ),
-                    },
-                    {
-                      content: (
-                        <code style={{ fontSize: 11 }}>
-                          {t.TaskPath || "—"}
-                        </code>
-                      ),
-                    },
-                    {
-                      content: (
-                        <span
-                          style={{
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: "bold",
-                            backgroundColor:
-                              t.State === "Ready" || t.State === "Running"
-                                ? "rgba(22, 163, 74, 0.15)"
-                                : "rgba(245, 158, 11, 0.15)",
-                            color:
-                              t.State === "Ready" || t.State === "Running"
-                                ? "#16a34a"
-                                : "#f59e0b",
-                            display: "inline-block",
-                          }}
-                        >
-                          {t.State || "—"}
-                        </span>
-                      ),
-                    },
-                  ],
-                }))}
+              <CcureTable
+                caption="Scheduled tasks"
+                density="compact"
+                rows={suspicious_scheduled_tasks}
+                rowKey={(t, i) => i}
+                columns={[
+                  {
+                    key: "TaskName",
+                    header: "Task Name",
+                    isRowHeader: true,
+                    cell: (t) => (
+                      <span className="cr-strong">{t.TaskName || "—"}</span>
+                    ),
+                  },
+                  {
+                    key: "TaskPath",
+                    header: "Path",
+                    mono: true,
+                    cell: (t) => t.TaskPath || "—",
+                  },
+                  {
+                    key: "State",
+                    header: "State",
+                    cell: (t) => (
+                      <CcureBadge
+                        variant={
+                          t.State === "Ready" || t.State === "Running"
+                            ? "success"
+                            : "warning"
+                        }
+                      >
+                        {t.State || "—"}
+                      </CcureBadge>
+                    ),
+                  },
+                ]}
               />
             ) : (
               <div>
-                <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                <p className="cr-note">
                   Target crontab files and system schedules configuration.
                 </p>
                 <pre
-                  style={{
-                    background: "var(--bg-app)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "10px 12px",
-                    fontFamily: "var(--mono)",
-                    fontSize: 12,
-                    color: "var(--text-mid)",
-                    overflowX: "auto",
-                    maxHeight: 250,
-                    overflowY: "auto",
-                    whiteSpace: "pre-wrap",
-                  }}
+                  className="cr-pre cr-pre--wrap cr-scroll"
+                  tabIndex={0}
+                  aria-label="Scheduled cron jobs"
                 >
                   {cron_info_raw}
                 </pre>
@@ -2090,8 +1719,8 @@ export default function CredentialedResults() {
 
         {/* Login History */}
         {failed_login_count > 0 && (
-          <Section title="📋 Login History">
-            <div className="kv-grid">
+          <Section icon="📋" title="Login History">
+            <dl className="cr-kv-grid">
               <KV
                 k="Failed Logins"
                 v={String(failed_login_count)}
@@ -2099,171 +1728,108 @@ export default function CredentialedResults() {
               />
               <KV
                 k="Brute Force Alert"
-                v={brute_force_warning ? "⚠ YES" : "No"}
+                v={
+                  brute_force_warning ? (
+                    <>
+                      <Glyph>⚠</Glyph> YES
+                    </>
+                  ) : (
+                    "No"
+                  )
+                }
                 danger={brute_force_warning}
               />
-            </div>
+            </dl>
           </Section>
         )}
 
         {/* Audit Evidence */}
         {hasAdvancedEvidence && (
           <Section title="Audit Evidence">
-            <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            <p className="cr-note">
               Raw evidence is hidden by default to keep the report readable.
               Sensitive values are masked.
             </p>
             {sudo_rules_raw && (
-              <div style={{ marginTop: 12 }}>
-                <h4 className="section-title">Sudo Rules</h4>
+              <div className="cr-subsection">
+                <h3 className="cr-subheading">Sudo Rules</h3>
                 <pre
-                  style={{
-                    background: "var(--bg-app)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "10px 12px",
-                    fontFamily: "var(--mono)",
-                    fontSize: 12,
-                    color: "var(--text-mid)",
-                    overflowX: "auto",
-                    maxHeight: 160,
-                    overflowY: "auto",
-                  }}
+                  className="cr-pre cr-scroll"
+                  tabIndex={0}
+                  aria-label="Sudo rules"
                 >
                   {sudo_rules_raw}
                 </pre>
               </div>
             )}
             {failed_logins_recent.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <h4 className="section-title">Recent Login Failures</h4>
+              <div className="cr-subsection">
+                <h3 className="cr-subheading">Recent Login Failures</h3>
                 <pre
-                  style={{
-                    background: "var(--bg-app)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "10px 12px",
-                    fontFamily: "var(--mono)",
-                    fontSize: 12,
-                    maxHeight: 140,
-                    overflowY: "auto",
-                  }}
+                  className="cr-pre cr-scroll"
+                  tabIndex={0}
+                  aria-label="Recent login failures"
                 >
                   {failed_logins_recent.join("\n")}
                 </pre>
               </div>
             )}
             {network_interfaces_raw && (
-              <div style={{ marginTop: 14 }}>
-                <h4 className="section-title">Network Interfaces</h4>
+              <div className="cr-subsection">
+                <h3 className="cr-subheading">Network Interfaces</h3>
                 {parsedInterfaces && parsedInterfaces.length > 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 10,
-                    }}
-                  >
-                    <CredTable
-                      head={[
-                        "Interface Name",
-                        "IP Address",
-                        "Subnet Mask / Prefix",
-                        "MAC Address",
-                        "Description",
-                      ]}
-                      rows={parsedInterfaces.map((iface) => ({
-                        cells: [
-                          {
-                            content: (
-                              <span
-                                style={{
-                                  fontWeight: 600,
-                                  color: "var(--text)",
-                                }}
-                              >
-                                {iface.name}
-                              </span>
-                            ),
-                          },
-                          {
-                            content: (
-                              <code
-                                style={{
-                                  fontSize: 11,
-                                  fontFamily: "var(--mono)",
-                                }}
-                              >
-                                {iface.ip}
-                              </code>
-                            ),
-                          },
-                          {
-                            content: iface.prefix ? (
-                              <span
-                                className="muted"
-                                style={{ fontFamily: "var(--mono)" }}
-                              >
-                                /{iface.prefix}
-                              </span>
+                  <div className="cr-stack">
+                    <CcureTable
+                      caption="Network interfaces"
+                      density="compact"
+                      rows={parsedInterfaces}
+                      rowKey={(iface, i) => i}
+                      columns={[
+                        {
+                          key: "name",
+                          header: "Interface Name",
+                          isRowHeader: true,
+                          cell: (iface) => (
+                            <span className="cr-strong">{iface.name}</span>
+                          ),
+                        },
+                        { key: "ip", header: "IP Address", mono: true },
+                        {
+                          key: "prefix",
+                          header: "Subnet Mask / Prefix",
+                          mono: true,
+                          cell: (iface) =>
+                            iface.prefix ? (
+                              <span className="cr-muted">/{iface.prefix}</span>
                             ) : (
                               "—"
                             ),
-                          },
-                          {
-                            content: (
-                              <code
-                                style={{
-                                  fontSize: 11,
-                                  fontFamily: "var(--mono)",
-                                  color: "var(--text-muted)",
-                                }}
-                              >
-                                {iface.mac}
-                              </code>
-                            ),
-                          },
-                          {
-                            content: (
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: "var(--text-faint)",
-                                }}
-                              >
-                                {iface.desc}
-                              </span>
-                            ),
-                          },
-                        ],
-                      }))}
+                        },
+                        {
+                          key: "mac",
+                          header: "MAC Address",
+                          mono: true,
+                          cell: (iface) => (
+                            <span className="cr-muted">{iface.mac}</span>
+                          ),
+                        },
+                        {
+                          key: "desc",
+                          header: "Description",
+                          cell: (iface) => (
+                            <span className="cr-muted">{iface.desc}</span>
+                          ),
+                        },
+                      ]}
                     />
-                    <details style={{ marginTop: 4 }}>
-                      <summary
-                        style={{
-                          fontSize: 11,
-                          color: "var(--text-faint)",
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                      >
+                    <details className="cr-details">
+                      <summary className="cr-details__summary">
                         Show Raw Evidence JSON
                       </summary>
                       <pre
-                        style={{
-                          background: "var(--bg-app)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 6,
-                          padding: "10px 12px",
-                          fontFamily: "var(--mono)",
-                          fontSize: 11,
-                          color: "var(--text-mid)",
-                          maxHeight: 140,
-                          overflowY: "auto",
-                          marginTop: 6,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-all",
-                        }}
+                        className="cr-pre cr-pre--wrap cr-scroll"
+                        tabIndex={0}
+                        aria-label="Raw network interface evidence"
                       >
                         {JSON.stringify(
                           JSON.parse(network_interfaces_raw),
@@ -2276,19 +1842,9 @@ export default function CredentialedResults() {
                 ) : (
                   /* Fallback for raw text output (Linux fallback) */
                   <pre
-                    style={{
-                      background: "var(--bg-app)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      padding: "10px 12px",
-                      fontFamily: "var(--mono)",
-                      fontSize: 12,
-                      color: "var(--text-mid)",
-                      maxHeight: 180,
-                      overflowY: "auto",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-all",
-                    }}
+                    className="cr-pre cr-pre--wrap cr-scroll"
+                    tabIndex={0}
+                    aria-label="Network interfaces"
                   >
                     {network_interfaces_raw}
                   </pre>
@@ -2296,46 +1852,45 @@ export default function CredentialedResults() {
               </div>
             )}
             {env_vars_flagged.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <h4 className="section-title" style={{ color: "#f97316" }}>
-                  ⚠ Sensitive Environment Variables ({env_vars_flagged.length})
-                </h4>
-                {env_vars_flagged.map((v, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      fontFamily: "var(--mono)",
-                      fontSize: 11,
-                      color: "#f97316",
-                      marginBottom: 2,
-                    }}
-                  >
-                    {maskSecretLine(v)}
-                  </div>
-                ))}
+              <div className="cr-subsection">
+                <h3 className="cr-subheading cr-tone-warning">
+                  <Glyph>⚠</Glyph> Sensitive Environment Variables (
+                  {env_vars_flagged.length})
+                </h3>
+                <ul className="cr-env">
+                  {env_vars_flagged.map((v, i) => (
+                    <li key={i}>
+                      <code className="cr-env__line">{maskSecretLine(v)}</code>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             {packages.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <h4 className="section-title">
+              <div className="cr-subsection">
+                <h3 className="cr-subheading">
                   Full Package Inventory ({package_count})
-                </h4>
-                <CredTable
-                  head={["Package", "Version", "Manager"]}
-                  rows={packages.map((pkg) => ({
-                    cells: [
-                      { content: pkg.name },
-                      {
-                        content: (
-                          <code style={{ fontSize: 11 }}>{pkg.version}</code>
-                        ),
-                      },
-                      {
-                        content: pkg.manager,
-                        style: { fontSize: 11, color: "var(--text-muted)" },
-                      },
-                    ],
-                  }))}
+                </h3>
+                <CcureTable
+                  caption="Full package inventory"
+                  density="compact"
+                  rows={packages}
+                  rowKey={(pkg, i) => i}
+                  columns={[
+                    {
+                      key: "name",
+                      header: "Package",
+                      isRowHeader: true,
+                    },
+                    { key: "version", header: "Version", mono: true },
+                    {
+                      key: "manager",
+                      header: "Manager",
+                      cell: (pkg) => (
+                        <span className="cr-muted">{pkg.manager}</span>
+                      ),
+                    },
+                  ]}
                 />
               </div>
             )}
@@ -2343,23 +1898,20 @@ export default function CredentialedResults() {
         )}
 
         {/* Footer */}
-        <div className="phase-footer" style={{ marginTop: 16 }}>
-          <span className="muted" style={{ fontSize: 13 }}>
+        <div className="cr-footer">
+          <p className="cr-muted">
             Credentialed scan complete — results saved to history.
-          </span>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              className="btn btn--ghost"
+          </p>
+          <div className="cr-footer__actions">
+            <CcureButton
+              variant="secondary"
               onClick={() => navigate("/history")}
             >
               View History
-            </button>
-            <button
-              className="btn btn--primary"
-              onClick={() => navigate("/scan/credentialed")}
-            >
-              ↺ New Scan
-            </button>
+            </CcureButton>
+            <CcureButton onClick={() => navigate("/scan/credentialed")}>
+              <Glyph>↺</Glyph> New Scan
+            </CcureButton>
           </div>
         </div>
       </div>

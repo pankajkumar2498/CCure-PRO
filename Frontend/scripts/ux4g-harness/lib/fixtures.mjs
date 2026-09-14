@@ -1680,3 +1680,435 @@ export const SH_STUBS_EMPTY = {
   "/scans": { scans: [], total: 0, skip: 0, limit: 200 },
   "/scans/events": shStream([]),
 };
+
+/* ── CredentialedResults (batch 23) ─────────────────────────────────────────
+   A credentialed report is credential-derived output, so every value here is
+   synthetic. The flagged environment variables carry obviously fake "hx-"
+   values; the page masks them, and the expanded states wait for the masked
+   form while asserting the unmasked value never reaches the document.
+
+   Only the running states follow a live scan. They answer the ticket with a
+   fixed placeholder (router.mjs) and replace WebSocket, on this page alone,
+   with a scripted socket that replays recorded progress frames. No real
+   socket is opened and no scan is started. */
+export const CR_TICKET = "harness-ticket";
+export const CR_SECRETS = [
+  "hx-aws-secret-9f2c",
+  "hx-token-77aa",
+  "hx-dbpass-42",
+];
+
+const CR_LINUX = {
+  target: "10.40.2.21",
+  username: "auditor",
+  scan_duration: 48.2,
+  detected_os: "linux",
+  os_type_was_auto: true,
+  system_info: {
+    os_name: "Ubuntu 22.04.4 LTS",
+    os_version_id: "22.04",
+    kernel_version: "5.15.0-105-generic",
+    hostname: "web-01",
+    manufacturer: "Dell Inc.",
+    hardware_model: "PowerEdge R640",
+    cpu_model: "Intel Xeon Silver 4214",
+    cpu_count: 24,
+    cpu_arch: "x86_64",
+    uptime: "12 days, 4:11",
+    serial_number: "HX-SN-0021",
+    bios_version: "2.19.1",
+    mac_address: "00:1A:2B:3C:4D:21",
+    subnet: "10.40.2.0/24",
+    domain: "corp.test",
+    fqdn: "web-01.corp.test",
+    memory_summary: { total: "64 GiB", used: "21 GiB" },
+    disk_usage: [
+      {
+        filesystem: "/dev/sda1",
+        size: "200G",
+        used: "170G",
+        available: "30G",
+        use_pct: "85%",
+        mounted_on: "/",
+      },
+      {
+        filesystem: "/dev/sdb1",
+        size: "1.0T",
+        used: "100G",
+        available: "900G",
+        use_pct: "10%",
+        mounted_on: "/data",
+      },
+    ],
+  },
+  packages: [
+    { name: "openssl", version: "3.0.2-0ubuntu1.10", manager: "dpkg" },
+    { name: "sudo", version: "1.9.9-1ubuntu2.3", manager: "dpkg" },
+    { name: "openssh-server", version: "1:8.9p1-3ubuntu0.6", manager: "dpkg" },
+    { name: "bash", version: "5.1-6ubuntu1", manager: "dpkg" },
+  ],
+  package_count: 4,
+  running_services: [
+    {
+      name: "ssh.service",
+      sub_state: "running",
+      description: "OpenBSD Secure Shell server",
+    },
+    {
+      name: "cron.service",
+      description: "Regular background program processing daemon",
+    },
+  ],
+  open_ports_credentialed: [
+    {
+      port: 22,
+      local_addr: "0.0.0.0",
+      state: "LISTEN",
+      process: "sshd",
+      pid: 812,
+      product: "OpenSSH",
+      version: "8.9p1",
+      exposure: "exposed",
+    },
+    {
+      port: 5432,
+      local_addr: "127.0.0.1",
+      process: "postgres",
+      exposure: "host_only",
+    },
+    {
+      port: 8080,
+      local_addr: "0.0.0.0",
+      process: "java",
+      pid: 1200,
+      product: "Apache Tomcat",
+      exposure: "filtered",
+    },
+    { port: 9100, local_addr: "0.0.0.0", process: "node_exporter" },
+  ],
+  users: [
+    {
+      username: "root",
+      uid: 0,
+      shell: "/bin/bash",
+      home: "/root",
+      is_root: true,
+      is_system: true,
+    },
+    {
+      username: "daemon",
+      uid: 1,
+      shell: "/usr/sbin/nologin",
+      home: "/usr/sbin",
+      is_system: true,
+    },
+    { username: "alice", uid: 1000, shell: "/bin/bash", home: "/home/alice" },
+  ],
+  suid_binaries: ["/usr/bin/sudo", "/usr/bin/passwd", "/usr/bin/mount"],
+  world_writable_dirs: ["/tmp", "/var/tmp"],
+  sudo_nopasswd: true,
+  sudo_rules_raw: "alice ALL=(ALL) NOPASSWD: ALL",
+  security_issues: [
+    "PermitRootLogin is enabled in sshd_config",
+    "Password authentication is enabled for SSH",
+  ],
+  failed_login_count: 37,
+  brute_force_warning: true,
+  failed_logins_recent: [
+    "Sep 11 09:12:01 web-01 sshd[2211]: Failed password for root from 10.9.9.9",
+    "Sep 11 09:12:05 web-01 sshd[2213]: Failed password for root from 10.9.9.9",
+  ],
+  network_interfaces_raw: JSON.stringify([
+    {
+      ifname: "eth0",
+      address: "00:1a:2b:3c:4d:21",
+      operstate: "up",
+      addr_info: [{ family: "inet", local: "10.40.2.21", prefixlen: 24 }],
+    },
+  ]),
+  env_vars_flagged: [
+    `AWS_SECRET_ACCESS_KEY=${CR_SECRETS[0]}`,
+    `API_TOKEN: ${CR_SECRETS[1]}`,
+    `DATABASE_URL=postgres://auditor:${CR_SECRETS[2]}@db/prod`,
+  ],
+  cves: [
+    {
+      cve_id: "CVE-2024-6387",
+      severity: "Critical",
+      cvss_score: 8.1,
+      package: "openssh-server",
+      installed_ver: "8.9p1",
+      fixed_ver: "8.9p1-3ubuntu0.10",
+      description: "Signal handler race condition in sshd",
+    },
+    {
+      cve_id: "CVE-2023-0286",
+      severity: "High",
+      cvss_score: 7.4,
+      package: "openssl",
+      installed_ver: "3.0.2",
+      fixed_ver: "3.0.2-0ubuntu1.8",
+      description: "X.400 address type confusion in X.509 GeneralName",
+    },
+    {
+      cve_id: "CVE-2023-2650",
+      severity: "Medium",
+      cvss_score: 6.5,
+      package: "openssl",
+      installed_ver: "3.0.2",
+      description: "Possible DoS translating ASN.1 object identifiers",
+    },
+    {
+      cve_id: "CVE-2023-22809",
+      severity: "Low",
+      cvss_score: 3.9,
+      package: "sudo",
+      installed_ver: "1.9.9",
+      description: "sudoedit mishandles extra arguments",
+    },
+  ],
+  cve_count: 4,
+  severity_summary: { Critical: 1, High: 1, Medium: 1, Low: 1 },
+  hardening_audits: {
+    aslr: {
+      label: "ASLR",
+      status: "PASS",
+      detail: "kernel.randomize_va_space = 2",
+    },
+    ssh_root: {
+      label: "SSH root login",
+      status: "FAIL",
+      detail: "PermitRootLogin yes",
+    },
+    auditd: { label: "auditd", status: "WARN", detail: "Service not running" },
+  },
+  cron_info_raw: "0 3 * * * root /usr/local/bin/backup.sh",
+  local_groups: [
+    { name: "sudo", gid: "27", members: ["alice"] },
+    { name: "docker", gid: "998", members: [] },
+  ],
+  coverage: {
+    authenticated_checks: "Packages, users, services and configuration",
+    unauthenticated_checks: "Not performed by this policy",
+    network_reachability: "Correlated with the port scan",
+    port_range: "1-1024 and 1,103 curated high ports",
+    service_detection: "Version probes",
+    os_detection: "Authenticated",
+    discovery_scan_method: "ICMP echo",
+  },
+  exposure_summary: {
+    correlated_with_port_scan: true,
+    listeners_exposed: 1,
+    listeners_filtered: 1,
+    listeners_host_only: 1,
+  },
+  collection_errors: { cron: "permission denied reading /var/spool/cron" },
+  inventory_complete: false,
+};
+
+const CR_WINDOWS = {
+  target: "10.40.2.30",
+  username: "CORP\\auditor",
+  scan_duration: 61.7,
+  detected_os: "windows",
+  system_info: {
+    os_name: "Microsoft Windows 11 Pro",
+    os_version_id: "10.0.26200",
+    os_build: "26200.6584",
+    hostname: "ws-30",
+    manufacturer: "Lenovo",
+    hardware_model: "ThinkCentre M90q",
+    cpu_model: "Intel Core i7-10700T",
+    cpu_count: 16,
+    cpu_arch: "x64",
+    domain: "corp.test",
+  },
+  packages: [{ name: "7-Zip 23.01", version: "23.01", manager: "registry" }],
+  package_count: 1,
+  users: [
+    {
+      username: "Administrator",
+      is_admin: true,
+      enabled: "True",
+      pwd_required: "True",
+      last_logon: "2026-09-10 08:00",
+    },
+    {
+      username: "Guest",
+      is_admin: false,
+      enabled: "False",
+      pwd_required: "False",
+      last_logon: "None",
+    },
+    {
+      username: "jdoe",
+      is_admin: "false",
+      enabled: "true",
+      pwd_required: "false",
+      last_logon: null,
+    },
+  ],
+  local_groups: [
+    { name: "Administrators", gid: "S-1-5-32-544", members: ["Administrator"] },
+  ],
+  suspicious_scheduled_tasks: [
+    { TaskName: "VendorUpdater", TaskPath: "\\Vendor\\", State: "Ready" },
+    { TaskName: "LegacySync", TaskPath: "\\", State: "Disabled" },
+  ],
+  network_interfaces_raw: JSON.stringify({
+    InterfaceAlias: "Ethernet",
+    IPAddress: "10.40.2.30",
+    PrefixLength: 24,
+    MacAddress: "00-1A-2B-3C-4D-30",
+    InterfaceDescription: "Intel Ethernet Connection I219-LM",
+  }),
+  cves: [],
+  cve_count: 0,
+  severity_summary: {},
+  failed_login_count: 0,
+};
+
+const CR_EMPTY = {
+  target: "10.40.2.50",
+  username: "auditor",
+  scan_duration: 22.4,
+  detected_os: "linux",
+  system_info: { os_name: "Debian GNU/Linux 12", hostname: "idle-50" },
+  cves: [],
+  cve_count: 0,
+  severity_summary: {},
+};
+
+const crRecord = (id, scanNo, credentialed, fields = {}) => ({
+  id,
+  scan_no: scanNo,
+  status: "complete",
+  results: { credentialed },
+  ...fields,
+});
+
+export const CR_STUBS = {
+  "/scans/cr-report": crRecord("cr-report", 3107, {
+    report: CR_LINUX,
+    reports: [CR_LINUX, CR_WINDOWS],
+    hosts_failed: [
+      {
+        target: "10.40.2.40",
+        reason: "Authentication failed for the supplied account",
+      },
+    ],
+  }),
+  "/scans/cr-windows": crRecord("cr-windows", 3108, {
+    report: CR_WINDOWS,
+    reports: [CR_WINDOWS],
+  }),
+  "/scans/cr-empty": crRecord("cr-empty", 3109, {
+    report: CR_EMPTY,
+    reports: [CR_EMPTY],
+  }),
+  "/scans/cr-run": { id: "cr-run", scan_no: 3110, status: "running" },
+  "/scans/cr-fallback": { id: "cr-fallback", scan_no: 3111, status: "running" },
+  "/scans/cr-load": { __pending: true },
+  "/scans/cr-failed": {
+    id: "cr-failed",
+    scan_no: 3112,
+    status: "failed",
+    failure_reason: "Authentication failed for user auditor",
+  },
+  "/scans/cr-unreachable": {
+    id: "cr-unreachable",
+    scan_no: 3113,
+    status: "failed",
+    failure_reason: "No route to host 10.40.2.30",
+  },
+  "/scans/cr-error": { __status: 500 },
+  "/scans/cr-denied": {
+    __status: 403,
+    body: {
+      detail:
+        "Insufficient privileges. Your role 'analyst' does not have 'scans:read' permission.",
+    },
+  },
+};
+
+export const CR_FRAMES = [
+  {
+    phase: 5,
+    progress: {
+      percentage: 12,
+      stage: "connecting",
+      status: "running",
+      message: "Opening SSH session to 10.40.2.21",
+    },
+  },
+  {
+    phase: 5,
+    progress: {
+      percentage: 28,
+      stage: "detection",
+      status: "running",
+      message: "Detected Ubuntu 22.04.4 LTS",
+    },
+  },
+  {
+    phase: 5,
+    progress: {
+      percentage: 46,
+      stage: "collection",
+      status: "running",
+      message: "Reading crontab failed: permission denied",
+    },
+  },
+  {
+    phase: 5,
+    progress: {
+      percentage: 58,
+      stage: "collection",
+      status: "running",
+      message: "Collected 1,284 installed packages",
+    },
+  },
+];
+
+/**
+ * Replaces WebSocket for the credentialed results page only. The socket
+ * records the URL it was given (so a state can assert the ticket and path),
+ * replays `frames` a few milliseconds apart and then stays open — or, with
+ * `close`, drops after the last frame, which is the page's cue to poll.
+ */
+export const crSocketScript = ({ frames, close = false }) => `(() => {
+  if (!/^\\/scan\\/credentialed\\/results$/.test(location.pathname)) return;
+  const FRAMES = ${JSON.stringify(frames)};
+  const opened = (window.__harnessSockets = []);
+  class HarnessSocket {
+    constructor(url) {
+      this.url = String(url);
+      this.readyState = 1;
+      opened.push(this.url);
+      FRAMES.forEach((frame, i) => {
+        setTimeout(() => {
+          if (this.readyState !== 1) return;
+          if (this.onmessage) this.onmessage({ data: JSON.stringify(frame) });
+          if (${close ? "true" : "false"} && i === FRAMES.length - 1) {
+            this.readyState = 3;
+            window.__harnessSocketClosed = true;
+            if (this.onclose) this.onclose({ code: 1006, wasClean: false });
+          }
+        }, 40 * (i + 1));
+      });
+    }
+    send() {}
+    close() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      setTimeout(() => {
+        if (this.onclose) this.onclose({ code: 1000, wasClean: true });
+      }, 0);
+    }
+  }
+  HarnessSocket.CONNECTING = 0;
+  HarnessSocket.OPEN = 1;
+  HarnessSocket.CLOSING = 2;
+  HarnessSocket.CLOSED = 3;
+  window.WebSocket = HarnessSocket;
+})();`;

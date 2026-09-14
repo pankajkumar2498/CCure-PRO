@@ -47,6 +47,11 @@ import {
   SCANS_ADMIN,
   SH_STUBS,
   SH_STUBS_EMPTY,
+  CR_STUBS,
+  CR_TICKET,
+  CR_SECRETS,
+  CR_FRAMES,
+  crSocketScript,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -1432,6 +1437,173 @@ const SH_STATES = [
   },
 ];
 
+/* ── CredentialedResults (batch 23) ───────────────────────────────────────── */
+/* Every state reads the report through `?scan_id=`, so the page's own request
+   is what the fixtures answer. A finished report needs nothing more. The
+   running states answer the ticket (router.mjs) and script the socket
+   (fixtures.mjs); `cr-fallback` drops it after two frames, and from then on
+   the page reads the record every 3 s for as long as the capture runs.
+
+   The expanded states open every section — the audit evidence, and with it the
+   masked environment variables, included — and wait until the masked form is
+   present and no unmasked value is anywhere in the document. */
+const CR_TRACKED = [
+  ...PAGE_TRACKED,
+  "h2",
+  "button",
+  "input",
+  "pre",
+  "[role=progressbar]",
+  "[role=log]",
+];
+
+const CR_BASE = { persona: ANALYST, stubs: CR_STUBS, tracked: CR_TRACKED };
+const crRoute = (id) => `/scan/credentialed/results?scan_id=${id}`;
+const crReport = `${hasText("/Credentialed Scan Results/")} && ${hasText("/System Information/i")}`;
+const crProgress = hasText("/Credentialed Scan In Progress/");
+const crSocket = (id) =>
+  `(window.__harnessSockets || []).length === 1 && /^\\/api\\/scans\\/${id}\\/progress\\?ticket=${CR_TICKET}$/.test(window.__harnessSockets[0])`;
+const crButton = (re) =>
+  `el.tagName === 'BUTTON' && ${re}.test((el.textContent || '').trim())`;
+// Clicks every collapsed section. Its chevron is the last character of the
+// toggle's text in both builds.
+const crExpandAll = {
+  click: `(() => { const toggles = [...document.querySelectorAll("button")].filter((b) => /▼\\s*$/.test(b.textContent || "")); toggles.slice(1).forEach((b) => b.click()); return toggles[0]; })()`,
+};
+const crMasked = `document.documentElement.outerHTML.includes("AWS_SECRET_ACCESS_KEY=********") && ${JSON.stringify(CR_SECRETS)}.every((s) => !document.documentElement.outerHTML.includes(s))`;
+
+const CR_PROBES = {
+  severityHigh: {
+    id: "severity-filter-by-keyboard",
+    tabTo: crButton("/^High/"),
+    press: "Enter",
+    wait: 400,
+    expect: `(() => { const ids = [...document.querySelectorAll("a")].map((a) => (a.textContent || "").trim()).filter((t) => /^CVE-/.test(t)); return ids.length === 1 && ids[0] === "CVE-2023-0286"; })()`,
+  },
+  openServices: {
+    id: "open-section-by-keyboard",
+    tabTo: crButton("/Running Services \\(2\\)/"),
+    press: "Enter",
+    wait: 400,
+    expect: hasText("/ssh\\.service/"),
+  },
+  // Last: it leaves the Windows host on screen.
+  switchHost: {
+    id: "switch-host-by-keyboard",
+    tabTo: crButton("/^10\\.40\\.2\\.30/"),
+    press: "Enter",
+    wait: 400,
+    expect: hasText("/Build 26200\\.6584/"),
+  },
+  // Tab only: Enter navigates to a new credentialed scan.
+  tryAgain: { id: "try-again-reachable", tabTo: crButton("/^Try Again$/") },
+};
+
+const CR_STATES = [
+  {
+    ...CR_BASE,
+    id: "cr-report",
+    route: crRoute("cr-report"),
+    themes: BOTH,
+    ready: crReport,
+    probes: [
+      CR_PROBES.severityHigh,
+      CR_PROBES.openServices,
+      CR_PROBES.switchHost,
+    ],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-expanded",
+    route: crRoute("cr-report"),
+    themes: LIGHT,
+    ready: crReport,
+    actions: [crExpandAll, { waitFor: crMasked }],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-windows",
+    route: crRoute("cr-windows"),
+    themes: LIGHT,
+    ready: crReport,
+    actions: [crExpandAll, { waitFor: hasText("/VendorUpdater/") }],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-mobile",
+    route: crRoute("cr-report"),
+    themes: LIGHT,
+    viewport: [390, 2400],
+    ready: crReport,
+    actions: [crExpandAll, { waitFor: crMasked }],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-empty",
+    route: crRoute("cr-empty"),
+    themes: LIGHT,
+    ready: `${crReport} && ${hasText("/0 CVEs/")}`,
+  },
+  {
+    ...CR_BASE,
+    id: "cr-running",
+    route: crRoute("cr-run"),
+    themes: BOTH,
+    ticket: CR_TICKET,
+    init: crSocketScript({ frames: CR_FRAMES }),
+    ready: `${crProgress} && ${hasText("/Collected 1,284 installed packages/")} && ${crSocket("cr-run")}`,
+  },
+  {
+    ...CR_BASE,
+    id: "cr-fallback",
+    route: crRoute("cr-fallback"),
+    themes: LIGHT,
+    ticket: CR_TICKET,
+    init: crSocketScript({ frames: CR_FRAMES.slice(0, 2), close: true }),
+    // Ready once the page has read the record again after the socket dropped:
+    // the first read, then the first 3-second poll.
+    ready: `${crProgress} && ${hasText("/Detected Ubuntu 22\\.04\\.4 LTS/")} && ${crSocket("cr-fallback")} && window.__harnessSocketClosed === true && performance.getEntriesByType("resource").filter((e) => /\\/api\\/scans\\/cr-fallback\\?/.test(e.name)).length >= 2`,
+    repeatable: ["^GET /api/scans/cr-fallback\\?"],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-loading",
+    route: crRoute("cr-load"),
+    themes: LIGHT,
+    ready: `${crProgress} && ${hasText("/Waiting for activity/")}`,
+  },
+  {
+    ...CR_BASE,
+    id: "cr-failed",
+    route: crRoute("cr-failed"),
+    themes: LIGHT,
+    ready: hasText("/Authentication failed for user auditor/"),
+    probes: [CR_PROBES.tryAgain],
+  },
+  {
+    ...CR_BASE,
+    id: "cr-unreachable",
+    route: crRoute("cr-unreachable"),
+    themes: BOTH,
+    ready: hasText("/Host is unavailable\\/down\\/unreachable/"),
+  },
+  {
+    ...CR_BASE,
+    id: "cr-error",
+    route: crRoute("cr-error"),
+    themes: LIGHT,
+    ready: hasText("/harness stub failure/"),
+  },
+  {
+    ...CR_BASE,
+    id: "cr-denied",
+    route: crRoute("cr-denied"),
+    themes: LIGHT,
+    persona: NO_SCANS_READ,
+    ready: hasText("/does not have 'scans:read' permission/"),
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -1442,11 +1614,12 @@ export const STATES = [
   ...AMT_STATES,
   ...NM_STATES,
   ...SH_STATES,
+  ...CR_STATES,
 ];
 
-/** States whose output Batch 22 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 21) and the one page still importing
- *  dashboard.css. Batch 22 changes ScanHistory only. */
+/** States whose output Batch 23 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 22) and the one page still importing
+ *  dashboard.css. Batch 23 changes CredentialedResults only. */
 export const REGRESSION_PREFIXES = [
   "ar-",
   "vb-",
@@ -1456,6 +1629,7 @@ export const REGRESSION_PREFIXES = [
   "p1-",
   "amt-",
   "nm-",
+  "sh-",
 ];
 
 /** States the sensitivity gate injects into. */

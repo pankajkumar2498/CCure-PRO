@@ -2418,3 +2418,163 @@ export const p3SocketScript = (frames) => `(() => {
   HarnessSocket.CLOSED = 3;
   window.WebSocket = HarnessSocket;
 })();`;
+
+/* ── NewScan (batch 25) ───────────────────────────────────────────────────── */
+/* Synthetic scan records for the mission view, the stored credentials an audit
+   can offer, the one write a dispatch state may send, and a target list. The
+   credentials are references (name, account, port), never secrets; the ticket
+   is the placeholder every live state uses; the one passphrase a state types
+   is the low-entropy `notreal`, and it must never reach a report. */
+const NS_HOSTS = [
+  {
+    ip_address: "10.70.0.11",
+    hostname: "core-sw-01",
+    mac_address: "00:1A:2B:3C:7E:11",
+    vendor: "Cisco",
+    discovery_method: "ARP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.70.0.12",
+    hostname: "Unknown",
+    mac_address: "N/A",
+    discovery_method: "ICMP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.70.0.13",
+    hostname: "print-02",
+    mac_address: "00:1A:2B:3C:7E:13",
+    discovery_method: "ARP",
+    is_active: false,
+  },
+];
+const NS_SUMMARY = {
+  total_hosts: 3,
+  active_hosts: 2,
+  inactive_hosts: 1,
+  scan_duration: 9.4,
+};
+const nsRecord = (id, status, extra = {}) => ({
+  id,
+  scan_id: id,
+  status,
+  pipeline_mode: "basic",
+  target: "10.70.0.0/28",
+  results: { phase1: { data: NS_HOSTS, summary: NS_SUMMARY } },
+  ...extra,
+});
+
+export const NS_TARGET = "10.70.0.0/28";
+export const NS_TICKET = "harness-ticket";
+export const NS_SECRET = "notreal";
+
+/** The scan context a setup or mission state opens with. */
+export const nsSession = (extra = {}) => ({
+  cc_target: NS_TARGET,
+  cc_pipelineMode: "basic",
+  ...extra,
+});
+
+export const NS_STUBS = {
+  "/compliance/credentials": [
+    { id: "cred-ns-1", name: "Linux fleet", username: "auditor", port: 2222 },
+    { id: "cred-ns-2", name: "Windows estate", username: "svc-scan" },
+  ],
+  // The scan `ns-dispatch` starts, finished when the page reads it back.
+  "/scans/ns-live": nsRecord("ns-live", "completed", { scan_no: 5101 }),
+  // Still running and nothing recorded yet: the socket carries the hosts.
+  "/scans/ns-run": nsRecord("ns-run", "running", { results: {} }),
+  "/scans/ns-fail": nsRecord("ns-fail", "failed", {
+    failure_reason: "The scanner worker stopped responding.",
+  }),
+  // Finished with no live host.
+  "/scans/ns-none": nsRecord("ns-none", "completed", {
+    results: {
+      phase1: {
+        data: [NS_HOSTS[2]],
+        summary: { ...NS_SUMMARY, active_hosts: 0, inactive_hosts: 1 },
+      },
+    },
+  }),
+  // Stopped elsewhere: the page learns it from its 2.5-second read.
+  "/scans/ns-stop": nsRecord("ns-stop", "cancelled"),
+  // An asset scan in interactive mode, handed over to host discovery.
+  "/scans/ns-hand": nsRecord("ns-hand", "completed", {
+    pipeline_mode: "asset",
+    scan_no: 5102,
+  }),
+};
+
+export const NS_QUOTA_EXHAUSTED = {
+  ...SHELL_STUBS["/scan/quota"],
+  scans_used_24h: 10,
+  quota_exceeded: true,
+};
+
+export const NS_WRITES = {
+  "POST /scan/host-discovery": {
+    success: true,
+    scan_id: "ns-live",
+    scan_no: 5101,
+  },
+};
+
+export const NS_TARGET_FILE = [
+  "target",
+  "10.70.0.10",
+  "10.70.0.0/28, 10.70.0.20 - 10.70.0.30",
+  "bad_host!",
+  "10.70.0.10",
+  "",
+].join("\n");
+
+export const NS_RUNNING_FRAMES = [
+  {
+    phase: 1,
+    progress: {
+      status: "running",
+      total_ips: 16,
+      discovered: 2,
+      hosts: [NS_HOSTS[0], NS_HOSTS[1]],
+    },
+  },
+];
+export const NS_COMPLETE_FRAMES = [
+  ...NS_RUNNING_FRAMES,
+  { phase: 1, progress: { status: "complete", total_ips: 16, discovered: 2 } },
+];
+
+/**
+ * Replaces WebSocket on NewScan's routes only. The socket records its URL and
+ * whether the page closed it, and delivers every frame in order, 40 ms apart;
+ * with no frames it stays open and silent.
+ */
+export const nsSocketScript = (frames) => `(() => {
+  if (!/^\\/scan\\/(new|active\\/[^/]+)$/.test(location.pathname)) return;
+  const FRAMES = ${JSON.stringify(frames)};
+  const opened = (window.__harnessSockets = []);
+  class HarnessSocket {
+    constructor(url) {
+      this._record = { url: String(url), closed: false };
+      this.readyState = 1;
+      opened.push(this._record);
+      FRAMES.forEach((frame, i) => {
+        setTimeout(() => {
+          if (this.readyState === 1 && this.onmessage)
+            this.onmessage({ data: JSON.stringify(frame) });
+        }, 40 * (i + 1));
+      });
+    }
+    send() {}
+    close() {
+      this.readyState = 3;
+      this._record.closed = true;
+    }
+  }
+  HarnessSocket.CONNECTING = 0;
+  HarnessSocket.OPEN = 1;
+  HarnessSocket.CLOSING = 2;
+  HarnessSocket.CLOSED = 3;
+  window.WebSocket = HarnessSocket;
+})();`;

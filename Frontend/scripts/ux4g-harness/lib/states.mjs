@@ -63,6 +63,16 @@ import {
   P3_SECRET,
   P3_WRITES,
   p3SocketScript,
+  NS_STUBS,
+  NS_TICKET,
+  NS_SECRET,
+  NS_WRITES,
+  NS_QUOTA_EXHAUSTED,
+  NS_TARGET_FILE,
+  NS_RUNNING_FRAMES,
+  NS_COMPLETE_FRAMES,
+  nsSession,
+  nsSocketScript,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -1807,6 +1817,328 @@ const P3_STATES = [
   },
 ];
 
+/* ── NewScan (batch 25) ───────────────────────────────────────────────────── */
+/* Setup states open /scan/new with the scan context seeded and send no write.
+   `ns-dispatch` presses Start: the router answers exactly the declared
+   POST /scan/host-discovery and the ticket, and the page then follows the scan
+   it started at /scan/active/ns-live. The mission states open that route
+   directly. Every progress socket is scripted (fixtures.mjs): its frames arrive
+   40 ms apart, readiness asserts the socket's URL and whether the page closed
+   it, and the states that list hosts wait for the new-host highlight's
+   3-second clear.
+
+   The Phase 3 hand-off is not captured: the route guard throws on a Phase 3
+   navigation, and the page would report the throw as an exception. The unit
+   tests pin that target; `ns-handoff` captures the interactive hand-off to
+   host discovery instead.
+
+   Stop Scan and Try Again are reached by Tab only: Stop would send a write. */
+const NS_TRACKED = [
+  ...PAGE_TRACKED,
+  "h2",
+  "button",
+  "input[type=checkbox]",
+  "[role=progressbar]",
+  "[role=alert]",
+  "[role=dialog]",
+  "table",
+];
+const NS_BASE = { persona: ANALYST, stubs: NS_STUBS, tracked: NS_TRACKED };
+const NS_MISSION = { themes: LIGHT, ticket: NS_TICKET, readyTimeout: 30000 };
+
+const nsButton = (re) =>
+  `[...document.querySelectorAll("button")].find((b) => ${re}.test((b.textContent || "").trim()))`;
+const nsSettingsOpen = `!!document.querySelector(".ns-drawer--open, [role=dialog]")`;
+const nsTargetField = `document.querySelector('input[placeholder*="10.180.6.0/24"]')`;
+const nsSetupReady = (re) =>
+  `${hasText(re)} && !!${nsButton("/Start (Scan|Discovery)/")}`;
+const nsSockets = (id, n, closed) =>
+  `(window.__harnessSockets || []).length === ${n} && window.__harnessSockets.every((s) => s.url === "/api/scans/${id}/progress?ticket=${NS_TICKET}" && s.closed === ${closed})`;
+const nsSettled = `!document.querySelector(".am-host-card--new, .ns-host--new")`;
+// The one checkbox whose nearest ancestors, holding no other checkbox, name it.
+const nsSwitch = (re) =>
+  `[...document.querySelectorAll('input[type="checkbox"]')].find((el) => { for (let n = el.parentElement; n && n.querySelectorAll('input[type="checkbox"]').length === 1; n = n.parentElement) { if (${re}.test(n.textContent || "")) return true; } return false; })`;
+const nsSelectWith = (value) =>
+  `[...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === ${JSON.stringify(value)}))`;
+// Sets a controlled field the way typing would, and hands back the element.
+const nsSetValue = (selector, value) =>
+  `((el) => { if (!el) return null; const proto = el.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true })); return el; })(${selector})`;
+// Drops a synthetic text file on the target field. Nothing is uploaded: the
+// page reads the file in the browser and keeps only the target strings.
+const nsDrop = (name, content) =>
+  `((input) => { if (!input) return null; const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(content)}], ${JSON.stringify(name)}, { type: "text/plain" })); input.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt })); return input; })(${nsTargetField})`;
+const NS_OPEN_SETTINGS = { click: nsButton("/Configure Advanced Settings/") };
+
+const NS_PROBES = {
+  quickTarget: {
+    id: "quick-target-by-keyboard",
+    tabTo: `el.tagName === 'BUTTON' && (el.textContent || '').trim() === '10.180.4.1'`,
+    press: "Enter",
+    wait: 300,
+    expect: `${nsTargetField}.value === "10.180.4.1"`,
+  },
+  settings: {
+    id: "settings-by-keyboard",
+    tabTo: `el.tagName === 'BUTTON' && /Configure Advanced Settings/.test(el.textContent || '')`,
+    press: "Enter",
+    wait: 500,
+    expect: nsSettingsOpen,
+    then: [{ press: "Escape", wait: 400, expect: `!${nsSettingsOpen}` }],
+  },
+  // Tab only: Enter posts /scans/{id}/stop.
+  stop: {
+    id: "stop-reachable",
+    tabTo: `el.tagName === 'BUTTON' && /Stop Scan/.test(el.textContent || '')`,
+  },
+  retry: {
+    id: "try-again-reachable",
+    tabTo: `el.tagName === 'BUTTON' && /Try Again/.test(el.textContent || '')`,
+  },
+};
+
+const NS_STATES = [
+  {
+    ...NS_BASE,
+    id: "ns-setup",
+    route: "/scan/new",
+    themes: BOTH,
+    session: nsSession({ cc_target: "" }),
+    ready: nsSetupReady("/Basic Network Scan/"),
+    probes: [NS_PROBES.quickTarget, NS_PROBES.settings],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-setup-asset",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({ cc_pipelineMode: "asset" }),
+    ready: nsSetupReady("/Fast-first with coverage fallback/"),
+  },
+  {
+    ...NS_BASE,
+    id: "ns-setup-audit",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({ cc_pipelineMode: "vulnerability_audit" }),
+    ready: nsSetupReady("/Balanced port coverage/"),
+  },
+  {
+    ...NS_BASE,
+    id: "ns-settings",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({
+      cc_pipelineMode: "asset",
+      cc_portScanMode: "port",
+      cc_portProfile: "it",
+      cc_excludePorts: "2375, 2376",
+    }),
+    ready: nsSetupReady("/Asset Discovery/"),
+    actions: [
+      NS_OPEN_SETTINGS,
+      {
+        waitFor: `${nsSettingsOpen} && ${hasText("/Sensitive Ports Detected/")}`,
+      },
+    ],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-validation",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({
+      cc_pipelineMode: "asset",
+      cc_portScanMode: "port",
+      cc_portProfile: "custom",
+      cc_customPorts: "22,22",
+      cc_excludePorts: "80,abc",
+      cc_excludeIps: "bad!",
+    }),
+    ready: nsSetupReady("/Asset Discovery/"),
+    actions: [
+      NS_OPEN_SETTINGS,
+      {
+        waitFor: `${nsSettingsOpen} && ${hasText("/Duplicate port detected: 22/")}`,
+      },
+    ],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-settings-audit",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({ cc_pipelineMode: "vulnerability_audit" }),
+    ready: nsSetupReady("/Balanced port coverage/"),
+    actions: [
+      NS_OPEN_SETTINGS,
+      { waitFor: nsSettingsOpen },
+      { click: nsSwitch("/Authenticated Checks/") },
+      { waitFor: hasText("/Linux fleet/") },
+      { click: nsSwitch("/Network Topology \\(SNMP\\)/") },
+      { waitFor: `!!${nsSelectWith("v3")}` },
+      { click: nsSetValue(nsSelectWith("v3"), "v3") },
+      {
+        waitFor: `!!document.querySelector('input[placeholder="Auth passphrase"]')`,
+      },
+      { click: nsSetValue(nsSelectWith("AES128"), "AES128") },
+      {
+        waitFor: `!!document.querySelector('input[placeholder="Privacy passphrase"]')`,
+      },
+      {
+        click: nsSetValue(
+          `document.querySelector('input[placeholder="Auth passphrase"]')`,
+          NS_SECRET,
+        ),
+      },
+      {
+        waitFor: `document.querySelector('input[placeholder="Auth passphrase"]').value === ${JSON.stringify(NS_SECRET)}`,
+      },
+    ],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-targets",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({ cc_target: "" }),
+    ready: nsSetupReady("/Basic Network Scan/"),
+    actions: [
+      { click: nsDrop("targets.txt", NS_TARGET_FILE) },
+      {
+        waitFor: `!!document.querySelector("table") && ${hasText("/Valid:\\s*3/")}`,
+      },
+    ],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-file-error",
+    route: "/scan/new",
+    themes: LIGHT,
+    session: nsSession({ cc_target: "" }),
+    ready: nsSetupReady("/Basic Network Scan/"),
+    actions: [
+      { click: nsDrop("targets.zip", "10.70.0.10\n") },
+      { waitFor: hasText("/Unsupported file format/") },
+    ],
+  },
+  {
+    ...NS_BASE,
+    id: "ns-denied",
+    route: "/scan/new",
+    themes: LIGHT,
+    persona: SCANS_READONLY,
+    session: nsSession(),
+    ready: nsSetupReady("/Basic Network Scan/"),
+  },
+  {
+    ...NS_BASE,
+    id: "ns-quota",
+    route: "/scan/new",
+    themes: LIGHT,
+    stubs: { ...NS_STUBS, "/scan/quota": NS_QUOTA_EXHAUSTED },
+    session: nsSession(),
+    ready: `${nsSetupReady("/Basic Network Scan/")} && ${nsButton("/Start Scan/")}.disabled`,
+  },
+  {
+    ...NS_BASE,
+    id: "ns-setup-mobile",
+    route: "/scan/new",
+    themes: LIGHT,
+    viewport: [390, 1600],
+    session: nsSession(),
+    ready: nsSetupReady("/Basic Network Scan/"),
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-dispatch",
+    route: "/scan/new",
+    session: nsSession(),
+    writes: NS_WRITES,
+    init: nsSocketScript(NS_COMPLETE_FRAMES),
+    ready: nsSetupReady("/Basic Network Scan/"),
+    actions: [
+      { click: nsButton("/Start Scan/") },
+      {
+        waitFor: `location.pathname === "/scan/active/ns-live" && ${hasText("/Scan complete/")} && ${nsSockets("ns-live", 1, true)} && ${nsSettled}`,
+        timeout: 20000,
+      },
+    ],
+    repeatable: ["^GET /api/scans/ns-live -> "],
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-running",
+    route: "/scan/active/ns-run",
+    themes: BOTH,
+    session: nsSession(),
+    init: nsSocketScript(NS_RUNNING_FRAMES),
+    // Case-insensitive: the legacy badge is uppercased by CSS, and innerText
+    // reports the rendered case.
+    ready: `${hasText("/Live Scanning/i")} && ${hasText("/10\\.70\\.0\\.11/")} && ${nsSockets("ns-run", 1, false)} && ${nsSettled}`,
+    repeatable: ["^GET /api/scans/ns-run -> "],
+    probes: [NS_PROBES.stop],
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-failed",
+    route: "/scan/active/ns-fail",
+    session: nsSession(),
+    init: nsSocketScript([{ phase: 1, progress: { status: "failed" } }]),
+    ready: `${hasText("/The scanner worker stopped responding/")} && ${nsSockets("ns-fail", 1, true)}`,
+    probes: [NS_PROBES.retry],
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-unreachable",
+    route: "/scan/active/ns-none",
+    session: nsSession(),
+    init: nsSocketScript([
+      {
+        phase: 1,
+        progress: { status: "complete", total_ips: 16, discovered: 0 },
+      },
+    ]),
+    ready: `${hasText("/Target Unreachable/")} && ${nsSockets("ns-none", 1, true)}`,
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-cancelled",
+    route: "/scan/active/ns-stop",
+    session: nsSession(),
+    init: nsSocketScript([]),
+    ready: `${hasText("/Scan cancelled/")} && ${nsSockets("ns-stop", 1, false)}`,
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-handoff",
+    route: "/scan/active/ns-hand",
+    session: nsSession({
+      cc_pipelineMode: "asset",
+      cc_executionMode: "interactive",
+    }),
+    init: nsSocketScript(NS_COMPLETE_FRAMES),
+    ready: `location.pathname === "/scan/host-discovery" && ${hasText("/10\\.70\\.0\\.11/")} && ${nsSockets("ns-hand", 1, true)}`,
+    repeatable: ["^GET /api/scans/ns-hand -> "],
+  },
+  {
+    ...NS_BASE,
+    ...NS_MISSION,
+    id: "ns-mission-mobile",
+    route: "/scan/active/ns-run",
+    viewport: [390, 1400],
+    session: nsSession(),
+    init: nsSocketScript(NS_RUNNING_FRAMES),
+    ready: `${hasText("/Live Scanning/i")} && ${hasText("/10\\.70\\.0\\.11/")} && ${nsSockets("ns-run", 1, false)} && ${nsSettled}`,
+    repeatable: ["^GET /api/scans/ns-run -> "],
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -1819,11 +2151,12 @@ export const STATES = [
   ...SH_STATES,
   ...CR_STATES,
   ...P3_STATES,
+  ...NS_STATES,
 ];
 
-/** States whose output Batch 24 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 23) and the one page still importing
- *  dashboard.css. Batch 24 changes Phase3Results only. */
+/** States whose output Batch 25 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 24) and the one page still importing
+ *  dashboard.css. Batch 25 changes NewScan only. */
 export const REGRESSION_PREFIXES = [
   "ar-",
   "vb-",
@@ -1835,6 +2168,7 @@ export const REGRESSION_PREFIXES = [
   "nm-",
   "sh-",
   "cr-",
+  "p3-",
 ];
 
 /** States the sensitivity gate injects into. */

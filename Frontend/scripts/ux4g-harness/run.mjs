@@ -224,9 +224,10 @@ async function captureState(cdp, { base, state, theme, injection, shotsDir }) {
     patterns: [{ urlPattern: "*", requestStage: "Request" }],
   });
   await S("Page.addScriptToEvaluateOnNewDocument", { source: freezeScript() });
-  // Before any state script: no capture may mount a Phase 3 route (guard.mjs).
+  // Before any state script: no capture may mount a Phase 3 route (guard.mjs),
+  // unless the state captures Phase 3 itself and says so.
   await S("Page.addScriptToEvaluateOnNewDocument", {
-    source: routeGuardScript(),
+    source: routeGuardScript({ allowPhase3: state.allowPhase3 === true }),
   });
   const seed = sessionSeedScript(origin, state.session);
   if (seed) await S("Page.addScriptToEvaluateOnNewDocument", { source: seed });

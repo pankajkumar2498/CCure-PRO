@@ -22,6 +22,17 @@ export function route(state, method, pathname) {
   if (method === "POST" && p === "/auth/ticket" && state.ticket) {
     return { body: { ticket: state.ticket }, kind: "ticket" };
   }
+  // A state that follows the automated Phase 3 pipeline answers exactly the
+  // writes it declares, keyed "METHOD /path", with the fixed body it gives.
+  // The answer is the whole of it: nothing is forwarded and no scan starts.
+  // Any write a state does not declare is still refused below.
+  if (
+    method !== "GET" &&
+    state.writes &&
+    Object.prototype.hasOwnProperty.call(state.writes, `${method} ${p}`)
+  ) {
+    return { body: state.writes[`${method} ${p}`], kind: "declaredWrite" };
+  }
   if (method !== "GET") {
     return {
       status: 403,

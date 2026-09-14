@@ -52,6 +52,17 @@ import {
   CR_SECRETS,
   CR_FRAMES,
   crSocketScript,
+  P3_STUBS,
+  P3_REPORT_SESSION,
+  P3_RUNNING_SESSION,
+  P3_ERROR_SESSION,
+  P3_CANCELLED_SESSION,
+  P3_UNREACHABLE_SESSION,
+  p3StartSession,
+  P3_TICKET,
+  P3_SECRET,
+  P3_WRITES,
+  p3SocketScript,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -1604,6 +1615,198 @@ const CR_STATES = [
   },
 ];
 
+/* ── Phase3Results (batch 24) ─────────────────────────────────────────────── */
+/* Every p3- state opts out of the Phase 3 route block (guard.mjs) and nothing
+   else. The seeded states hold the scan context where the page's own guards
+   keep it from starting: a finished report, a running, failed or cancelled
+   pipeline, discovery with no live host, or an operator without
+   `scans:execute`. They send no write at all.
+
+   The three pipeline states let the page start on mount. The router answers
+   exactly the declared dispatch triggers and the ticket; any other write —
+   Cancel's stop, for instance — is refused. The progress socket is scripted:
+   `p3-pipeline` completes both phases, `p3-pipeline-running` stays open, and
+   `p3-pipeline-failed` reports phase 2 failed. Readiness asserts each socket's
+   URL and whether the page closed it, and waits for the save indicator's
+   4-second clear so the capture does not race it.
+
+   Cancel, Retry and Restart are reached by Tab only: each would send a write. */
+const P3_TRACKED = [
+  ...PAGE_TRACKED,
+  "h2",
+  "h3",
+  "button",
+  "[role=progressbar]",
+  "[role=status]",
+  "[role=alert]",
+];
+
+const P3_BASE = {
+  persona: ANALYST,
+  stubs: P3_STUBS,
+  tracked: P3_TRACKED,
+  allowPhase3: true,
+};
+const P3_ROUTE = "/scan/vulnerability-audit";
+const p3Report = `${hasText("/3\\. Vulnerability Results/i")} && ${hasText("/View Risk Report/i")}`;
+const p3Sockets = (id, n, closed) =>
+  `(window.__harnessSockets || []).length === ${n} && window.__harnessSockets.every((s) => /^\\/api\\/scans\\/${id}\\/progress\\?ticket=${P3_TICKET}$/.test(s.url) && s.closed === ${closed})`;
+const p3Quiet = `((el) => !!el && el.textContent === "")(document.querySelector(".sh-savestatus"))`;
+const p3Masked = `document.body.innerText.includes("ftpuser/********") && !document.documentElement.outerHTML.includes(${JSON.stringify(P3_SECRET)})`;
+const p3Button = (re) =>
+  `el.tagName === 'BUTTON' && ${re}.test((el.textContent || '').trim())`;
+const P3_OPEN_REPORT = [
+  {
+    click: `[...document.querySelectorAll("button")].find((b) => /View Risk Report/.test(b.textContent || ""))`,
+  },
+  { waitFor: `!!document.querySelector("[role=dialog]") && ${p3Masked}` },
+];
+const P3_PIPELINE = {
+  route: P3_ROUTE,
+  themes: LIGHT,
+  ticket: P3_TICKET,
+  writes: P3_WRITES,
+  readyTimeout: 30000,
+};
+
+const P3_PROBES = {
+  filterAll: {
+    id: "discovery-filter-by-keyboard",
+    tabTo: p3Button("/^All \\(4\\)$/"),
+    press: "Enter",
+    wait: 400,
+    expect: `document.querySelectorAll("table")[0].querySelectorAll("tbody tr").length === 4`,
+  },
+  openReport: {
+    id: "risk-report-by-keyboard",
+    tabTo: p3Button("/View Risk Report/"),
+    press: "Enter",
+    wait: 500,
+    expect: `!!document.querySelector("[role=dialog]")`,
+    then: [
+      {
+        press: "Escape",
+        wait: 400,
+        expect: `!document.querySelector("[role=dialog]")`,
+      },
+    ],
+  },
+  // Tab only: Enter posts /scans/{id}/stop.
+  cancel: { id: "cancel-reachable", tabTo: p3Button("/Cancel Scan/") },
+  // Tab only: Enter starts the audit again.
+  retry: { id: "retry-reachable", tabTo: p3Button("/Retry from/") },
+};
+
+const P3_STATES = [
+  {
+    ...P3_BASE,
+    id: "p3-report",
+    route: "/scan/p3-report/phase3",
+    themes: BOTH,
+    session: P3_REPORT_SESSION,
+    ready: p3Report,
+    probes: [P3_PROBES.filterAll, P3_PROBES.openReport],
+  },
+  {
+    ...P3_BASE,
+    id: "p3-report-modal",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    session: P3_REPORT_SESSION,
+    ready: p3Report,
+    actions: P3_OPEN_REPORT,
+  },
+  {
+    ...P3_BASE,
+    id: "p3-report-mobile",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    viewport: [390, 2400],
+    session: P3_REPORT_SESSION,
+    ready: p3Report,
+  },
+  {
+    ...P3_BASE,
+    id: "p3-modal-mobile",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    viewport: [390, 2400],
+    session: P3_REPORT_SESSION,
+    ready: p3Report,
+    actions: P3_OPEN_REPORT,
+  },
+  {
+    ...P3_BASE,
+    id: "p3-running",
+    route: P3_ROUTE,
+    themes: BOTH,
+    session: P3_RUNNING_SESSION,
+    ready: hasText("/Running Vulnerability Audit/i"),
+    probes: [P3_PROBES.cancel],
+  },
+  {
+    ...P3_BASE,
+    id: "p3-error",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    session: P3_ERROR_SESSION,
+    ready: hasText("/Pipeline failed at Vulnerability Audit/i"),
+    probes: [P3_PROBES.retry],
+  },
+  {
+    ...P3_BASE,
+    id: "p3-cancelled",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    session: P3_CANCELLED_SESSION,
+    ready: hasText("/Scan Cancelled/i"),
+  },
+  {
+    ...P3_BASE,
+    id: "p3-unreachable",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    session: P3_UNREACHABLE_SESSION,
+    ready: hasText("/Host is unavailable/i"),
+  },
+  {
+    ...P3_BASE,
+    id: "p3-denied",
+    route: P3_ROUTE,
+    themes: LIGHT,
+    persona: SCANS_READONLY,
+    session: p3StartSession("p3-denied"),
+    ready: `${hasText("/You do not have permission to perform this action/")} && ${p3Quiet}`,
+  },
+  {
+    ...P3_BASE,
+    ...P3_PIPELINE,
+    id: "p3-pipeline",
+    session: p3StartSession("p3-live"),
+    init: p3SocketScript([
+      { phase: 2, progress: { status: "complete", percentage: 100 } },
+      { phase: 3, progress: { status: "complete", percentage: 100 } },
+    ]),
+    ready: `${p3Report} && ${p3Sockets("p3-live", 2, true)} && ${p3Quiet}`,
+  },
+  {
+    ...P3_BASE,
+    ...P3_PIPELINE,
+    id: "p3-pipeline-running",
+    session: p3StartSession("p3-stall"),
+    init: p3SocketScript([]),
+    ready: `${hasText("/Running Port Scan/i")} && ${p3Sockets("p3-stall", 1, false)}`,
+  },
+  {
+    ...P3_BASE,
+    ...P3_PIPELINE,
+    id: "p3-pipeline-failed",
+    session: p3StartSession("p3-fail"),
+    init: p3SocketScript([{ phase: 2, progress: { status: "failed" } }]),
+    ready: `${hasText("/Port scan background task failed/i")} && ${p3Sockets("p3-fail", 1, true)} && ${p3Quiet}`,
+  },
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -1615,11 +1818,12 @@ export const STATES = [
   ...NM_STATES,
   ...SH_STATES,
   ...CR_STATES,
+  ...P3_STATES,
 ];
 
-/** States whose output Batch 23 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 22) and the one page still importing
- *  dashboard.css. Batch 23 changes CredentialedResults only. */
+/** States whose output Batch 24 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 23) and the one page still importing
+ *  dashboard.css. Batch 24 changes Phase3Results only. */
 export const REGRESSION_PREFIXES = [
   "ar-",
   "vb-",
@@ -1630,6 +1834,7 @@ export const REGRESSION_PREFIXES = [
   "amt-",
   "nm-",
   "sh-",
+  "cr-",
 ];
 
 /** States the sensitivity gate injects into. */

@@ -2112,3 +2112,309 @@ export const crSocketScript = ({ frames, close = false }) => `(() => {
   HarnessSocket.CLOSED = 3;
   window.WebSocket = HarnessSocket;
 })();`;
+
+/* ── Phase3Results (batch 24) ───────────────────────────────────────────────
+   Phase 3 starts the port scan and the audit from an effect on mount, which is
+   why guard.mjs blocks its routes. The p3- states opt out of that one block
+   (`allowPhase3`) and nothing else:
+
+   * Seeded states put the scan context where the page's own guards keep it
+     from starting anything: a finished report, a running, failed or cancelled
+     pipeline, discovery with no live host — or an operator without
+     `scans:execute`, whom the page refuses before it requests anything.
+   * Pipeline states let it start. The router answers exactly the writes the
+     state declares — the two dispatch triggers — and the ticket, with fixed
+     placeholders, and refuses every other write; the progress socket is
+     scripted (p3SocketScript). Nothing leaves the browser and no scan runs.
+
+   Every value is synthetic. The weak FTP credential's password is the short,
+   low-entropy `notreal`, which the page must never render. */
+const P3_PHASE1_HOSTS = [
+  {
+    ip_address: "10.60.0.11",
+    hostname: "web-01",
+    mac_address: "00:1A:2B:3C:5D:11",
+    vendor: "Dell Inc.",
+    discovery_method: "ARP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.60.0.12",
+    hostname: "Unknown",
+    mdns_name: "printer-3f.local",
+    mac_address: "00:1A:2B:3C:5D:12",
+    vendor: "HP",
+    discovery_method: "ICMP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.60.0.13",
+    hostname: "Unknown",
+    netbios_names: [{ name: "KIOSK-09" }],
+    discovery_method: "TCP",
+    is_active: true,
+  },
+  {
+    ip_address: "10.60.0.14",
+    hostname: "Unknown",
+    discovery_method: "ICMP",
+    is_active: false,
+  },
+];
+
+const P3_PHASE1_SUMMARY = {
+  total_hosts: 4,
+  active_hosts: 3,
+  inactive_hosts: 1,
+  scan_duration: 11.8,
+};
+
+const P3_PHASE2_HOSTS = [
+  {
+    ip_address: "10.60.0.11",
+    hostname: "web-01",
+    is_active: true,
+    open_ports: [
+      { port: 21, service: "ftp" },
+      { port: 22, service: "ssh" },
+      { port: 443, service: "https" },
+    ],
+    os_fingerprint_full: { os: "Linux 5.x" },
+  },
+  {
+    ip_address: "10.60.0.12",
+    hostname: "Unknown",
+    mdns_name: "printer-3f.local",
+    is_active: true,
+    open_ports: [{ port: 9100, service: "jetdirect" }],
+    os_guess: "HP embedded",
+  },
+  {
+    ip_address: "10.60.0.14",
+    hostname: "Unknown",
+    is_active: false,
+    open_ports: [],
+  },
+];
+
+const P3_PHASE2_SUMMARY = {
+  total_hosts: 3,
+  hosts_with_ports: 2,
+  scan_duration: 38.4,
+};
+
+const P3_AUDIT_HOSTS = [
+  {
+    ip_address: "10.60.0.11",
+    hostname: "web-01",
+    is_active: true,
+    os_guess: "Ubuntu 22.04",
+    open_ports: [{ port: 21 }, { port: 22 }, { port: 443 }],
+    device_category: "server",
+    device_category_signal: "banner",
+    credentialed: true,
+    exposure_summary: {
+      correlated_with_port_scan: true,
+      listeners_exposed: 2,
+      listeners_host_only: 1,
+    },
+    host_risk_level: "Critical",
+    cves: [
+      {
+        cve_id: "CVE-2024-6387",
+        severity: "Critical",
+        cvss_score: 8.1,
+        description: "Signal handler race condition in sshd",
+        affected_software: "OpenSSH 8.9p1",
+      },
+      {
+        cve_id: "CVE-2023-0286",
+        severity: "High",
+        cvss_score: 7.4,
+        description: "X.400 address type confusion in X.509 GeneralName",
+      },
+      {
+        cve_id: "CVE-2023-2650",
+        severity: "Medium",
+        cvss_score: 6.5,
+        description: "Possible DoS translating ASN.1 object identifiers",
+      },
+      {
+        cve_id: "CVE-2023-22809",
+        severity: "Low",
+        cvss_score: 3.9,
+        description: "sudoedit mishandles extra arguments",
+      },
+    ],
+    heartbleed_info: { vulnerable: true },
+    ldap_info: { anonymous_bind: { allowed: true } },
+    ftp_info: {
+      open: true,
+      banner: "220 ProFTPD 1.3.5 Server (Harness) [10.60.0.11]",
+      issues: ["Anonymous login allowed", "Plain-text authentication"],
+      anonymous_login: true,
+      write_access: true,
+      weak_credentials: [{ user: "ftpuser", password: "notreal" }],
+    },
+    http_audit: {
+      server_header: "nginx/1.18.0 (Ubuntu)",
+      issues: [
+        "Missing Content-Security-Policy",
+        "Missing Strict-Transport-Security",
+        "Missing X-Frame-Options",
+      ],
+      exposed_paths: [
+        { path: "/.git/config", status: 200, note: "repository metadata" },
+        { path: "/backup/", status: 200, note: "directory listing" },
+      ],
+      admin_panels: [
+        { product: "Tomcat Manager", path: "/manager/html", status: 401 },
+      ],
+      dangerous_methods: ["PUT", "DELETE"],
+    },
+    tls_info: { cert_expired: true },
+    smb_info: { open: true, null_session: true },
+  },
+  {
+    ip_address: "10.60.0.12",
+    hostname: "Unknown",
+    is_active: true,
+    os_guess: "HP embedded",
+    open_ports: [{ port: 9100 }],
+    snmp_device_type: "printer",
+    host_risk_level: "Low",
+    cves: [],
+  },
+  {
+    ip_address: "10.60.0.14",
+    hostname: "Unknown",
+    is_active: false,
+    device_category: "unknown",
+    cves: [],
+  },
+];
+
+const P3_AUDIT_SUMMARY = {
+  total_hosts: 3,
+  critical_hosts: 1,
+  high_risk_hosts: 0,
+  scan_duration: 84.6,
+  credentialed_hosts: 1,
+  credentialed_skipped: [
+    { target: "10.60.0.12", reason: "No credential matched this host" },
+  ],
+};
+
+const p3Session = (scanId, extra = {}) => ({
+  cc_scanId: scanId,
+  cc_scanNo: 3301,
+  cc_target: "10.60.0.0/28",
+  cc_pipelineMode: "vulnerability_audit",
+  cc_intensity: "normal",
+  cc_phase1Hosts: P3_PHASE1_HOSTS,
+  cc_phase1Summary: P3_PHASE1_SUMMARY,
+  cc_pipelineState: "DISCOVERY",
+  ...extra,
+});
+
+export const P3_REPORT_SESSION = p3Session("p3-report", {
+  cc_pipelineState: "REPORT_READY",
+  cc_phase2Results: P3_PHASE2_HOSTS,
+  cc_phase2Summary: P3_PHASE2_SUMMARY,
+  cc_phase3AuditResults: P3_AUDIT_HOSTS,
+  cc_phase3Summary: P3_AUDIT_SUMMARY,
+  cc_pipelinePhaseTimings: { portScan: "38.4", vulnScan: "84.6" },
+});
+
+export const P3_RUNNING_SESSION = p3Session("p3-running", {
+  cc_pipelineState: "VULN_SCAN",
+  cc_phase2Results: P3_PHASE2_HOSTS,
+  cc_phase2Summary: P3_PHASE2_SUMMARY,
+  cc_pipelinePhaseTimings: { portScan: "38.4" },
+});
+
+export const P3_ERROR_SESSION = p3Session("p3-error", {
+  cc_pipelineState: "ERROR",
+  cc_pipelineError: {
+    phase: "VULN_SCAN",
+    message: "Vulnerability audit background task failed.",
+  },
+  cc_phase2Results: P3_PHASE2_HOSTS,
+  cc_phase2Summary: P3_PHASE2_SUMMARY,
+});
+
+export const P3_CANCELLED_SESSION = p3Session("p3-cancelled", {
+  cc_pipelineState: "CANCELLED",
+  cc_phase2Results: P3_PHASE2_HOSTS,
+  cc_phase2Summary: P3_PHASE2_SUMMARY,
+});
+
+export const P3_UNREACHABLE_SESSION = p3Session("p3-unreachable", {
+  cc_phase1Hosts: P3_PHASE1_HOSTS.map((h) => ({ ...h, is_active: false })),
+  cc_phase1Summary: {
+    total_hosts: 4,
+    active_hosts: 0,
+    inactive_hosts: 4,
+    scan_duration: 30.2,
+  },
+});
+
+/* Discovery done, nothing else: the page starts the pipeline on mount. */
+export const p3StartSession = (scanId) => p3Session(scanId);
+
+export const P3_STUBS = {
+  "/scans/p3-live": {
+    id: "p3-live",
+    scan_no: 3301,
+    status: "complete",
+    results: {
+      phase2: { data: P3_PHASE2_HOSTS, summary: P3_PHASE2_SUMMARY },
+      phase3: { data: P3_AUDIT_HOSTS, summary: P3_AUDIT_SUMMARY },
+    },
+    report_executive_path: "/reports/p3-live-executive.pdf",
+    report_technical_path: "/reports/p3-live-technical.pdf",
+  },
+};
+
+export const P3_TICKET = "harness-ticket";
+export const P3_SECRET = "notreal";
+
+export const P3_WRITES = {
+  "POST /scan/asset-discovery": { success: true },
+  "POST /scan/vulnerability-audit": { success: true },
+};
+
+/**
+ * Replaces WebSocket on the Phase 3 routes only. Each socket the page opens
+ * records its URL and whether the page closed it, and receives the frame at
+ * its own position in `frames` — none for a phase that stays running.
+ */
+export const p3SocketScript = (frames) => `(() => {
+  if (!/^\\/scan\\/(vulnerability-audit|[^/]+\\/phase3)$/.test(location.pathname)) return;
+  const FRAMES = ${JSON.stringify(frames)};
+  const opened = (window.__harnessSockets = []);
+  class HarnessSocket {
+    constructor(url) {
+      this._record = { url: String(url), closed: false };
+      this.readyState = 1;
+      opened.push(this._record);
+      const frame = FRAMES[opened.length - 1];
+      if (frame) {
+        setTimeout(() => {
+          if (this.readyState === 1 && this.onmessage)
+            this.onmessage({ data: JSON.stringify(frame) });
+        }, 40);
+      }
+    }
+    send() {}
+    close() {
+      this.readyState = 3;
+      this._record.closed = true;
+    }
+  }
+  HarnessSocket.CONNECTING = 0;
+  HarnessSocket.OPEN = 1;
+  HarnessSocket.CLOSING = 2;
+  HarnessSocket.CLOSED = 3;
+  window.WebSocket = HarnessSocket;
+})();`;

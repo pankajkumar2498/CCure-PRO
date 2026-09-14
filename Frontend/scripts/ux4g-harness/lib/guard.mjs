@@ -21,6 +21,12 @@
  *
  * Every refusal is recorded in `window.__harnessBlockedNavigations`, copied
  * into the capture's log, and fails `run.mjs`.
+ *
+ * Batch 24: a state that captures Phase 3 itself declares `allowPhase3`, and
+ * for that state alone the two Phase 3 routes load. Every other state keeps
+ * the whole list, so a Phase 2 hand-off still cannot mount the page, and
+ * `/scan/advanced-scan` stays blocked for every state. What a Phase 3 state may
+ * then write is decided separately, by the router (router.mjs).
  */
 
 export const BLOCKED_ROUTES = [
@@ -29,11 +35,19 @@ export const BLOCKED_ROUTES = [
   "^/scan/[^/]+/phase3(?:/|$)",
 ];
 
-export function routeGuardScript() {
+export const PHASE3_ROUTES = [
+  "^/scan/vulnerability-audit(?:/|$)",
+  "^/scan/[^/]+/phase3(?:/|$)",
+];
+
+export function routeGuardScript({ allowPhase3 = false } = {}) {
+  const routes = allowPhase3
+    ? BLOCKED_ROUTES.filter((r) => !PHASE3_ROUTES.includes(r))
+    : BLOCKED_ROUTES;
   return `(() => {
   if (window.__harnessGuarded) return;
   window.__harnessGuarded = true;
-  const BLOCKED = ${JSON.stringify(BLOCKED_ROUTES)}.map((s) => new RegExp(s));
+  const BLOCKED = ${JSON.stringify(routes)}.map((s) => new RegExp(s));
   const blocked = (window.__harnessBlockedNavigations = []);
   const pathOf = (url) => {
     try {

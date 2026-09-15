@@ -1,0 +1,172 @@
+/* ============================================================================
+   Compliance workspace — the Control Manual Attestation dialog and its evidence
+   ----------------------------------------------------------------------------
+   Batch 28. The dialog used `.compliance-form`, whose field rules and forced
+   button sizing restyle every control inside it, plus twenty inline styles
+   and three colour literals. The form's layout, its textareas and its submit
+   button share Batch 27's `.cww-form` rules (compliance-writes.css); this file
+   lays out what only this dialog has — the control it attests, the evidence
+   checklist, the file picker and the attached files with their removal
+   question. Everything resolves through `--ccure-*` tokens in both themes.
+
+   compliance.css, dashboard.css and scan.css are untouched: the remediation,
+   gap-analysis and log dialogs still use `.compliance-form`. The shared dialog
+   container is unchanged.
+   ============================================================================ */
+
+/* ── The control being attested ───────────────────────────────────────────── */
+.cwa-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwa-control__title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cwa-control__description {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Sections: the checklist and the attached evidence ────────────────────── */
+.cwa-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+
+.cwa-section__title {
+  margin: 0;
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.cwa-checklist {
+  margin: 0;
+  padding: var(--ccure-space-sm) var(--ccure-space-md) var(--ccure-space-sm)
+    var(--ccure-space-xl);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-md);
+}
+
+/* ── The file picker ──────────────────────────────────────────────────────────
+   A native file input: there is no file primitive, and the browser's own
+   picker is the accessible one. Only its button is restyled, to read as a
+   secondary button; the focus ring is the design system's global one. */
+.cwa-file {
+  width: 100%;
+  max-width: 100%;
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwa-file::file-selector-button {
+  margin-inline-end: var(--ccure-space-sm);
+  padding: var(--ccure-space-2xs) var(--ccure-space-md);
+  font: inherit;
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  cursor: pointer;
+}
+
+.cwa-file:hover:not(:disabled)::file-selector-button {
+  background: var(--ccure-surface-hover);
+  border-color: var(--ccure-border-strong);
+}
+
+.cwa-file:disabled {
+  color: var(--ccure-text-disabled);
+  cursor: not-allowed;
+}
+
+.cwa-file:disabled::file-selector-button {
+  color: var(--ccure-text-disabled);
+  background: var(--ccure-surface-disabled);
+  border-color: var(--ccure-border-subtle);
+  cursor: not-allowed;
+}
+
+/* ── Attached files ───────────────────────────────────────────────────────── */
+.cwa-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cwa-evidence__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-xs) var(--ccure-space-sm);
+  padding: var(--ccure-space-2xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-sm);
+}
+
+/* A file name is whatever the uploader called it; it wraps rather than
+   pushing the row wider than the dialog. */
+.cwa-evidence__file {
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cwa-evidence__size {
+  color: var(--ccure-text-secondary);
+}
+
+/* The removal question takes the row's full width, on its own line. */
+.cwa-evidence__question {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+}
+
+.cwa-evidence__prompt {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-danger-text);
+  overflow-wrap: anywhere;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwa-evidence__item {
+    align-items: flex-start;
+  }
+
+  .cwa-evidence__question {
+    justify-content: flex-start;
+  }
+}

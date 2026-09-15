@@ -15,6 +15,7 @@ import {
   CcureCard,
   CcureField,
   CcureInput,
+  CcureLoader,
   CcurePagination,
   CcureProgress,
   CcureSelect,
@@ -28,6 +29,7 @@ import "../styles/scan.css";
 import "../styles/compliance-exceptions.css";
 import "../styles/compliance-views.css";
 import "../styles/compliance-writes.css";
+import "../styles/compliance-attestation.css";
 
 function PaginationBar({
   currentPage,
@@ -583,6 +585,146 @@ function PagingControls({
           Last page
         </CcureButton>
       </div>
+    </div>
+  );
+}
+
+/* The attestation dialog's evidence: its heading, the upload field the dialog
+   passes in as children, and the attached files with their removal.
+
+   Removal asks first. A file's Remove turns its row into a question — Delete
+   file or Keep file — with focus on Keep file, so a stray Enter backs out
+   rather than deleting. The question's buttons ignore a click that is part of
+   a double-click, whose second click lands where Remove was; and Delete file is
+   busy and disabled while its request is out, as is every other Remove. Keep
+   file or Escape returns focus to the file's Remove. After a removal, focus
+   goes to that Remove if the file is still listed (the API refused), otherwise
+   to the list's heading.
+
+   The question is asked in the row rather than in a second dialog: the shared
+   dialog container closes on any Escape that reaches the document, so a nested
+   confirmation would take the attestation form down with it. `onRemove` is the
+   page's removal handler, unchanged — it sends the DELETE, re-reads the list
+   and reports the outcome, and it never rejects. */
+function AttestationEvidence({ files, onRemove, children }) {
+  const headingId = useId();
+  const promptId = useId();
+  const [askingId, setAskingId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  const headingRef = useRef(null);
+  const keepRef = useRef(null);
+  const removeRefs = useRef(new Map());
+  const inFlight = useRef(false);
+  const focusAfter = useRef(null);
+
+  useEffect(() => {
+    if (askingId !== null) keepRef.current?.focus();
+  }, [askingId]);
+
+  useEffect(() => {
+    const id = focusAfter.current;
+    if (id === null || askingId !== null || removingId !== null) return;
+    focusAfter.current = null;
+    const remove = removeRefs.current.get(id);
+    if (remove && files.some((f) => f.id === id)) remove.focus();
+    else headingRef.current?.focus();
+  }, [files, askingId, removingId]);
+
+  const backOut = (file) => {
+    focusAfter.current = file.id;
+    setAskingId(null);
+  };
+  const onQuestionKeyDown = (event, file) => {
+    if (event.key !== "Escape" || inFlight.current) return;
+    // Answers the question only; the dialog stays open.
+    event.stopPropagation();
+    backOut(file);
+  };
+  const deleteFile = async (event, file) => {
+    if (event.detail > 1 || inFlight.current) return;
+    inFlight.current = true;
+    setRemovingId(file.id);
+    try {
+      await onRemove(file);
+    } finally {
+      inFlight.current = false;
+      focusAfter.current = file.id;
+      setRemovingId(null);
+      setAskingId(null);
+    }
+  };
+
+  return (
+    <div className="cwa-section">
+      <h3
+        id={headingId}
+        ref={headingRef}
+        tabIndex={-1}
+        className="cwa-section__title"
+      >
+        Attached evidence
+      </h3>
+      {children}
+      {files.length > 0 && (
+        <ul className="cwa-evidence" aria-labelledby={headingId}>
+          {files.map((f) => (
+            <li key={f.id} className="cwa-evidence__item">
+              <span className="cwa-evidence__file">
+                <span aria-hidden="true">📎</span> {f.filename}{" "}
+                <span className="cwa-evidence__size">
+                  ({Math.round(f.size_bytes / 1024)} KB)
+                </span>
+              </span>
+              {askingId === f.id ? (
+                <div
+                  role="group"
+                  aria-labelledby={promptId}
+                  className="cwa-evidence__question"
+                >
+                  <span id={promptId} className="cwa-evidence__prompt">
+                    Delete {f.filename}? This cannot be undone.
+                  </span>
+                  <CcureButton
+                    variant="danger"
+                    size="sm"
+                    loading={removingId === f.id}
+                    onClick={(e) => deleteFile(e, f)}
+                    onKeyDown={(e) => onQuestionKeyDown(e, f)}
+                  >
+                    Delete file
+                  </CcureButton>
+                  <CcureButton
+                    ref={keepRef}
+                    variant="secondary"
+                    size="sm"
+                    disabled={removingId === f.id}
+                    onClick={(e) => {
+                      if (e.detail <= 1) backOut(f);
+                    }}
+                    onKeyDown={(e) => onQuestionKeyDown(e, f)}
+                  >
+                    Keep file
+                  </CcureButton>
+                </div>
+              ) : (
+                <CcureButton
+                  ref={(el) => {
+                    if (el) removeRefs.current.set(f.id, el);
+                    else removeRefs.current.delete(f.id);
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${f.filename}`}
+                  disabled={removingId !== null}
+                  onClick={() => setAskingId(f.id)}
+                >
+                  Remove
+                </CcureButton>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -4499,36 +4641,22 @@ export default function ComplianceWorkspace() {
         )}
 
         {modalType === "attest" && (
-          <form onSubmit={handleSubmitAttestation} className="compliance-form">
+          <form onSubmit={handleSubmitAttestation} className="cww-form">
             {selectedControl?.control_number && (
-              <div
-                style={{
-                  background: "rgba(0,0,0,0.03)",
-                  padding: "10px 12px",
-                  borderRadius: "6px",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+              <div className="cwa-control">
+                <p className="cwa-control__title">
                   {selectedControl.control_number} — {selectedControl.title}
-                </div>
+                </p>
                 {selectedControl.description && (
-                  <div
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--text-muted)",
-                      marginTop: "4px",
-                      lineHeight: 1.45,
-                    }}
-                  >
+                  <p className="cwa-control__description">
                     {selectedControl.description}
-                  </div>
+                  </p>
                 )}
               </div>
             )}
 
-            <label>Applicability &amp; Status</label>
-            <select
+            <CcureSelect
+              label="Applicability & Status"
               value={attestStatus}
               onChange={(e) => setAttestStatus(e.target.value)}
             >
@@ -4541,58 +4669,50 @@ export default function ComplianceWorkspace() {
               <option value="not_applicable">
                 Not applicable — excluded from scope
               </option>
-            </select>
+            </CcureSelect>
 
-            <label style={{ marginTop: "1rem" }}>
-              {attestStatus === "not_applicable"
-                ? "Justification for exclusion (required)"
-                : "Justification for inclusion"}
-            </label>
-            <textarea
-              value={attestJustification}
-              onChange={(e) => setAttestJustification(e.target.value)}
-              required={attestStatus === "not_applicable"}
-              placeholder={
+            <CcureField
+              id="cwa-justification"
+              label={
                 attestStatus === "not_applicable"
-                  ? "Why this control does not apply to the organization's ISMS scope."
-                  : "Why this control is applicable — defaults to the control objective if left blank."
+                  ? "Justification for exclusion"
+                  : "Justification for inclusion"
               }
-              style={{ minHeight: "70px" }}
-            />
-            {attestStatus === "not_applicable" && (
-              <div
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  marginTop: "4px",
-                }}
-              >
-                ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to
-                carry a documented justification.
-              </div>
-            )}
+              required={attestStatus === "not_applicable"}
+              hint={
+                attestStatus === "not_applicable"
+                  ? "ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to carry a documented justification."
+                  : undefined
+              }
+            >
+              <textarea
+                id="cwa-justification"
+                className="cc-field__control cww-form__textarea"
+                value={attestJustification}
+                onChange={(e) => setAttestJustification(e.target.value)}
+                required={attestStatus === "not_applicable"}
+                aria-describedby={
+                  attestStatus === "not_applicable"
+                    ? "cwa-justification-hint"
+                    : undefined
+                }
+                placeholder={
+                  attestStatus === "not_applicable"
+                    ? "Why this control does not apply to the organization's ISMS scope."
+                    : "Why this control is applicable — defaults to the control objective if left blank."
+                }
+              />
+            </CcureField>
 
             {selectedControl?.evidence_checklist &&
               selectedControl.evidence_checklist.length > 0 && (
-                <div style={{ marginTop: "1rem" }}>
-                  <label
-                    style={{
-                      fontWeight: 600,
-                      display: "block",
-                      marginBottom: "6px",
-                    }}
-                  >
+                <div className="cwa-section">
+                  <h3 id="cwa-checklist-title" className="cwa-section__title">
                     Audit evidence expected for this control
-                  </label>
+                  </h3>
                   <ul
-                    style={{
-                      background: "rgba(0,0,0,0.03)",
-                      padding: "10px 10px 10px 26px",
-                      borderRadius: "6px",
-                      fontSize: "0.8rem",
-                      margin: 0,
-                      lineHeight: 1.5,
-                    }}
+                    className="cwa-checklist"
+                    aria-labelledby="cwa-checklist-title"
                   >
                     {selectedControl.evidence_checklist.map((item, idx) => (
                       <li key={idx}>{item}</li>
@@ -4605,91 +4725,61 @@ export default function ComplianceWorkspace() {
                 finding model since the first migration with no upload path
                 behind it, and the checklist above used to be pre-ticked
                 checkboxes that were never read or submitted. */}
-            <div style={{ marginTop: "1rem" }}>
-              <label style={{ fontWeight: 600, display: "block" }}>
-                Attached evidence
-              </label>
-              <input
-                type="file"
-                accept={EVIDENCE_ACCEPT}
-                disabled={uploadingEvidence}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUploadEvidence(selectedControl.id, f);
-                  e.target.value = "";
-                }}
-                style={{ marginTop: "6px", fontSize: "0.8rem" }}
-              />
-              {uploadingEvidence && (
-                <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>
-                  Uploading…
-                </div>
-              )}
-              {controlEvidence.length > 0 && (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: "8px 0 0",
-                    fontSize: "0.78rem",
+            <AttestationEvidence
+              files={controlEvidence}
+              onRemove={(f) => handleDeleteEvidence(f.id, selectedControl.id)}
+            >
+              <CcureField
+                id="cwa-evidence-file"
+                label="Add evidence file"
+                hint={`Accepted: ${EVIDENCE_ACCEPT.replace(/\./g, "")
+                  .toUpperCase()
+                  .split(",")
+                  .join(
+                    ", ",
+                  )}. Up to ${MAX_EVIDENCE_BYTES / (1024 * 1024)} MB.`}
+              >
+                <input
+                  id="cwa-evidence-file"
+                  type="file"
+                  className="cwa-file"
+                  accept={EVIDENCE_ACCEPT}
+                  disabled={uploadingEvidence}
+                  aria-describedby="cwa-evidence-file-hint"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadEvidence(selectedControl.id, f);
+                    e.target.value = "";
                   }}
-                >
-                  {controlEvidence.map((f) => (
-                    <li
-                      key={f.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                        padding: "4px 8px",
-                        background: "rgba(0,0,0,0.03)",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      <span>
-                        📎 {f.filename}{" "}
-                        <span style={{ color: "var(--text-muted)" }}>
-                          ({Math.round(f.size_bytes / 1024)} KB)
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        className="db-btn db-btn--ghost"
-                        style={{ padding: "2px 6px", fontSize: "0.7rem" }}
-                        onClick={() =>
-                          handleDeleteEvidence(f.id, selectedControl.id)
-                        }
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                />
+              </CcureField>
+              {uploadingEvidence && <CcureLoader inline label="Uploading…" />}
+            </AttestationEvidence>
 
-            <label style={{ marginTop: "1rem" }}>Next review date</label>
-            <input
+            <CcureInput
               type="date"
+              label="Next review date"
               value={attestNextReview}
               onChange={(e) => setAttestNextReview(e.target.value)}
             />
 
-            <label style={{ marginTop: "1rem" }}>Reviewer note</label>
-            <textarea
-              value={attestNote}
-              onChange={(e) => setAttestNote(e.target.value)}
-              required
-            />
-            <button
+            <CcureField id="cwa-note" label="Reviewer note" required>
+              <textarea
+                id="cwa-note"
+                className="cc-field__control cww-form__textarea"
+                value={attestNote}
+                onChange={(e) => setAttestNote(e.target.value)}
+                required
+              />
+            </CcureField>
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Save Attestation
-            </button>
+            </CcureButton>
           </form>
         )}
 

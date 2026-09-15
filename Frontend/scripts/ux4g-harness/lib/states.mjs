@@ -43,6 +43,8 @@ import {
   CW26B_FINDINGS,
   CW27_ORG_ADMIN,
   CW27_MARKETPLACE,
+  CW28_CONTROLS,
+  CW28_EVIDENCE,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -1008,6 +1010,121 @@ const CW27_STATES = [
     viewport: [390, 1400],
     stubs: CW26B_FINDINGS_STUBS,
     actions: CW27_WAIVER_DIALOG_OPEN,
+  },
+];
+
+/* ── ComplianceWorkspace attestation and evidence (batch 28) ──────────────── */
+/* The Control Manual Attestation dialog opened from Controls and from Findings
+   and left open. No state chooses a file, saves an attestation, downloads or
+   removes evidence: the picker is never opened and Save is never pressed. The
+   two states that show the removal question press Remove only where Remove
+   asks first — the migrated build, whose Remove is named for its file. On the
+   legacy build Remove is the delete itself, so there the same step clicks the
+   dialog's title instead. The router refuses every write regardless, and the
+   batch report counts them. */
+const CW28_BASE = {
+  route: "/compliance",
+  persona: ANALYST,
+  tracked: [
+    ...PAGE_TRACKED,
+    "h2",
+    "h3",
+    "form",
+    "[role=dialog] label",
+    "[role=dialog] li",
+  ],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW28_CONTROLS_STUBS = {
+  ...CW_STUBS,
+  "/compliance/frameworks/cfw_iso27001_2022/controls": CW28_CONTROLS,
+  "/compliance/controls/cct_iso_5_1/evidence": CW28_EVIDENCE,
+  "/compliance/controls/cct_iso_6_7/evidence": { data: [] },
+};
+const CW28_FINDINGS_STUBS = {
+  ...CW26B_FINDINGS_STUBS,
+  "/compliance/controls/A.5.24/evidence": { data: [] },
+};
+// The Attest button in a control's row of the register.
+const cw28Attest = (controlNumber) => `(() => {
+  const row = [...document.querySelectorAll("tbody tr")].find((r) => r.cells.length > 1 && (r.cells[0].textContent || "").trim() === ${JSON.stringify(controlNumber)});
+  return row ? [...row.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Attest") : null;
+})()`;
+const CW28_ATTEST_OPEN = [
+  ...CW26B_CONTROLS_OPEN,
+  { click: cw28Attest("A.5.1") },
+  {
+    waitFor: `${cw27DialogOpen("/Save Attestation/")} && ${hasText("/board-minutes\\.docx/")}`,
+  },
+];
+const CW28_EXCLUDED_OPEN = [
+  ...CW26B_CONTROLS_OPEN,
+  { click: cw28Attest("A.6.7") },
+  {
+    waitFor: `${cw27DialogOpen("/Save Attestation/")} && ${hasText("/6\\.1\\.3\\(d\\)/")}`,
+  },
+];
+const CW28_VERIFY_OPEN = [
+  ...CW26B_FINDINGS_OPEN,
+  { click: byText("button", "/^Verify$/") },
+  { waitFor: cw27DialogOpen("/Save Attestation/") },
+];
+const CW28_LONG_NAME = CW28_EVIDENCE.data[0].filename;
+// Remove on the migrated build asks and sends nothing; on the legacy build it
+// is the delete, so the click goes to the dialog's title.
+const CW28_REMOVE_OR_TITLE = `(document.querySelector(${JSON.stringify(`[role=dialog] button[aria-label="Remove ${CW28_LONG_NAME}"]`)}) || document.querySelector("[role=dialog] h2"))`;
+const CW28_QUESTION_OPEN = [
+  ...CW28_ATTEST_OPEN,
+  { click: CW28_REMOVE_OR_TITLE },
+  {
+    waitFor: `!document.querySelector('[role=dialog] button[aria-label^="Remove "]') || /Delete Information-Security-Policy/.test(document.body.innerText)`,
+  },
+];
+// Tab from inside the open dialog to its file picker.
+const CW28_FILE_FOCUS = {
+  id: "dialog-file-focus",
+  tabTo:
+    "!!el.closest('[role=dialog]') && el.tagName === 'INPUT' && el.type === 'file'",
+};
+
+const CW28_STATES = [
+  {
+    ...CW28_BASE,
+    id: "cw28-attest",
+    themes: BOTH,
+    stubs: CW28_CONTROLS_STUBS,
+    actions: CW28_ATTEST_OPEN,
+    probes: [CW28_FILE_FOCUS],
+  },
+  {
+    ...CW28_BASE,
+    id: "cw28-attest-excluded",
+    themes: BOTH,
+    stubs: CW28_CONTROLS_STUBS,
+    actions: CW28_EXCLUDED_OPEN,
+    probes: [CW27_DIALOG_FIELD_FOCUS],
+  },
+  {
+    ...CW28_BASE,
+    id: "cw28-attest-verify",
+    themes: LIGHT,
+    stubs: CW28_FINDINGS_STUBS,
+    actions: CW28_VERIFY_OPEN,
+  },
+  {
+    ...CW28_BASE,
+    id: "cw28-attest-question",
+    themes: BOTH,
+    stubs: CW28_CONTROLS_STUBS,
+    actions: CW28_QUESTION_OPEN,
+  },
+  {
+    ...CW28_BASE,
+    id: "cw28-attest-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW28_CONTROLS_STUBS,
+    actions: CW28_QUESTION_OPEN,
   },
 ];
 
@@ -2541,17 +2658,17 @@ export const STATES = [
   ...CW26A_STATES,
   ...CW26B_STATES,
   ...CW27_STATES,
+  ...CW28_STATES,
 ];
 
-/** States whose output Batch 27 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 26B) and ComplianceWorkspace outside
- *  Marketplace and the Create Policy Baseline, Configure Rule Parameters and
- *  Request Exception Waiver dialogs. Under these prefixes `cw-marketplace` is
- *  the one state it is expected to change; the regression gate names the other
- *  cw- states individually. */
+/** States whose output Batch 28 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 27) and every ComplianceWorkspace state
+ *  except the Control Manual Attestation dialog's own — no state under these
+ *  prefixes opens that dialog. */
 export const REGRESSION_PREFIXES = [
   "cw26a-",
   "cw26b-",
+  "cw27-",
   "ar-",
   "vb-",
   "cw-",

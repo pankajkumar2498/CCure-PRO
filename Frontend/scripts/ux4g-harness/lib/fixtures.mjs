@@ -918,6 +918,50 @@ export const CW27_MARKETPLACE = {
   ],
 };
 
+/* ── ComplianceWorkspace attestation and evidence (batch 28) ──────────────── */
+// The register with an evidence checklist on A.5.1 and a recorded exclusion on
+// A.6.7, so one dialog opens with its checklist and one opens as not
+// applicable.
+export const CW28_CONTROLS = {
+  ...CW26B_CONTROLS,
+  data: CW26B_CONTROLS.data.map((c) => {
+    if (c.control_id === "cct_iso_5_1")
+      return {
+        ...c,
+        evidence_checklist: [
+          "Approved information security policy",
+          "Management sign-off record",
+        ],
+      };
+    if (c.control_id === "cct_iso_6_7")
+      return {
+        ...c,
+        justification: "No remote working is permitted under the ISMS scope.",
+      };
+    return c;
+  }),
+};
+
+// Evidence as GET /compliance/controls/{id}/evidence lists it. The dialog shows
+// each file's name and size and nothing else, so nothing else is given. The
+// first name is long enough to wrap in the dialog and on a phone.
+export const CW28_EVIDENCE = {
+  data: [
+    {
+      id: "cef_cw28_policy",
+      filename:
+        "Information-Security-Policy-v4.2-approved-by-the-board-2026-08-12.pdf",
+      size_bytes: 482133,
+    },
+    { id: "cef_cw28_signoff", filename: "sign-off.png", size_bytes: 1536 },
+    {
+      id: "cef_cw28_minutes",
+      filename: "board-minutes.docx",
+      size_bytes: 20480,
+    },
+  ],
+};
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

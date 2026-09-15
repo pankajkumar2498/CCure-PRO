@@ -687,6 +687,200 @@ export const CW26A_WAIVERS = {
   ],
 };
 
+/* ── ComplianceWorkspace read-only views (batch 26b) ──────────────────────── */
+// One summary serves the workspace total and every per-framework read, so the
+// comparison lists each active framework at the same score. The three scores
+// sit in the three bands the dashboard colours.
+export const CW26B_SUMMARY = {
+  score_pct: 86,
+  weighted_score_pct: 41,
+  kpis: {
+    passed: 40,
+    failed: 10,
+    exceptions: 2,
+    manual_review: 5,
+    not_assessed: 3,
+    total_controls: 60,
+  },
+  quadrant_scores: { GV: 55, ID: 70, PR: 82, DE: 48, RS: 61, RC: 90 },
+};
+
+export const CW26B_SUMMARY_NIS2 = {
+  ...CW26B_SUMMARY,
+  quadrant_scores: { NIS2_GOV: 64, NIS2_INC: 38, NIS2_BC: 77 },
+};
+
+// NIS 2 is parked by default; this installation offers it.
+export const CW26B_MARKETPLACE_NIS2 = {
+  data: [],
+  active_framework_ids: ["cfw_iso27001_2022", "cfw_nist_csf_v2", "cfw_nis2"],
+};
+
+export const CW26B_CONTROLS = {
+  data: [
+    {
+      control_id: "cct_iso_5_1",
+      control_number: "A.5.1",
+      title: "Policies for information security",
+      description: "Information security policy defined and approved.",
+      theme: "ORG",
+      scannability: "manual",
+      status: "pass",
+      evidence_file_count: 2,
+      reviewed_at: "2026-08-01T10:00:00Z",
+    },
+    {
+      control_id: "cct_iso_8_8",
+      control_number: "A.8.8",
+      title: "Management of technical vulnerabilities",
+      theme: "TECH",
+      scannability: "auto",
+      status: "fail",
+      evidence_file_count: 0,
+      reviewed_at: null,
+    },
+    {
+      control_id: "cct_iso_5_24",
+      control_number: "A.5.24",
+      title: "Incident management planning",
+      theme: "ORG",
+      scannability: "semi_auto",
+      status: "manual_review",
+      evidence_file_count: 1,
+      reviewed_at: null,
+    },
+    {
+      control_id: "cct_iso_7_4",
+      control_number: "A.7.4",
+      title: "Physical security monitoring",
+      theme: "PHY",
+      scannability: "manual",
+      status: "not_assessed",
+      evidence_file_count: 0,
+      reviewed_at: null,
+    },
+    {
+      control_id: "cct_iso_6_7",
+      control_number: "A.6.7",
+      title: "Remote working",
+      theme: "PPL",
+      scannability: "manual",
+      status: "not_applicable",
+      evidence_file_count: 0,
+      reviewed_at: "2026-07-15T09:30:00Z",
+    },
+  ],
+  summary: {
+    passed: 1,
+    failed: 1,
+    awaiting_review: 1,
+    not_assessed: 1,
+    not_applicable: 1,
+  },
+  total: 5,
+};
+
+export const CW26B_POLICIES = {
+  data: [
+    {
+      id: "pol-1",
+      name: "ISO 27001 Linux baseline",
+      target_platform: "linux",
+      version_number: 3,
+      rules_count: 2,
+      status: "active",
+    },
+    {
+      id: "pol-2",
+      name: "NIST CSF Windows baseline",
+      target_platform: "windows",
+      version_number: 1,
+      rules_count: 1,
+      status: "active",
+    },
+  ],
+};
+
+export const CW26B_POLICY_RULES = {
+  data: [
+    {
+      id: "rule-1",
+      control_number: "A.8.8",
+      control_title: "Management of technical vulnerabilities",
+      rule_name: "ccure.linux.sshd.permit_root_login",
+      severity: "HIGH",
+      evidence_source: "credentialed_config",
+      check_definition: {
+        key: "sshd.permit_root_login",
+        operator: "equals",
+        expected: "no",
+      },
+    },
+    {
+      id: "rule-2",
+      control_id: "cct_nist_csf_v2_PR_AA_05",
+      control_title: "Access permissions and authorizations",
+      rule_name: "manual.pr_aa_05",
+      severity: null,
+      evidence_source: "manual",
+    },
+  ],
+};
+
+// No finding is re-checking, queued or running, so the Findings tab never
+// starts its poll.
+export const CW26B_FINDINGS = {
+  data: [
+    {
+      id: "cw26b-f1",
+      control_id: "A.8.8",
+      control_title: "Management of technical vulnerabilities",
+      rule_id: "rule-1",
+      rule_name: "ccure.linux.sshd.permit_root_login",
+      severity: "HIGH",
+      asset_id: "asset-1",
+      asset_hostname: "web-01",
+      asset_ip: "10.70.0.11",
+      asset_reboot_pending: true,
+      source: "credentialed",
+      status: "fail",
+    },
+    {
+      id: "cw26b-f2",
+      control_id: "A.5.24",
+      control_title: "Incident management planning",
+      severity: "MEDIUM",
+      source: "manual",
+      status: "manual_review",
+      status_reason: "No credential was in scope for this host.",
+    },
+    {
+      id: "cw26b-f3",
+      control_id: "A.8.2",
+      control_title: "Privileged access rights",
+      rule_id: "rule-3",
+      rule_name: "ccure.win.local_admins",
+      severity: "CRITICAL",
+      asset_id: "asset-2",
+      asset_hostname: "Unknown",
+      asset_ip: "10.70.0.12",
+      source: "network",
+      status: "pass",
+    },
+    {
+      id: "cw26b-f4",
+      control_id: "A.8.9",
+      control_title: "Configuration management",
+      severity: "LOW",
+      asset_id: "asset-3",
+      asset_hostname: "db-01",
+      asset_ip: "10.70.0.13",
+      source: "credentialed",
+      status: "fail",
+    },
+  ],
+};
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

@@ -34,6 +34,13 @@ import {
   CW_STUBS,
   CW26A_WAIVERS,
   CW26A_MANY,
+  CW26B_SUMMARY,
+  CW26B_SUMMARY_NIS2,
+  CW26B_MARKETPLACE_NIS2,
+  CW26B_CONTROLS,
+  CW26B_POLICIES,
+  CW26B_POLICY_RULES,
+  CW26B_FINDINGS,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -717,6 +724,185 @@ const CW26A_STATES = [
       },
       ...CW26A_OPEN,
     ],
+  },
+];
+
+/* ── ComplianceWorkspace read-only views (batch 26b) ──────────────────────── */
+/* Dashboard, Controls, Policies and Findings, populated. Nothing here clicks a
+   download, submits or opens a dialog, or touches Marketplace, Approvals or
+   Credentials. No finding is re-checking, so the Findings tab never starts its
+   5-second poll. Every action works on the build before and after the batch. */
+const CW26B_BASE = {
+  route: "/compliance",
+  persona: ANALYST,
+  tracked: [...PAGE_TRACKED, "h2", "h3", "table", "[role=progressbar]"],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW26B_DASHBOARD_STUBS = {
+  ...CW_STUBS,
+  "/compliance/summary": CW26B_SUMMARY,
+};
+// The workspace score and both framework rows all read 86%.
+const CW26B_DASHBOARD_LOADED = {
+  waitFor: "(document.body.innerText.match(/86%/g) || []).length >= 3",
+};
+const CW26B_CONTROLS_STUBS = {
+  ...CW_STUBS,
+  "/compliance/frameworks/cfw_iso27001_2022/controls": CW26B_CONTROLS,
+};
+const CW26B_CONTROLS_OPEN = [
+  { click: cwTabClick("Controls") },
+  { waitFor: hasText("/Policies for information security/") },
+];
+const CW26B_POLICIES_STUBS = {
+  ...CW_STUBS,
+  "/compliance/policies": CW26B_POLICIES,
+  "/compliance/policies/pol-1/rules": CW26B_POLICY_RULES,
+};
+const CW26B_POLICIES_OPEN = [
+  { click: cwTabClick("Policies") },
+  { waitFor: hasText("/ISO 27001 Linux baseline/") },
+];
+const CW26B_FINDINGS_STUBS = {
+  ...CW_STUBS,
+  "/compliance/findings": CW26B_FINDINGS,
+};
+const CW26B_FINDINGS_OPEN = [
+  { click: cwTabClick("Findings") },
+  { waitFor: hasText("/Management of technical vulnerabilities/") },
+];
+// The policy's own row, or the control inside it that expands it.
+const cw26bPolicyToggle = (name) => `(() => {
+  const row = [...document.querySelectorAll("tbody tr")].find((r) => (r.textContent || "").includes(${JSON.stringify(name)}));
+  return row ? row.querySelector("[aria-expanded]") || row : null;
+})()`;
+// Chooses a value in the select offering exactly these options, the way a
+// person's choice reaches React.
+const cw26bChoose = (values, value) => `(() => {
+  const select = [...document.querySelectorAll("select")].find((s) => [...s.options].map((o) => o.value).join(",") === ${JSON.stringify(values)});
+  if (!select) return null;
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, ${JSON.stringify(value)});
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  return select;
+})()`;
+
+const CW26B_STATES = [
+  {
+    ...CW26B_BASE,
+    id: "cw26b-dashboard",
+    themes: BOTH,
+    stubs: CW26B_DASHBOARD_STUBS,
+    actions: [CW26B_DASHBOARD_LOADED],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-dashboard-framework",
+    themes: BOTH,
+    stubs: CW26B_DASHBOARD_STUBS,
+    actions: [
+      CW26B_DASHBOARD_LOADED,
+      { click: cwChooseFramework("cfw_nist_csf_v2") },
+      { waitFor: hasText("/Core Functions Breakdown/i") },
+    ],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-dashboard-nis2",
+    themes: LIGHT,
+    stubs: {
+      ...CW26B_DASHBOARD_STUBS,
+      "/compliance/marketplace": CW26B_MARKETPLACE_NIS2,
+      "/compliance/summary": CW26B_SUMMARY_NIS2,
+    },
+    ready: `${hasText("/Policy Compliance/i")} && [...document.querySelectorAll("option")].some((o) => o.value === "cfw_nis2")`,
+    actions: [
+      { click: cwChooseFramework("cfw_nis2") },
+      { waitFor: hasText("/Fine Risk Exposure Calculator/i") },
+    ],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-dashboard-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW26B_DASHBOARD_STUBS,
+    actions: [CW26B_DASHBOARD_LOADED],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-controls",
+    themes: BOTH,
+    stubs: CW26B_CONTROLS_STUBS,
+    actions: CW26B_CONTROLS_OPEN,
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-controls-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW26B_CONTROLS_STUBS,
+    actions: CW26B_CONTROLS_OPEN,
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-policies",
+    themes: BOTH,
+    stubs: CW26B_POLICIES_STUBS,
+    actions: [
+      ...CW26B_POLICIES_OPEN,
+      { click: cw26bPolicyToggle("ISO 27001 Linux baseline") },
+      { waitFor: hasText("/sshd\\.permit_root_login/") },
+    ],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-policies-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW26B_POLICIES_STUBS,
+    actions: CW26B_POLICIES_OPEN,
+    probes: [
+      {
+        id: "expand-by-keyboard",
+        tabTo:
+          "el.getAttribute('aria-expanded') === 'false' && /ISO 27001 Linux baseline/.test(el.textContent || '')",
+        press: "Enter",
+        expect: hasText("/sshd\\.permit_root_login/"),
+      },
+    ],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-findings",
+    themes: BOTH,
+    stubs: CW26B_FINDINGS_STUBS,
+    actions: CW26B_FINDINGS_OPEN,
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-findings-filtered",
+    themes: LIGHT,
+    stubs: CW26B_FINDINGS_STUBS,
+    actions: [
+      ...CW26B_FINDINGS_OPEN,
+      { click: cw26bChoose("all,pass,fail,manual_review", "fail") },
+      { waitFor: hasText("/filtered from 4 total/") },
+    ],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-findings-loading",
+    themes: LIGHT,
+    stubs: { ...CW_STUBS, "/compliance/findings": { __pending: true } },
+    actions: [{ click: cwTabClick("Findings") }, { waitFor: "true" }],
+  },
+  {
+    ...CW26B_BASE,
+    id: "cw26b-findings-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW26B_FINDINGS_STUBS,
+    actions: CW26B_FINDINGS_OPEN,
   },
 ];
 
@@ -2248,14 +2434,17 @@ export const STATES = [
   ...P3_STATES,
   ...NS_STATES,
   ...CW26A_STATES,
+  ...CW26B_STATES,
 ];
 
-/** States whose output Batch 26A must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 25) and ComplianceWorkspace outside its
- *  Exceptions tab. Batch 26A changes that tab only, so `cw-exceptions` is the
- *  one state under these prefixes it is expected to change; the regression
- *  gate names the other cw- states individually. */
+/** States whose output Batch 26B must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 26A) and ComplianceWorkspace outside its
+ *  Dashboard, Controls, Policies and Findings tabs. Under these prefixes
+ *  `cw-dashboard`, `cw-controls`, `cw-policies` and `cw-findings` are the states
+ *  it is expected to change; the regression gate names the other cw- states
+ *  individually. */
 export const REGRESSION_PREFIXES = [
+  "cw26a-",
   "ar-",
   "vb-",
   "cw-",

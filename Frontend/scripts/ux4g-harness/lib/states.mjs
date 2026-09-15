@@ -48,6 +48,10 @@ import {
   CW29_CREDENTIALS,
   CW30_REQUESTS,
   CW30_FINDINGS,
+  CW31_GAP,
+  CW31_GAP_LONG,
+  CW31_GAP_EMPTY,
+  CW31_CREDENTIALS,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -1423,6 +1427,117 @@ const CW30_STATES = [
     viewport: [390, 1400],
     stubs: CW30_FINDINGS_STUBS,
     actions: CW30_REMEDIATE_OPEN,
+  },
+];
+
+/* ── ComplianceWorkspace gap analysis and pagination (batch 31) ───────────── */
+/* The gap-analysis dialog, opened from the header's Gap Analysis, and the
+   Credentials Manager's pager. Every request is a read: Gap Analysis reads the
+   gap analysis, and paging reads nothing. The router stubs the gap analysis by
+   path, so any pair returns the stubbed result. No state recalculates, types
+   or writes. */
+const CW31_BASE = {
+  route: "/compliance",
+  persona: CW27_ORG_ADMIN,
+  tracked: [...PAGE_TRACKED, "h2", "h3", "dl", "table", "nav", "[role=dialog]"],
+  ready: hasText("/Policy Compliance/i"),
+};
+const cw31GapStubs = (gap) => ({
+  ...CW_STUBS,
+  "/compliance/gap-analysis": gap,
+});
+const CW31_GAP_OPEN = [
+  { click: byText("button", "/Gap Analysis/") },
+  { waitFor: cw27DialogOpen("/Recalculate Gap/") },
+];
+const CW31_CREDENTIAL_STUBS = {
+  ...CW_STUBS,
+  "/compliance/credentials": CW31_CREDENTIALS,
+};
+const CW31_CREDENTIALS_OPEN = [
+  { click: cwTabClick("Credentials Manager") },
+  { waitFor: hasText("/Fleet 25/") },
+];
+// Tab from inside the open dialog to its first framework choice, and to the
+// breakdown's scroll region.
+const CW31_SOURCE_FOCUS = {
+  id: "gap-source-focus",
+  tabTo: "!!el.closest('[role=dialog]') && el.tagName === 'SELECT'",
+};
+const CW31_RESULTS_FOCUS = {
+  id: "gap-results-focus",
+  tabTo:
+    "!!el.closest('[role=dialog]') && el.getAttribute('role') === 'region'",
+};
+
+const CW31_STATES = [
+  {
+    ...CW31_BASE,
+    id: "cw31-gap-dialog",
+    themes: BOTH,
+    stubs: cw31GapStubs(CW31_GAP),
+    actions: CW31_GAP_OPEN,
+    probes: [CW31_SOURCE_FOCUS],
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-gap-long",
+    themes: LIGHT,
+    stubs: cw31GapStubs(CW31_GAP_LONG),
+    actions: CW31_GAP_OPEN,
+    probes: [CW31_RESULTS_FOCUS],
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-gap-empty",
+    themes: LIGHT,
+    stubs: cw31GapStubs(CW31_GAP_EMPTY),
+    actions: CW31_GAP_OPEN,
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-gap-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: cw31GapStubs(CW31_GAP),
+    actions: CW31_GAP_OPEN,
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-credentials-pages",
+    themes: BOTH,
+    stubs: CW31_CREDENTIAL_STUBS,
+    actions: CW31_CREDENTIALS_OPEN,
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-credentials-page2",
+    themes: LIGHT,
+    stubs: CW31_CREDENTIAL_STUBS,
+    actions: [
+      ...CW31_CREDENTIALS_OPEN,
+      { click: byText("button", "/^Next$/") },
+      { waitFor: hasText("/Page 2 of 2/") },
+    ],
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-credentials-size",
+    themes: LIGHT,
+    stubs: CW31_CREDENTIAL_STUBS,
+    actions: [
+      ...CW31_CREDENTIALS_OPEN,
+      { click: cw26bChoose("10,25,50,100", "10") },
+      { waitFor: hasText("/Page 1 of 3/") },
+    ],
+  },
+  {
+    ...CW31_BASE,
+    id: "cw31-credentials-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW31_CREDENTIAL_STUBS,
+    actions: CW31_CREDENTIALS_OPEN,
   },
 ];
 
@@ -2959,19 +3074,21 @@ export const STATES = [
   ...CW28_STATES,
   ...CW29_STATES,
   ...CW30_STATES,
+  ...CW31_STATES,
 ];
 
-/** States whose output Batch 30 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 29) and ComplianceWorkspace outside the
- *  Approvals Queue and the remediation, rollback and log dialogs. Under these
- *  prefixes `cw-approvals` is the one state it is expected to change; the
- *  regression gate names the other cw- states individually. */
+/** States whose output Batch 31 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 30) and ComplianceWorkspace outside the
+ *  gap-analysis dialog and the Credentials Manager's pager. Under these
+ *  prefixes `cw-credentials` and the `cw29-credentials-` states are the ones
+ *  it is expected to change; the regression gate names the rest individually. */
 export const REGRESSION_PREFIXES = [
   "cw26a-",
   "cw26b-",
   "cw27-",
   "cw28-",
   "cw29-",
+  "cw30-",
   "ar-",
   "vb-",
   "cw-",

@@ -1064,6 +1064,111 @@ export const CW30_FINDINGS = {
   ),
 };
 
+/* ── ComplianceWorkspace gap analysis and pagination (batch 31) ───────────── */
+// A gap analysis as GET /compliance/gap-analysis returns it: the pair, the
+// summary and each target control with its crosswalk and estimated status —
+// every status, a control mapped to nothing and a title long enough to wrap.
+// The codes, titles and figures are synthetic; nothing here came from a scan.
+const cw31Control = (number, title, crosswalk, status) => ({
+  control_id: `cct_cw31_${number.replace(/\W/g, "_")}`,
+  control_number: number,
+  theme: "GOVERNANCE",
+  title,
+  crosswalk,
+  estimated_status: status,
+});
+export const CW31_GAP = {
+  source_framework: {
+    id: "cfw_iso27001_2022",
+    name: "ISO/IEC 27001:2022",
+    code: "ISO27001",
+  },
+  target_framework: {
+    id: "cfw_nis2",
+    name: "EU NIS 2 Directive",
+    code: "NIS2",
+  },
+  summary: {
+    total_target_controls: 6,
+    mapped_controls: 5,
+    estimated_pass: 2,
+    estimated_fail: 2,
+    pending_manual: 2,
+    estimated_score_pct: 33.33,
+  },
+  controls: [
+    cw31Control(
+      "21.2.a",
+      "Policies on risk analysis and information system security",
+      ["ISO27001:A.5.1", "ISO27001:A.8.8"],
+      "fail",
+    ),
+    cw31Control(
+      "21.2.b",
+      "Incident handling",
+      ["ISO27001:A.5.24", "ISO27001:A.5.26"],
+      "pass",
+    ),
+    cw31Control(
+      "21.2.c",
+      "Business continuity, such as backup management and disaster recovery, and crisis management",
+      ["ISO27001:A.5.29", "ISO27001:A.8.13"],
+      "pending_manual",
+    ),
+    cw31Control("21.2.d", "Supply chain security", ["ISO27001:A.5.19"], "fail"),
+    cw31Control(
+      "21.2.h",
+      "Policies and procedures regarding the use of cryptography",
+      ["ISO27001:A.8.24"],
+      "pass",
+    ),
+    cw31Control("23.1", "Reporting obligations", [], "pending_manual"),
+  ],
+};
+// Forty target controls, so the breakdown scrolls.
+export const CW31_GAP_LONG = {
+  ...CW31_GAP,
+  summary: {
+    total_target_controls: 40,
+    mapped_controls: 40,
+    estimated_pass: 20,
+    estimated_fail: 10,
+    pending_manual: 10,
+    estimated_score_pct: 50,
+  },
+  controls: Array.from({ length: 40 }, (_, i) =>
+    cw31Control(
+      `X.${i + 1}`,
+      `Synthetic target control ${i + 1}`,
+      [`ISO27001:A.5.${i + 1}`],
+      i % 4 === 0 ? "fail" : i % 4 === 1 ? "pending_manual" : "pass",
+    ),
+  ),
+};
+// A pair with no target controls.
+export const CW31_GAP_EMPTY = {
+  ...CW31_GAP,
+  summary: {
+    total_target_controls: 0,
+    mapped_controls: 0,
+    estimated_pass: 0,
+    estimated_fail: 0,
+    pending_manual: 0,
+    estimated_score_pct: 0,
+  },
+  controls: [],
+};
+// Thirty saved credentials — references only, as Batch 29's — so the list has
+// a second page at the default page size.
+export const CW31_CREDENTIALS = Array.from({ length: 30 }, (_, i) => ({
+  id: `cred-cw31-${i + 1}`,
+  name: `Fleet ${String(i + 1).padStart(2, "0")}`,
+  username: "auditor",
+  auth_method: i % 3 === 0 ? "key" : "password",
+  port: 22,
+  created_at: "2026-08-01T10:00:00Z",
+}));
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

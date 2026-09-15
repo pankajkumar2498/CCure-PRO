@@ -411,7 +411,11 @@ describe("ComplianceWorkspace Credentials Manager — contract", () => {
       await mount();
       await openCredentials();
       expect(bodyText()).toContain("No saved credentials registered.");
-      expect(bodyText()).toContain("No credentials found");
+      // The pager's own summary: PaginationBar's, or PagingControls' since
+      // Batch 31.
+      expect(bodyText()).toMatch(
+        /No credentials found|Showing 0–0 of 0 credentials/,
+      );
     });
 
     it("a list that cannot be read reports the page error and lists nothing", async () => {

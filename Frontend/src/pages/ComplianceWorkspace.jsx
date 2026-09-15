@@ -35,87 +35,7 @@ import "../styles/compliance-writes.css";
 import "../styles/compliance-attestation.css";
 import "../styles/compliance-credentials.css";
 import "../styles/compliance-execution.css";
-
-function PaginationBar({
-  currentPage,
-  pageSize,
-  totalItems,
-  totalPages,
-  onPageChange,
-  onPageSizeChange,
-  loading,
-  itemLabel = "items",
-  sizerOptions = [10, 25, 50, 100],
-  customSummary,
-}) {
-  const displayPage = Math.min(currentPage, totalPages);
-  const startRange = totalItems === 0 ? 0 : (displayPage - 1) * pageSize + 1;
-  const endRange = Math.min(displayPage * pageSize, totalItems);
-
-  return (
-    <div className="cw-pagination">
-      <span className="cw-pagination-summary">
-        {customSummary ||
-          (totalItems === 0
-            ? `No ${itemLabel} found`
-            : `Showing ${startRange}–${endRange} of ${totalItems} ${itemLabel}`)}
-      </span>
-
-      <div className="cw-pagination-controls">
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === 1}
-          onClick={() => onPageChange(1)}
-        >
-          «
-        </button>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === 1}
-          onClick={() => onPageChange((p) => p - 1)}
-        >
-          Prev
-        </button>
-        <span className="cw-pagination-page-indicator">
-          Page {displayPage} of {totalPages}
-        </span>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === totalPages}
-          onClick={() => onPageChange((p) => p + 1)}
-        >
-          Next
-        </button>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === totalPages}
-          onClick={() => onPageChange(totalPages)}
-        >
-          »
-        </button>
-      </div>
-
-      <div className="cw-pagination-sizer">
-        <span>Show</span>
-        <select
-          className="cw-pagination-select"
-          value={pageSize}
-          onChange={(e) => {
-            onPageSizeChange(Number(e.target.value));
-            onPageChange(1);
-          }}
-        >
-          {sizerOptions.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <span>per page</span>
-      </div>
-    </div>
-  );
-}
+import "../styles/compliance-gap.css";
 
 function useClientPagination(items, initialPageSize = 25) {
   const [page, setPage] = useState(1);
@@ -4040,17 +3960,16 @@ export default function ComplianceWorkspace() {
             <div className="cwc-layout">
               <div ref={credentialsPagination.cardRef} className="cwc-list">
                 <CcureCard title="Saved Credentials" bodyFlush>
-                  <PaginationBar
-                    currentPage={credentialsPagination.page}
-                    pageSize={credentialsPagination.pageSize}
-                    totalItems={credentialsList.length}
-                    totalPages={credentialsPagination.totalPages}
-                    onPageChange={credentialsPagination.setPage}
-                    onPageSizeChange={credentialsPagination.setPageSize}
-                    loading={loading}
-                    itemLabel="credentials"
-                    sizerOptions={[10, 25, 50, 100]}
-                  />
+                  <div className="cwc-paging">
+                    <PagingControls
+                      pagination={credentialsPagination}
+                      total={credentialsList.length}
+                      loading={loading}
+                      label="Credentials pagination"
+                      itemNoun="credentials"
+                      sizes={[10, 25, 50, 100]}
+                    />
+                  </div>
                   <CcureTableStatus
                     loading={loading}
                     count={credentialsList.length}
@@ -4934,243 +4853,167 @@ export default function ComplianceWorkspace() {
         )}
 
         {modalType === "gap_analysis" && gapAnalysis && (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-          >
-            {/* Interactive Any-to-Any Framework Selector Bar */}
-            <div
-              style={{
-                background: "#f1f5f9",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  flexWrap: "wrap",
-                }}
+          <div className="cwg-gap">
+            {/* Choosing a framework sends nothing: the pair is read only when
+                Recalculate Gap is pressed, and the result below stays on
+                screen until the new one arrives. */}
+            <div className="cwg-pickers">
+              <CcureSelect
+                label="Source Baseline"
+                fieldClassName="cwg-pickers__field"
+                value={gapSourceFramework}
+                onChange={(e) => setGapSourceFramework(e.target.value)}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#334155",
-                    }}
-                  >
-                    Source Baseline:
-                  </label>
-                  <select
-                    value={gapSourceFramework}
-                    onChange={(e) => setGapSourceFramework(e.target.value)}
-                    style={{
-                      padding: "5px 8px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      background: "#ffffff",
-                    }}
-                  >
-                    {activeFrameworks.map((fw) => (
-                      <option key={`modal_src_${fw.id}`} value={fw.id}>
-                        {fw.longName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {activeFrameworks.map((fw) => (
+                  <option key={`modal_src_${fw.id}`} value={fw.id}>
+                    {fw.longName}
+                  </option>
+                ))}
+              </CcureSelect>
 
-                <span style={{ fontWeight: 800, color: "#64748b" }}>➔</span>
+              <span className="cwg-pickers__arrow" aria-hidden="true">
+                ➔
+              </span>
 
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#334155",
-                    }}
-                  >
-                    Target Mandate:
-                  </label>
-                  <select
-                    value={gapTargetFramework}
-                    onChange={(e) => setGapTargetFramework(e.target.value)}
-                    style={{
-                      padding: "5px 8px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      background: "#ffffff",
-                    }}
-                  >
-                    {activeFrameworks.map((fw) => (
-                      <option key={`modal_tgt_${fw.id}`} value={fw.id}>
-                        {fw.longName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <CcureSelect
+                label="Target Mandate"
+                fieldClassName="cwg-pickers__field"
+                value={gapTargetFramework}
+                onChange={(e) => setGapTargetFramework(e.target.value)}
+              >
+                {activeFrameworks.map((fw) => (
+                  <option key={`modal_tgt_${fw.id}`} value={fw.id}>
+                    {fw.longName}
+                  </option>
+                ))}
+              </CcureSelect>
 
-              <button
-                className="db-btn db-btn--primary"
+              <CcureButton
+                variant="primary"
+                className="cwg-pickers__action"
                 onClick={() =>
                   fetchGapAnalysis(gapSourceFramework, gapTargetFramework)
                 }
-                disabled={loadingGapAnalysis}
-                style={{
-                  padding: "6px 14px",
-                  fontSize: "0.82rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
+                loading={loadingGapAnalysis}
               >
-                <span>🔄</span>{" "}
+                <span aria-hidden="true">🔄</span>{" "}
                 {loadingGapAnalysis ? "Calculating..." : "Recalculate Gap"}
-              </button>
+              </CcureButton>
             </div>
-            <div
-              style={{
-                background: "#f8fafc",
-                padding: "16px",
-                borderRadius: "8px",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
-                    {gapAnalysis.source_framework?.code} ➔{" "}
+
+            <div className="cwg-summary">
+              <div className="cwg-summary__head">
+                <div className="cwg-summary__intro">
+                  {/* The arrow is drawn, and "to" is what is read. */}
+                  <h3 className="cwg-summary__title">
+                    {gapAnalysis.source_framework?.code}{" "}
+                    <span aria-hidden="true">➔</span>
+                    <span className="cc-sr-only">to</span>{" "}
                     {gapAnalysis.target_framework?.code}
                   </h3>
-                  <p
-                    style={{
-                      margin: "4px 0 0",
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <p className="cwg-summary__context">
                     Estimated baseline compliance posture for{" "}
                     {gapAnalysis.target_framework?.name} based on existing{" "}
                     {gapAnalysis.source_framework?.name} scan findings.
                   </p>
                 </div>
-                <div
-                  style={{
-                    fontSize: "2rem",
-                    fontWeight: 800,
-                    color: "var(--accent)",
-                  }}
-                >
-                  {gapAnalysis.summary?.estimated_score_pct}%
-                </div>
+                <p className="cwg-score">
+                  <span className="cwg-score__label">Estimated score</span>
+                  <span className="cwg-score__value">
+                    {gapAnalysis.summary?.estimated_score_pct}%
+                  </span>
+                </p>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "16px",
-                  marginTop: "12px",
-                  fontSize: "0.8rem",
-                }}
-              >
-                <div>
-                  Target Controls:{" "}
-                  <strong>{gapAnalysis.summary?.total_target_controls}</strong>
+              {/* Pass and fail are named by their terms; the colour repeats
+                  them. */}
+              <dl className="cwg-stats">
+                <div className="cwg-stat">
+                  <dt>Target Controls</dt>
+                  <dd>{gapAnalysis.summary?.total_target_controls}</dd>
                 </div>
-                <div>
-                  Crosswalk Mapped:{" "}
-                  <strong>{gapAnalysis.summary?.mapped_controls}</strong>
+                <div className="cwg-stat">
+                  <dt>Crosswalk Mapped</dt>
+                  <dd>{gapAnalysis.summary?.mapped_controls}</dd>
                 </div>
-                <div>
-                  Estimated Pass:{" "}
-                  <strong style={{ color: "var(--ok)" }}>
+                <div className="cwg-stat">
+                  <dt>Estimated Pass</dt>
+                  <dd className="cwg-stat__pass">
                     {gapAnalysis.summary?.estimated_pass}
-                  </strong>
+                  </dd>
                 </div>
-                <div>
-                  Estimated Fail:{" "}
-                  <strong style={{ color: "var(--danger)" }}>
+                <div className="cwg-stat">
+                  <dt>Estimated Fail</dt>
+                  <dd className="cwg-stat__fail">
                     {gapAnalysis.summary?.estimated_fail}
-                  </strong>
+                  </dd>
                 </div>
-              </div>
+              </dl>
             </div>
 
-            <div style={{ maxHeight: "350px", overflowY: "auto" }}>
-              <table className="db-table" style={{ fontSize: "0.78rem" }}>
-                <thead>
-                  <tr>
-                    <th>
-                      {gapAnalysis.target_framework?.code || "Target"} Control
-                    </th>
-                    <th>Title</th>
-                    <th>
-                      Mapped {gapAnalysis.source_framework?.code || "Source"}{" "}
-                      Controls
-                    </th>
-                    <th>Estimated Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(gapAnalysis.controls || []).map((c) => (
-                    <tr key={c.control_id}>
-                      <td className="mono" style={{ fontWeight: 600 }}>
-                        {c.control_number}
-                      </td>
-                      <td>{c.title}</td>
-                      <td>
+            {/* Scrolls when the target framework is long, so a keyboard user
+                can reach and scroll it. */}
+            <div
+              className="cwg-results"
+              role="region"
+              aria-label="Estimated status by control"
+              tabIndex={0}
+            >
+              <CcureTable
+                caption={`${gapAnalysis.target_framework?.code || "Target"} controls estimated from ${gapAnalysis.source_framework?.code || "source"} findings`}
+                columns={[
+                  {
+                    key: "control_number",
+                    header: `${gapAnalysis.target_framework?.code || "Target"} Control`,
+                    isRowHeader: true,
+                    mono: true,
+                    nowrap: true,
+                    cell: (c) => c.control_number,
+                  },
+                  {
+                    key: "title",
+                    header: "Title",
+                    cell: (c) => c.title,
+                  },
+                  {
+                    key: "crosswalk",
+                    header: `Mapped ${gapAnalysis.source_framework?.code || "Source"} Controls`,
+                    cell: (c) => (
+                      <span className="cwg-refs">
                         {(c.crosswalk || []).map((iso) => (
-                          <span
-                            key={iso}
-                            className="crosswalk-tag"
-                            style={{ marginRight: 4 }}
-                          >
+                          <CcureBadge key={iso} mono>
                             {iso}
-                          </span>
+                          </CcureBadge>
                         ))}
-                      </td>
-                      <td>
-                        <span
-                          className={`db-sev-badge ${
-                            c.estimated_status === "pass"
-                              ? "db-sev-badge--low"
-                              : c.estimated_status === "fail"
-                                ? "db-sev-badge--critical"
-                                : "db-sev-badge--info"
-                          }`}
-                        >
-                          {c.estimated_status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "estimated_status",
+                    header: "Estimated Status",
+                    nowrap: true,
+                    // The status is the badge's word; the colour repeats it.
+                    cell: (c) => (
+                      <CcureBadge
+                        variant={
+                          c.estimated_status === "pass"
+                            ? "success"
+                            : c.estimated_status === "fail"
+                              ? "danger"
+                              : "info"
+                        }
+                      >
+                        {c.estimated_status}
+                      </CcureBadge>
+                    ),
+                  },
+                ]}
+                rows={gapAnalysis.controls || []}
+                rowKey={(c) => c.control_id}
+                emptyMessage="No target controls to compare."
+              />
             </div>
           </div>
         )}
-
         {(modalType === "remediate" || modalType === "rollback") &&
           selectedFinding && (
             <div className="cwe-guide">

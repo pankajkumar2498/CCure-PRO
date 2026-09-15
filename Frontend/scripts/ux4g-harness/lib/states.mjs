@@ -45,6 +45,7 @@ import {
   CW27_MARKETPLACE,
   CW28_CONTROLS,
   CW28_EVIDENCE,
+  CW29_CREDENTIALS,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -1125,6 +1126,107 @@ const CW28_STATES = [
     viewport: [390, 1400],
     stubs: CW28_CONTROLS_STUBS,
     actions: CW28_QUESTION_OPEN,
+  },
+];
+
+/* ── ComplianceWorkspace Credentials Manager (batch 29) ───────────────────── */
+/* The Credentials Manager tab: the saved list for an organisation admin and for
+   an analyst, empty, with the key field chosen, on a phone, and with the
+   deletion question open. No state types into a field, saves a credential or
+   deletes one: Save is never pressed and no password or key is entered. The
+   two states that show the deletion question press Delete only where Delete
+   asks in a dialog — the migrated build, whose Delete is named for its
+   credential. On the legacy build Delete opens the browser's confirm, which the
+   runner does not answer and a confirmation would turn into a DELETE, so there
+   the same step clicks the list's title instead. The router refuses every
+   write regardless, and the batch report counts them. */
+const CW29_BASE = {
+  route: "/compliance",
+  persona: CW27_ORG_ADMIN,
+  tracked: [...PAGE_TRACKED, "h2", "form", "label", "[role=dialog]"],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW29_STUBS = {
+  ...CW_STUBS,
+  "/compliance/credentials": CW29_CREDENTIALS,
+};
+const CW29_OPEN = [
+  { click: cwTabClick("Credentials Manager") },
+  { waitFor: hasText("/Bastion keys/") },
+];
+// Delete on the migrated build opens a dialog and sends nothing; on the legacy
+// build it is the browser's confirm, so the click goes to the list's title.
+const CW29_DELETE_OR_TITLE = `(document.querySelector('button[aria-label="Delete Linux fleet"]') || [...document.querySelectorAll("h2, div")].find((e) => e.children.length === 0 && (e.textContent || "").trim() === "Saved Credentials"))`;
+const CW29_DELETE_OPEN = [
+  ...CW29_OPEN,
+  { click: CW29_DELETE_OR_TITLE },
+  {
+    waitFor: `!document.querySelector('button[aria-label^="Delete "]') || !!document.querySelector("[role=dialog]")`,
+  },
+];
+// Tab to the register form's password field, and to its key field.
+const CW29_PASSWORD_FOCUS = {
+  id: "password-field-focus",
+  tabTo: "el.tagName === 'INPUT' && el.type === 'password'",
+};
+const CW29_KEY_FOCUS = {
+  id: "key-field-focus",
+  tabTo: "el.tagName === 'TEXTAREA'",
+};
+
+const CW29_STATES = [
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-admin",
+    themes: BOTH,
+    stubs: CW29_STUBS,
+    actions: CW29_OPEN,
+    probes: [CW29_PASSWORD_FOCUS],
+  },
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-analyst",
+    themes: LIGHT,
+    persona: ANALYST,
+    stubs: CW29_STUBS,
+    actions: CW29_OPEN,
+  },
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-empty",
+    themes: LIGHT,
+    stubs: { ...CW_STUBS, "/compliance/credentials": [] },
+    actions: [
+      { click: cwTabClick("Credentials Manager") },
+      { waitFor: hasText("/Save Target Credential/") },
+    ],
+  },
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-key",
+    themes: LIGHT,
+    stubs: CW29_STUBS,
+    actions: [
+      ...CW29_OPEN,
+      { click: cw26bChoose("password,key", "key") },
+      { waitFor: `!!document.querySelector("form textarea")` },
+    ],
+    probes: [CW29_KEY_FOCUS],
+  },
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-delete",
+    themes: BOTH,
+    stubs: CW29_STUBS,
+    actions: CW29_DELETE_OPEN,
+  },
+  {
+    ...CW29_BASE,
+    id: "cw29-credentials-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW29_STUBS,
+    actions: CW29_OPEN,
   },
 ];
 
@@ -2659,16 +2761,19 @@ export const STATES = [
   ...CW26B_STATES,
   ...CW27_STATES,
   ...CW28_STATES,
+  ...CW29_STATES,
 ];
 
-/** States whose output Batch 28 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 27) and every ComplianceWorkspace state
- *  except the Control Manual Attestation dialog's own — no state under these
- *  prefixes opens that dialog. */
+/** States whose output Batch 29 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 28) and ComplianceWorkspace outside the
+ *  Credentials Manager tab. Under these prefixes `cw-credentials` is the one
+ *  state it is expected to change; the regression gate names the other cw-
+ *  states individually. */
 export const REGRESSION_PREFIXES = [
   "cw26a-",
   "cw26b-",
   "cw27-",
+  "cw28-",
   "ar-",
   "vb-",
   "cw-",

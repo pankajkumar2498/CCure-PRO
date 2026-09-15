@@ -13,10 +13,12 @@ import {
   CcureBadge,
   CcureButton,
   CcureCard,
+  CcureConfirmDialog,
   CcureField,
   CcureInput,
   CcureLoader,
   CcurePagination,
+  CcurePasswordField,
   CcureProgress,
   CcureSelect,
   CcureSeverityBadge,
@@ -30,6 +32,7 @@ import "../styles/compliance-exceptions.css";
 import "../styles/compliance-views.css";
 import "../styles/compliance-writes.css";
 import "../styles/compliance-attestation.css";
+import "../styles/compliance-credentials.css";
 
 function PaginationBar({
   currentPage,
@@ -767,6 +770,11 @@ export default function ComplianceWorkspace() {
   const [newCredPassword, setNewCredPassword] = useState("");
   const [newCredKeyContent, setNewCredKeyContent] = useState("");
   const [newCredPort, setNewCredPort] = useState(22);
+  // A credential save or deletion in flight, and the credential whose deletion
+  // is being confirmed.
+  const [savingCredential, setSavingCredential] = useState(false);
+  const [credentialToDelete, setCredentialToDelete] = useState(null);
+  const [deletingCredential, setDeletingCredential] = useState(false);
 
   const [remediationCredSource, setRemediationCredSource] = useState("jit"); // jit | stored
   const [selectedCredId, setSelectedCredId] = useState("");
@@ -4023,124 +4031,97 @@ export default function ComplianceWorkspace() {
           )}
 
           {activeTab === "credentials" && (
-            <div
-              style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}
-            >
-              <div
-                ref={credentialsPagination.cardRef}
-                className="db-card"
-                style={{ flex: 1, padding: 0 }}
-              >
-                <div
-                  style={{
-                    padding: "16px 24px",
-                    borderBottom: "1px solid var(--border)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Saved Credentials
-                </div>
-                <PaginationBar
-                  currentPage={credentialsPagination.page}
-                  pageSize={credentialsPagination.pageSize}
-                  totalItems={credentialsList.length}
-                  totalPages={credentialsPagination.totalPages}
-                  onPageChange={credentialsPagination.setPage}
-                  onPageSizeChange={credentialsPagination.setPageSize}
-                  loading={loading}
-                  itemLabel="credentials"
-                  sizerOptions={[10, 25, 50, 100]}
-                />
-                <div className="db-table-wrap">
-                  <table className="db-table">
-                    <thead>
-                      <tr>
-                        <th>Nickname</th>
-                        <th>Username</th>
-                        <th>Port</th>
-                        <th>Auth Method</th>
-                        {isComplianceAdmin && <th>Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {credentialsList.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={isComplianceAdmin ? 5 : 4}
-                            style={{ textAlign: "center", padding: "24px" }}
+            <div className="cwc-layout">
+              <div ref={credentialsPagination.cardRef} className="cwc-list">
+                <CcureCard title="Saved Credentials" bodyFlush>
+                  <PaginationBar
+                    currentPage={credentialsPagination.page}
+                    pageSize={credentialsPagination.pageSize}
+                    totalItems={credentialsList.length}
+                    totalPages={credentialsPagination.totalPages}
+                    onPageChange={credentialsPagination.setPage}
+                    onPageSizeChange={credentialsPagination.setPageSize}
+                    loading={loading}
+                    itemLabel="credentials"
+                    sizerOptions={[10, 25, 50, 100]}
+                  />
+                  <CcureTableStatus
+                    loading={loading}
+                    count={credentialsList.length}
+                    noun="credentials"
+                  />
+                  <CcureTable
+                    caption="Saved credentials"
+                    columns={[
+                      {
+                        key: "name",
+                        header: "Nickname",
+                        isRowHeader: true,
+                        className: "cwc-name",
+                        cell: (c) => c.name,
+                      },
+                      {
+                        key: "username",
+                        header: "Username",
+                        cell: (c) => c.username,
+                      },
+                      {
+                        key: "port",
+                        header: "Port",
+                        mono: true,
+                        cell: (c) => c.port,
+                      },
+                      {
+                        key: "auth_method",
+                        header: "Auth Method",
+                        nowrap: true,
+                        cell: (c) => (
+                          <CcureBadge
+                            variant={
+                              c.auth_method === "key" ? "primary" : "neutral"
+                            }
                           >
-                            No saved credentials registered.
-                          </td>
-                        </tr>
-                      )}
-                      {credentialsPagination.paginatedItems.map((c) => (
-                        <tr key={c.id}>
-                          <td style={{ fontWeight: 600 }}>{c.name}</td>
-                          <td>{c.username}</td>
-                          <td className="mono">{c.port}</td>
-                          <td>
-                            <span
-                              className={`db-tag ${c.auth_method === "key" ? "db-tag--primary" : ""}`}
-                            >
-                              {c.auth_method === "key" ? "SSH Key" : "Password"}
-                            </span>
-                          </td>
-                          {isComplianceAdmin && (
-                            <td>
-                              <button
-                                className="db-btn db-btn--ghost"
-                                style={{
-                                  padding: "4px 8px",
-                                  fontSize: "0.68rem",
-                                  color: "var(--critical)",
-                                }}
-                                onClick={async () => {
-                                  if (
-                                    window.confirm(
-                                      `Are you sure you want to delete ${c.name}?`,
-                                    )
-                                  ) {
-                                    try {
-                                      await axiosInstance.delete(
-                                        `/compliance/credentials/${c.id}`,
-                                      );
-                                      pushToast(
-                                        "Credential deleted successfully.",
-                                        "success",
-                                      );
-                                      fetchTabData();
-                                    } catch (e) {
-                                      pushToast(
-                                        "Delete failed: " +
-                                          (e.response?.data?.detail ||
-                                            e.response?.data?.message ||
-                                            e.message),
-                                        "error",
-                                      );
-                                    }
-                                  }
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            {c.auth_method === "key" ? "SSH Key" : "Password"}
+                          </CcureBadge>
+                        ),
+                      },
+                      ...(isComplianceAdmin
+                        ? [
+                            {
+                              key: "actions",
+                              header: "Actions",
+                              cell: (c) => (
+                                <CcureButton
+                                  variant="ghost"
+                                  size="sm"
+                                  className="cwc-delete"
+                                  aria-label={`Delete ${c.name}`}
+                                  aria-haspopup="dialog"
+                                  onClick={() => setCredentialToDelete(c)}
+                                >
+                                  Delete
+                                </CcureButton>
+                              ),
+                            },
+                          ]
+                        : []),
+                    ]}
+                    rows={credentialsPagination.paginatedItems}
+                    rowKey={(c) => c.id}
+                    loading={loading}
+                    emptyMessage="No saved credentials registered."
+                  />
+                </CcureCard>
               </div>
 
               {isComplianceAdmin && (
-                <div className="db-card" style={{ width: "350px" }}>
-                  <div style={{ fontWeight: 600, marginBottom: "16px" }}>
-                    Register Credential
-                  </div>
+                <CcureCard title="Register Credential" className="cwc-register">
                   <form
-                    className="compliance-form"
+                    className="cwc-form"
                     onSubmit={async (e) => {
                       e.preventDefault();
+                      if (savingCredential) return;
+                      setSavingCredential(true);
                       try {
                         await axiosInstance.post("/compliance/credentials", {
                           name: newCredName,
@@ -4171,82 +4152,131 @@ export default function ComplianceWorkspace() {
                               err.message),
                           "error",
                         );
+                      } finally {
+                        setSavingCredential(false);
                       }
                     }}
                   >
-                    <label>Name / Nickname</label>
-                    <input
-                      type="text"
+                    <CcureInput
+                      label="Name / Nickname"
                       value={newCredName}
                       onChange={(e) => setNewCredName(e.target.value)}
                       placeholder="e.g. Production Webservers"
                       required
                     />
 
-                    <label>Username</label>
-                    <input
-                      type="text"
+                    <CcureInput
+                      label="Username"
                       value={newCredUsername}
                       onChange={(e) => setNewCredUsername(e.target.value)}
                       placeholder="e.g. root"
                       required
                     />
 
-                    <label>Port</label>
-                    <input
+                    <CcureInput
                       type="number"
+                      label="Port"
                       value={newCredPort}
                       onChange={(e) => setNewCredPort(e.target.value)}
                       required
                     />
 
-                    <label>Authentication Method</label>
-                    <select
+                    <CcureSelect
+                      label="Authentication Method"
                       value={newCredAuthMethod}
                       onChange={(e) => setNewCredAuthMethod(e.target.value)}
                     >
                       <option value="password">Password</option>
                       <option value="key">Private SSH Key</option>
-                    </select>
+                    </CcureSelect>
 
+                    {/* The secret is typed here and sent once, in the request
+                        body. `new-password` stops the browser offering the
+                        signed-in user's own password into a field that stores
+                        someone else's, and keeps a revealed field out of form
+                        history. */}
                     {newCredAuthMethod === "password" ? (
-                      <>
-                        <label>Password</label>
-                        <input
-                          type="password"
-                          value={newCredPassword}
-                          onChange={(e) => setNewCredPassword(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                        />
-                      </>
+                      <CcurePasswordField
+                        label="Password"
+                        value={newCredPassword}
+                        onChange={(e) => setNewCredPassword(e.target.value)}
+                        placeholder="••••••••"
+                        hint="Stored encrypted. The saved list never shows it."
+                        autoComplete="new-password"
+                        required
+                      />
                     ) : (
-                      <>
-                        <label>Private Key Content</label>
+                      <CcureField
+                        id="cwc-key"
+                        label="Private Key Content"
+                        hint="Stored encrypted. The saved list never shows it."
+                        required
+                      >
                         <textarea
+                          id="cwc-key"
+                          className="cc-field__control cwc-key"
                           value={newCredKeyContent}
                           onChange={(e) => setNewCredKeyContent(e.target.value)}
                           placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.72rem",
-                            height: "100px",
-                          }}
+                          aria-describedby="cwc-key-hint"
                           required
                         />
-                      </>
+                      </CcureField>
                     )}
 
-                    <button
+                    <CcureButton
                       type="submit"
-                      className="db-btn db-btn--primary"
-                      style={{ marginTop: "1rem", width: "100%" }}
+                      variant="primary"
+                      block
+                      loading={savingCredential}
+                      className="cwc-submit"
                     >
                       Save Target Credential
-                    </button>
+                    </CcureButton>
                   </form>
-                </div>
+                </CcureCard>
               )}
+
+              {/* Deleting asks in a design-system dialog rather than the
+                  browser's confirm, which focuses OK: here Cancel takes focus,
+                  Escape cancels, and the dialog is busy and cannot be dismissed
+                  or confirmed again while the DELETE is out. */}
+              <CcureConfirmDialog
+                open={credentialToDelete !== null}
+                title="Delete credential"
+                subtitle="The stored password or key is removed with it. This cannot be undone."
+                warning={
+                  credentialToDelete
+                    ? `Are you sure you want to delete ${credentialToDelete.name}?`
+                    : null
+                }
+                confirmLabel="Delete credential"
+                busy={deletingCredential}
+                onCancel={() => setCredentialToDelete(null)}
+                onConfirm={async () => {
+                  if (deletingCredential || !credentialToDelete) return;
+                  const c = credentialToDelete;
+                  setDeletingCredential(true);
+                  try {
+                    await axiosInstance.delete(
+                      `/compliance/credentials/${c.id}`,
+                    );
+                    pushToast("Credential deleted successfully.", "success");
+                    fetchTabData();
+                  } catch (e) {
+                    pushToast(
+                      "Delete failed: " +
+                        (e.response?.data?.detail ||
+                          e.response?.data?.message ||
+                          e.message),
+                      "error",
+                    );
+                  } finally {
+                    setDeletingCredential(false);
+                    setCredentialToDelete(null);
+                  }
+                }}
+              />
             </div>
           )}
 

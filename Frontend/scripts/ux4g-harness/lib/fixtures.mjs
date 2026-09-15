@@ -962,6 +962,38 @@ export const CW28_EVIDENCE = {
   ],
 };
 
+/* ── ComplianceWorkspace Credentials Manager (batch 29) ───────────────────── */
+// Saved credentials as GET /compliance/credentials lists them: references
+// only — a nickname, an account, a port and a method. The API returns no
+// password or key, and neither does this. The third nickname is long enough to
+// wrap in the table and on a phone.
+export const CW29_CREDENTIALS = [
+  {
+    id: "cred-cw29-1",
+    name: "Linux fleet",
+    username: "auditor",
+    auth_method: "password",
+    port: 22,
+    created_at: "2026-08-01T10:00:00Z",
+  },
+  {
+    id: "cred-cw29-2",
+    name: "Bastion keys",
+    username: "svc-audit",
+    auth_method: "key",
+    port: 2222,
+    created_at: "2026-08-02T10:00:00Z",
+  },
+  {
+    id: "cred-cw29-3",
+    name: "Operational technology switches in the north substation",
+    username: "netops",
+    auth_method: "password",
+    port: 8022,
+    created_at: "2026-08-03T10:00:00Z",
+  },
+];
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

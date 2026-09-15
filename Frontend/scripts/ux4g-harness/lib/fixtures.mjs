@@ -994,6 +994,76 @@ export const CW29_CREDENTIALS = [
   },
 ];
 
+/* ── ComplianceWorkspace credential-bearing execution (batch 30) ──────────── */
+// Remediation requests as GET /compliance/remediations/requests lists them:
+// every status and both kinds, the pending rollback the harness operator's
+// own (101). Commands and logs are synthetic, carry no credential, and nothing
+// here was ever executed.
+const cw30Request = (id, extra) => ({
+  id,
+  finding_id: `cw30-f-${id}`,
+  control_id: "A.8.8",
+  control_title: "Management of technical vulnerabilities",
+  remediation_id: "cw30-rem",
+  fix_command:
+    "sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config && systemctl restart sshd",
+  asset_ip: "10.70.0.11",
+  status: "pending_approval",
+  emergency_bypass: false,
+  created_at: ago(1),
+  requested_by: 205,
+  approved_by: null,
+  execution_log: null,
+  ...extra,
+});
+export const CW30_REQUESTS = {
+  data: [
+    cw30Request("crrq_cw30pending"),
+    cw30Request("crrq_rollback_cw30own", {
+      control_id: "A.8.2",
+      control_title: "Privileged access rights",
+      asset_ip: "10.70.0.12",
+      fix_command: "restore /etc/ssh/sshd_config from backup",
+      requested_by: 101,
+    }),
+    cw30Request("crrq_cw30executed", {
+      control_id: "A.8.9",
+      control_title: "Configuration management",
+      asset_ip: "10.70.0.13",
+      status: "executed",
+      approved_by: 205,
+      execution_log:
+        "Connecting to 10.70.0.13:22\nApplying sshd_config change\nRestarting sshd\nDone",
+    }),
+    cw30Request("crrq_cw30failed", {
+      status: "failed",
+      execution_log: "Connecting to 10.70.0.11:22\nConnection refused",
+    }),
+    cw30Request("crrq_cw30approved", { status: "approved", approved_by: 205 }),
+    cw30Request("crrq_rollback_cw30done", {
+      status: "executed",
+      execution_log: "Restoring /etc/ssh/sshd_config\nDone",
+    }),
+  ],
+};
+
+// The Findings register's failed A.8.8 finding with a registered fix, so the
+// remediation dialog opens with its recommendation and script.
+export const CW30_FINDINGS = {
+  ...CW26B_FINDINGS,
+  data: CW26B_FINDINGS.data.map((f) =>
+    f.id === "cw26b-f1"
+      ? {
+          ...f,
+          fix_command:
+            "sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config && systemctl restart sshd",
+          recommendation_text:
+            "Disable direct root login over SSH and restart the SSH service.",
+        }
+      : f,
+  ),
+};
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

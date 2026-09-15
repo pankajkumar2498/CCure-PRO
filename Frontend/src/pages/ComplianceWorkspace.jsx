@@ -10,6 +10,7 @@ import Modal from "../components/layout/Modal";
 import { useAuth } from "../context/AuthContext";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import {
+  CcureAlert,
   CcureBadge,
   CcureButton,
   CcureCard,
@@ -33,6 +34,7 @@ import "../styles/compliance-views.css";
 import "../styles/compliance-writes.css";
 import "../styles/compliance-attestation.css";
 import "../styles/compliance-credentials.css";
+import "../styles/compliance-execution.css";
 
 function PaginationBar({
   currentPage,
@@ -784,6 +786,10 @@ export default function ComplianceWorkspace() {
   const [jitPassword, setJitPassword] = useState("");
   const [jitKeyContent, setJitKeyContent] = useState("");
   const [emergencyBypass, setEmergencyBypass] = useState(false);
+  // The Approvals Queue decision being confirmed — { req, kind } with kind
+  // "cancel", "approve" or "reject" — and whether its request is out.
+  const [queueDecision, setQueueDecision] = useState(null);
+  const [queueDecisionBusy, setQueueDecisionBusy] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanPollCount, setScanPollCount] = useState(0); // Active framework filter & gap analysis states
   // Scan progress is read from the run itself rather than guessed from a
@@ -4281,331 +4287,362 @@ export default function ComplianceWorkspace() {
           )}
 
           {activeTab === "approvals" && (
-            <div
+            <section
               ref={approvalsPagination.cardRef}
-              className="db-card"
-              style={{ padding: 0 }}
+              className="cwe-queue"
+              aria-labelledby="cwe-queue-title"
             >
-              <div
-                style={{
-                  padding: "16px 24px",
-                  borderBottom: "1px solid var(--border)",
-                  fontWeight: 600,
-                }}
-              >
+              <h2 id="cwe-queue-title" className="cwe-queue__title">
                 Remediation Approvals Queue
-              </div>
-              <PaginationBar
-                currentPage={approvalsPagination.page}
-                pageSize={approvalsPagination.pageSize}
-                totalItems={approvalsList.length}
-                totalPages={approvalsPagination.totalPages}
-                onPageChange={approvalsPagination.setPage}
-                onPageSizeChange={approvalsPagination.setPageSize}
+              </h2>
+              <PagingControls
+                pagination={approvalsPagination}
+                total={approvalsList.length}
                 loading={loading}
-                itemLabel="tickets"
-                sizerOptions={[10, 25, 50, 100]}
+                label="Approvals pagination"
+                itemNoun="tickets"
+                sizes={[10, 25, 50, 100]}
               />
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead>
-                    <tr>
-                      <th>Ticket ID</th>
-                      <th>Control & Asset</th>
-                      <th>Fix Command</th>
-                      <th>Requested By</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvalsList.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          style={{ textAlign: "center", padding: "24px" }}
-                        >
-                          No approval tickets in this status.
-                        </td>
-                      </tr>
-                    )}
-                    {approvalsPagination.paginatedItems.map((req) => (
-                      <tr key={req.id}>
-                        <td className="mono" style={{ fontSize: "0.72rem" }}>
-                          {req.id}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: "0.78rem" }}>
-                            {req.id.startsWith("crrq_rollback_") && (
-                              <span
-                                style={{
-                                  background: "rgba(245, 124, 0, 0.1)",
-                                  color: "#f57c00",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  fontSize: "0.65rem",
-                                  marginRight: "8px",
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Rollback
-                              </span>
-                            )}
-                            {req.control_id} - {req.control_title}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-muted)",
-                            }}
-                          >
-                            Target Host:{" "}
-                            <span className="mono">{req.asset_ip}</span>
-                          </div>
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            fontSize: "0.68rem",
-                            maxWidth: "250px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <code>{req.fix_command}</code>
-                        </td>
-                        <td style={{ fontSize: "0.75rem" }}>
-                          {req.requested_by}
-                        </td>
-                        <td>
-                          <span
-                            className={`db-status ${
-                              req.status === "pending_approval"
-                                ? "db-status--queued"
-                                : req.status === "approved" ||
-                                    req.status === "executed"
-                                  ? "db-status--active"
-                                  : "db-status--suspended"
-                            }`}
-                            style={{ textTransform: "capitalize" }}
-                          >
-                            {req.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td>
-                          {req.status === "pending_approval" && (
-                            <div style={{ display: "flex", gap: "8px" }}>
-                              {req.requested_by === user?.id ? (
-                                <button
-                                  className="db-btn db-btn--ghost"
-                                  style={{
-                                    padding: "4px 8px",
-                                    fontSize: "0.68rem",
-                                    color: "var(--critical)",
-                                  }}
-                                  onClick={async () => {
-                                    const label = req.id.startsWith(
-                                      "crrq_rollback_",
-                                    )
-                                      ? "rollback"
-                                      : "remediation";
-                                    if (
-                                      window.confirm(
-                                        `Are you sure you want to cancel this ${label} request?`,
-                                      )
-                                    ) {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/cancel`,
-                                        );
-                                        pushToast(
-                                          `${label.charAt(0).toUpperCase() + label.slice(1)} request cancelled successfully.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Cancellation failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }
-                                  }}
-                                >
-                                  {req.id.startsWith("crrq_rollback_")
-                                    ? "Cancel Rollback"
-                                    : "Cancel Request"}
-                                </button>
-                              ) : isComplianceAdmin ? (
-                                <>
-                                  <button
-                                    className="db-btn db-btn--primary"
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "0.68rem",
-                                    }}
-                                    onClick={async () => {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/approve`,
-                                          { status: "approved" },
-                                        );
-                                        const label = req.id.startsWith(
-                                          "crrq_rollback_",
-                                        )
-                                          ? "Rollback"
-                                          : "Remediation request";
-                                        pushToast(
-                                          `${label} approved and queued.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Approval failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    className="db-btn db-btn--ghost"
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "0.68rem",
-                                      color: "var(--critical)",
-                                    }}
-                                    onClick={async () => {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/approve`,
-                                          { status: "rejected" },
-                                        );
-                                        const label = req.id.startsWith(
-                                          "crrq_rollback_",
-                                        )
-                                          ? "Rollback"
-                                          : "Remediation request";
-                                        pushToast(
-                                          `${label} rejected.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Rejection failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "var(--text-muted)",
-                                    fontStyle: "italic",
-                                  }}
-                                >
-                                  Pending approval
-                                </span>
-                              )}
-                            </div>
+              <CcureTableStatus
+                loading={loading}
+                count={approvalsList.length}
+                noun="tickets"
+              />
+              <CcureTable
+                caption="Remediation approval requests"
+                columns={[
+                  {
+                    key: "id",
+                    header: "Ticket ID",
+                    isRowHeader: true,
+                    mono: true,
+                    className: "cwe-ticket",
+                    cell: (req) => req.id,
+                  },
+                  {
+                    key: "control",
+                    header: "Control & Asset",
+                    cell: (req) => (
+                      <span className="cwe-cell">
+                        <span className="cwe-cell__control">
+                          {req.id.startsWith("crrq_rollback_") && (
+                            <CcureBadge
+                              variant="warning"
+                              className="cwe-rollback"
+                            >
+                              Rollback
+                            </CcureBadge>
                           )}
-                          {(req.status === "executed" ||
-                            req.status === "failed") &&
-                            req.execution_log && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: "8px",
-                                  alignItems: "center",
+                          {req.control_id} - {req.control_title}
+                        </span>
+                        <span className="cwe-cell__detail">
+                          Target Host:{" "}
+                          <span className="cwe-mono">{req.asset_ip}</span>
+                        </span>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "fix_command",
+                    header: "Fix Command",
+                    cell: (req) => (
+                      <code className="cwe-command">{req.fix_command}</code>
+                    ),
+                  },
+                  {
+                    key: "requested_by",
+                    header: "Requested By",
+                    cell: (req) => req.requested_by,
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    nowrap: true,
+                    // The status is the badge's word; the colour repeats it.
+                    cell: (req) => (
+                      <CcureBadge
+                        className="cwe-status"
+                        variant={
+                          req.status === "pending_approval"
+                            ? "warning"
+                            : req.status === "executed"
+                              ? "success"
+                              : req.status === "approved"
+                                ? "info"
+                                : req.status === "failed"
+                                  ? "danger"
+                                  : "neutral"
+                        }
+                      >
+                        {req.status.replace("_", " ")}
+                      </CcureBadge>
+                    ),
+                  },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    cell: (req) => (
+                      <span className="cwe-actions">
+                        {req.status === "pending_approval" &&
+                          (req.requested_by === user?.id ? (
+                            <CcureButton
+                              variant="ghost"
+                              size="sm"
+                              className="cwe-danger-text"
+                              aria-haspopup="dialog"
+                              aria-label={`${
+                                req.id.startsWith("crrq_rollback_")
+                                  ? "Cancel Rollback"
+                                  : "Cancel Request"
+                              } ${req.id}`}
+                              onClick={() =>
+                                setQueueDecision({ req, kind: "cancel" })
+                              }
+                            >
+                              {req.id.startsWith("crrq_rollback_")
+                                ? "Cancel Rollback"
+                                : "Cancel Request"}
+                            </CcureButton>
+                          ) : isComplianceAdmin ? (
+                            <>
+                              <CcureButton
+                                variant="primary"
+                                size="sm"
+                                aria-haspopup="dialog"
+                                aria-label={`Approve ${req.id}`}
+                                onClick={() =>
+                                  setQueueDecision({ req, kind: "approve" })
+                                }
+                              >
+                                Approve
+                              </CcureButton>
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
+                                className="cwe-danger-text"
+                                aria-haspopup="dialog"
+                                aria-label={`Reject ${req.id}`}
+                                onClick={() =>
+                                  setQueueDecision({ req, kind: "reject" })
+                                }
+                              >
+                                Reject
+                              </CcureButton>
+                            </>
+                          ) : (
+                            <span className="cwe-pending">
+                              Pending approval
+                            </span>
+                          ))}
+                        {(req.status === "executed" ||
+                          req.status === "failed") &&
+                          req.execution_log && (
+                            <>
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
+                                aria-haspopup="dialog"
+                                aria-label={`View Logs for ${req.id}`}
+                                onClick={() => {
+                                  setSelectedFinding({
+                                    control_id: req.control_id,
+                                    control_title: req.control_title,
+                                    asset_ip: req.asset_ip,
+                                    execution_log: req.execution_log,
+                                  });
+                                  setModalType("log_viewer");
+                                  setModalOpen(true);
                                 }}
                               >
-                                <button
-                                  className="db-btn db-btn--ghost"
-                                  style={{
-                                    padding: "4px 8px",
-                                    fontSize: "0.68rem",
-                                  }}
-                                  onClick={() => {
-                                    setSelectedFinding({
-                                      control_id: req.control_id,
-                                      control_title: req.control_title,
-                                      asset_ip: req.asset_ip,
-                                      execution_log: req.execution_log,
-                                    });
-                                    setModalType("log_viewer");
-                                    setModalOpen(true);
-                                  }}
-                                >
-                                  View Logs
-                                </button>
-                                {req.status === "executed" &&
-                                  !req.id.startsWith("crrq_rollback_") &&
-                                  (() => {
-                                    const hasActiveRollback =
-                                      approvalsList.some(
-                                        (r) =>
-                                          r.finding_id === req.finding_id &&
-                                          r.id.startsWith("crrq_rollback_") &&
-                                          (r.status === "pending_approval" ||
-                                            r.status === "approved"),
-                                      );
-                                    if (!hasActiveRollback) {
-                                      return (
-                                        <button
-                                          className="db-btn db-btn--ghost"
-                                          style={{
-                                            padding: "4px 8px",
-                                            fontSize: "0.68rem",
-                                            color: "#f57c00",
-                                          }}
-                                          onClick={() => {
-                                            setSelectedFinding({
-                                              id: req.id,
-                                              control_id: req.control_id,
-                                              control_title: req.control_title,
-                                              asset_ip: req.asset_ip,
-                                              fix_command: req.fix_command,
-                                              recommendation_text:
-                                                "Reverse the security control and reopen the port on the target machine.",
-                                            });
-                                            setModalType("rollback");
-                                            setModalOpen(true);
-                                          }}
-                                        >
-                                          Rollback
-                                        </button>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                              </div>
-                            )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                                View Logs
+                              </CcureButton>
+                              {req.status === "executed" &&
+                                !req.id.startsWith("crrq_rollback_") &&
+                                (() => {
+                                  const hasActiveRollback = approvalsList.some(
+                                    (r) =>
+                                      r.finding_id === req.finding_id &&
+                                      r.id.startsWith("crrq_rollback_") &&
+                                      (r.status === "pending_approval" ||
+                                        r.status === "approved"),
+                                  );
+                                  if (!hasActiveRollback) {
+                                    return (
+                                      <CcureButton
+                                        variant="ghost"
+                                        size="sm"
+                                        className="cwe-danger-text"
+                                        aria-haspopup="dialog"
+                                        aria-label={`Rollback ${req.id}`}
+                                        onClick={() => {
+                                          setSelectedFinding({
+                                            id: req.id,
+                                            control_id: req.control_id,
+                                            control_title: req.control_title,
+                                            asset_ip: req.asset_ip,
+                                            fix_command: req.fix_command,
+                                            recommendation_text:
+                                              "Reverse the security control and reopen the port on the target machine.",
+                                          });
+                                          setModalType("rollback");
+                                          setModalOpen(true);
+                                        }}
+                                      >
+                                        Rollback
+                                      </CcureButton>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                            </>
+                          )}
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={approvalsPagination.paginatedItems}
+                rowKey={(req) => req.id}
+                loading={loading}
+                emptyMessage="No approval tickets in this status."
+              />
+
+              {/* Cancelling, approving and rejecting each ask first. Approving
+                  queues a script to run on a customer host with the
+                  credentials the request was made with, and rejecting or
+                  cancelling clears those credentials, so none of them is a
+                  single click: Go back takes focus, Escape goes back, and the
+                  question is busy and cannot be answered twice while its
+                  request is out. */}
+              <CcureConfirmDialog
+                open={queueDecision !== null}
+                title={
+                  queueDecision
+                    ? `${
+                        queueDecision.kind === "cancel"
+                          ? "Cancel"
+                          : queueDecision.kind === "approve"
+                            ? "Approve"
+                            : "Reject"
+                      } ${
+                        queueDecision.req.id.startsWith("crrq_rollback_")
+                          ? "rollback"
+                          : "remediation"
+                      } request`
+                    : ""
+                }
+                subtitle={
+                  queueDecision
+                    ? `${queueDecision.req.id} — ${queueDecision.req.control_id} on ${queueDecision.req.asset_ip}`
+                    : undefined
+                }
+                warning={
+                  !queueDecision
+                    ? null
+                    : queueDecision.kind === "cancel"
+                      ? `Are you sure you want to cancel this ${
+                          queueDecision.req.id.startsWith("crrq_rollback_")
+                            ? "rollback"
+                            : "remediation"
+                        } request?`
+                      : queueDecision.kind === "approve"
+                        ? `Approving queues this ${
+                            queueDecision.req.id.startsWith("crrq_rollback_")
+                              ? "rollback"
+                              : "remediation"
+                          } to run on ${queueDecision.req.asset_ip} with the credentials it was requested with.`
+                        : `Rejecting closes this ${
+                            queueDecision.req.id.startsWith("crrq_rollback_")
+                              ? "rollback"
+                              : "remediation"
+                          } request and clears the credentials held with it; it will not run.`
+                }
+                confirmLabel={
+                  !queueDecision
+                    ? "Confirm"
+                    : queueDecision.kind === "cancel"
+                      ? queueDecision.req.id.startsWith("crrq_rollback_")
+                        ? "Cancel Rollback"
+                        : "Cancel Request"
+                      : queueDecision.kind === "approve"
+                        ? "Approve"
+                        : "Reject"
+                }
+                cancelLabel="Go back"
+                tone={queueDecision?.kind === "approve" ? "info" : "danger"}
+                busy={queueDecisionBusy}
+                onCancel={() => setQueueDecision(null)}
+                onConfirm={async () => {
+                  if (queueDecisionBusy || !queueDecision) return;
+                  const { req, kind } = queueDecision;
+                  setQueueDecisionBusy(true);
+                  if (kind === "cancel") {
+                    const label = req.id.startsWith("crrq_rollback_")
+                      ? "rollback"
+                      : "remediation";
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/cancel`,
+                      );
+                      pushToast(
+                        `${label.charAt(0).toUpperCase() + label.slice(1)} request cancelled successfully.`,
+                        "success",
+                      );
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Cancellation failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  } else if (kind === "approve") {
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/approve`,
+                        { status: "approved" },
+                      );
+                      const label = req.id.startsWith("crrq_rollback_")
+                        ? "Rollback"
+                        : "Remediation request";
+                      pushToast(`${label} approved and queued.`, "success");
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Approval failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  } else {
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/approve`,
+                        { status: "rejected" },
+                      );
+                      const label = req.id.startsWith("crrq_rollback_")
+                        ? "Rollback"
+                        : "Remediation request";
+                      pushToast(`${label} rejected.`, "success");
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Rejection failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  }
+                  setQueueDecisionBusy(false);
+                  setQueueDecision(null);
+                }}
+              />
+            </section>
           )}
         </div>
       </div>
@@ -5136,194 +5173,98 @@ export default function ComplianceWorkspace() {
 
         {(modalType === "remediate" || modalType === "rollback") &&
           selectedFinding && (
-            <div
-              className="compliance-form"
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              <div>
-                <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
+            <div className="cwe-guide">
+              <div className="cwe-guide__intro">
+                <h3 className="cwe-guide__heading">
                   {modalType === "rollback"
                     ? "Rollback Security Rule"
                     : "Remediation Guide"}
-                  : <span className="mono">{selectedFinding.control_id}</span>
+                  :{" "}
+                  <span className="cwe-mono">{selectedFinding.control_id}</span>
                 </h3>
-                <p
-                  style={{
-                    margin: "0.25rem 0 1rem",
-                    fontSize: "0.8rem",
-                    color: "var(--text-muted)",
-                  }}
-                >
+                <p className="cwe-guide__context">
                   Control Name: {selectedFinding.control_title}
                 </p>
               </div>
 
-              <div
-                style={{
-                  padding: "12px",
-                  background: "rgba(0,0,0,0.02)",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    fontWeight: 600,
-                  }}
-                >
-                  Target Machine / IP
-                </div>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: "0.8rem",
-                    marginTop: "2px",
-                  }}
-                >
+              <div className="cwe-target">
+                <p className="cwe-label">Target Machine / IP</p>
+                <p className="cwe-target__value">
                   {selectedFinding.asset_hostname &&
                   selectedFinding.asset_hostname !== "Unknown"
                     ? `${selectedFinding.asset_hostname} (${selectedFinding.asset_ip})`
                     : selectedFinding.asset_ip}
-                </div>
+                </p>
               </div>
 
-              <div>
-                <label
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text-muted)",
-                    fontWeight: 600,
-                    display: "block",
-                    marginBottom: "6px",
-                    textTransform: "uppercase",
-                  }}
-                >
+              <div className="cwe-section">
+                <h4 className="cwe-label">
                   {modalType === "rollback"
                     ? "Warning Description"
                     : "How to Resolve This Finding"}
-                </label>
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    lineHeight: 1.5,
-                    background: "var(--bg-light)",
-                    padding: "12px",
-                    borderRadius: "4px",
-                    borderLeft: `3px solid ${modalType === "rollback" ? "#f57c00" : "var(--accent)"}`,
-                    color: "var(--text)",
-                  }}
-                >
-                  {modalType === "rollback"
-                    ? "This action will execute a script to reverse the security control and reopen the port on the target machine."
-                    : selectedFinding.recommendation_text ||
+                </h4>
+                {/* A rollback's warning is an alert in words, not only an
+                    orange rule beside a paragraph. */}
+                {modalType === "rollback" ? (
+                  <CcureAlert variant="warning" live={false}>
+                    This action will execute a script to reverse the security
+                    control and reopen the port on the target machine.
+                  </CcureAlert>
+                ) : (
+                  <p className="cwe-guide__advice">
+                    {selectedFinding.recommendation_text ||
                       "No recommendation text registered."}
-                </div>
+                  </p>
+                )}
               </div>
 
               {selectedFinding.fix_command && (
-                <div>
-                  <label
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                      fontWeight: 600,
-                      display: "block",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Automated Repair Script
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <pre
-                      className="mono"
-                      style={{
-                        background: "#272822",
-                        color: "#f8f8f2",
-                        padding: "12px",
-                        borderRadius: "4px",
-                        fontSize: "0.72rem",
-                        overflowX: "auto",
-                        margin: 0,
-                        maxHeight: "150px",
-                      }}
-                    >
-                      {selectedFinding.fix_command}
-                    </pre>
-                    <button
-                      type="button"
-                      className="db-btn db-btn--ghost"
-                      style={{
-                        position: "absolute",
-                        right: "6px",
-                        top: "6px",
-                        padding: "2px 6px",
-                        fontSize: "0.6rem",
-                        background: "rgba(255,255,255,0.15)",
-                        color: "#fff",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
+                <div className="cwe-section">
+                  <div className="cwe-section__bar">
+                    <h4 id="cwe-script-title" className="cwe-label">
+                      Automated Repair Script
+                    </h4>
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Copy repair script"
                       onClick={() =>
                         handleCopyCommand(selectedFinding.fix_command)
                       }
                     >
                       Copy
-                    </button>
+                    </CcureButton>
                   </div>
+                  {/* Scrollable, so a keyboard user can reach and scroll it. */}
+                  <pre
+                    className="cwe-console"
+                    role="region"
+                    aria-labelledby="cwe-script-title"
+                    tabIndex={0}
+                  >
+                    {selectedFinding.fix_command}
+                  </pre>
                 </div>
               )}
 
-              <div
-                style={{
-                  borderTop: "1px solid var(--border)",
-                  paddingTop: "12px",
-                  marginTop: "8px",
-                }}
-              >
-                <label
-                  style={{
-                    fontWeight: 600,
-                    display: "block",
-                    marginBottom: "8px",
-                    fontSize: "0.8rem",
-                  }}
-                >
+              <fieldset className="cwe-credentials">
+                <legend className="cwe-credentials__legend">
                   Execution Credentials
-                </label>
-                <div
-                  style={{ display: "flex", gap: "16px", marginBottom: "12px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                    }}
-                  >
+                </legend>
+                <div className="cwe-choices">
+                  <label className="cwe-choice">
                     <input
                       type="radio"
+                      name="cwe-credential-source"
                       checked={remediationCredSource === "jit"}
                       onChange={() => setRemediationCredSource("jit")}
                     />
                     One-time JIT Credentials
                   </label>
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                    }}
-                  >
+                  <label className="cwe-choice">
                     <input
                       type="radio"
+                      name="cwe-credential-source"
                       checked={remediationCredSource === "stored"}
                       onChange={() => setRemediationCredSource("stored")}
                     />
@@ -5331,206 +5272,108 @@ export default function ComplianceWorkspace() {
                   </label>
                 </div>
 
+                {/* A stored credential is chosen by its name and account and
+                    sent as its id; its secret never reaches the page. */}
                 {remediationCredSource === "stored" ? (
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Select Saved Credential
-                    </label>
-                    <select
-                      value={selectedCredId}
-                      onChange={(e) => setSelectedCredId(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        borderRadius: "4px",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      <option value="">-- Choose Credential --</option>
-                      {credentialsList.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.username})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "10px",
-                    }}
+                  <CcureSelect
+                    label="Select Saved Credential"
+                    value={selectedCredId}
+                    onChange={(e) => setSelectedCredId(e.target.value)}
                   >
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        SSH Username
-                      </label>
-                      <input
-                        type="text"
-                        value={jitUsername}
-                        onChange={(e) => setJitUsername(e.target.value)}
-                        placeholder="e.g. root"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        SSH Port
-                      </label>
-                      <input
-                        type="number"
-                        value={jitPort}
-                        onChange={(e) => setJitPort(e.target.value)}
-                        placeholder="22"
-                      />
-                    </div>
-                    <div style={{ gridColumn: "span 2" }}>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        Auth Method
-                      </label>
-                      <select
-                        value={jitAuthMethod}
-                        onChange={(e) => setJitAuthMethod(e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "8px",
-                          borderRadius: "4px",
-                          border: "1px solid var(--border)",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        <option value="password">Password</option>
-                        <option value="key">Private SSH Key</option>
-                      </select>
-                    </div>
+                    <option value="">-- Choose Credential --</option>
+                    {credentialsList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.username})
+                      </option>
+                    ))}
+                  </CcureSelect>
+                ) : (
+                  <div className="cwe-jit">
+                    <CcureInput
+                      label="SSH Username"
+                      value={jitUsername}
+                      onChange={(e) => setJitUsername(e.target.value)}
+                      placeholder="e.g. root"
+                    />
+                    <CcureInput
+                      type="number"
+                      label="SSH Port"
+                      value={jitPort}
+                      onChange={(e) => setJitPort(e.target.value)}
+                      placeholder="22"
+                    />
+                    <CcureSelect
+                      label="Auth Method"
+                      fieldClassName="cwe-jit__wide"
+                      value={jitAuthMethod}
+                      onChange={(e) => setJitAuthMethod(e.target.value)}
+                    >
+                      <option value="password">Password</option>
+                      <option value="key">Private SSH Key</option>
+                    </CcureSelect>
+                    {/* `new-password`: the browser must not offer the signed-in
+                        user's own password into a field that sends someone
+                        else's, nor keep a revealed value in form history. */}
                     {jitAuthMethod === "password" ? (
-                      <div style={{ gridColumn: "span 2" }}>
-                        <label
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--text-muted)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Password
-                        </label>
-                        <input
-                          type="password"
-                          value={jitPassword}
-                          onChange={(e) => setJitPassword(e.target.value)}
-                          placeholder="••••••••"
-                        />
-                      </div>
+                      <CcurePasswordField
+                        className="cwe-jit__wide"
+                        label="Password"
+                        value={jitPassword}
+                        onChange={(e) => setJitPassword(e.target.value)}
+                        placeholder="••••••••"
+                        hint="Encrypted with this request; not added to saved credentials."
+                        autoComplete="new-password"
+                      />
                     ) : (
-                      <div style={{ gridColumn: "span 2" }}>
-                        <label
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--text-muted)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Private Key Content
-                        </label>
+                      <CcureField
+                        id="cwe-jit-key"
+                        className="cwe-jit__wide"
+                        label="Private Key Content"
+                        hint="Encrypted with this request; not added to saved credentials."
+                      >
                         <textarea
+                          id="cwe-jit-key"
+                          className="cc-field__control cwe-key"
                           value={jitKeyContent}
                           onChange={(e) => setJitKeyContent(e.target.value)}
                           placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.72rem",
-                            height: "80px",
-                            width: "100%",
-                            boxSizing: "border-box",
-                          }}
+                          aria-describedby="cwe-jit-key-hint"
                         />
-                      </div>
+                      </CcureField>
                     )}
                   </div>
                 )}
-              </div>
+              </fieldset>
 
               {isComplianceAdmin && (
-                <div
-                  style={{
-                    marginTop: "8px",
-                    borderTop: "1px solid var(--border)",
-                    paddingTop: "12px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                    }}
-                  >
+                <div className="cwe-bypass">
+                  <label className="cwe-choice cwe-choice--strong">
                     <input
                       type="checkbox"
                       checked={emergencyBypass}
                       onChange={(e) => setEmergencyBypass(e.target.checked)}
+                      aria-describedby="cwe-bypass-note"
                     />
-                    ⚡ Emergency Bypass (Direct Execution - Skip Approvals
-                    Queue)
+                    <span aria-hidden="true">⚡</span> Emergency Bypass (Direct
+                    Execution - Skip Approvals Queue)
                   </label>
-                  <p
-                    style={{
-                      margin: "0.25rem 0 0 20px",
-                      fontSize: "0.68rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <p id="cwe-bypass-note" className="cwe-bypass__note">
                     Note: Emergency bypass will log a critical priority incident
                     alert to the IP audit logs.
                   </p>
                 </div>
               )}
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  marginTop: "20px",
-                  justifyContent: "flex-end",
-                }}
-              >
+              {/* Dispatch is a danger action for a rollback and whenever the
+                  bypass would run the script at once rather than queue it. */}
+              <div className="cwe-guide__actions">
                 {selectedFinding.fix_command ? (
-                  <button
-                    type="button"
-                    className="db-btn db-btn--primary"
+                  <CcureButton
+                    variant={
+                      modalType === "rollback" || emergencyBypass
+                        ? "danger"
+                        : "primary"
+                    }
                     onClick={() => {
                       if (modalType === "rollback") {
                         handleRollback(selectedFinding.id);
@@ -5539,103 +5382,58 @@ export default function ComplianceWorkspace() {
                       }
                       setModalOpen(false);
                     }}
-                    style={{
-                      background:
-                        modalType === "rollback" ? "#f57c00" : undefined,
-                      borderColor:
-                        modalType === "rollback" ? "#f57c00" : undefined,
-                    }}
                   >
+                    <span aria-hidden="true">🚀</span>{" "}
                     {modalType === "rollback"
-                      ? "🚀 Dispatch Rollback Request"
-                      : "🚀 Dispatch Fix Request"}
-                  </button>
+                      ? "Dispatch Rollback Request"
+                      : "Dispatch Fix Request"}
+                  </CcureButton>
                 ) : (
-                  <button
-                    type="button"
-                    className="db-btn db-btn--ghost"
-                    style={{ cursor: "not-allowed", opacity: 0.6 }}
-                    disabled
-                  >
+                  <CcureButton variant="secondary" disabled>
+                    <span aria-hidden="true">⚙️</span>{" "}
                     {modalType === "rollback"
-                      ? "⚙️ No Automated Rollback Available"
-                      : "⚙️ No Automated Fix Available"}
-                  </button>
+                      ? "No Automated Rollback Available"
+                      : "No Automated Fix Available"}
+                  </CcureButton>
                 )}
-                <button
-                  type="button"
-                  className="db-btn db-btn--ghost"
+                <CcureButton
+                  variant="ghost"
                   onClick={() => setModalOpen(false)}
                 >
                   Close Guide
-                </button>
+                </CcureButton>
               </div>
             </div>
           )}
 
         {modalType === "log_viewer" && selectedFinding && (
-          <div
-            className="compliance-form"
-            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-          >
-            <div>
-              <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
+          <div className="cwe-guide">
+            <div className="cwe-guide__intro">
+              <h3 className="cwe-guide__heading">
                 Execution Log:{" "}
-                <span className="mono">{selectedFinding.control_id}</span>
+                <span className="cwe-mono">{selectedFinding.control_id}</span>
               </h3>
-              <p
-                style={{
-                  margin: "0.25rem 0 1rem",
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <p className="cwe-guide__context">
                 Target IP: {selectedFinding.asset_ip}
               </p>
             </div>
-            <div>
-              <label
-                style={{
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 600,
-                  display: "block",
-                  marginBottom: "6px",
-                  textTransform: "uppercase",
-                }}
-              >
+            <div className="cwe-section">
+              <h4 id="cwe-log-title" className="cwe-label">
                 Console Output
-              </label>
+              </h4>
               <pre
-                className="mono"
-                style={{
-                  background: "#272822",
-                  color: "#f8f8f2",
-                  padding: "12px",
-                  borderRadius: "4px",
-                  fontSize: "0.72rem",
-                  overflowX: "auto",
-                  margin: 0,
-                  maxHeight: "300px",
-                }}
+                className="cwe-console cwe-console--tall"
+                role="region"
+                aria-labelledby="cwe-log-title"
+                tabIndex={0}
               >
                 {selectedFinding.execution_log || "No console output recorded."}
               </pre>
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginTop: "12px",
-              }}
-            >
-              <button
-                type="button"
-                className="db-btn db-btn--ghost"
-                onClick={() => setModalOpen(false)}
-              >
+            <div className="cwe-guide__actions">
+              <CcureButton variant="ghost" onClick={() => setModalOpen(false)}>
                 Close Logs
-              </button>
+              </CcureButton>
             </div>
           </div>
         )}

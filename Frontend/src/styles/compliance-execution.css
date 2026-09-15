@@ -1,0 +1,299 @@
+/* ============================================================================
+   Compliance workspace — credential-bearing remote execution
+   ----------------------------------------------------------------------------
+   Batch 30. The Approvals Queue drew itself from dashboard.css (.db-card,
+   .db-table, .db-status, .db-btn) with inline styles and two colour literals,
+   and the remediation, rollback and log dialogs used `.compliance-form`, whose
+   field rules restyle every control inside them, with inline styles and four
+   colour literals — among them a hand-set dark console. The queue is a
+   CcureTable, its decisions ask in a CcureConfirmDialog, and the dialogs use
+   CcureInput, CcureSelect, CcureField, CcurePasswordField and CcureAlert; this
+   file lays them out. Everything resolves through `--ccure-*` tokens in both
+   themes.
+
+   The shared dialog container, PaginationBar (still the Credentials Manager's)
+   and compliance.css, dashboard.css and scan.css are untouched.
+   ============================================================================ */
+
+/* ── The Approvals Queue ──────────────────────────────────────────────────── */
+.cwe-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+  padding: var(--ccure-space-lg);
+  color: var(--ccure-text);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.cwe-queue__title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+}
+
+.cwe-ticket {
+  white-space: nowrap;
+}
+
+.cwe-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  min-width: 0;
+}
+
+.cwe-cell__control {
+  font-weight: var(--ccure-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.cwe-rollback {
+  margin-inline-end: var(--ccure-space-xs);
+}
+
+/* The status word capitalised, as the legacy queue showed it. */
+.cwe-status {
+  text-transform: capitalize;
+}
+
+.cwe-cell__detail {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cwe-mono {
+  font-family: var(--ccure-font-mono);
+}
+
+/* The whole command, wrapped: a truncated command cannot be read by keyboard
+   or screen reader, and it is what an approver is approving. */
+.cwe-command {
+  display: block;
+  max-width: 22rem;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cwe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.cwe-pending {
+  font-size: var(--ccure-text-sm);
+  font-style: italic;
+  color: var(--ccure-text-secondary);
+}
+
+.cwe-danger-text {
+  color: var(--ccure-danger-text);
+}
+
+/* ── The remediation, rollback and log dialogs ────────────────────────────── */
+.cwe-guide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+.cwe-guide__intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+}
+
+.cwe-guide__heading {
+  margin: 0;
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cwe-guide__context {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cwe-target {
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwe-label {
+  margin: 0;
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.cwe-target__value {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cwe-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+
+.cwe-section__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.cwe-guide__advice {
+  margin: 0;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-md);
+}
+
+/* The repair script and the console output: tokens in both themes rather than
+   a fixed dark panel, wrapped, and scrollable when long. */
+.cwe-console {
+  margin: 0;
+  max-height: 10rem;
+  overflow: auto;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cwe-console--tall {
+  max-height: 20rem;
+}
+
+.cwe-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cwe-credentials__legend {
+  padding: 0;
+  margin-bottom: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.cwe-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs) var(--ccure-space-lg);
+}
+
+.cwe-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  cursor: pointer;
+}
+
+.cwe-choice input {
+  margin: 0;
+}
+
+.cwe-choice--strong {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.cwe-jit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+}
+
+.cwe-jit__wide {
+  grid-column: 1 / -1;
+}
+
+.cwe-key {
+  min-height: 5.5rem;
+  resize: vertical;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+}
+
+.cwe-bypass {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  padding-top: var(--ccure-space-sm);
+  border-top: 1px solid var(--ccure-border);
+}
+
+.cwe-bypass__note {
+  margin: 0;
+  padding-inline-start: var(--ccure-space-xl);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.cwe-guide__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-top: var(--ccure-space-xs);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwe-queue {
+    padding: var(--ccure-space-md);
+  }
+
+  .cwe-command {
+    max-width: none;
+  }
+
+  .cwe-jit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cwe-guide__actions {
+    justify-content: flex-start;
+  }
+}

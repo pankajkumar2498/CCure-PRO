@@ -46,6 +46,8 @@ import {
   CW28_CONTROLS,
   CW28_EVIDENCE,
   CW29_CREDENTIALS,
+  CW30_REQUESTS,
+  CW30_FINDINGS,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -1227,6 +1229,200 @@ const CW29_STATES = [
     viewport: [390, 1400],
     stubs: CW29_STUBS,
     actions: CW29_OPEN,
+  },
+];
+
+/* ── ComplianceWorkspace credential-bearing execution (batch 30) ──────────── */
+/* The Approvals Queue, the execution log, and the remediation and rollback
+   dialog opened and left open. No state approves, rejects, cancels, dispatches,
+   copies or types: nothing is sent but reads, and no credential is entered.
+   View Logs, Rollback and Remediate only open a dialog on either build. The
+   two states that show a queue question press Approve or Cancel only where it
+   asks in a dialog — the migrated build, whose action is named for its ticket.
+   On the legacy build Approve posts at once and Cancel opens the browser's
+   confirm, so there the same step clicks the queue's title instead. The router
+   refuses every write regardless, and the batch report counts them. */
+const CW30_BASE = {
+  route: "/compliance",
+  persona: CW27_ORG_ADMIN,
+  tracked: [
+    ...PAGE_TRACKED,
+    "h2",
+    "h3",
+    "h4",
+    "table",
+    "fieldset",
+    "[role=dialog]",
+  ],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW30_QUEUE_STUBS = {
+  ...CW_STUBS,
+  "/compliance/remediations/requests": CW30_REQUESTS,
+  "/compliance/credentials": CW29_CREDENTIALS,
+};
+const CW30_FINDINGS_STUBS = {
+  ...CW26B_FINDINGS_STUBS,
+  "/compliance/findings": CW30_FINDINGS,
+  "/compliance/credentials": CW29_CREDENTIALS,
+};
+const CW30_QUEUE_OPEN = [
+  { click: cwTabClick("Approvals Queue") },
+  { waitFor: hasText("/crrq_cw30pending/") },
+];
+// A ticket's action by its visible label, in the ticket's own row.
+const cw30Action = (ticket, label) => `(() => {
+  const row = [...document.querySelectorAll("tbody tr")].find((r) => r.cells.length > 1 && (r.cells[0].textContent || "").trim() === ${JSON.stringify(ticket)});
+  return row ? [...row.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === ${JSON.stringify(label)}) : null;
+})()`;
+// A decision asks in a dialog on the migrated build; on the legacy build the
+// click goes to the queue's title.
+const cw30AskOrTitle = (name) =>
+  `(document.querySelector(${JSON.stringify(`button[aria-label="${name}"]`)}) || [...document.querySelectorAll("h2, div")].find((e) => e.children.length === 0 && (e.textContent || "").trim() === "Remediation Approvals Queue"))`;
+const CW30_ASKED = `!document.querySelector('button[aria-haspopup="dialog"]') || !!document.querySelector("[role=dialog]")`;
+const CW30_REMEDIATE_OPEN = [
+  ...CW26B_FINDINGS_OPEN,
+  { click: byText("button", "/^Remediate$/") },
+  { waitFor: cw27DialogOpen("/Close Guide/") },
+];
+// Tab from inside the open dialog to the one-time password field, and to the
+// console output.
+const CW30_PASSWORD_FOCUS = {
+  id: "jit-password-focus",
+  tabTo:
+    "!!el.closest('[role=dialog]') && el.tagName === 'INPUT' && el.type === 'password'",
+};
+const CW30_CONSOLE_FOCUS = {
+  id: "console-focus",
+  tabTo: "!!el.closest('[role=dialog]') && el.tagName === 'PRE'",
+};
+
+const CW30_STATES = [
+  {
+    ...CW30_BASE,
+    id: "cw30-queue-admin",
+    themes: BOTH,
+    stubs: CW30_QUEUE_STUBS,
+    actions: CW30_QUEUE_OPEN,
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-queue-analyst",
+    themes: LIGHT,
+    persona: ANALYST,
+    stubs: CW30_QUEUE_STUBS,
+    actions: CW30_QUEUE_OPEN,
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-queue-empty",
+    themes: LIGHT,
+    stubs: { ...CW_STUBS, "/compliance/remediations/requests": { data: [] } },
+    actions: [
+      { click: cwTabClick("Approvals Queue") },
+      { waitFor: hasText("/No approval tickets in this status/") },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-queue-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW30_QUEUE_STUBS,
+    actions: CW30_QUEUE_OPEN,
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-approve-ask",
+    themes: BOTH,
+    stubs: CW30_QUEUE_STUBS,
+    actions: [
+      ...CW30_QUEUE_OPEN,
+      { click: cw30AskOrTitle("Approve crrq_cw30pending") },
+      { waitFor: CW30_ASKED },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-cancel-ask",
+    themes: LIGHT,
+    stubs: CW30_QUEUE_STUBS,
+    actions: [
+      ...CW30_QUEUE_OPEN,
+      { click: cw30AskOrTitle("Cancel Rollback crrq_rollback_cw30own") },
+      { waitFor: CW30_ASKED },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-log-viewer",
+    themes: BOTH,
+    stubs: CW30_QUEUE_STUBS,
+    actions: [
+      ...CW30_QUEUE_OPEN,
+      { click: cw30Action("crrq_cw30executed", "View Logs") },
+      { waitFor: cw27DialogOpen("/Close Logs/") },
+    ],
+    probes: [CW30_CONSOLE_FOCUS],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-rollback-dialog",
+    themes: BOTH,
+    stubs: CW30_QUEUE_STUBS,
+    actions: [
+      ...CW30_QUEUE_OPEN,
+      { click: cw30Action("crrq_cw30executed", "Rollback") },
+      { waitFor: cw27DialogOpen("/Close Guide/") },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-remediate-dialog",
+    themes: BOTH,
+    stubs: CW30_FINDINGS_STUBS,
+    actions: [
+      ...CW30_REMEDIATE_OPEN,
+      {
+        click: `document.querySelector("[role=dialog] input[type=checkbox]")`,
+      },
+      {
+        waitFor: `!!document.querySelector("[role=dialog] input[type=checkbox]:checked")`,
+      },
+    ],
+    probes: [CW30_PASSWORD_FOCUS],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-remediate-key",
+    themes: LIGHT,
+    stubs: CW30_FINDINGS_STUBS,
+    actions: [
+      ...CW30_REMEDIATE_OPEN,
+      { click: cw26bChoose("password,key", "key") },
+      { waitFor: `!!document.querySelector("[role=dialog] textarea")` },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-remediate-stored",
+    themes: LIGHT,
+    stubs: CW30_FINDINGS_STUBS,
+    actions: [
+      ...CW30_REMEDIATE_OPEN,
+      {
+        click: `[...document.querySelectorAll("[role=dialog] input[type=radio]")][1]`,
+      },
+      { waitFor: hasText("/Choose Credential/") },
+    ],
+  },
+  {
+    ...CW30_BASE,
+    id: "cw30-remediate-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW30_FINDINGS_STUBS,
+    actions: CW30_REMEDIATE_OPEN,
   },
 ];
 
@@ -2762,18 +2958,20 @@ export const STATES = [
   ...CW27_STATES,
   ...CW28_STATES,
   ...CW29_STATES,
+  ...CW30_STATES,
 ];
 
-/** States whose output Batch 29 must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 28) and ComplianceWorkspace outside the
- *  Credentials Manager tab. Under these prefixes `cw-credentials` is the one
- *  state it is expected to change; the regression gate names the other cw-
- *  states individually. */
+/** States whose output Batch 30 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 29) and ComplianceWorkspace outside the
+ *  Approvals Queue and the remediation, rollback and log dialogs. Under these
+ *  prefixes `cw-approvals` is the one state it is expected to change; the
+ *  regression gate names the other cw- states individually. */
 export const REGRESSION_PREFIXES = [
   "cw26a-",
   "cw26b-",
   "cw27-",
   "cw28-",
+  "cw29-",
   "ar-",
   "vb-",
   "cw-",

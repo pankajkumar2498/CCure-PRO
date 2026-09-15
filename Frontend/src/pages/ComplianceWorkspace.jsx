@@ -13,6 +13,7 @@ import {
   CcureBadge,
   CcureButton,
   CcureCard,
+  CcureField,
   CcureInput,
   CcurePagination,
   CcureProgress,
@@ -26,6 +27,7 @@ import "../styles/compliance.css";
 import "../styles/scan.css";
 import "../styles/compliance-exceptions.css";
 import "../styles/compliance-views.css";
+import "../styles/compliance-writes.css";
 
 function PaginationBar({
   currentPage,
@@ -3079,77 +3081,94 @@ export default function ComplianceWorkspace() {
           )}
 
           {activeTab === "marketplace" && (
-            <div className="marketplace-view grid-3">
-              {marketplace.map((fw) => (
-                <div key={fw.framework_id} className="framework-card">
-                  <div className="framework-card-header">
-                    <div className="fw-icon">🔒</div>
-                    <h3>{fw.name}</h3>
-                    <p className="fw-meta">
+            <section
+              className="cww-marketplace"
+              aria-labelledby="cww-marketplace-title"
+            >
+              <h2 id="cww-marketplace-title" className="cww-title">
+                Framework Marketplace
+              </h2>
+              <div className="cww-marketplace__grid">
+                {marketplace.map((fw) => (
+                  <CcureCard
+                    key={fw.framework_id}
+                    headingLevel={3}
+                    title={fw.name}
+                    className="cww-framework"
+                  >
+                    <span className="cww-framework__icon" aria-hidden="true">
+                      🔒
+                    </span>
+                    <p className="cww-framework__meta">
                       Code: {fw.code} | Version: {fw.version}
                     </p>
-                    <p className="fw-reqs">
+                    <p className="cww-framework__reqs">
                       Total Requirements: {fw.controls_count}
                     </p>
-                  </div>
-                  <div className="framework-card-actions">
-                    {fw.is_installed ? (
-                      <>
-                        <div className="framework-installed-badge">
-                          ✓ Installed
-                        </div>
-                        <button
-                          className="db-btn db-btn--danger fw-action-btn"
+                    <div className="cww-framework__actions">
+                      {fw.is_installed ? (
+                        <>
+                          <CcureBadge variant="success" dot>
+                            Installed
+                          </CcureBadge>
+                          <CcureButton
+                            variant="danger"
+                            size="sm"
+                            disabled={!isComplianceAdmin}
+                            title={
+                              !isComplianceAdmin
+                                ? "Requires Org Admin or Superadmin permission"
+                                : ""
+                            }
+                            aria-describedby={
+                              !isComplianceAdmin
+                                ? `cww-permission-${fw.framework_id}`
+                                : undefined
+                            }
+                            onClick={() =>
+                              isComplianceAdmin &&
+                              handleUninstallFramework(fw.framework_id)
+                            }
+                          >
+                            Uninstall
+                          </CcureButton>
+                        </>
+                      ) : (
+                        <CcureButton
+                          variant="primary"
+                          size="sm"
                           disabled={!isComplianceAdmin}
                           title={
                             !isComplianceAdmin
                               ? "Requires Org Admin or Superadmin permission"
                               : ""
                           }
-                          style={{
-                            opacity: !isComplianceAdmin ? 0.5 : 1,
-                            cursor: !isComplianceAdmin
-                              ? "not-allowed"
-                              : "pointer",
-                          }}
-                          onClick={() =>
-                            isComplianceAdmin &&
-                            handleUninstallFramework(fw.framework_id)
-                          }
-                        >
-                          Uninstall
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="framework-status-placeholder" />
-                        <button
-                          className="db-btn db-btn--primary fw-action-btn"
-                          disabled={!isComplianceAdmin}
-                          title={
+                          aria-describedby={
                             !isComplianceAdmin
-                              ? "Requires Org Admin or Superadmin permission"
-                              : ""
+                              ? `cww-permission-${fw.framework_id}`
+                              : undefined
                           }
-                          style={{
-                            opacity: !isComplianceAdmin ? 0.5 : 1,
-                            cursor: !isComplianceAdmin
-                              ? "not-allowed"
-                              : "pointer",
-                          }}
                           onClick={() =>
                             isComplianceAdmin &&
                             handleInstallFramework(fw.framework_id)
                           }
                         >
                           Install
-                        </button>
-                      </>
+                        </CcureButton>
+                      )}
+                    </div>
+                    {!isComplianceAdmin && (
+                      <p
+                        id={`cww-permission-${fw.framework_id}`}
+                        className="cww-framework__hint"
+                      >
+                        Requires Org Admin or Superadmin permission
+                      </p>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                  </CcureCard>
+                ))}
+              </div>
+            </section>
           )}
 
           {activeTab === "policies" && (
@@ -4444,38 +4463,38 @@ export default function ComplianceWorkspace() {
         }
       >
         {modalType === "policy" && (
-          <form onSubmit={handleCreatePolicy} className="compliance-form">
-            <label>Policy Name</label>
-            <input
-              type="text"
+          <form onSubmit={handleCreatePolicy} className="cww-form">
+            <CcureInput
+              label="Policy Name"
               value={newPolicyName}
               onChange={(e) => setNewPolicyName(e.target.value)}
               required
             />
-            <label>Target Platform</label>
-            <select
+            <CcureSelect
+              label="Target Platform"
               value={newPolicyPlatform}
               onChange={(e) => setNewPolicyPlatform(e.target.value)}
             >
               <option value="any">Any</option>
               <option value="windows">Windows</option>
               <option value="linux">Linux</option>
-            </select>
-            <label>Rules IDs (comma separated)</label>
-            <input
-              type="text"
+            </CcureSelect>
+            <CcureInput
+              label="Rule IDs"
+              hint="Comma separated."
               value={newPolicyRules}
               onChange={(e) => setNewPolicyRules(e.target.value)}
               placeholder="crl_net_tls_001_v1, crl_auth_mfa_001_v1"
               required
             />
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Publish Baseline
-            </button>
+            </CcureButton>
           </form>
         )}
 
@@ -4675,48 +4694,52 @@ export default function ComplianceWorkspace() {
         )}
 
         {modalType === "exception" && (
-          <form onSubmit={handleSubmitException} className="compliance-form">
-            <label>Reason for Exception Waiver</label>
-            <textarea
-              value={exceptionReason}
-              onChange={(e) => setExceptionReason(e.target.value)}
+          <form onSubmit={handleSubmitException} className="cww-form">
+            <CcureField
+              id="cww-waiver-reason"
+              label="Reason for Exception Waiver"
               required
-            />
-            <label>Expiry Date</label>
-            <input
+            >
+              <textarea
+                id="cww-waiver-reason"
+                className="cc-field__control cww-form__textarea"
+                value={exceptionReason}
+                onChange={(e) => setExceptionReason(e.target.value)}
+                required
+              />
+            </CcureField>
+            <CcureInput
               type="date"
+              label="Expiry Date"
               value={exceptionExpiry}
               onChange={(e) => setExceptionExpiry(e.target.value)}
               required
             />
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Request Waiver
-            </button>
+            </CcureButton>
           </form>
         )}
 
         {modalType === "edit_rule" && selectedFinding && (
-          <form onSubmit={handleSubmitEditRule} className="compliance-form">
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
-              Editing Rule:{" "}
-              <span className="mono">{selectedFinding.rule_name}</span>
-            </h3>
-            <p
-              style={{
-                margin: "0.25rem 0 1rem",
-                fontSize: "0.8rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              Control: {selectedFinding.control_title}
-            </p>
+          <form onSubmit={handleSubmitEditRule} className="cww-form">
+            <div className="cww-form__intro">
+              <h3 className="cww-form__heading">
+                Editing Rule:{" "}
+                <span className="cww-mono">{selectedFinding.rule_name}</span>
+              </h3>
+              <p className="cww-form__context">
+                Control: {selectedFinding.control_title}
+              </p>
+            </div>
 
-            <label>Severity Level</label>
-            <select
+            <CcureSelect
+              label="Severity Level"
               value={editRuleSeverity}
               onChange={(e) => setEditRuleSeverity(e.target.value)}
             >
@@ -4725,42 +4748,31 @@ export default function ComplianceWorkspace() {
               <option value="MEDIUM">Medium</option>
               <option value="LOW">Low</option>
               <option value="INFO">Info</option>
-            </select>
+            </CcureSelect>
 
-            <label>Expected Rule Value</label>
-            <input
-              type="text"
+            <CcureInput
+              label="Expected Rule Value"
               value={editRuleExpected}
               onChange={(e) => setEditRuleExpected(e.target.value)}
+              hint={
+                <>
+                  Current evidence value is:{" "}
+                  <code className="cww-code">
+                    {JSON.stringify(selectedFinding.evidence)}
+                  </code>
+                </>
+              }
               required
             />
-            <p
-              style={{
-                margin: "0.25rem 0",
-                fontSize: "0.72rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              Current evidence value is:{" "}
-              <code
-                className="mono"
-                style={{
-                  background: "rgba(0,0,0,0.05)",
-                  padding: "2px 4px",
-                  borderRadius: 3,
-                }}
-              >
-                {JSON.stringify(selectedFinding.evidence)}
-              </code>
-            </p>
 
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Save Rule Configuration
-            </button>
+            </CcureButton>
           </form>
         )}
 

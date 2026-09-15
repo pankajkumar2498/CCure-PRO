@@ -41,6 +41,8 @@ import {
   CW26B_POLICIES,
   CW26B_POLICY_RULES,
   CW26B_FINDINGS,
+  CW27_ORG_ADMIN,
+  CW27_MARKETPLACE,
   SCANS_READONLY,
   P2_STUBS,
   P2_RUNNING_SESSION,
@@ -903,6 +905,109 @@ const CW26B_STATES = [
     viewport: [390, 1400],
     stubs: CW26B_FINDINGS_STUBS,
     actions: CW26B_FINDINGS_OPEN,
+  },
+];
+
+/* ── ComplianceWorkspace ordinary writes (batch 27) ────────────────────────── */
+/* Marketplace, and the three ordinary-write dialogs opened and left open. No
+   state installs, uninstalls, submits a dialog, approves, or opens anything
+   that carries credentials or evidence: opening these dialogs sends nothing. */
+const CW27_BASE = {
+  route: "/compliance",
+  persona: ANALYST,
+  tracked: [...PAGE_TRACKED, "h2", "h3", "form", "[role=dialog] label"],
+  ready: hasText("/Policy Compliance/i"),
+};
+const CW27_MARKETPLACE_STUBS = {
+  ...CW_STUBS,
+  "/compliance/marketplace": CW27_MARKETPLACE,
+};
+const CW27_MARKETPLACE_OPEN = [
+  { click: cwTabClick("Marketplace") },
+  { waitFor: hasText("/SOC 2 Type II/") },
+];
+const cw27DialogOpen = (button) =>
+  `!!document.querySelector("[role=dialog]") && ${hasText(button)}`;
+const CW27_POLICY_DIALOG_OPEN = [
+  { click: cwTabClick("Policies") },
+  { waitFor: hasText("/Create Baseline Policy/") },
+  { click: byText("button", "/Create Baseline Policy/") },
+  { waitFor: cw27DialogOpen("/Publish Baseline/") },
+];
+const CW27_WAIVER_DIALOG_OPEN = [
+  ...CW26B_FINDINGS_OPEN,
+  { click: byText("button", "/^Waiver$/") },
+  { waitFor: cw27DialogOpen("/Request Waiver/") },
+];
+// Tab from inside the open dialog to its first text field.
+const CW27_DIALOG_FIELD_FOCUS = {
+  id: "dialog-field-focus",
+  tabTo:
+    "!!el.closest('[role=dialog]') && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))",
+};
+
+const CW27_STATES = [
+  {
+    ...CW27_BASE,
+    id: "cw27-marketplace-admin",
+    themes: BOTH,
+    persona: CW27_ORG_ADMIN,
+    stubs: CW27_MARKETPLACE_STUBS,
+    actions: CW27_MARKETPLACE_OPEN,
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-marketplace-analyst",
+    themes: LIGHT,
+    stubs: CW27_MARKETPLACE_STUBS,
+    actions: CW27_MARKETPLACE_OPEN,
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-marketplace-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    persona: CW27_ORG_ADMIN,
+    stubs: CW27_MARKETPLACE_STUBS,
+    actions: CW27_MARKETPLACE_OPEN,
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-policy-dialog",
+    themes: BOTH,
+    stubs: CW_STUBS,
+    actions: CW27_POLICY_DIALOG_OPEN,
+    probes: [CW27_DIALOG_FIELD_FOCUS],
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-rule-dialog",
+    themes: BOTH,
+    stubs: CW26B_POLICIES_STUBS,
+    actions: [
+      ...CW26B_POLICIES_OPEN,
+      { click: cw26bPolicyToggle("ISO 27001 Linux baseline") },
+      { waitFor: hasText("/sshd\\.permit_root_login/") },
+      { click: byText("button", "/^Configure$/") },
+      { waitFor: cw27DialogOpen("/Save Rule Configuration/") },
+    ],
+    probes: [CW27_DIALOG_FIELD_FOCUS],
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-waiver-dialog",
+    themes: BOTH,
+    stubs: CW26B_FINDINGS_STUBS,
+    actions: CW27_WAIVER_DIALOG_OPEN,
+    probes: [CW27_DIALOG_FIELD_FOCUS],
+  },
+  {
+    ...CW27_BASE,
+    id: "cw27-waiver-dialog-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    stubs: CW26B_FINDINGS_STUBS,
+    actions: CW27_WAIVER_DIALOG_OPEN,
   },
 ];
 
@@ -2435,16 +2540,18 @@ export const STATES = [
   ...NS_STATES,
   ...CW26A_STATES,
   ...CW26B_STATES,
+  ...CW27_STATES,
 ];
 
-/** States whose output Batch 26B must leave byte-for-byte unchanged: every page
- *  migrated so far (batches 16 to 26A) and ComplianceWorkspace outside its
- *  Dashboard, Controls, Policies and Findings tabs. Under these prefixes
- *  `cw-dashboard`, `cw-controls`, `cw-policies` and `cw-findings` are the states
- *  it is expected to change; the regression gate names the other cw- states
- *  individually. */
+/** States whose output Batch 27 must leave byte-for-byte unchanged: every page
+ *  migrated so far (batches 16 to 26B) and ComplianceWorkspace outside
+ *  Marketplace and the Create Policy Baseline, Configure Rule Parameters and
+ *  Request Exception Waiver dialogs. Under these prefixes `cw-marketplace` is
+ *  the one state it is expected to change; the regression gate names the other
+ *  cw- states individually. */
 export const REGRESSION_PREFIXES = [
   "cw26a-",
+  "cw26b-",
   "ar-",
   "vb-",
   "cw-",

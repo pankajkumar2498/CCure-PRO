@@ -881,6 +881,43 @@ export const CW26B_FINDINGS = {
   ],
 };
 
+/* ── ComplianceWorkspace ordinary writes (batch 27) ────────────────────────── */
+// The same operator as ANALYST, holding the role the workspace treats as a
+// compliance admin: it enables Marketplace's install and uninstall.
+export const CW27_ORG_ADMIN = {
+  ...ANALYST,
+  role: { ...ANALYST.role, name: "Org Admin" },
+};
+
+export const CW27_MARKETPLACE = {
+  data: [
+    {
+      framework_id: "cfw_iso27001_2022",
+      name: "ISO/IEC 27001:2022",
+      code: "ISO27001",
+      version: "2022",
+      controls_count: 93,
+      is_installed: true,
+    },
+    {
+      framework_id: "cfw_nist_csf_v2",
+      name: "NIST CSF 2.0",
+      code: "NIST-CSF",
+      version: "2.0",
+      controls_count: 106,
+      is_installed: true,
+    },
+    {
+      framework_id: "cfw_soc2_type2",
+      name: "SOC 2 Type II",
+      code: "SOC2",
+      version: "2017",
+      controls_count: 61,
+      is_installed: false,
+    },
+  ],
+};
+
 // Sixty waivers: three pages at the default page size of 25.
 export const CW26A_MANY = {
   data: Array.from({ length: 60 }, (_, i) => {

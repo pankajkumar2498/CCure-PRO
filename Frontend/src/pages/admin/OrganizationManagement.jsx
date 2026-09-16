@@ -25,12 +25,15 @@
  *     the table does not blank out.
  *
  * ── Scope boundary ──────────────────────────────────────────────────────────
- * `components/layout/Modal` (9 consumers) and `components/admin/OrganizationForm`
- * are deliberately NOT migrated here. The form carries admin password
- * provisioning — credential-handling surface with its own review — and the
- * modal is shared shell. Both keep working exactly as they did; the create and
- * edit dialogs are untouched. Their own accessibility gaps are recorded in the
- * checkpoint report as shell work, not fixed in passing.
+ * `components/admin/OrganizationForm` is deliberately NOT migrated here: it
+ * carries admin password provisioning, a credential-handling surface with its
+ * own review, and keeps working exactly as it did.
+ *
+ * The create and edit dialogs now use `CcureModal`. This page was the last
+ * consumer of `components/layout/Modal`, which the post-migration cleanup
+ * deleted once it had none; overlay-click and Escape closing are CcureModal
+ * defaults, so the dialogs behave as they did while gaining its focus trap,
+ * scroll lock and focus restoration.
  *
  * src/__tests__/pages/admin/OrganizationManagement.test.jsx asserts all of the
  * above and was written against the pre-migration page.
@@ -46,7 +49,6 @@ import {
   changeOrganizationStatus,
   deleteOrganization,
 } from "../../api/admin";
-import Modal from "../../components/layout/Modal";
 import { formatDateTime } from "../../utils/date";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import OrganizationForm from "../../components/admin/OrganizationForm";
@@ -57,6 +59,7 @@ import {
   CcureButton,
   CcureConfirmDialog,
   CcureLoader,
+  CcureModal,
   CcureTable,
 } from "../../design-system";
 import "../../styles/organization-management.css";
@@ -416,13 +419,15 @@ export default function OrganizationManagement() {
         />
       </div>
 
-      {/* Create Org Modal — shared Modal + OrganizationForm, out of this
-          batch's scope and unchanged. */}
+      {/* Create Org dialog — CcureModal + OrganizationForm. This page was the
+          last consumer of the legacy shared Modal, which is now deleted;
+          overlay-click and Escape closing are CcureModal defaults, so the
+          dialog behaves as it did. */}
       {isCreateModalOpen && (
-        <Modal
-          isOpen={isCreateModalOpen}
+        <CcureModal
+          open={isCreateModalOpen}
           title="Provision New Organization"
-          size="medium"
+          size="md"
           onClose={() => setIsCreateModalOpen(false)}
         >
           <OrganizationForm
@@ -432,15 +437,15 @@ export default function OrganizationManagement() {
             onCancel={() => setIsCreateModalOpen(false)}
             busy={busy}
           />
-        </Modal>
+        </CcureModal>
       )}
 
-      {/* Edit Org Modal — likewise unchanged. */}
+      {/* Edit Org dialog — likewise. */}
       {isEditModalOpen && (
-        <Modal
-          isOpen={isEditModalOpen}
+        <CcureModal
+          open={isEditModalOpen}
           title={selectedOrg ? `Edit ${selectedOrg.name}` : "Edit organization"}
-          size="medium"
+          size="md"
           onClose={() => setIsEditModalOpen(false)}
         >
           <OrganizationForm
@@ -450,7 +455,7 @@ export default function OrganizationManagement() {
             onCancel={() => setIsEditModalOpen(false)}
             busy={busy}
           />
-        </Modal>
+        </CcureModal>
       )}
 
       <CcureConfirmDialog

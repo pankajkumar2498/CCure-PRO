@@ -127,7 +127,7 @@ describe("NotificationsPanel", () => {
       params: { unread_only: false, limit: 50, offset: 0 },
     });
     expect(
-      screen.getByRole("dialog", { name: "Notifications" }),
+      screen.getByRole("group", { name: "Notifications" }),
     ).toBeInTheDocument();
     expect(screen.getByText("12 hosts")).toBeInTheDocument();
     expect(screen.getByText("2m ago")).toBeInTheDocument();
@@ -251,10 +251,10 @@ describe("NotificationsPanel", () => {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 describe("HelpPanel", () => {
-  it("is a named dialog that issues no request", () => {
+  it("is a named group that issues no request", () => {
     render(<HelpPanel onClose={() => {}} />);
     expect(
-      screen.getByRole("dialog", { name: "Help Center" }),
+      screen.getByRole("group", { name: "Help Center" }),
     ).toBeInTheDocument();
     expect(axiosInstance.get).not.toHaveBeenCalled();
     expect(axiosInstance.post).not.toHaveBeenCalled();

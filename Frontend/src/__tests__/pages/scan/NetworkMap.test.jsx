@@ -1078,7 +1078,7 @@ describe("NetworkMap — contract", () => {
       await settle();
       fireEvent.click(buttonNamed(/Expand All/));
       await settle();
-      expect(window.confirm).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(hostIds()).toHaveLength(50);
       expect(hostIds()).toEqual(HOSTS_B.slice(0, 50).map((h) => h.id));
       expect(edges().get(`edge:host:${HOSTS_B[0].id}`)).toMatchObject({
@@ -1123,14 +1123,20 @@ describe("NetworkMap — contract", () => {
 
       it("asks first, with the same words, and does nothing when declined", async () => {
         reply = () => Promise.resolve({ data: WIDE });
-        window.confirm.mockReturnValue(false);
         await loaded();
         fireEvent.click(buttonNamed(/Expand All/));
         await settle();
-        expect(window.confirm).toHaveBeenCalledTimes(1);
-        expect(window.confirm).toHaveBeenCalledWith(
-          "Expanding more than 15 subnets simultaneously may slow down the view. Continue?",
-        );
+        const dlg = screen.getByRole("dialog");
+        expect(
+          within(dlg).getByText(
+            "Expanding more than 15 subnets simultaneously may slow down the view. Continue?",
+          ),
+        ).toBeInTheDocument();
+        expect(hostIds()).toHaveLength(0);
+
+        fireEvent.click(within(dlg).getByRole("button", { name: /^cancel$/i }));
+        await settle();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
         expect(hostIds()).toHaveLength(0);
       });
 
@@ -1139,7 +1145,12 @@ describe("NetworkMap — contract", () => {
         await loaded();
         fireEvent.click(buttonNamed(/Expand All/));
         await settle();
-        expect(window.confirm).toHaveBeenCalledTimes(1);
+        fireEvent.click(
+          within(screen.getByRole("dialog")).getByRole("button", {
+            name: /^expand all$/i,
+          }),
+        );
+        await settle();
         expect(hostIds()).toHaveLength(16);
       });
 
@@ -1150,7 +1161,7 @@ describe("NetworkMap — contract", () => {
         await settle();
         fireEvent.click(buttonNamed(/Expand All/));
         await settle();
-        expect(window.confirm).not.toHaveBeenCalled();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
         expect(hostIds()).toHaveLength(15);
       });
     });

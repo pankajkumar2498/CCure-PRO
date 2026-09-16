@@ -751,9 +751,8 @@ describe("UserManagement — approval queue", () => {
     expect(adminApi.listPendingUsers).toHaveBeenCalledTimes(2);
   });
 
-  it("an unverified account cannot be approved; a flagged one offers the allow-domain path behind a confirm", async () => {
+  it("an unverified account cannot be approved; a flagged one offers the allow-domain path behind a confirmation dialog", async () => {
     adminApi.listPendingUsers.mockResolvedValue(PENDING);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     await renderPage();
     await screen.findByText(/2 accounts awaiting approval/);
     const approveButtons = screen.getAllByRole("button", {
@@ -766,9 +765,36 @@ describe("UserManagement — approval queue", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /allow domain/i }),
     );
-    expect(confirmSpy).toHaveBeenCalled();
+
+    /* The platform-wide list is not touched until the dialog is answered, and
+       the dialog carries the sentence the native prompt used to. */
+    const dlg = await screen.findByRole("dialog");
+    expect(
+      within(dlg).getByText(/adds radiant-flow\.org to the/i),
+    ).toBeInTheDocument();
     expect(adminApi.approveUser).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+
+    await userEvent.click(
+      within(dlg).getByRole("button", { name: /^cancel$/i }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(adminApi.approveUser).not.toHaveBeenCalled();
+
+    // Confirming is what sends the allow-list flag.
+    await userEvent.click(
+      screen.getByRole("button", { name: /allow domain/i }),
+    );
+    const again = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(again).getByRole("button", { name: /approve \+ allow domain/i }),
+    );
+    await waitFor(() =>
+      expect(adminApi.approveUser).toHaveBeenCalledWith(20, {
+        allowlistDomain: true,
+      }),
+    );
   });
 
   it("the queue is not rendered for a user without users:update", async () => {

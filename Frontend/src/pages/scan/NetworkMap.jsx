@@ -27,6 +27,7 @@ import {
   CcureBadge,
   CcureButton,
   CcureCard,
+  CcureConfirmDialog,
   CcureEmptyState,
   CcureInput,
   CcureLoader,
@@ -537,6 +538,8 @@ export default function NetworkMap() {
   const [endpointPage, setEndpointPage] = useState(0);
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [selectedActionHelp, setSelectedActionHelp] = useState(null);
+  /* The subnets waiting on the expand-all confirmation; null when closed. */
+  const [pendingExpand, setPendingExpand] = useState(null);
 
   const [subnetMask, setSubnetMask] = useState(24);
   const [layoutMode, setLayoutMode] = useState("hierarchical"); // "hierarchical" or "force"
@@ -1343,19 +1346,7 @@ export default function NetworkMap() {
     }
   };
 
-  const handleExpandAll = () => {
-    const visibleSubnets = subnets.filter(
-      (s) => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s),
-    );
-    if (visibleSubnets.length > 15) {
-      if (
-        !window.confirm(
-          "Expanding more than 15 subnets simultaneously may slow down the view. Continue?",
-        )
-      ) {
-        return;
-      }
-    }
+  const expandSubnets = (visibleSubnets) => {
     const nextExpanded = new Set(expandedSubnetsRef.current);
     visibleSubnets.forEach((s) => {
       nextExpanded.add(`subnet:${s}`);
@@ -1363,6 +1354,21 @@ export default function NetworkMap() {
     expandedSubnetsRef.current = nextExpanded;
     setExpandedSubnets(new Set(nextExpanded));
     safeSyncGraphView();
+  };
+
+  /* Expanding a large map is slow but entirely reversible, so this asks in the
+     design system's confirmation dialog rather than window.confirm — same
+     threshold, same wording, and Expand keeps the focus the native prompt gave
+     its OK button. */
+  const handleExpandAll = () => {
+    const visibleSubnets = subnets.filter(
+      (s) => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s),
+    );
+    if (visibleSubnets.length > 15) {
+      setPendingExpand(visibleSubnets);
+      return;
+    }
+    expandSubnets(visibleSubnets);
   };
 
   const handleCollapseAll = () => {
@@ -1931,6 +1937,21 @@ export default function NetworkMap() {
           <div className="nmap-help">{selectedActionHelp.content}</div>
         </CcureModal>
       )}
+
+      <CcureConfirmDialog
+        open={pendingExpand !== null}
+        title="Expand every subnet?"
+        warning="Expanding more than 15 subnets simultaneously may slow down the view. Continue?"
+        confirmLabel="Expand all"
+        tone="info"
+        initialFocus="confirm"
+        onConfirm={() => {
+          const pending = pendingExpand;
+          setPendingExpand(null);
+          if (pending) expandSubnets(pending);
+        }}
+        onCancel={() => setPendingExpand(null)}
+      />
     </AppLayout>
   );
 }

@@ -234,32 +234,31 @@ describe("CVELink — migration spec", () => {
    rule on SecurityDashboard and VulnerabilityBrowser: #3b82f6, measured
    rendered at 3.98:1 on the dark table (it had been 5.28:1) and 3.68:1 on the
    light one. CVELink keeps its own link token there instead, without
-   touching dashboard.css. `.db-table a.cve-link` is (0,2,1) against the legacy
-   rule's (0,2,0), so it wins whatever order the stylesheets load in. */
+   touching dashboard.css. The guard has since been retired: dashboard.css lost
+   its last importer in the post-migration cleanup, so the rule it outranked can
+   no longer reach any page. What is pinned now is that absence. */
 
 const SRC = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
 
-describe("CVELink — colour inside legacy .db-table hosts", () => {
-  it("still has the legacy rule it has to outrank", () => {
-    const dashboard = readFileSync(
-      path.join(SRC, "styles", "dashboard.css"),
-      "utf8",
-    );
-    expect(dashboard).toMatch(
-      /\.db-table \.cve-id\s*\{[^}]*color:\s*var\(--db-accent\)/,
-    );
+describe("CVELink — the retired .db-table guard", () => {
+  it("has no consumer of dashboard.css left to guard against", () => {
+    for (const page of [
+      "SecurityDashboard.jsx",
+      "VulnerabilityBrowser.jsx",
+      "ComplianceWorkspace.jsx",
+    ]) {
+      const src = readFileSync(path.join(SRC, "pages", page), "utf8");
+      expect(src, `${page} imports dashboard.css again`).not.toMatch(
+        /styles\/dashboard\.css/,
+      );
+    }
   });
 
-  it("outranks it with the link token", () => {
+  it("carries no .db-table rule of its own", () => {
     const css = readFileSync(path.join(SRC, "styles", "cve-link.css"), "utf8");
-    const rule = css.match(/\.db-table a\.cve-link\s*\{([^}]*)\}/);
-    expect(
-      rule,
-      "no `.db-table a.cve-link` rule in cve-link.css",
-    ).not.toBeNull();
-    expect(rule[1]).toMatch(/color:\s*var\(--ccure-text-link\)/);
+    expect(css).not.toMatch(/\.db-table/);
   });
 });

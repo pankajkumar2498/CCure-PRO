@@ -236,20 +236,9 @@ export default function UserManagement() {
     loadPending();
   }, [loadPending]);
 
-  const handleApprove = useCallback(
+  const performApprove = useCallback(
     async (user, { allowlistDomain = false } = {}) => {
       const domain = (user.email || "").split("@").pop();
-      if (
-        allowlistDomain &&
-        !window.confirm(
-          `Allow every future signup from "${domain}"?\n\n` +
-            `This approves ${user.username} AND adds ${domain} to the ` +
-            `platform-wide allow list, for all organisations, permanently. ` +
-            `Choose "Approve only" instead if you just want to admit this one person.`,
-        )
-      ) {
-        return;
-      }
       setApprovingId(user.id);
       try {
         await approveUser(user.id, { allowlistDomain });
@@ -275,6 +264,36 @@ export default function UserManagement() {
       }
     },
     [loadPending, loadUsers, pushToast],
+  );
+
+  /* Approving one account is a reversible, single-account decision and goes
+     straight through. Adding the domain to the platform-wide allow list is
+     neither, so it asks first — in the page's own confirmation dialog rather
+     than window.confirm, which is unstyled, blocks the event loop and cannot
+     be reached by the tests. The wording is the sentence the native prompt
+     carried, and the permission and approval calls are unchanged. */
+  const handleApprove = useCallback(
+    (user, { allowlistDomain = false } = {}) => {
+      if (!allowlistDomain) return performApprove(user);
+      const domain = (user.email || "").split("@").pop();
+      setConfirmConfig({
+        title: `Allow every future signup from "${domain}"?`,
+        subtitle: `${user.username} is approved either way; this also changes the platform allow list.`,
+        warning:
+          `This approves ${user.username} AND adds ${domain} to the ` +
+          `platform-wide allow list, for all organisations, permanently. ` +
+          `Choose "Approve only" instead if you just want to admit this one person.`,
+        confirmLabel: "Approve + allow domain",
+        confirmType: "danger",
+        onConfirm: () => {
+          setConfirmConfig(null);
+          return performApprove(user, { allowlistDomain: true });
+        },
+        onCancel: () => setConfirmConfig(null),
+      });
+      return undefined;
+    },
+    [performApprove],
   );
 
   // Load roles + orgs once on mount (these rarely change)

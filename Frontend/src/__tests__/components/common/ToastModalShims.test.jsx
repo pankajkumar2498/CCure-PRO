@@ -1,17 +1,20 @@
 /**
- * Legacy Toast and Modal — Checkpoint 3C batch 12 shims.
+ * Legacy Toast — Checkpoint 3C batch 12 shim.
  *
- * Both keep their APIs; these tests pin the behaviour that did not change
- * (timing, dismiss, Escape, overlay close) and the semantics that were added
- * (live regions that exist before a toast does; a named modal dialog with a
- * focus trap and focus restoration).
+ * It keeps its API; these tests pin the behaviour that did not change (timing,
+ * dismiss) and the semantics that were added (live regions that exist before a
+ * toast does).
+ *
+ * The Modal half of this file went with `components/layout/Modal.jsx`, deleted
+ * in the post-migration cleanup once OrganizationManagement — its last
+ * consumer — moved to CcureModal, whose own focus trap, Escape and overlay
+ * behaviour are covered in src/__tests__/design-system/components.test.jsx.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { useToasts, ToastContainer } from "../../../components/common/Toast";
-import Modal from "../../../components/layout/Modal";
 
 function Harness() {
   const { toasts, push, dismiss } = useToasts();
@@ -84,61 +87,5 @@ describe("Toast shim", () => {
     await waitFor(() =>
       expect(screen.queryByText("Saved the thing")).not.toBeInTheDocument(),
     );
-  });
-});
-
-describe("Modal shim", () => {
-  const Host = ({ open, onClose }) => (
-    <>
-      <button type="button">opener</button>
-      <Modal
-        isOpen={open}
-        onClose={onClose}
-        title="Edit organisation"
-        subtitle="Details"
-      >
-        <input aria-label="Name" />
-        <button type="button">Save</button>
-      </Modal>
-    </>
-  );
-
-  it("renders nothing when closed and a named modal dialog when open", () => {
-    const { rerender } = render(<Host open={false} onClose={() => {}} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    rerender(<Host open onClose={() => {}} />);
-    const dlg = screen.getByRole("dialog", { name: "Edit organisation" });
-    expect(dlg).toHaveAttribute("aria-modal", "true");
-    expect(screen.getByText("Details")).toBeInTheDocument();
-  });
-
-  it("moves focus in, keeps Tab inside, and restores focus on close", async () => {
-    const u = userEvent.setup();
-    const onClose = vi.fn();
-    const { rerender } = render(<Host open={false} onClose={onClose} />);
-    screen.getByText("opener").focus();
-    rerender(<Host open onClose={onClose} />);
-    const dlg = screen.getByRole("dialog");
-    await waitFor(() =>
-      expect(dlg.contains(document.activeElement)).toBe(true),
-    );
-    for (let i = 0; i < 8; i += 1) {
-      await u.tab();
-      expect(dlg.contains(document.activeElement)).toBe(true);
-    }
-    rerender(<Host open={false} onClose={onClose} />);
-    await waitFor(() => expect(screen.getByText("opener")).toHaveFocus());
-  });
-
-  it("closes on Escape, on the overlay and on the Close control", async () => {
-    const u = userEvent.setup();
-    const onClose = vi.fn();
-    const { container } = render(<Host open onClose={onClose} />);
-    await u.keyboard("{Escape}");
-    expect(onClose).toHaveBeenCalledTimes(1);
-    await u.click(container.querySelector(".modal-overlay"));
-    expect(onClose).toHaveBeenCalledTimes(2);
-    await u.click(screen.getByRole("button", { name: "Close" }));
-    expect(onClose).toHaveBeenCalledTimes(3);
   });
 });

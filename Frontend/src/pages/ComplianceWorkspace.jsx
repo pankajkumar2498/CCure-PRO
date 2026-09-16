@@ -29,7 +29,6 @@ import {
   CcureTabs,
   useCcureTabs,
 } from "../design-system";
-import "../styles/dashboard.css";
 import "../styles/compliance.css";
 import "../styles/scan.css";
 import "../styles/compliance-exceptions.css";

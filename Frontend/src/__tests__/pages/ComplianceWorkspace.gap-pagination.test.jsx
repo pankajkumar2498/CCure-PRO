@@ -704,15 +704,14 @@ describe("ComplianceWorkspace gap analysis and pagination — batch 31", () => {
     expect(credentialsTab).toMatch(/<PagingControls\b/);
     expect(source).not.toMatch(/\bPaginationBar\b/);
 
-    // The retired pager's rules are gone; the header's selects keep theirs.
+    // The retired pager's rules are gone. `.cw-pagination-select` outlived
+    // them on the header's selects until Batch 32 migrated those too, so no
+    // rule of the family is left.
     const complianceCss = readFileSync(
       path.join(SRC, "styles/compliance.css"),
       "utf8",
     );
-    expect(complianceCss).not.toMatch(
-      /\.cw-pagination(?:-(?:summary|controls|btn|page-indicator|sizer))?\s*[{:,]/,
-    );
-    expect(complianceCss).toMatch(/\.cw-pagination-select\s*\{/);
+    expect(complianceCss).not.toMatch(/\.cw-pagination/);
 
     const cssPath = path.join(SRC, "styles/compliance-gap.css");
     expect(existsSync(cssPath)).toBe(true);

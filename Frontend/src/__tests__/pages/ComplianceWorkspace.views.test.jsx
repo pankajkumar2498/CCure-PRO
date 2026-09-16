@@ -1229,7 +1229,7 @@ describe("ComplianceWorkspace views — contract", () => {
         within(rowOf("A.8.8")).getByRole("button", { name: "Remediate" }),
       );
       await flush();
-      expectDialog("REMEDIATE");
+      expectDialog("Remediate Finding");
       expect(since(n)).toEqual([["/compliance/credentials"]]);
     });
 
@@ -1297,7 +1297,9 @@ describe("ComplianceWorkspace views — contract", () => {
           await advance(1);
           expect(findingsReads()).toBe(2);
           expect(lastGet()).toEqual([findingsRead()]);
-          expect(document.querySelector(".loading-bar")).toBeNull();
+          expect(
+            document.querySelector(".loading-bar, .cwh-loading"),
+          ).toBeNull();
           expect(firstColumn()).toHaveLength(5);
           await advance(5000);
           expect(findingsReads()).toBe(3);

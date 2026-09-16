@@ -293,17 +293,17 @@ const openRemediate = async (controlId) => {
   await click(
     within(findingRow(controlId)).getByRole("button", { name: "Remediate" }),
   );
-  return dialogNamed("REMEDIATE");
+  return dialogNamed("Remediate Finding");
 };
 const openRollback = async (id) => {
   await openApprovals();
   await click(actionOf(id, "Rollback"));
-  return dialogNamed("ROLLBACK");
+  return dialogNamed("Roll Back Remediation");
 };
 const openLogs = async (id) => {
   await openApprovals();
   await click(actionOf(id, "View Logs"));
-  return dialogNamed("LOG_VIEWER");
+  return dialogNamed("Execution Log");
 };
 const radios = (box) => [...box.querySelectorAll('input[type="radio"]')];
 const methodSelect = (box) =>
@@ -503,7 +503,7 @@ describe("ComplianceWorkspace credential-bearing execution — contract", () => 
       expect(requestReads()).toBe(1);
       await advance(1);
       expect(requestReads()).toBe(2);
-      expect(document.querySelector(".loading-bar")).toBeNull();
+      expect(document.querySelector(".loading-bar, .cwh-loading")).toBeNull();
       await openTab("Dashboard");
       await advance(20000);
       expect(requestReads()).toBe(2);
@@ -1044,7 +1044,9 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
     expect(
       within(box).getByRole("button", { name: "Dispatch Fix Request" }),
     ).toHaveClass("cc-btn--danger");
-    expectClean(box.querySelector(".modal-panel-body > *"));
+    expectClean(
+      box.querySelector(".cc-modal__body > *, .modal-panel-body > *"),
+    );
   });
 
   it("the repair script and the console output are named, keyboard-reachable regions, Copy says what it copies, and the rollback warning is an alert", async () => {
@@ -1062,7 +1064,9 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
     box = await openLogs("crrq_e5f6");
     const output = within(box).getByRole("region", { name: "Console Output" });
     expect(output).toHaveAttribute("tabindex", "0");
-    expectClean(box.querySelector(".modal-panel-body > *"));
+    expectClean(
+      box.querySelector(".cc-modal__body > *, .modal-panel-body > *"),
+    );
     await click(within(box).getByRole("button", { name: "Close Logs" }));
 
     box = await openRollback("crrq_e5f6");
@@ -1094,7 +1098,7 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
     );
     const dialog = source.slice(
       at('{(modalType === "remediate" || modalType === "rollback") &&'),
-      at("</Modal>"),
+      at("</CcureModal>"),
     );
     for (const block of [approvals, dialog]) {
       expect(block).not.toMatch(/style=\{/);

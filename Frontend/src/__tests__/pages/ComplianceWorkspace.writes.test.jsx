@@ -262,6 +262,17 @@ const openFromFinding = async (controlId, button, title) => {
 const submitIn = async (root, name) => {
   await click(within(root).getByRole("button", { name }));
 };
+// Answers the uninstall question the way a person does — the browser's confirm
+// before Batch 32, the dialog since — and returns what was asked.
+const answerUninstall = async (accept) => {
+  const box = screen.queryByRole("dialog", { name: "Uninstall framework" });
+  if (!box) return confirmSpy.mock.calls.at(-1)?.[0] ?? null;
+  const asked = squash(box);
+  await click(
+    within(box).getByRole("button", { name: accept ? "Uninstall" : "Cancel" }),
+  );
+  return asked;
+};
 
 beforeEach(() => {
   user = ANALYST;
@@ -377,7 +388,7 @@ describe("ComplianceWorkspace ordinary writes — contract", () => {
         ]);
         expect(bodyText()).toContain("Framework installed successfully.");
         expect(gets().slice(before)).toEqual(["/compliance/marketplace"]);
-        expect(document.querySelector(".loading-bar")).toBeNull();
+        expect(document.querySelector(".loading-bar, .cwh-loading")).toBeNull();
       },
     );
 
@@ -415,7 +426,7 @@ describe("ComplianceWorkspace ordinary writes — contract", () => {
           name: "Uninstall",
         }),
       );
-      expect(confirmSpy).toHaveBeenCalledWith(
+      expect(await answerUninstall(false)).toContain(
         "Are you sure you want to uninstall this compliance framework? This will hide its policies, findings, approvals, and dashboard averages.",
       );
       expect(api.post).not.toHaveBeenCalled();
@@ -431,6 +442,7 @@ describe("ComplianceWorkspace ordinary writes — contract", () => {
           name: "Uninstall",
         }),
       );
+      await answerUninstall(true);
       expect(api.post.mock.calls).toEqual([
         [`/compliance/marketplace/${ISO}/uninstall`],
       ]);
@@ -443,6 +455,7 @@ describe("ComplianceWorkspace ordinary writes — contract", () => {
           name: "Uninstall",
         }),
       );
+      await answerUninstall(true);
       expect(bodyText()).toContain(
         "Failed to uninstall framework: Still in use",
       );

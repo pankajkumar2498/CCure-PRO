@@ -39,6 +39,17 @@
   margin: 0;
 }
 
+/* The result on screen no longer matches the chosen pair. A note rather than a
+   removal: the dialog's whole body is conditioned on the result, so dropping it
+   would take the framework selects with it. */
+.cwg-stale {
+  margin: 0;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
 .cwg-pickers__arrow {
   padding-bottom: var(--ccure-space-sm);
   font-weight: var(--ccure-weight-bold);

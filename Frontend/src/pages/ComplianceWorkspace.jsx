@@ -759,6 +759,10 @@ export default function ComplianceWorkspace() {
     useState("cfw_iso27001_2022");
   const [gapTargetFramework, setGapTargetFramework] = useState("cfw_nis2");
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
+  /* True when the dialog's framework choices have moved away from the result
+     on screen. The result is kept — dropping it would empty the dialog, whose
+     body is conditioned on it — and labelled instead. */
+  const [gapStale, setGapStale] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
 
   // The catalogue entries this installation actually offers, in the order the
@@ -1116,6 +1120,7 @@ export default function ComplianceWorkspace() {
         `/compliance/gap-analysis?source_framework_id=${sourceId}&target_framework_id=${targetId}`,
       );
       setGapAnalysis(res.data);
+      setGapStale(false);
       setModalType("gap_analysis");
       setModalOpen(true);
     } catch (e) {
@@ -1730,6 +1735,12 @@ export default function ComplianceWorkspace() {
           (e.response?.data?.detail || e.response?.data?.message || e.message),
         "error",
       );
+      /* A refused dispatch used to leave the one-time secret in state, so it
+         was back in the field the next time the dialog opened, for any finding
+         or request. The username is kept: it is not a secret, and retyping it
+         on every retry is the worse trade. */
+      setJitPassword("");
+      setJitKeyContent("");
     }
   };
 
@@ -1775,6 +1786,10 @@ export default function ComplianceWorkspace() {
           (e.response?.data?.detail || e.response?.data?.message || e.message),
         "error",
       );
+      /* Same as the remediation path: a refused dispatch must not leave the
+         one-time secret sitting in state for the next dialog. */
+      setJitPassword("");
+      setJitKeyContent("");
     }
   };
 
@@ -3752,7 +3767,15 @@ export default function ComplianceWorkspace() {
                     <CcureSelect
                       label="Authentication Method"
                       value={newCredAuthMethod}
-                      onChange={(e) => setNewCredAuthMethod(e.target.value)}
+                      /* Switching method drops whatever the other method held:
+                         it is sent as null once the method changes, and
+                         keeping it meant it returned if the operator switched
+                         back. */
+                      onChange={(e) => {
+                        setNewCredAuthMethod(e.target.value);
+                        setNewCredPassword("");
+                        setNewCredKeyContent("");
+                      }}
                     >
                       <option value="password">Password</option>
                       <option value="key">Private SSH Key</option>
@@ -4510,14 +4533,18 @@ export default function ComplianceWorkspace() {
         {modalType === "gap_analysis" && gapAnalysis && (
           <div className="cwg-gap">
             {/* Choosing a framework sends nothing: the pair is read only when
-                Recalculate Gap is pressed, and the result below stays on
-                screen until the new one arrives. */}
+                Recalculate Gap is pressed. The result below stays on screen
+                until the new one arrives, and says so once the choices no
+                longer match it. */}
             <div className="cwg-pickers">
               <CcureSelect
                 label="Source Baseline"
                 fieldClassName="cwg-pickers__field"
                 value={gapSourceFramework}
-                onChange={(e) => setGapSourceFramework(e.target.value)}
+                onChange={(e) => {
+                  setGapSourceFramework(e.target.value);
+                  setGapStale(true);
+                }}
               >
                 {activeFrameworks.map((fw) => (
                   <option key={`modal_src_${fw.id}`} value={fw.id}>
@@ -4534,7 +4561,10 @@ export default function ComplianceWorkspace() {
                 label="Target Mandate"
                 fieldClassName="cwg-pickers__field"
                 value={gapTargetFramework}
-                onChange={(e) => setGapTargetFramework(e.target.value)}
+                onChange={(e) => {
+                  setGapTargetFramework(e.target.value);
+                  setGapStale(true);
+                }}
               >
                 {activeFrameworks.map((fw) => (
                   <option key={`modal_tgt_${fw.id}`} value={fw.id}>
@@ -4555,6 +4585,13 @@ export default function ComplianceWorkspace() {
                 {loadingGapAnalysis ? "Calculating..." : "Recalculate Gap"}
               </CcureButton>
             </div>
+
+            {gapStale && (
+              <p className="cwg-stale" role="status">
+                Showing the previous result. Press Recalculate Gap to compare
+                the frameworks now chosen.
+              </p>
+            )}
 
             <div className="cwg-summary">
               <div className="cwg-summary__head">
@@ -4804,7 +4841,15 @@ export default function ComplianceWorkspace() {
                       label="Auth Method"
                       fieldClassName="cwe-jit__wide"
                       value={jitAuthMethod}
-                      onChange={(e) => setJitAuthMethod(e.target.value)}
+                      /* Switching method drops whatever the other method held.
+                         That value is never sent once the method changes, and
+                         keeping it in state meant it came back if the operator
+                         switched away and back again. */
+                      onChange={(e) => {
+                        setJitAuthMethod(e.target.value);
+                        setJitPassword("");
+                        setJitKeyContent("");
+                      }}
                     >
                       <option value="password">Password</option>
                       <option value="key">Private SSH Key</option>

@@ -18,8 +18,10 @@
  *     the socket;
  *   * unmount clears both timers and closes the socket.
  *
- * Also preserved without change: `cancelScan` behind `window.confirm` followed
- * by `refresh()`; `downloadReport` → Blob → anchor click, with `alert()` on
+ * Also preserved without change: `cancelScan` behind a confirmation followed
+ * by `refresh()` — the question is now asked in `CcureConfirmDialog` rather
+ * than `window.confirm`, with the same words and the same call;
+ * `downloadReport` → Blob → anchor click, with `alert()` on
  * failure; the `ACTIVE_STATUSES` / `COMPLETE_STATUSES` sets that decide which
  * actions are offered; the `PIPELINE_PHASES` order; the progress derivation
  * (`live_progress.percentage`, else 100 when complete, else phase index × 33.33);
@@ -49,6 +51,7 @@ import {
   CcureBadge,
   CcureButton,
   CcureCard,
+  CcureConfirmDialog,
   CcureScanProgress,
   CcureScanStatus,
   CcureSkeleton,
@@ -102,11 +105,19 @@ export default function ScanDetail() {
     }
   };
 
-  const handleCancel = async () => {
-    if (window.confirm("Are you sure you want to cancel this scan?")) {
-      await webScansApi.cancelScan(id);
-      refresh();
-    }
+  /* Cancelling a scan cannot be undone, so it asks first — in the design
+     system's confirmation dialog rather than window.confirm, which is
+     unstyled, blocks the event loop and cannot be driven by the tests. The
+     question, the cancelScan call and the refresh that follows it are
+     unchanged, and nothing is sent until the dialog is answered. */
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const handleCancel = () => setConfirmCancel(true);
+
+  const performCancel = async () => {
+    setConfirmCancel(false);
+    await webScansApi.cancelScan(id);
+    refresh();
   };
 
   /* `loading && !scan`, unchanged. Keyed on "nothing to show yet" rather than
@@ -403,6 +414,17 @@ export default function ScanDetail() {
             </span>
           </Link>
         </div>
+
+        <CcureConfirmDialog
+          open={confirmCancel}
+          title="Cancel this scan?"
+          warning="Are you sure you want to cancel this scan?"
+          confirmLabel="Cancel Scan"
+          cancelLabel="Keep Scanning"
+          tone="danger"
+          onConfirm={performCancel}
+          onCancel={() => setConfirmCancel(false)}
+        />
       </div>
     </AppLayout>
   );

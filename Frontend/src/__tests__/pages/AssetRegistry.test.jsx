@@ -727,3 +727,159 @@ describe("AssetRegistry — associated-assets dialog focus trap (stage 1 remedia
     expect(axiosInstance.delete).not.toHaveBeenCalled();
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BATCH 16 — keyboard reach, captions, and dashboard.css
+   ══════════════════════════════════════════════════════════════════════════
+   Written against the batch 10 page before the change; every test in this
+   block failed there. Batch 10 recorded the thirteen `<th onClick>` sort
+   headers as click-only; the row, certificate and dialog drill-downs and the
+   managed toggle were the same defect in four more places. */
+describe("AssetRegistry — batch 16", () => {
+  const sortHeaders = (container) => [
+    ...container.querySelectorAll("thead th[aria-sort]"),
+  ];
+
+  it("makes every sortable asset column a button that states its sort", async () => {
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    const ths = sortHeaders(container);
+    expect(
+      ths.map((th) => th.textContent.replace(/[↕▲▼↓↑]/g, "").trim()),
+    ).toEqual(["IP / Host", "Risk", "Last Seen"]);
+    for (const th of ths) expect(th.querySelector("button")).toBeTruthy();
+    // Default sort is risk, worst first.
+    expect(ths[1]).toHaveAttribute("aria-sort", "descending");
+    expect(ths[0]).toHaveAttribute("aria-sort", "none");
+  });
+
+  it("makes the services and certificate sort columns buttons too", async () => {
+    params = new URLSearchParams("tab=services");
+    const services = await renderPage();
+    await screen.findByText("ssh");
+    expect(sortHeaders(services.container)).toHaveLength(5);
+    services.unmount();
+
+    params = new URLSearchParams("tab=tls");
+    const certs = render(<AssetRegistry />);
+    await screen.findByText("ws-01.corp.test");
+    expect(sortHeaders(certs.container)).toHaveLength(5);
+  });
+
+  it("sorts from the keyboard with the page's own direction rules", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    const button = sortHeaders(container)[0].querySelector("button");
+    button.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      const p = callsTo("/assets").at(-1)[1]?.params;
+      expect(p.sort_by).toBe("ip_address");
+      // A newly chosen asset column starts descending, as it always has.
+      expect(p.sort_dir).toBe("desc");
+    });
+  });
+
+  it("gives every table one caption, as its first child", async () => {
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    for (const t of container.querySelectorAll("table")) {
+      expect(t.querySelectorAll("caption").length).toBe(1);
+      expect(t.firstElementChild.tagName).toBe("CAPTION");
+    }
+  });
+
+  it("reaches each asset's detail with a real link", async () => {
+    await renderPage();
+    const link = await screen.findByRole("link", { name: /10\.180\.5\.10/ });
+    expect(link).toHaveAttribute("href", "/assets/a-1");
+  });
+
+  it("makes the managed state a toggle button that states its value", async () => {
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    const toggles = [
+      ...container.querySelectorAll("tbody button[aria-pressed]"),
+    ];
+    expect(toggles).toHaveLength(2);
+    expect(toggles.map((t) => t.getAttribute("aria-pressed"))).toEqual([
+      "false",
+      "true",
+    ]);
+  });
+
+  it("offers no managed toggle without assets:update, and still states the value", async () => {
+    permissions = new Set();
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    expect(
+      container.querySelectorAll("tbody button[aria-pressed]"),
+    ).toHaveLength(0);
+    expect(container.textContent).toMatch(/Unmanaged/);
+    expect(container.textContent).toMatch(/Managed/);
+  });
+
+  it("reaches a certificate's asset with a real link", async () => {
+    params = new URLSearchParams("tab=tls");
+    await renderPage();
+    const link = await screen.findByRole("link", { name: "ws-01" });
+    expect(link).toHaveAttribute("href", "/assets/a-1");
+  });
+
+  it("reaches an associated asset from the dialog with a real link", async () => {
+    const user = userEvent.setup();
+    params = new URLSearchParams("tab=services");
+    /* The service-assets endpoint's own row shape (Backend/routers/assets.py:
+       asset_id, asset_hostname, asset_ip) — which is what the page reads. The
+       shared `routeGet` answers this URL with registry rows (id, hostname),
+       which render a nameless link and would prove nothing. */
+    axiosInstance.get.mockImplementation((url) =>
+      String(url) === "/assets/services/assets"
+        ? Promise.resolve({
+            data: {
+              assets: [
+                {
+                  asset_id: "a-1",
+                  asset_hostname: "ws-01",
+                  asset_ip: "10.180.5.10",
+                  asset_type: "endpoint",
+                  state: "open",
+                  service_product: "OpenSSH",
+                  service_version: "9.6",
+                  last_scan_time: "2026-09-10T10:00:00Z",
+                },
+              ],
+              total: 1,
+            },
+          })
+        : routeGet(url),
+    );
+    await renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "View Assets" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const link = await within(dialog).findByRole("link", { name: "ws-01" });
+    expect(link).toHaveAttribute("href", "/assets/a-1");
+  });
+
+  it("no longer depends on dashboard.css", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const path = await import("node:path");
+    // Not `new URL(rel, import.meta.url)`: Vite rewrites that pattern into an
+    // asset URL, which is not a file path.
+    const source = readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "../../pages/AssetRegistry.jsx",
+      ),
+      "utf8",
+    );
+    expect(source).not.toMatch(/import\s+["'][^"']*dashboard\.css["']/);
+    const { container } = await renderPage();
+    await screen.findByText("10.180.5.10");
+    expect(container.querySelector("[class*='db-']")).toBeNull();
+  });
+});

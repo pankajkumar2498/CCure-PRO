@@ -2,9 +2,23 @@
  * src/pages/scan/NewScan.jsx
  * ─────────────────────────────────────────────────────────────────────────────
  * Scan setup page with "Active Mission" view.
+ *
+ * Checkpoint 3C batch 25 — on the design system. The dispatch, the ticket and
+ * progress socket, the 2.5-second read of the scan record, Stop Scan, the
+ * automatic hand-off to the next phase, the route-requested start and the
+ * target-file import are unchanged, and pinned by
+ * src/__tests__/pages/scan/NewScan.contract.test.jsx, written against the page
+ * before migration.
  */
 import "../../styles/NewScan.css";
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useId,
+} from "react";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
@@ -15,6 +29,17 @@ import { can } from "../../auth/permissions";
 import { useAuth } from "../../context/AuthContext";
 import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
 import { detectTargetType, parseExcludeIpsJS } from "../../utils/ipValidation";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureField,
+  CcureInput,
+  CcureModal,
+  CcureProgress,
+  CcureSelect,
+  CcureTable,
+} from "../../design-system";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 
@@ -25,11 +50,7 @@ const DISCOVERY_INTENSITIES = [
     icon: "⚡",
     desc: "Fastest — may miss firewalled hosts",
     badge: "Fastest",
-    badgeStyle: {
-      background: "rgba(34,211,238,0.12)",
-      color: "#22d3ee",
-      border: "1px solid rgba(34,211,238,0.3)",
-    },
+    badgeVariant: "info",
   },
   {
     value: "normal",
@@ -37,11 +58,7 @@ const DISCOVERY_INTENSITIES = [
     icon: "⚖",
     desc: "Fast-first with coverage fallback",
     badge: "Recommended",
-    badgeStyle: {
-      background: "rgba(34,197,94,0.12)",
-      color: "#22c55e",
-      border: "1px solid rgba(34,197,94,0.3)",
-    },
+    badgeVariant: "success",
   },
   {
     value: "deep",
@@ -49,11 +66,7 @@ const DISCOVERY_INTENSITIES = [
     icon: "🔬",
     desc: "Max coverage — best for firewalled nets",
     badge: "Thorough",
-    badgeStyle: {
-      background: "rgba(245,158,11,0.12)",
-      color: "#d97706",
-      border: "1px solid rgba(245,158,11,0.3)",
-    },
+    badgeVariant: "warning",
   },
 ];
 
@@ -97,12 +110,12 @@ const QUICK_TARGETS = [
 ];
 
 const PIPELINE_BADGE = {
-  basic: { label: "Basic Scan", cls: "ns-badge--basic" },
-  asset: { label: "Asset Discovery", cls: "ns-badge--asset" },
-  advanced: { label: "Vulnerability Audit", cls: "ns-badge--advanced" },
+  basic: { label: "Basic Scan", variant: "neutral" },
+  asset: { label: "Asset Discovery", variant: "info" },
+  advanced: { label: "Vulnerability Audit", variant: "warning" },
   vulnerability_audit: {
     label: "Vulnerability Audit",
-    cls: "ns-badge--advanced",
+    variant: "warning",
   },
 };
 
@@ -156,6 +169,26 @@ const fmtElapsed = (startMs) => {
 const RING_R = 22;
 const RING_C = 2 * Math.PI * RING_R; // ≈ 138.23
 
+/* ── Presentation ──────────────────────────────────────────────────────────── */
+
+/* A glyph repeats what its text already says, so assistive technology skips
+   it. It stays on screen. */
+function Glyph({ children }) {
+  return (
+    <span className="ns-glyph" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
+/* The badge tone for each kind of imported target. */
+const TARGET_TYPE_VARIANT = {
+  IP: "primary",
+  CIDR: "info",
+  Range: "warning",
+  Hostname: "neutral",
+};
+
 /* ── HostCard sub-component ─────────────────────────────────────────────────── */
 
 function HostCard({ host, isNew }) {
@@ -168,41 +201,32 @@ function HostCard({ host, isNew }) {
   const isEnrichingMac = host._enriching_mac === true;
 
   const hostnameContent = isEnrichingHostname ? (
-    <span className="am-host-field-resolving">Resolving…</span>
+    <span className="ns-host__resolving">Resolving…</span>
   ) : hostname ? (
-    <span className="am-host-field-enriched">{hostname}</span>
+    <span>{hostname}</span>
   ) : (
-    <span className="muted">—</span>
+    <span className="ns-muted">—</span>
   );
 
   const macContent = isEnrichingMac ? (
-    <span className="am-host-field-resolving">Resolving…</span>
+    <span className="ns-host__resolving">Resolving…</span>
   ) : mac ? (
-    <span className="am-host-field-enriched">{mac}</span>
+    <span>{mac}</span>
   ) : (
-    <span className="muted">—</span>
+    <span className="ns-muted">—</span>
   );
 
   return (
-    <div className={`am-host-card${isNew ? " am-host-card--new" : ""}`}>
-      <div className="am-host-col-status">
-        <span className="am-host-alive-dot" />
-      </div>
-      <div className="am-host-col-ip" title={host.ip_address}>
+    <li className={`ns-host${isNew ? " ns-host--new" : ""}`}>
+      <span className="ns-host__dot" aria-hidden="true" />
+      <span className="ns-host__ip" title={host.ip_address}>
         {host.ip_address}
-      </div>
-      <div
-        className={`am-host-col-hostname${isEnrichingHostname ? " am-enriching" : ""}`}
-        title={hostname || ""}
-      >
+      </span>
+      <span className="ns-host__name" title={hostname || ""}>
         {hostnameContent}
-      </div>
-      <div
-        className={`am-host-col-mac${isEnrichingMac ? " am-enriching" : ""}`}
-      >
-        {macContent}
-      </div>
-    </div>
+      </span>
+      <span className="ns-host__mac">{macContent}</span>
+    </li>
   );
 }
 
@@ -230,6 +254,7 @@ function ActiveMission({
 
   const [elapsed, setElapsed] = useState("0s");
   const hostsListRef = useRef(null);
+  const hostsTitleId = useId();
 
   useEffect(() => {
     if (status === "running") {
@@ -283,11 +308,6 @@ function ActiveMission({
         : isComplete
           ? "complete"
           : null;
-  const dotClass = variant ? `am-live-dot--${variant}` : "";
-  const ringClass = variant ? `am-ring-fill--${variant}` : "";
-  const badgeClass = variant
-    ? `am-status-badge--${variant}`
-    : "am-status-badge--running";
   const badgeLabel = isCancelled
     ? "Cancelled"
     : isFailed
@@ -297,7 +317,6 @@ function ActiveMission({
         : isComplete
           ? "Complete"
           : "Live Scanning";
-  const stripClass = variant ? `am-progress-strip-fill--${variant}` : "";
 
   const pipelineLabel =
     {
@@ -307,34 +326,63 @@ function ActiveMission({
       vulnerability_audit: "Vulnerability Audit",
     }[pipelineMode] || "Scan";
 
-  return (
-    <div className="am-page">
-      <div className="am-topbar">
-        <div className="am-topbar-left">
-          <span className={`am-live-dot ${dotClass}`} />
-          <span className="am-mission-label">Active Mission</span>
-          {scanNo && <span className="am-scan-no">#{scanNo}</span>}
-        </div>
-        <div className="am-actions">
-          {!isComplete && !isFailed && !isUnreachable && (
-            <button className="am-btn-bg" onClick={onRunInBackground}>
-              📥 Run in Background
-            </button>
-          )}
-          <button className="am-btn-new" onClick={onNewScan}>
-            ← New Scan
-          </button>
-        </div>
-      </div>
+  /* The tone every part of the console takes from the outcome. `variant` is
+     null while the scan runs. */
+  const tone = variant || "running";
+  const badgeVariant = {
+    running: "info",
+    complete: "success",
+    failed: "danger",
+    warning: "warning",
+  }[tone];
+  const progressVariant = {
+    running: "primary",
+    complete: "success",
+    failed: "danger",
+    warning: "warning",
+  }[tone];
 
-      <div className="am-card">
-        <div className="am-console-header">
-          <div className="am-console-header-left">
-            <div className="am-progress-ring-wrap">
-              <svg className="am-progress-ring" viewBox="0 0 52 52">
-                <circle className="am-ring-track" cx="26" cy="26" r={RING_R} />
+  return (
+    <div className={`ns-mission ns-mission--${tone}`}>
+      <header className="ns-mission__bar">
+        <div className="ns-mission__heading">
+          <span className="ns-live-dot" aria-hidden="true" />
+          <h1 className="ns-mission__title">Active Mission</h1>
+          {scanNo && (
+            <CcureBadge variant="neutral" mono>
+              #{scanNo}
+            </CcureBadge>
+          )}
+        </div>
+        <div className="ns-mission__actions">
+          {!isComplete && !isFailed && !isUnreachable && (
+            <CcureButton
+              variant="secondary"
+              size="sm"
+              onClick={onRunInBackground}
+            >
+              <Glyph>📥</Glyph> Run in Background
+            </CcureButton>
+          )}
+          <CcureButton variant="secondary" size="sm" onClick={onNewScan}>
+            <Glyph>←</Glyph> New Scan
+          </CcureButton>
+        </div>
+      </header>
+
+      <div className="ns-mission__card">
+        <div className="ns-console">
+          <div className="ns-console__lead">
+            <div className="ns-ring">
+              <svg
+                className="ns-ring__svg"
+                viewBox="0 0 52 52"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle className="ns-ring__track" cx="26" cy="26" r={RING_R} />
                 <circle
-                  className={`am-ring-fill ${ringClass}`}
+                  className="ns-ring__fill"
                   cx="26"
                   cy="26"
                   r={RING_R}
@@ -342,106 +390,111 @@ function ActiveMission({
                   strokeDashoffset={offset}
                 />
               </svg>
-              <div className="am-ring-pct">
+              <div className="ns-ring__pct" aria-hidden="true">
                 {isUnreachable ? "!" : `${pct}%`}
               </div>
             </div>
-            <div className="am-header-info">
-              <div className="am-header-title">{pipelineLabel}</div>
-              <div className="am-header-target">{target}</div>
+            <div className="ns-console__info">
+              <p className="ns-console__pipeline">{pipelineLabel}</p>
+              <p className="ns-console__target">{target}</p>
             </div>
           </div>
-          <div className={`am-status-badge ${badgeClass}`}>
-            {isRunning && <span className="am-status-spinner" />}
+          <CcureBadge variant={badgeVariant} className="ns-console__status">
+            {isRunning && <span className="ns-spinner" aria-hidden="true" />}
             {badgeLabel}
-          </div>
+          </CcureBadge>
         </div>
 
         {isUnreachable && (
-          <div className="am-unreachable-banner">
-            <div className="am-unreachable-icon">⚠️</div>
-            <div className="am-unreachable-text">
-              <strong>Target Unreachable</strong>
-              <p>
-                The host <code>{target}</code> did not respond to discovery
-                probes.
-              </p>
-              <div className="am-unreachable-tips">
-                <span>Possible reasons:</span>
-                <ul>
-                  <li>Host is currently powered off.</li>
-                  <li>Firewall is dropping ICMP/TCP packets.</li>
-                  <li>Target is in a different network segment.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+          <CcureAlert
+            variant="warning"
+            live={false}
+            title="Target Unreachable"
+            className="ns-unreachable"
+          >
+            <p className="ns-unreachable__text">
+              The host <code className="ns-code">{target}</code> did not respond
+              to discovery probes.
+            </p>
+            <p className="ns-unreachable__text">Possible reasons:</p>
+            <ul className="ns-unreachable__list">
+              <li>Host is currently powered off.</li>
+              <li>Firewall is dropping ICMP/TCP packets.</li>
+              <li>Target is in a different network segment.</li>
+            </ul>
+          </CcureAlert>
         )}
 
-        <div className="am-progress-strip">
-          <div
-            className={`am-progress-strip-fill ${stripClass}`}
-            style={{ width: isUnreachable ? "100%" : `${pct}%` }}
-          />
-        </div>
+        <CcureProgress
+          value={isUnreachable ? 100 : pct}
+          label="Scan progress"
+          showValue={false}
+          variant={progressVariant}
+          className="ns-mission__progress"
+        />
 
-        <div className="am-stats-bar">
-          <div className="am-stat">
+        <ul className="ns-stats">
+          <li className="ns-stat">
             <span
-              className={`am-stat-value ${discovered > 0 ? "am-stat-value--green" : ""}`}
+              className={`ns-stat__value${discovered > 0 ? " ns-stat__value--found" : ""}`}
             >
               {discovered}
-            </span>
-            <span className="am-stat-label">Hosts Found</span>
-          </div>
-          <div className="am-stat">
-            <span className="am-stat-value am-stat-value--accent">
+            </span>{" "}
+            <span className="ns-stat__label">Hosts Found</span>
+          </li>
+          <li className="ns-stat">
+            <span className="ns-stat__value ns-stat__value--accent">
               {totalIps || "—"}
-            </span>
-            <span className="am-stat-label">Total IPs</span>
-          </div>
-          <div className="am-stat">
-            <span className="am-stat-value">{pct}%</span>
-            <span className="am-stat-label">Progress</span>
-          </div>
-          <div className="am-stat">
-            <span className="am-stat-value">{elapsed}</span>
-            <span className="am-stat-label">Elapsed</span>
-          </div>
-        </div>
+            </span>{" "}
+            <span className="ns-stat__label">Total IPs</span>
+          </li>
+          <li className="ns-stat">
+            <span className="ns-stat__value">{pct}%</span>{" "}
+            <span className="ns-stat__label">Progress</span>
+          </li>
+          <li className="ns-stat">
+            <span className="ns-stat__value">{elapsed}</span>{" "}
+            <span className="ns-stat__label">Elapsed</span>
+          </li>
+        </ul>
 
-        <div className="am-hosts-panel">
-          <div className="am-hosts-header">
-            <div className="am-hosts-header-left">
-              <span className="am-hosts-icon">🖥</span>
-              <span className="am-hosts-title">Discovered Systems</span>
+        <section className="ns-hosts" aria-labelledby={hostsTitleId}>
+          <div className="ns-hosts__header">
+            <div className="ns-hosts__heading">
+              <h2 id={hostsTitleId} className="ns-hosts__title">
+                <Glyph>🖥</Glyph> Discovered Systems
+              </h2>
               {discoveredHosts.length > 0 && (
-                <span className="am-hosts-count-badge">
+                <CcureBadge variant="primary">
                   {discoveredHosts.length}
-                </span>
+                </CcureBadge>
               )}
             </div>
             {isRunning && (
-              <div className="am-hosts-scanning-label">
-                <span className="am-hosts-scanning-dot" />
+              <div className="ns-hosts__scanning">
+                <span className="ns-hosts__pulse" aria-hidden="true" />
                 scanning…
               </div>
             )}
           </div>
           {discoveredHosts.length === 0 ? (
-            <div className="am-hosts-empty">
-              <div className="am-hosts-empty-radar">
-                <div className="am-hosts-empty-ring" />
-                <div className="am-hosts-empty-ring" />
-                <div className="am-hosts-empty-ring" />
-                <div className="am-hosts-empty-dot" />
+            <div className="ns-hosts__empty">
+              <div className="ns-radar" aria-hidden="true">
+                <span className="ns-radar__ring" />
+                <span className="ns-radar__ring" />
+                <span className="ns-radar__ring" />
+                <span className="ns-radar__dot" />
               </div>
-              <div className="am-hosts-empty-text">
+              <p className="ns-hosts__empty-text">
                 Scanning subnet… waiting for active hosts.
-              </div>
+              </p>
             </div>
           ) : (
-            <div className="am-hosts-list" ref={hostsListRef}>
+            <ul
+              className="ns-hosts__list"
+              ref={hostsListRef}
+              aria-labelledby={hostsTitleId}
+            >
               {discoveredHosts.map((h) => (
                 <HostCard
                   key={h.ip_address}
@@ -449,12 +502,12 @@ function ActiveMission({
                   isNew={newHostIps.includes(h.ip_address)}
                 />
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </section>
 
-        <div className="am-console-footer">
-          <span className="am-footer-elapsed">
+        <div className="ns-console__footer">
+          <span className="ns-console__elapsed">
             {isRunning
               ? `Elapsed: ${elapsed}`
               : isComplete
@@ -463,49 +516,293 @@ function ActiveMission({
                   ? "Scan cancelled"
                   : "Scan ended"}
           </span>
-          <div className="am-footer-actions">
+          <div className="ns-console__actions">
             {isRunning && (
-              <button className="am-btn-bg" onClick={onRunInBackground}>
-                📥 Run in Background
-              </button>
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={onRunInBackground}
+              >
+                <Glyph>📥</Glyph> Run in Background
+              </CcureButton>
             )}
             {/* Stop is only offered while the scan is actually running.
                 Offering it on a settled scan invites a click that answers
                 "already in a terminal state" and reads as a broken button. */}
             {isRunning && onCancel && (
-              <button
-                className="am-btn-cancel"
+              <CcureButton
+                variant="danger"
+                size="sm"
                 onClick={onCancel}
-                disabled={cancelling}
+                loading={cancelling}
                 title="Stop this scan"
               >
-                {cancelling ? "Stopping…" : "⏹ Stop Scan"}
-              </button>
+                {cancelling ? (
+                  "Stopping…"
+                ) : (
+                  <>
+                    <Glyph>⏹</Glyph> Stop Scan
+                  </>
+                )}
+              </CcureButton>
             )}
             {isComplete && (
-              <button className="am-btn-view-results" onClick={onViewResults}>
-                View Results →
-              </button>
+              <CcureButton size="sm" onClick={onViewResults}>
+                View Results <Glyph>→</Glyph>
+              </CcureButton>
             )}
             {(isFailed || isCancelled || isUnreachable) && (
-              <button className="am-btn-new" onClick={onNewScan}>
-                ↩ Try Again
-              </button>
+              <CcureButton variant="secondary" size="sm" onClick={onNewScan}>
+                <Glyph>↩</Glyph> Try Again
+              </CcureButton>
             )}
           </div>
         </div>
       </div>
       {(outcomeMessage || error) && (
-        <div
-          className={`am-error-card${
-            isFailed ? " am-error-card--failed" : " am-error-card--warning"
-          }`}
+        <CcureAlert
+          variant={isFailed ? "danger" : "warning"}
+          className="ns-mission__outcome"
         >
-          <span>{isCancelled ? "⏹" : isUnreachable ? "📡" : "⚠️"}</span>
-          <span>{outcomeMessage || error}</span>
-        </div>
+          {outcomeMessage || error}
+        </CcureAlert>
       )}
     </div>
+  );
+}
+
+/* ── Setup building blocks ─────────────────────────────────────────────────── */
+
+/* A labelled set of mutually exclusive choices. Each is a toggle button that
+   says whether it is the current one; the description of the current choice
+   sits inside the group it describes. */
+function ChoiceGroup({
+  label,
+  hint,
+  options,
+  value,
+  onChange,
+  disabled,
+  children,
+}) {
+  const id = useId();
+  return (
+    <div className="ns-choices" role="group" aria-labelledby={`${id}-label`}>
+      <div className="ns-choices__label">
+        <span id={`${id}-label`} className="ns-label">
+          {label}
+        </span>
+        {hint ? <span className="ns-hint">{hint}</span> : null}
+      </div>
+      <div className="ns-segmented">
+        {options.map((option) => (
+          <CcureButton
+            key={option.value}
+            variant="secondary"
+            size="sm"
+            className="ns-segmented__option"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+          >
+            <Glyph>{option.icon}</Glyph> {option.label}
+          </CcureButton>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* An option switched on or off: a native checkbox exposed as a switch, named
+   by its visible title and described by its hint. What the option reveals
+   when on is passed as children, outside the row. */
+function OptionRow({
+  icon,
+  title,
+  hint,
+  checked,
+  onChange,
+  disabled,
+  status,
+  children,
+}) {
+  const id = useId();
+  return (
+    <section className="ns-option">
+      <div className="ns-option__row">
+        <div className="ns-option__text">
+          <label htmlFor={id} className="ns-option__title">
+            {icon ? <Glyph>{icon}</Glyph> : null} {title}
+          </label>
+          {hint ? (
+            <p id={`${id}-hint`} className="ns-hint">
+              {hint}
+            </p>
+          ) : null}
+        </div>
+        <div className="ns-option__control">
+          <input
+            id={id}
+            type="checkbox"
+            role="switch"
+            className="ns-switch"
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+            disabled={disabled}
+            aria-describedby={hint ? `${id}-hint` : undefined}
+          />
+          {status ? <span className="ns-option__status">{status}</span> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const SCAN_MODELS = [
+  {
+    mode: "intensity",
+    icon: "⚡",
+    title: "Intensity-Based Scan",
+    desc: "Predefined scan depths (Light, Normal, Deep) without selecting individual ports.",
+  },
+  {
+    mode: "port",
+    icon: "🔌",
+    title: "Port-Based Scan",
+    desc: "Select predefined templates (IT, SCADA, Web, Database, Remote) or input custom ports.",
+  },
+];
+
+/* The port scan model: two cards that are one radio group, so the choice is
+   reachable and announced from the keyboard. */
+function ScanModelChoice({ value, onChange }) {
+  const id = useId();
+  return (
+    <div className="ns-model" role="radiogroup" aria-labelledby={`${id}-label`}>
+      <p id={`${id}-label`} className="ns-label">
+        Scan Configuration Model
+      </p>
+      <div className="ns-model__cards">
+        {SCAN_MODELS.map((model) => (
+          <label
+            key={model.mode}
+            className={`ns-model__card${value === model.mode ? " ns-model__card--selected" : ""}`}
+          >
+            <input
+              type="radio"
+              name={`${id}-model`}
+              value={model.mode}
+              className="ns-model__input"
+              checked={value === model.mode}
+              onChange={() => onChange(model.mode)}
+            />
+            <span className="ns-model__icon" aria-hidden="true">
+              {model.icon}
+            </span>
+            <span className="ns-model__title">{model.title}</span>
+            <span className="ns-model__desc">{model.desc}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* The target field, its file picker button and the area a target list can be
+   dropped on. The drop area is a convenience: Upload File reaches the same
+   reader from the keyboard. */
+function TargetField({
+  value,
+  onChange,
+  onKeyDown,
+  disabled,
+  onBrowse,
+  dragging,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}) {
+  const id = useId();
+  return (
+    <div
+      className={`ns-drop${dragging ? " ns-drop--active" : ""}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <CcureField id={id} label="Target" hint="IP, CIDR, or range">
+        <div className="ns-drop__row">
+          <input
+            id={id}
+            className="cc-field__control ns-target"
+            value={value}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            placeholder="10.180.6.0/24   ·   10.180.6.1-50"
+            disabled={disabled}
+            aria-describedby={`${id}-hint`}
+            autoFocus
+          />
+          <CcureButton
+            variant="secondary"
+            className="ns-drop__browse"
+            onClick={onBrowse}
+            disabled={disabled}
+          >
+            <Glyph>📂</Glyph> Upload File
+          </CcureButton>
+        </div>
+      </CcureField>
+    </div>
+  );
+}
+
+/**
+ * CcureModal's own outside-click handling never fires (it reads the React
+ * event's currentTarget after dispatch, when React has already cleared it).
+ * The legacy settings drawer closed on a click on its backdrop, so the page
+ * listens for a click on this dialog's own overlay, as ScanHistory and
+ * Phase3Results do.
+ */
+function useCloseOnOverlayClick(active, dialogClass, onClose) {
+  useEffect(() => {
+    if (!active) return undefined;
+    const onClick = (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.classList.contains("cc-modal__overlay") &&
+        target.firstElementChild?.classList.contains(dialogClass)
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [active, dialogClass, onClose]);
+}
+
+/* Advanced settings: a modal dialog drawn as a side sheet. Its contents are
+   rendered only while it is open; every value lives in the page or the scan
+   context, so closing it loses nothing. */
+function SettingsDialog({ open, setOpen, children }) {
+  const close = useCallback(() => setOpen(false), [setOpen]);
+  useCloseOnOverlayClick(open, "ns-settings", close);
+  return (
+    <CcureModal
+      open={open}
+      onClose={close}
+      title="Advanced Settings"
+      size="lg"
+      closeLabel="Close settings"
+      closeOnOverlayClick={false}
+      className="ns-settings"
+      footer={<CcureButton onClick={close}>Save & Close</CcureButton>}
+    >
+      {children}
+    </CcureModal>
   );
 }
 
@@ -1691,33 +1988,50 @@ export default function NewScan() {
   return (
     <AppLayout pageTitle="New Scan">
       <div className="ns-page">
-        <div className="ns-hero">
-          <button className="ns-back" onClick={() => navigate("/dashboard")}>
-            ← Back
-          </button>
-          <div className={`ns-badge ${badgeMeta.cls}`}>{badgeMeta.label}</div>
+        <header className="ns-hero">
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            className="ns-back"
+            onClick={() => navigate("/dashboard")}
+          >
+            <Glyph>←</Glyph> Back
+          </CcureButton>
+          <CcureBadge variant={badgeMeta.variant} className="ns-hero__badge">
+            {badgeMeta.label}
+          </CcureBadge>
           <h1 className="ns-title">{pipeline.label}</h1>
           <p className="ns-sub">{pipeline.description}</p>
-        </div>
+        </header>
         <ScanQuotaBar
           onQuotaChange={({ quota_exceeded, concurrent_exceeded }) =>
             setQuotaBlocked(quota_exceeded || concurrent_exceeded)
           }
         />
         <div className="ns-card">
-          <div className="ns-section">
-            <div className="ns-label">
-              Target <span className="ns-label-hint">IP, CIDR, or range</span>
-            </div>
+          <section className="ns-section">
             <input
               type="file"
               ref={fileInputRef}
               onChange={(e) => processFile(e.target.files[0])}
               accept=".txt,.csv"
-              style={{ display: "none" }}
+              hidden
+              aria-label="Target list file"
             />
-            <div
-              className={`ns-drop-zone ${isDragging ? "ns-drop-zone--active" : ""}`}
+            <TargetField
+              value={target}
+              onChange={(e) => {
+                setTarget(e.target.value);
+                if (uploadSummary.show)
+                  setUploadSummary((p) => ({ ...p, show: false }));
+                if (parsedTargets.length) setParsedTargets([]);
+              }}
+              onKeyDown={(e) =>
+                e.key === "Enter" && canExecuteScans && !loading && handleScan()
+              }
+              disabled={loading || !canExecuteScans}
+              onBrowse={() => fileInputRef.current.click()}
+              dragging={isDragging}
               onDragOver={(e) => {
                 e.preventDefault();
                 setIsDragging(true);
@@ -1729,65 +2043,34 @@ export default function NewScan() {
                 if (e.dataTransfer.files?.length)
                   processFile(e.dataTransfer.files[0]);
               }}
-            >
-              <div className="ns-input-row">
-                <div className="ns-input-wrap">
-                  <span className="ns-input-icon">🎯</span>
-                  <input
-                    className="ns-input"
-                    value={target}
-                    onChange={(e) => {
-                      setTarget(e.target.value);
-                      if (uploadSummary.show)
-                        setUploadSummary((p) => ({ ...p, show: false }));
-                      if (parsedTargets.length) setParsedTargets([]);
-                    }}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" &&
-                      canExecuteScans &&
-                      !loading &&
-                      handleScan()
-                    }
-                    placeholder="10.180.6.0/24   ·   10.180.6.1-50"
-                    disabled={loading || !canExecuteScans}
-                    autoFocus
-                  />
-                </div>
-                <button
-                  className="ns-browse-btn"
-                  onClick={() => fileInputRef.current.click()}
-                  disabled={loading || !canExecuteScans}
-                >
-                  📂 Upload File
-                </button>
-              </div>
-            </div>
+            />
             {uploadSummary.show && (
-              <div className="ns-upload-summary">
-                <div className="ns-summary-content">
-                  <div className="ns-summary-main">
-                    <span className="ns-summary-stat">
+              <div className="ns-import">
+                <div className="ns-import__content">
+                  <ul className="ns-import__stats" aria-label="Import summary">
+                    <li>
                       Total: <strong>{uploadSummary.total}</strong>
-                    </span>
-                    <span className="ns-summary-stat ns-stat--valid">
+                    </li>
+                    <li className="ns-import__stat--valid">
                       Valid: <strong>{uploadSummary.valid}</strong>
-                    </span>
+                    </li>
                     {uploadSummary.invalid > 0 && (
-                      <span className="ns-summary-stat ns-stat--invalid">
+                      <li className="ns-import__stat--invalid">
                         Invalid: <strong>{uploadSummary.invalid}</strong>
-                      </span>
+                      </li>
                     )}
                     {uploadSummary.duplicates > 0 && (
-                      <span className="ns-summary-stat ns-stat--dup">
+                      <li className="ns-import__stat--dup">
                         Duplicates: <strong>{uploadSummary.duplicates}</strong>
-                      </span>
+                      </li>
                     )}
-                  </div>
+                  </ul>
                   {uploadSummary.invalid > 0 && (
-                    <p className="ns-summary-hint">
+                    <p className="ns-import__hint">
                       Some invalid entries were ignored.
-                      <button
-                        className="ns-export-btn"
+                      <CcureButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           const blob = new Blob(
                             [uploadSummary.invalidEntries.join("\n")],
@@ -1801,30 +2084,34 @@ export default function NewScan() {
                           URL.revokeObjectURL(url);
                         }}
                       >
-                        📥 Export Invalid
-                      </button>
+                        <Glyph>📥</Glyph> Export Invalid
+                      </CcureButton>
                     </p>
                   )}
                 </div>
-                <button
-                  className="ns-summary-close"
+                <CcureButton
+                  variant="ghost"
+                  size="sm"
+                  className="ns-import__close"
+                  aria-label="Dismiss import summary"
                   onClick={() => {
                     setUploadSummary((p) => ({ ...p, show: false }));
                     setParsedTargets([]);
                   }}
                 >
-                  ×
-                </button>
+                  <Glyph>×</Glyph>
+                </CcureButton>
               </div>
             )}
 
             {/* Target List Preview Grid */}
             {parsedTargets.length > 0 && (
-              <div className="ns-preview-section">
-                <div className="ns-preview-header">
-                  <span className="ns-label">Target List Preview</span>
-                  <button
-                    className="ns-preview-clear"
+              <div className="ns-preview">
+                <div className="ns-preview__header">
+                  <p className="ns-label">Target List Preview</p>
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setParsedTargets([]);
                       setTarget("");
@@ -1832,429 +2119,281 @@ export default function NewScan() {
                     }}
                   >
                     Clear Targets
-                  </button>
+                  </CcureButton>
                 </div>
-                <div className="ns-preview-table-wrap">
-                  <table className="ns-preview-table">
-                    <thead>
-                      <tr>
-                        <th className="ns-pt-idx">#</th>
-                        <th>Target Value</th>
-                        <th>Type</th>
-                        <th
-                          style={{ textAlign: "right", paddingRight: "20px" }}
+                <CcureTable
+                  caption="Imported targets"
+                  density="compact"
+                  rows={parsedTargets.map((pt, idx) => ({ ...pt, idx }))}
+                  rowKey={(row) => row.idx}
+                  columns={[
+                    {
+                      key: "idx",
+                      header: "#",
+                      cell: (row) => row.idx + 1,
+                    },
+                    {
+                      key: "value",
+                      header: "Target Value",
+                      isRowHeader: true,
+                      mono: true,
+                    },
+                    {
+                      key: "type",
+                      header: "Type",
+                      cell: (row) => (
+                        <CcureBadge
+                          variant={TARGET_TYPE_VARIANT[row.type] || "neutral"}
                         >
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {parsedTargets.map((pt, idx) => (
-                        <tr key={idx}>
-                          <td className="ns-pt-idx">{idx + 1}</td>
-                          <td className="ns-pt-val">{pt.value}</td>
-                          <td>
-                            <span
-                              className={`ns-pt-badge ns-pt-badge--${pt.type.toLowerCase()}`}
-                            >
-                              {pt.type}
-                            </span>
-                          </td>
-                          <td
-                            style={{ textAlign: "right", paddingRight: "10px" }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTarget(idx)}
-                              title="Remove target"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "#ef4444",
-                                cursor: "pointer",
-                                fontSize: "0.78rem",
-                                fontWeight: "600",
-                                padding: "4px 10px",
-                                borderRadius: "6px",
-                                transition: "all 0.15s ease",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background =
-                                  "rgba(239, 68, 68, 0.08)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background =
-                                  "transparent";
-                              }}
-                            >
-                              ❌ Remove
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          {row.type}
+                        </CcureBadge>
+                      ),
+                    },
+                    {
+                      key: "actions",
+                      header: "Actions",
+                      align: "end",
+                      cell: (row) => (
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
+                          className="ns-remove"
+                          onClick={() => handleRemoveTarget(row.idx)}
+                          aria-label={`Remove ${row.value}`}
+                        >
+                          <Glyph>❌</Glyph> Remove
+                        </CcureButton>
+                      ),
+                    },
+                  ]}
+                />
               </div>
             )}
-            <div className="ns-chips">
-              <span className="ns-chips-label">Quick:</span>
+            <div className="ns-quick" role="group" aria-label="Quick targets">
+              <span className="ns-quick__label">Quick:</span>
               {QUICK_TARGETS.map((t) => (
-                <button
+                <CcureButton
                   key={t}
+                  variant="secondary"
+                  size="sm"
                   className="ns-chip"
                   onClick={() => setTarget(t)}
                   disabled={loading || !canExecuteScans}
                 >
                   {t}
-                </button>
+                </CcureButton>
               ))}
             </div>
-          </div>
+          </section>
           {pipelineMode === "asset" && (
-            <>
-              <div className="ns-divider" />
-              <div className="ns-section">
-                <div className="ns-label">Discovery Profile</div>
-                <div className="ns-segmented-control">
-                  {DISCOVERY_INTENSITIES.map((di) => (
-                    <button
-                      key={di.value}
-                      type="button"
-                      className={`ns-segmented-btn ${discoveryIntensity === di.value ? "ns-segmented-btn--active" : ""}`}
-                      onClick={() => setDiscoveryIntensity(di.value)}
-                      disabled={loading || !canExecuteScans}
-                    >
-                      <span className="ns-segmented-icon">{di.icon}</span>
-                      {di.label}
-                    </button>
-                  ))}
-                </div>
+            <section className="ns-section ns-section--divided">
+              <ChoiceGroup
+                label="Discovery Profile"
+                options={DISCOVERY_INTENSITIES}
+                value={discoveryIntensity}
+                onChange={setDiscoveryIntensity}
+                disabled={loading || !canExecuteScans}
+              >
                 {(() => {
                   const activeDi = DISCOVERY_INTENSITIES.find(
                     (di) => di.value === discoveryIntensity,
                   );
                   return activeDi ? (
-                    <div className="ns-segmented-desc">
+                    <p className="ns-choices__desc">
                       {activeDi.desc}
                       {activeDi.badge && (
-                        <span
-                          className="ns-desc-badge"
-                          style={activeDi.badgeStyle}
-                        >
+                        <CcureBadge variant={activeDi.badgeVariant}>
                           {activeDi.badge}
-                        </span>
+                        </CcureBadge>
                       )}
-                    </div>
+                    </p>
                   ) : null;
                 })()}
-              </div>
-            </>
+              </ChoiceGroup>
+            </section>
           )}
 
           {(pipelineMode === "advanced" ||
             pipelineMode === "vulnerability_audit") && (
-            <>
-              <div className="ns-divider" />
-              <div className="ns-section">
-                <div className="ns-label">Scan Profile</div>
-                <div className="ns-segmented-control">
-                  {SCAN_INTENSITIES.map((si) => (
-                    <button
-                      key={si.value}
-                      type="button"
-                      className={`ns-segmented-btn ${intensity === si.value ? "ns-segmented-btn--active" : ""}`}
-                      onClick={() => setIntensity(si.value)}
-                      disabled={loading || !canExecuteScans}
-                    >
-                      <span className="ns-segmented-icon">{si.icon}</span>
-                      {si.label}
-                    </button>
-                  ))}
-                </div>
+            <section className="ns-section ns-section--divided">
+              <ChoiceGroup
+                label="Scan Profile"
+                options={SCAN_INTENSITIES}
+                value={intensity}
+                onChange={setIntensity}
+                disabled={loading || !canExecuteScans}
+              >
                 {(() => {
                   const activeSi = SCAN_INTENSITIES.find(
                     (si) => si.value === intensity,
                   );
                   return activeSi ? (
-                    <div className="ns-segmented-desc">{activeSi.desc}</div>
+                    <p className="ns-choices__desc">{activeSi.desc}</p>
                   ) : null;
                 })()}
-              </div>
-            </>
+              </ChoiceGroup>
+            </section>
           )}
 
-          {/* Advanced Settings Trigger Button */}
-          <button
-            type="button"
-            className="ns-drawer-trigger-btn"
-            onClick={() => setShowAdvanced(true)}
-            disabled={loading}
-          >
-            ⚙️ Configure Advanced Settings
-          </button>
+          <div className="ns-section ns-section--divided">
+            {/* Advanced Settings Trigger Button */}
+            <CcureButton
+              variant="secondary"
+              className="ns-settings-trigger"
+              onClick={() => setShowAdvanced(true)}
+              disabled={loading}
+              aria-haspopup="dialog"
+            >
+              <Glyph>⚙️</Glyph> Configure Advanced Settings
+            </CcureButton>
 
-          {error && <div className="ns-error">⚠ {error}</div>}
-          <div className="ns-divider" />
-          <button
-            id="ns-start-btn"
-            className="ns-start-btn"
-            onClick={handleScan}
-            disabled={
-              loading || !target.trim() || !canExecuteScans || quotaBlocked
-            }
-          >
-            {btnLabel} →
-          </button>
+            {error && <CcureAlert variant="danger">{error}</CcureAlert>}
+            <CcureButton
+              id="ns-start-btn"
+              size="lg"
+              block
+              onClick={handleScan}
+              disabled={
+                loading || !target.trim() || !canExecuteScans || quotaBlocked
+              }
+            >
+              {btnLabel} <Glyph>→</Glyph>
+            </CcureButton>
+          </div>
         </div>
       </div>
 
-      {/* Slide-out Drawer for Advanced Settings */}
-      <div
-        className={`ns-drawer-backdrop ${showAdvanced ? "ns-drawer-backdrop--open" : ""}`}
-        onClick={() => setShowAdvanced(false)}
-      />
-      <div className={`ns-drawer ${showAdvanced ? "ns-drawer--open" : ""}`}>
-        <div className="ns-drawer-header">
-          <div className="ns-drawer-title-wrap">
-            <span className="ns-drawer-icon">⚙️</span>
-            <span className="ns-drawer-title">Advanced Settings</span>
-          </div>
-          <button
-            type="button"
-            className="ns-drawer-close"
-            onClick={() => setShowAdvanced(false)}
-            title="Close Settings (Esc)"
-          >
-            ✕
-          </button>
-        </div>
+      {/* Advanced settings, a side sheet */}
+      <SettingsDialog open={showAdvanced} setOpen={setShowAdvanced}>
+        {/* 1. Port Scan Configuration (Asset Discovery Mode Only) */}
+        {pipelineMode === "asset" && (
+          <>
+            <ScanModelChoice value={portScanMode} onChange={setPortScanMode} />
 
-        <div className="ns-drawer-body">
-          {/* 1. Port Scan Configuration (Asset Discovery Mode Only) */}
-          {pipelineMode === "asset" && (
-            <>
-              <div className="ns-adv-section">
-                <div className="ns-label">Scan Configuration Model</div>
-                <div className="ns-scan-type-cards">
-                  <div
-                    className={`ns-type-card ${portScanMode === "intensity" ? "ns-type-card--selected" : ""}`}
-                    onClick={() => setPortScanMode("intensity")}
-                  >
-                    <div className="ns-type-card-icon">⚡</div>
-                    <div className="ns-type-card-title">
-                      Intensity-Based Scan
-                    </div>
-                    <div className="ns-type-card-desc">
-                      Predefined scan depths (Light, Normal, Deep) without
-                      selecting individual ports.
-                    </div>
-                  </div>
-                  <div
-                    className={`ns-type-card ${portScanMode === "port" ? "ns-type-card--selected" : ""}`}
-                    onClick={() => setPortScanMode("port")}
-                  >
-                    <div className="ns-type-card-icon">🔌</div>
-                    <div className="ns-type-card-title">Port-Based Scan</div>
-                    <div className="ns-type-card-desc">
-                      Select predefined templates (IT, SCADA, Web, Database,
-                      Remote) or input custom ports.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {portScanMode === "intensity" ? (
-                <div className="ns-adv-section" style={{ marginTop: "12px" }}>
-                  <div className="ns-label" style={{ marginBottom: "8px" }}>
-                    Port Scan Intensity{" "}
-                    <span className="ns-label-hint">
-                      depth of Phase 2 port scan
-                    </span>
-                  </div>
-                  <div className="ns-segmented-control">
-                    {PORT_SCAN_INTENSITIES.map((pi) => (
-                      <button
-                        key={pi.value}
-                        type="button"
-                        className={`ns-segmented-btn ${portScanIntensity === pi.value ? "ns-segmented-btn--active" : ""}`}
-                        onClick={() => setPortScanIntensity(pi.value)}
-                        disabled={loading || !canExecuteScans}
-                      >
-                        <span className="ns-segmented-icon">{pi.icon}</span>
-                        {pi.label}
-                      </button>
-                    ))}
-                  </div>
+            {portScanMode === "intensity" ? (
+              <div className="ns-settings__block">
+                <ChoiceGroup
+                  label="Port Scan Intensity"
+                  hint="depth of Phase 2 port scan"
+                  options={PORT_SCAN_INTENSITIES}
+                  value={portScanIntensity}
+                  onChange={setPortScanIntensity}
+                  disabled={loading || !canExecuteScans}
+                >
                   {(() => {
                     const activePi = PORT_SCAN_INTENSITIES.find(
                       (pi) => pi.value === portScanIntensity,
                     );
                     return activePi ? (
-                      <div className="ns-segmented-desc">{activePi.desc}</div>
+                      <p className="ns-choices__desc">{activePi.desc}</p>
                     ) : null;
                   })()}
-                </div>
-              ) : (
-                <div className="ns-adv-section" style={{ marginTop: "12px" }}>
-                  <div className="ns-label" style={{ marginBottom: "8px" }}>
-                    Port Profile
-                  </div>
-                  <div
-                    className="ns-select-wrap"
-                    style={{ marginBottom: "12px" }}
-                  >
-                    <select
-                      className="ns-select ns-port-profile-select"
-                      value={portProfile}
-                      onChange={(e) => setPortProfile(e.target.value)}
-                      disabled={loading || !canExecuteScans}
-                    >
-                      {Object.entries(PORT_PROFILES).map(([key, prof]) => (
-                        <option key={key} value={key}>
-                          {prof.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                </ChoiceGroup>
+              </div>
+            ) : (
+              <div className="ns-settings__block">
+                <CcureSelect
+                  label="Port Profile"
+                  value={portProfile}
+                  onChange={(e) => setPortProfile(e.target.value)}
+                  disabled={loading || !canExecuteScans}
+                >
+                  {Object.entries(PORT_PROFILES).map(([key, prof]) => (
+                    <option key={key} value={key}>
+                      {prof.label}
+                    </option>
+                  ))}
+                </CcureSelect>
 
-                  {/* Port pills display for predefined profiles */}
-                  {portProfile !== "custom" &&
-                    PORT_PROFILES[portProfile]?.ports && (
-                      <div
-                        className="ns-port-pills-section"
-                        style={{ marginBottom: "12px" }}
+                {/* Port pills display for predefined profiles */}
+                {portProfile !== "custom" &&
+                  PORT_PROFILES[portProfile]?.ports && (
+                    <div className="ns-pills">
+                      <p className="ns-hint">
+                        Included Ports (
+                        {PORT_PROFILES[portProfile].ports.split(",").length}{" "}
+                        total)
+                      </p>
+                      <ul
+                        className="ns-pills__list"
+                        aria-label="Included ports"
                       >
-                        <div
-                          className="ns-label-hint"
-                          style={{ marginBottom: "6px" }}
-                        >
-                          Included Ports (
-                          {PORT_PROFILES[portProfile].ports.split(",").length}{" "}
-                          total)
-                        </div>
-                        <div className="ns-port-pills-wrap">
-                          {PORT_PROFILES[portProfile].ports
-                            .split(",")
-                            .map((pStr) => {
-                              const pNum = parseInt(pStr, 10);
-                              const isSensitive =
-                                SENSITIVE_PORTS.includes(pNum);
-                              return (
-                                <span
-                                  key={pStr}
-                                  className={`ns-port-pill ${isSensitive ? "ns-port-pill--sensitive" : ""}`}
-                                >
-                                  {pStr}
-                                </span>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
+                        {PORT_PROFILES[portProfile].ports
+                          .split(",")
+                          .map((pStr) => {
+                            const pNum = parseInt(pStr, 10);
+                            const isSensitive = SENSITIVE_PORTS.includes(pNum);
+                            return (
+                              <li
+                                key={pStr}
+                                className={`ns-pill${isSensitive ? " ns-pill--sensitive" : ""}`}
+                              >
+                                {pStr}
+                                {isSensitive ? (
+                                  <span className="cc-sr-only">
+                                    {" "}
+                                    (sensitive)
+                                  </span>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  )}
 
-                  {/* Custom Ports Input (when profile = custom) */}
-                  {portProfile === "custom" && (
-                    <div style={{ marginTop: "12px" }}>
-                      <div className="ns-label" style={{ marginBottom: "8px" }}>
-                        Custom Ports / Ranges{" "}
-                        <span className="ns-label-hint">
-                          e.g. 22, 80, 443, 8080-8090
-                        </span>
-                      </div>
-                      <div className="ns-input-wrap">
-                        <span className="ns-input-icon">🔌</span>
-                        <input
-                          type="text"
-                          className="ns-input"
-                          value={customPorts}
-                          onChange={(e) =>
-                            handleCustomPortsChange(e.target.value)
-                          }
-                          placeholder="e.g. 22,80,443,8000-8100"
-                          disabled={loading || !canExecuteScans}
-                        />
-                      </div>
+                {/* Custom Ports Input (when profile = custom) */}
+                {portProfile === "custom" && (
+                  <div className="ns-custom-ports">
+                    <CcureInput
+                      label="Custom Ports / Ranges"
+                      hint="e.g. 22, 80, 443, 8080-8090"
+                      value={customPorts}
+                      onChange={(e) => handleCustomPortsChange(e.target.value)}
+                      placeholder="e.g. 22,80,443,8000-8100"
+                      disabled={loading || !canExecuteScans}
+                      error={customPortsError || undefined}
+                    />
 
-                      <div className="ns-chips" style={{ marginTop: "10px" }}>
-                        <span className="ns-chips-label">Presets:</span>
-                        {Object.entries(PORT_PROFILES)
-                          .filter(([k]) => k !== "custom")
-                          .map(([k, prof]) => (
-                            <button
-                              key={k}
-                              type="button"
-                              className="ns-chip"
-                              onClick={() =>
-                                handleCustomPortsChange(prof.ports)
-                              }
-                              disabled={loading || !canExecuteScans}
-                            >
-                              {prof.label}
-                            </button>
-                          ))}
-                      </div>
-
-                      {customPortsError && (
-                        <div
-                          className="ns-error"
-                          style={{
-                            marginTop: "8px",
-                            background: "rgba(239,68,68,0.08)",
-                            border: "1px solid rgba(239,68,68,0.2)",
-                            color: "#ef4444",
-                            padding: "10px",
-                            borderRadius: "8px",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          ⚠ {customPortsError}
-                        </div>
-                      )}
-
-                      {!customPortsError && parsedCustomPortsCount > 0 && (
-                        <div
-                          className="ns-estimation-banner"
-                          style={{
-                            marginTop: "12px",
-                            background: "rgba(34,197,94,0.06)",
-                            border: "1px solid rgba(34,197,94,0.15)",
-                            color: "#4ade80",
-                            padding: "12px",
-                            borderRadius: "8px",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "600",
-                              marginBottom: "4px",
-                              color: "#22c55e",
-                            }}
+                    <div
+                      className="ns-quick"
+                      role="group"
+                      aria-label="Port presets"
+                    >
+                      <span className="ns-quick__label">Presets:</span>
+                      {Object.entries(PORT_PROFILES)
+                        .filter(([k]) => k !== "custom")
+                        .map(([k, prof]) => (
+                          <CcureButton
+                            key={k}
+                            variant="secondary"
+                            size="sm"
+                            className="ns-chip"
+                            onClick={() => handleCustomPortsChange(prof.ports)}
+                            disabled={loading || !canExecuteScans}
                           >
-                            ⚡ Scan Estimation
+                            {prof.label}
+                          </CcureButton>
+                        ))}
+                    </div>
+
+                    {!customPortsError && parsedCustomPortsCount > 0 && (
+                      <div className="ns-estimate">
+                        <p className="ns-estimate__title">
+                          <Glyph>⚡</Glyph> Scan Estimation
+                        </p>
+                        <dl className="ns-estimate__grid">
+                          <div className="ns-estimate__row">
+                            <dt>Unique ports:</dt>{" "}
+                            <dd>{parsedCustomPortsCount}</dd>
                           </div>
-                          <div
-                            style={{
-                              color: "#a3a3a3",
-                              display: "grid",
-                              gridTemplateColumns: "auto 1fr",
-                              gap: "4px 12px",
-                            }}
-                          >
-                            <span>Unique ports:</span>{" "}
-                            <strong style={{ color: "#e5e5e5" }}>
-                              {parsedCustomPortsCount}
-                            </strong>
-                            <span>Est. packets per host:</span>{" "}
-                            <strong style={{ color: "#e5e5e5" }}>
-                              {parsedCustomPortsCount} packets
-                            </strong>
-                            <span>Est. duration per host:</span>{" "}
-                            <strong style={{ color: "#e5e5e5" }}>
+                          <div className="ns-estimate__row">
+                            <dt>Est. packets per host:</dt>{" "}
+                            <dd>{parsedCustomPortsCount} packets</dd>
+                          </div>
+                          <div className="ns-estimate__row">
+                            <dt>Est. duration per host:</dt>{" "}
+                            <dd>
                               {Math.max(
                                 1,
                                 Math.round(parsedCustomPortsCount / 50),
@@ -2265,641 +2404,355 @@ export default function NewScan() {
                                 Math.round(parsedCustomPortsCount / 10),
                               )}{" "}
                               seconds
-                            </strong>
+                            </dd>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Exclude Ports Section */}
-          <div
-            className="ns-adv-section ns-exclude-section"
-            style={{
-              borderTop: "1.5px solid var(--border)",
-              paddingTop: "16px",
-            }}
-          >
-            <div className="ns-inline-row">
-              <div className="ns-inline-label">
-                <span className="ns-label-main">🚫 Exclude Specific Ports</span>
-                <span className="ns-label-hint">
-                  Exclude sensitive or firewalled ports from scanning
-                </span>
-              </div>
-              <div className="ns-switch-wrapper">
-                <label className="ns-switch">
-                  <input
-                    type="checkbox"
-                    checked={excludePortsEnabled}
-                    onChange={(e) =>
-                      handleExcludeToggleChange(e.target.checked)
-                    }
-                  />
-                  <span className="ns-slider round"></span>
-                </label>
-              </div>
-            </div>
-
-            {excludePortsEnabled && (
-              <div style={{ marginTop: "12px" }}>
-                <div className="ns-input-wrap">
-                  <span className="ns-input-icon">🚫</span>
-                  <input
-                    type="text"
-                    className="ns-input"
-                    value={excludePorts}
-                    onChange={(e) => setExcludePorts(e.target.value)}
-                    placeholder="e.g. 2375,2376,6443,10250 or 80-90"
-                    disabled={loading || !canExecuteScans}
-                  />
-                </div>
-
-                {excludeTokens.length > 0 && (
-                  <div
-                    className="ns-exclude-tags-wrap"
-                    style={{
-                      marginTop: "8px",
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    {excludeTokens.map((token, idx) => (
-                      <span key={`${token}-${idx}`} className="ns-exclude-tag">
-                        {token}
-                        <button
-                          type="button"
-                          className="ns-exclude-tag-remove"
-                          onClick={() => handleRemoveExcludeToken(token)}
-                          disabled={loading || !canExecuteScans}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="ns-chips" style={{ marginTop: "8px" }}>
-                  <span className="ns-chips-label">Quick:</span>
-                  <button
-                    type="button"
-                    className="ns-chip"
-                    onClick={() => setExcludePorts("2375,2376,6443,10250")}
-                    disabled={loading || !canExecuteScans}
-                  >
-                    Exclude Sensitive Ports
-                  </button>
-                </div>
-
-                {excludePortsError && (
-                  <div
-                    className="ns-error"
-                    style={{
-                      marginTop: "8px",
-                      background: "rgba(239,68,68,0.08)",
-                      border: "1px solid rgba(239,68,68,0.2)",
-                      color: "#ef4444",
-                      padding: "10px",
-                      borderRadius: "8px",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    ⚠ {excludePortsError}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Exclude IPs Section */}
-          <div
-            className="ns-adv-section ns-exclude-section"
-            style={{
-              borderTop: "1.5px solid var(--border)",
-              paddingTop: "16px",
-            }}
-          >
-            <div className="ns-inline-row">
-              <div className="ns-inline-label">
-                <span className="ns-label-main">
-                  🚫 Exclude Specific IPs / Subnets
-                </span>
-                <span className="ns-label-hint">
-                  Exclude sensitive target hosts or subnets from scanning
-                </span>
-              </div>
-              <div className="ns-switch-wrapper">
-                <label className="ns-switch">
-                  <input
-                    type="checkbox"
-                    checked={excludeIpsEnabled}
-                    onChange={(e) =>
-                      handleExcludeIpsToggleChange(e.target.checked)
-                    }
-                  />
-                  <span className="ns-slider round"></span>
-                </label>
-              </div>
-            </div>
-
-            {excludeIpsEnabled && (
-              <div style={{ marginTop: "12px" }}>
-                <div className="ns-input-wrap">
-                  <span className="ns-input-icon">🚫</span>
-                  <input
-                    type="text"
-                    className="ns-input"
-                    value={excludeIps}
-                    onChange={(e) => setExcludeIps(e.target.value)}
-                    placeholder="e.g. 10.180.12.10,10.190.0.0/16"
-                    disabled={loading || !canExecuteScans}
-                  />
-                </div>
-
-                {excludeIpsError && (
-                  <div
-                    className="ns-error"
-                    style={{
-                      marginTop: "8px",
-                      background: "rgba(239,68,68,0.08)",
-                      border: "1px solid rgba(239,68,68,0.2)",
-                      color: "#ef4444",
-                      padding: "10px",
-                      borderRadius: "8px",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    ⚠ {excludeIpsError}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Sensitive Warning Banner */}
-          {sensitivePortsFound && (
-            <div
-              className="ns-sensitive-banner"
-              style={{
-                marginTop: "12px",
-                background: "rgba(245,158,11,0.08)",
-                borderLeft: "3px solid #f59e0b",
-                color: "#fbbf24",
-                padding: "12px",
-                borderRadius: "8px",
-                fontSize: "0.85rem",
-              }}
-            >
-              <div style={{ fontWeight: "600", marginBottom: "4px" }}>
-                ⚠️ Sensitive Ports Detected
-              </div>
-              <p style={{ margin: 0, color: "#d4d4d8" }}>
-                Your selection includes sensitive ports (Docker API{" "}
-                <code>2375/2376</code>, Kubernetes <code>6443/10250</code>).
-                While these are allowed, scanning them can trigger intrusion
-                detection systems or crash services if they are not configured
-                correctly.
-              </p>
-            </div>
-          )}
-
-          {/* Live Preview Panel (Asset mode only) */}
-          {pipelineMode === "asset" && (
-            <div className="ns-scan-preview" style={{ marginTop: "16px" }}>
-              <div className="ns-scan-preview-header">
-                🎯 Scan Configuration Preview
-              </div>
-              <div className="ns-scan-preview-grid">
-                <div className="ns-preview-item">
-                  <span className="ns-preview-label">Scan Type</span>
-                  <span className="ns-preview-val">{preview.typeLabel}</span>
-                </div>
-                <div className="ns-preview-item">
-                  <span className="ns-preview-label">
-                    Target Profile / Depth
-                  </span>
-                  <span className="ns-preview-val">
-                    {preview.targetPortsLabel}
-                  </span>
-                </div>
-                <div className="ns-preview-item">
-                  <span className="ns-preview-label">Ports Count</span>
-                  <span className="ns-preview-val">{preview.finalCount}</span>
-                </div>
-                <div className="ns-preview-item">
-                  <span className="ns-preview-label">Excluded Ports</span>
-                  <span className="ns-preview-val">
-                    {preview.excludedLabel}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 2. OS Detection (shown for asset / advanced / vulnerability_audit) */}
-          {(pipelineMode === "asset" ||
-            pipelineMode === "advanced" ||
-            pipelineMode === "vulnerability_audit") && (
-            <div
-              className="ns-inline-row"
-              style={{
-                borderTop: "1.5px solid var(--border)",
-                paddingTop: "16px",
-              }}
-            >
-              <div className="ns-inline-label">
-                <span className="ns-label-main">OS Detection</span>
-                <span className="ns-label-hint">
-                  Fingerprint target operating systems
-                </span>
-              </div>
-              <div className="ns-switch-wrapper">
-                <label className="ns-switch">
-                  <input
-                    type="checkbox"
-                    checked={osDetection}
-                    onChange={(e) => setOsDetection(e.target.checked)}
-                    disabled={loading || !canExecuteScans}
-                  />
-                  <span className="ns-slider round"></span>
-                </label>
-                <span className="ns-switch-status-text">
-                  {osDetection ? "ON (Fingerprint)" : "OFF (Faster Scan)"}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* 3. Execution Mode (shown for asset / advanced / vulnerability_audit) */}
-          {(pipelineMode === "asset" ||
-            pipelineMode === "advanced" ||
-            pipelineMode === "vulnerability_audit") && (
-            <div className="ns-inline-row">
-              <div className="ns-inline-label">
-                <span className="ns-label-main">Execution Mode</span>
-                <span className="ns-label-hint">
-                  Automatic full chain vs interactive vetting
-                </span>
-              </div>
-              <div className="ns-select-wrap">
-                <select
-                  className="ns-select"
-                  value={executionMode}
-                  onChange={(e) => setExecutionMode(e.target.value)}
-                  disabled={loading || !canExecuteScans}
-                >
-                  <option value="automatic">Automatic (Full Chain)</option>
-                  <option value="interactive">
-                    Interactive (Vetted Steps)
-                  </option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* 4. Rate Limit (PPS) */}
-          <div className="ns-adv-section">
-            <div className="ns-label">
-              Rate Limit (PPS){" "}
-              <span className="ns-label-hint">limit packets per second</span>
-            </div>
-            <div className="ns-input-wrap">
-              <span className="ns-input-icon">⏱</span>
-              <input
-                type="number"
-                className="ns-input"
-                value={rateLimit}
-                onChange={(e) => setRateLimit(e.target.value)}
-                placeholder="e.g. 500"
-                disabled={loading || !canExecuteScans}
-              />
-            </div>
-          </div>
-
-          {/* 5. Authenticated checks (Vulnerability Audit only).
-              Credentials are a policy option on the ordinary scan, not a
-              separate scan type: discovery, port scanning and unauthenticated
-              checks run first, then each reachable host is logged into and the
-              local results are merged into the same report. */}
-          {(pipelineMode === "advanced" ||
-            pipelineMode === "vulnerability_audit") && (
-            <div
-              className="ns-adv-section"
-              style={{
-                borderTop: "1.5px solid var(--border)",
-                paddingTop: "16px",
-              }}
-            >
-              <div className="ns-inline-row">
-                <div className="ns-inline-label">
-                  <span className="ns-label-main">
-                    🔐 Authenticated Checks (Credentialed)
-                  </span>
-                  <span className="ns-label-hint">
-                    Log in to each host and match installed packages, then
-                    correlate with the port scan to find what is actually
-                    exposed
-                  </span>
-                </div>
-                <label className="ns-toggle">
-                  <input
-                    type="checkbox"
-                    checked={credentialedEnabled}
-                    onChange={(e) => setCredentialedEnabled(e.target.checked)}
-                    disabled={loading || !canExecuteScans}
-                  />
-                  <span className="ns-toggle-slider" />
-                </label>
-              </div>
-
-              {credentialedEnabled && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "10px",
-                  }}
-                >
-                  {credentialsList.length === 0 ? (
-                    <p
-                      className="ns-label-hint"
-                      style={{ margin: 0, lineHeight: 1.6 }}
-                    >
-                      No stored credentials are registered for this
-                      organisation. Add one under the Credentials Manager in{" "}
-                      <button
-                        type="button"
-                        onClick={() => navigate("/compliance")}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "var(--accent)",
-                          textDecoration: "underline",
-                          padding: 0,
-                          font: "inherit",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Compliance
-                      </button>
-                      , then re-run this scan. Only stored credentials are
-                      accepted here — a pipeline scan runs unattended, so
-                      one-time credentials cannot be held for it.
-                    </p>
-                  ) : (
-                    <>
-                      <span
-                        className="ns-label-hint"
-                        style={{ lineHeight: 1.6 }}
-                      >
-                        Select the credentials to try. Each host is audited with
-                        the first one whose scope covers it; hosts with no
-                        matching credential, or with the SSH port closed, are
-                        reported as unauthenticated and listed in the
-                        scan&apos;s coverage.
-                      </span>
-                      {credentialsList.map((c) => {
-                        const checked = selectedCredIds.includes(c.id);
-                        return (
-                          <label
-                            key={c.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              fontSize: "0.84rem",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setSelectedCredIds((prev) =>
-                                  checked
-                                    ? prev.filter((id) => id !== c.id)
-                                    : [...prev, c.id],
-                                )
-                              }
-                              disabled={loading || !canExecuteScans}
-                            />
-                            <span style={{ fontWeight: 600 }}>{c.name}</span>
-                            <span
-                              className="ns-label-hint"
-                              style={{ fontFamily: "var(--mono)" }}
-                            >
-                              {c.username}@:{c.port ?? 22}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 6. SNMP / Network Topology (optional, all modes) */}
-          <div
-            className="ns-adv-section"
-            style={{
-              borderTop: "1.5px solid var(--border)",
-              paddingTop: "16px",
-            }}
-          >
-            <div className="ns-inline-row">
-              <div className="ns-inline-label">
-                <span className="ns-label-main">
-                  🗺️ Network Topology (SNMP)
-                </span>
-                <span className="ns-label-hint">
-                  Enable SNMP to discover network connections
-                </span>
-              </div>
-              <label className="ns-toggle">
-                <input
-                  type="checkbox"
-                  checked={snmpEnabled}
-                  onChange={(e) => setSnmpEnabled(e.target.checked)}
-                  disabled={loading || !canExecuteScans}
-                />
-                <span className="ns-toggle-slider" />
-              </label>
-            </div>
-
-            {snmpEnabled && (
-              <div
-                className="ns-snmp-settings"
-                style={{
-                  marginTop: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                }}
-              >
-                <div className="ns-inline-row">
-                  <div className="ns-inline-label">
-                    <span className="ns-label-main">SNMP Version</span>
-                  </div>
-                  <div className="ns-select-wrap">
-                    <select
-                      className="ns-select"
-                      value={snmpVersion}
-                      onChange={(e) => setSnmpVersion(e.target.value)}
-                      disabled={loading}
-                    >
-                      <option value="v1">v1</option>
-                      <option value="v2c">v2c</option>
-                      <option value="v3">v3</option>
-                    </select>
-                  </div>
-                </div>
-
-                {snmpVersion !== "v3" ? (
-                  <div className="ns-adv-section">
-                    <div className="ns-label">Community String</div>
-                    <div className="ns-input-wrap">
-                      <span className="ns-input-icon">🔑</span>
-                      <input
-                        type="text"
-                        className="ns-input"
-                        value={snmpCommunity}
-                        onChange={(e) => setSnmpCommunity(e.target.value)}
-                        placeholder="public"
-                        disabled={loading}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="ns-adv-section">
-                      <div className="ns-label">Username</div>
-                      <div className="ns-input-wrap">
-                        <span className="ns-input-icon">👤</span>
-                        <input
-                          type="text"
-                          className="ns-input"
-                          value={snmpUsername}
-                          onChange={(e) => setSnmpUsername(e.target.value)}
-                          placeholder="SNMPv3 username"
-                          disabled={loading}
-                        />
-                      </div>
-                    </div>
-                    <div className="ns-inline-row">
-                      <div className="ns-inline-label">
-                        <span className="ns-label-main">Auth Protocol</span>
-                      </div>
-                      <div className="ns-select-wrap">
-                        <select
-                          className="ns-select"
-                          value={snmpAuthProtocol}
-                          onChange={(e) => setSnmpAuthProtocol(e.target.value)}
-                          disabled={loading}
-                        >
-                          <option value="MD5">MD5</option>
-                          <option value="SHA">SHA</option>
-                          <option value="SHA256">SHA-256</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="ns-adv-section">
-                      <div className="ns-label">Auth Passphrase</div>
-                      <div className="ns-input-wrap">
-                        <span className="ns-input-icon">🔐</span>
-                        <input
-                          type="password"
-                          className="ns-input"
-                          value={snmpAuthPassphrase}
-                          onChange={(e) =>
-                            setSnmpAuthPassphrase(e.target.value)
-                          }
-                          placeholder="Auth passphrase"
-                          disabled={loading}
-                        />
-                      </div>
-                    </div>
-                    <div className="ns-inline-row">
-                      <div className="ns-inline-label">
-                        <span className="ns-label-main">Privacy Protocol</span>
-                        <span className="ns-label-hint">optional</span>
-                      </div>
-                      <div className="ns-select-wrap">
-                        <select
-                          className="ns-select"
-                          value={snmpPrivProtocol}
-                          onChange={(e) => setSnmpPrivProtocol(e.target.value)}
-                          disabled={loading}
-                        >
-                          <option value="">None (authNoPriv)</option>
-                          <option value="DES">DES</option>
-                          <option value="AES128">AES-128</option>
-                          <option value="AES256">AES-256</option>
-                        </select>
-                      </div>
-                    </div>
-                    {snmpPrivProtocol && (
-                      <div className="ns-adv-section">
-                        <div className="ns-label">Privacy Passphrase</div>
-                        <div className="ns-input-wrap">
-                          <span className="ns-input-icon">🔒</span>
-                          <input
-                            type="password"
-                            className="ns-input"
-                            value={snmpPrivPassphrase}
-                            onChange={(e) =>
-                              setSnmpPrivPassphrase(e.target.value)
-                            }
-                            placeholder="Privacy passphrase"
-                            disabled={loading}
-                          />
-                        </div>
+                        </dl>
                       </div>
                     )}
-                    <div className="ns-adv-section">
-                      <div className="ns-label">
-                        Context Name{" "}
-                        <span className="ns-label-hint">
-                          optional, VLAN-aware switches
-                        </span>
-                      </div>
-                      <div className="ns-input-wrap">
-                        <span className="ns-input-icon">📋</span>
-                        <input
-                          type="text"
-                          className="ns-input"
-                          value={snmpContextName}
-                          onChange={(e) => setSnmpContextName(e.target.value)}
-                          placeholder="e.g. vlan-100"
-                          disabled={loading}
-                        />
-                      </div>
-                    </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
+          </>
+        )}
+
+        {/* Exclude Ports Section */}
+        <OptionRow
+          icon="🚫"
+          title="Exclude Specific Ports"
+          hint="Exclude sensitive or firewalled ports from scanning"
+          checked={excludePortsEnabled}
+          onChange={(checked) => handleExcludeToggleChange(checked)}
+        >
+          {excludePortsEnabled && (
+            <div className="ns-option__body">
+              <CcureInput
+                label="Ports to exclude"
+                value={excludePorts}
+                onChange={(e) => setExcludePorts(e.target.value)}
+                placeholder="e.g. 2375,2376,6443,10250 or 80-90"
+                disabled={loading || !canExecuteScans}
+                error={excludePortsError || undefined}
+              />
+
+              {excludeTokens.length > 0 && (
+                <ul className="ns-tags" aria-label="Excluded ports">
+                  {excludeTokens.map((token, idx) => (
+                    <li key={`${token}-${idx}`} className="ns-tag">
+                      <span>{token}</span>
+                      <CcureButton
+                        variant="ghost"
+                        size="sm"
+                        className="ns-tag__remove"
+                        onClick={() => handleRemoveExcludeToken(token)}
+                        disabled={loading || !canExecuteScans}
+                        aria-label={`Remove excluded port ${token}`}
+                      >
+                        <Glyph>×</Glyph>
+                      </CcureButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div
+                className="ns-quick"
+                role="group"
+                aria-label="Quick exclusions"
+              >
+                <span className="ns-quick__label">Quick:</span>
+                <CcureButton
+                  variant="secondary"
+                  size="sm"
+                  className="ns-chip"
+                  onClick={() => setExcludePorts("2375,2376,6443,10250")}
+                  disabled={loading || !canExecuteScans}
+                >
+                  Exclude Sensitive Ports
+                </CcureButton>
+              </div>
+            </div>
+          )}
+        </OptionRow>
+
+        {/* Exclude IPs Section */}
+        <OptionRow
+          icon="🚫"
+          title="Exclude Specific IPs / Subnets"
+          hint="Exclude sensitive target hosts or subnets from scanning"
+          checked={excludeIpsEnabled}
+          onChange={(checked) => handleExcludeIpsToggleChange(checked)}
+        >
+          {excludeIpsEnabled && (
+            <div className="ns-option__body">
+              <CcureInput
+                label="IPs to exclude"
+                value={excludeIps}
+                onChange={(e) => setExcludeIps(e.target.value)}
+                placeholder="e.g. 10.180.12.10,10.190.0.0/16"
+                disabled={loading || !canExecuteScans}
+                error={excludeIpsError || undefined}
+              />
+            </div>
+          )}
+        </OptionRow>
+
+        {/* Sensitive Warning Banner */}
+        {sensitivePortsFound && (
+          <CcureAlert
+            variant="warning"
+            live={false}
+            title="Sensitive Ports Detected"
+          >
+            <p className="ns-sensitive__text">
+              Your selection includes sensitive ports (Docker API{" "}
+              <code className="ns-code">2375/2376</code>, Kubernetes{" "}
+              <code className="ns-code">6443/10250</code>). While these are
+              allowed, scanning them can trigger intrusion detection systems or
+              crash services if they are not configured correctly.
+            </p>
+          </CcureAlert>
+        )}
+
+        {/* Live Preview Panel (Asset mode only) */}
+        {pipelineMode === "asset" && (
+          <section className="ns-summary">
+            <h3 className="ns-summary__title">
+              <Glyph>🎯</Glyph> Scan Configuration Preview
+            </h3>
+            <dl className="ns-summary__grid">
+              <div className="ns-summary__item">
+                <dt>Scan Type</dt>
+                <dd>{preview.typeLabel}</dd>
+              </div>
+              <div className="ns-summary__item">
+                <dt>Target Profile / Depth</dt>
+                <dd>{preview.targetPortsLabel}</dd>
+              </div>
+              <div className="ns-summary__item">
+                <dt>Ports Count</dt>
+                <dd>{preview.finalCount}</dd>
+              </div>
+              <div className="ns-summary__item">
+                <dt>Excluded Ports</dt>
+                <dd>{preview.excludedLabel}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
+
+        {/* 2. OS Detection (shown for asset / advanced / vulnerability_audit) */}
+        {(pipelineMode === "asset" ||
+          pipelineMode === "advanced" ||
+          pipelineMode === "vulnerability_audit") && (
+          <OptionRow
+            title="OS Detection"
+            hint="Fingerprint target operating systems"
+            checked={osDetection}
+            onChange={(checked) => setOsDetection(checked)}
+            disabled={loading || !canExecuteScans}
+            status={osDetection ? "ON (Fingerprint)" : "OFF (Faster Scan)"}
+          />
+        )}
+
+        {/* 3. Execution Mode (shown for asset / advanced / vulnerability_audit) */}
+        {(pipelineMode === "asset" ||
+          pipelineMode === "advanced" ||
+          pipelineMode === "vulnerability_audit") && (
+          <div className="ns-settings__block">
+            <CcureSelect
+              label="Execution Mode"
+              hint="Automatic full chain vs interactive vetting"
+              value={executionMode}
+              onChange={(e) => setExecutionMode(e.target.value)}
+              disabled={loading || !canExecuteScans}
+            >
+              <option value="automatic">Automatic (Full Chain)</option>
+              <option value="interactive">Interactive (Vetted Steps)</option>
+            </CcureSelect>
           </div>
+        )}
+
+        {/* 4. Rate Limit (PPS) */}
+        <div className="ns-settings__block">
+          <CcureInput
+            type="number"
+            label="Rate Limit (PPS)"
+            hint="limit packets per second"
+            value={rateLimit}
+            onChange={(e) => setRateLimit(e.target.value)}
+            placeholder="e.g. 500"
+            disabled={loading || !canExecuteScans}
+          />
         </div>
 
-        <div className="ns-drawer-footer">
-          <button
-            type="button"
-            className="ns-drawer-save-btn"
-            onClick={() => setShowAdvanced(false)}
+        {/* 5. Authenticated checks (Vulnerability Audit only).
+            Credentials are a policy option on the ordinary scan, not a
+            separate scan type: discovery, port scanning and unauthenticated
+            checks run first, then each reachable host is logged into and the
+            local results are merged into the same report. */}
+        {(pipelineMode === "advanced" ||
+          pipelineMode === "vulnerability_audit") && (
+          <OptionRow
+            icon="🔐"
+            title="Authenticated Checks (Credentialed)"
+            hint="Log in to each host and match installed packages, then correlate with the port scan to find what is actually exposed"
+            checked={credentialedEnabled}
+            onChange={(checked) => setCredentialedEnabled(checked)}
+            disabled={loading || !canExecuteScans}
           >
-            Save & Close
-          </button>
-        </div>
-      </div>
+            {credentialedEnabled && (
+              <div className="ns-option__body">
+                {credentialsList.length === 0 ? (
+                  <p className="ns-hint">
+                    No stored credentials are registered for this organisation.
+                    Add one under the Credentials Manager in{" "}
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      className="ns-link"
+                      onClick={() => navigate("/compliance")}
+                    >
+                      Compliance
+                    </CcureButton>
+                    , then re-run this scan. Only stored credentials are
+                    accepted here — a pipeline scan runs unattended, so one-time
+                    credentials cannot be held for it.
+                  </p>
+                ) : (
+                  <fieldset className="ns-creds">
+                    <legend className="ns-label">Stored credentials</legend>
+                    <p className="ns-hint">
+                      Select the credentials to try. Each host is audited with
+                      the first one whose scope covers it; hosts with no
+                      matching credential, or with the SSH port closed, are
+                      reported as unauthenticated and listed in the scan&apos;s
+                      coverage.
+                    </p>
+                    {credentialsList.map((c) => {
+                      const checked = selectedCredIds.includes(c.id);
+                      return (
+                        <label key={c.id} className="ns-cred">
+                          <input
+                            type="checkbox"
+                            className="ns-cred__check"
+                            checked={checked}
+                            onChange={() =>
+                              setSelectedCredIds((prev) =>
+                                checked
+                                  ? prev.filter((id) => id !== c.id)
+                                  : [...prev, c.id],
+                              )
+                            }
+                            disabled={loading || !canExecuteScans}
+                          />
+                          <span className="ns-cred__name">{c.name}</span>
+                          <span className="ns-cred__account">
+                            {c.username}@:{c.port ?? 22}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                )}
+              </div>
+            )}
+          </OptionRow>
+        )}
+
+        {/* 6. SNMP / Network Topology (optional, all modes) */}
+        <OptionRow
+          icon="🗺️"
+          title="Network Topology (SNMP)"
+          hint="Enable SNMP to discover network connections"
+          checked={snmpEnabled}
+          onChange={(checked) => setSnmpEnabled(checked)}
+          disabled={loading || !canExecuteScans}
+        >
+          {snmpEnabled && (
+            <div className="ns-option__body">
+              <CcureSelect
+                label="SNMP Version"
+                value={snmpVersion}
+                onChange={(e) => setSnmpVersion(e.target.value)}
+                disabled={loading}
+              >
+                <option value="v1">v1</option>
+                <option value="v2c">v2c</option>
+                <option value="v3">v3</option>
+              </CcureSelect>
+
+              {snmpVersion !== "v3" ? (
+                <CcureInput
+                  label="Community String"
+                  value={snmpCommunity}
+                  onChange={(e) => setSnmpCommunity(e.target.value)}
+                  placeholder="public"
+                  disabled={loading}
+                />
+              ) : (
+                <>
+                  <CcureInput
+                    label="Username"
+                    value={snmpUsername}
+                    onChange={(e) => setSnmpUsername(e.target.value)}
+                    placeholder="SNMPv3 username"
+                    disabled={loading}
+                  />
+                  <CcureSelect
+                    label="Auth Protocol"
+                    value={snmpAuthProtocol}
+                    onChange={(e) => setSnmpAuthProtocol(e.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="MD5">MD5</option>
+                    <option value="SHA">SHA</option>
+                    <option value="SHA256">SHA-256</option>
+                  </CcureSelect>
+                  <CcureInput
+                    type="password"
+                    label="Auth Passphrase"
+                    value={snmpAuthPassphrase}
+                    onChange={(e) => setSnmpAuthPassphrase(e.target.value)}
+                    placeholder="Auth passphrase"
+                    disabled={loading}
+                  />
+                  <CcureSelect
+                    label="Privacy Protocol"
+                    hint="optional"
+                    value={snmpPrivProtocol}
+                    onChange={(e) => setSnmpPrivProtocol(e.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="">None (authNoPriv)</option>
+                    <option value="DES">DES</option>
+                    <option value="AES128">AES-128</option>
+                    <option value="AES256">AES-256</option>
+                  </CcureSelect>
+                  {snmpPrivProtocol && (
+                    <CcureInput
+                      type="password"
+                      label="Privacy Passphrase"
+                      value={snmpPrivPassphrase}
+                      onChange={(e) => setSnmpPrivPassphrase(e.target.value)}
+                      placeholder="Privacy passphrase"
+                      disabled={loading}
+                    />
+                  )}
+                  <CcureInput
+                    label="Context Name"
+                    hint="optional, VLAN-aware switches"
+                    value={snmpContextName}
+                    onChange={(e) => setSnmpContextName(e.target.value)}
+                    placeholder="e.g. vlan-100"
+                    disabled={loading}
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </OptionRow>
+      </SettingsDialog>
     </AppLayout>
   );
 }

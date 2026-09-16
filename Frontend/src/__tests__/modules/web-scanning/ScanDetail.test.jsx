@@ -29,7 +29,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ScanDetail from "../../../modules/web-scanning/pages/ScanDetail";
@@ -357,31 +357,44 @@ describe("ScanDetail — actions", () => {
   });
 
   it("asks for confirmation before cancelling, and sends nothing if refused", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
     render(<ScanDetail />);
     await user.click(
       await screen.findByRole("button", { name: /cancel scan/i }),
     );
-    expect(confirmSpy).toHaveBeenCalled();
+    // The question is the one the native prompt asked, and nothing is sent
+    // until it is answered.
+    const dlg = await screen.findByRole("dialog");
+    expect(
+      within(dlg).getByText(/are you sure you want to cancel this scan\?/i),
+    ).toBeInTheDocument();
     expect(webScansApi.cancelScan).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+
+    await user.click(
+      within(dlg).getByRole("button", { name: /keep scanning/i }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(webScansApi.cancelScan).not.toHaveBeenCalled();
   });
 
   it("cancels the scan by id once confirmed, then refreshes", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     render(<ScanDetail />);
     await screen.findByText("Corporate portal");
     const before = webScansApi.getScan.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /cancel scan/i }));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(
+      within(dlg).getByRole("button", { name: /^cancel scan$/i }),
+    );
     await waitFor(() =>
       expect(webScansApi.cancelScan).toHaveBeenCalledWith("ws-42"),
     );
     await waitFor(() =>
       expect(webScansApi.getScan.mock.calls.length).toBeGreaterThan(before),
     );
-    confirmSpy.mockRestore();
   });
 
   it("downloads the report for this scan id", async () => {

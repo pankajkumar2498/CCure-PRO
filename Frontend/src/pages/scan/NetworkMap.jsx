@@ -11,354 +11,300 @@
  *   - Search box to filter hosts
  *   - Log-proportional link/edge thickness
  *   - Hover tooltips for host labels (hidden at rest)
+ *
+ * Checkpoint 3C batch 21 — on the design system. The page around the graph is
+ * design-system primitives and a token-only stylesheet. The graph itself is a
+ * canvas, which cannot read CSS: every colour it draws is named by a custom
+ * property that NetworkMap.css defines from a CCure token, read from the
+ * page's computed style and read again whenever the theme changes.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Network, DataSet } from "vis-network/standalone";
 import AppLayout from "../../components/layout/AppLayout";
-import Modal from "../../components/layout/Modal";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureConfirmDialog,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcureModal,
+  CcureSelect,
+  CcureTable,
+} from "../../design-system";
 import api from "../../api/axiosInstance";
 import "../../styles/NetworkMap.css";
 
-/* ── Node/Link configurations ────────────────────────────────────────────────── */
-const GROUP_COLORS = {
-  router: { background: "#f87171", border: "#ef4444", font: "#fff" },
-  switch: { background: "#60a5fa", border: "#3b82f6", font: "#fff" },
-  gateway: { background: "#fca5a5", border: "#f87171", font: "#fff" },
-  firewall: { background: "#fb923c", border: "#f97316", font: "#fff" },
-  wireless_ap: { background: "#2dd4bf", border: "#14b8a6", font: "#fff" },
-  server: { background: "#c084fc", border: "#a855f7", font: "#fff" },
-  workstation: { background: "#818cf8", border: "#6366f1", font: "#fff" },
-  desktop: { background: "#93c5fd", border: "#3b82f6", font: "#fff" },
-  laptop: { background: "#f472b6", border: "#ec4899", font: "#fff" },
-  endpoint: { background: "#a78bfa", border: "#8b5cf6", font: "#fff" },
-  printer: { background: "#fbbf24", border: "#f59e0b", font: "#fff" },
-  camera: { background: "#34d399", border: "#10b981", font: "#fff" },
-  iot: { background: "#a3e635", border: "#84cc16", font: "#fff" },
-  plc: { background: "#4ade80", border: "#22c55e", font: "#fff" },
-  rtu: { background: "#a7f3d0", border: "#34d399", font: "#fff" },
-  storage: { background: "#94a3b8", border: "#64748b", font: "#fff" },
-  virtual_machine: { background: "#e879f9", border: "#d946ef", font: "#fff" },
-  mobile: { background: "#6ee7b7", border: "#10b981", font: "#fff" },
-  load_balancer: { background: "#fda4af", border: "#f43f5e", font: "#fff" },
-  modem: { background: "#22d3ee", border: "#06b6d4", font: "#fff" },
-  unknown: { background: "#cbd5e1", border: "#94a3b8", font: "#fff" },
-  subnet: { background: "#22d3ee", border: "#0891b2", font: "#fff" },
+/* ── Canvas colours ──────────────────────────────────────────────────────────── */
+/* vis-network draws on a <canvas>, and the node icons are SVG images; neither
+ * can resolve a CSS custom property. So each colour the map draws is a role
+ * here, named by the property NetworkMap.css defines for it from a CCure token,
+ * and resolved from the page's computed style.
+ *
+ * The second value is a CSS system colour, used only when the property cannot
+ * be read — under jsdom, or before the stylesheet applies. A system colour
+ * keeps the map legible in the viewer's own scheme; an empty string would
+ * leave vis-network drawing in whatever its defaults happen to be. */
+const CANVAS_TOKENS = {
+  canvas: ["--nmap-canvas", "Canvas"],
+  labelMuted: ["--nmap-label-muted", "GrayText"],
+  edge: ["--nmap-edge", "GrayText"],
+  edgeHighlight: ["--nmap-edge-highlight", "Highlight"],
+  lldp: ["--nmap-link-lldp", "CanvasText"],
+  cdp: ["--nmap-link-cdp", "CanvasText"],
+  edp: ["--nmap-link-edp", "CanvasText"],
+  arp: ["--nmap-link-arp", "CanvasText"],
+  statusOk: ["--nmap-status-ok", "CanvasText"],
+  statusAlert: ["--nmap-status-alert", "CanvasText"],
+  statusInfo: ["--nmap-status-info", "CanvasText"],
+  dangerInk: ["--nmap-danger-ink", "CanvasText"],
+  dangerFill: ["--nmap-danger-fill", "Canvas"],
+  warningInk: ["--nmap-warning-ink", "CanvasText"],
+  warningFill: ["--nmap-warning-fill", "Canvas"],
+  successInk: ["--nmap-success-ink", "CanvasText"],
+  successFill: ["--nmap-success-fill", "Canvas"],
+  infoInk: ["--nmap-info-ink", "CanvasText"],
+  infoFill: ["--nmap-info-fill", "Canvas"],
+  primaryInk: ["--nmap-primary-ink", "CanvasText"],
+  primaryFill: ["--nmap-primary-fill", "Canvas"],
+  neutralInk: ["--nmap-neutral-ink", "CanvasText"],
+  neutralFill: ["--nmap-neutral-fill", "Canvas"],
 };
 
-// Stable SVG template strings for all 21 device categories
+/** Every colour role, resolved from the element's computed style. */
+const readCanvasPalette = (element) => {
+  const style = element ? window.getComputedStyle(element) : null;
+  return Object.fromEntries(
+    Object.entries(CANVAS_TOKENS).map(([role, [property, fallback]]) => {
+      const value = style ? style.getPropertyValue(property).trim() : "";
+      // An unresolved reference is not a colour; jsdom returns one verbatim.
+      return [role, value && !value.includes("var(") ? value : fallback];
+    }),
+  );
+};
+
+/* Device categories share six colour families: routing, perimeter and
+ * printing, endpoints, wireless and links, operational technology, compute
+ * and unknown. Which device a node is comes from its icon's shape and its
+ * label, never from colour alone. */
+const CATEGORY_FAMILY = {
+  router: "danger",
+  gateway: "danger",
+  load_balancer: "danger",
+  firewall: "warning",
+  printer: "warning",
+  switch: "primary",
+  workstation: "primary",
+  desktop: "primary",
+  laptop: "primary",
+  endpoint: "primary",
+  wireless_ap: "info",
+  modem: "info",
+  subnet: "info",
+  camera: "success",
+  iot: "success",
+  plc: "success",
+  rtu: "success",
+  mobile: "success",
+  server: "neutral",
+  virtual_machine: "neutral",
+  storage: "neutral",
+  unknown: "neutral",
+};
+
+const familyOf = (group) =>
+  Object.prototype.hasOwnProperty.call(CATEGORY_FAMILY, group)
+    ? CATEGORY_FAMILY[group]
+    : "neutral";
+
+/* ── Node icons ──────────────────────────────────────────────────────────────── */
+/* Stable SVG templates for all 21 device categories and the subnet. The shapes
+ * are unchanged; each colour is a slot filled from the palette: {ink} outlines
+ * and marks, {fill} the body, {canvas} cut-outs, and {ok} / {alert} / {info}
+ * the status lights. */
 const ROUTER_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="routerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f87171" />
-      <stop offset="100%" stop-color="#ef4444" />
-    </linearGradient>
-  </defs>
-  <circle cx="32" cy="32" r="26" fill="#1e1b4b" stroke="url(#routerGrad)" stroke-width="2.5" />
-  <path d="M32 8v10M32 46v10M8 32h10M46 32h10" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" />
-  <circle cx="32" cy="32" r="10" fill="#0f172a" stroke="#f87171" stroke-width="2" />
-  <circle cx="32" cy="32" r="4" fill="#ef4444" />
+  <circle cx="32" cy="32" r="26" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M32 8v10M32 46v10M8 32h10M46 32h10" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="32" cy="32" r="10" fill="{canvas}" stroke="{ink}" stroke-width="2" />
+  <circle cx="32" cy="32" r="4" fill="{ink}" />
 </svg>`;
 
 const SWITCH_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="switchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa" />
-      <stop offset="100%" stop-color="#3b82f6" />
-    </linearGradient>
-  </defs>
-  <rect x="6" y="16" width="52" height="32" rx="6" fill="#172554" stroke="url(#switchGrad)" stroke-width="2.5" />
-  <rect x="12" y="24" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="24" y="24" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="36" y="24" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="48" y="24" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="12" y="34" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="24" y="34" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="36" y="34" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <rect x="48" y="34" width="8" height="6" rx="1" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
-  <circle cx="16" cy="21" r="1.5" fill="#22c55e" />
-  <circle cx="28" cy="21" r="1.5" fill="#22c55e" />
-  <circle cx="40" cy="21" r="1.5" fill="#ef4444" />
-  <circle cx="52" cy="21" r="1.5" fill="#22c55e" />
+  <rect x="6" y="16" width="52" height="32" rx="6" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <rect x="12" y="24" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="24" y="24" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="36" y="24" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="48" y="24" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="12" y="34" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="24" y="34" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="36" y="34" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="48" y="34" width="8" height="6" rx="1" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <circle cx="16" cy="21" r="1.5" fill="{ok}" />
+  <circle cx="28" cy="21" r="1.5" fill="{ok}" />
+  <circle cx="40" cy="21" r="1.5" fill="{alert}" />
+  <circle cx="52" cy="21" r="1.5" fill="{ok}" />
 </svg>`;
 
 const GATEWAY_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="gwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fca5a5" />
-      <stop offset="100%" stop-color="#f87171" />
-    </linearGradient>
-  </defs>
-  <rect x="8" y="12" width="48" height="40" rx="8" fill="#1e1b4b" stroke="url(#gwGrad)" stroke-width="2.5" />
-  <path d="M22 28v14M32 22v20M42 28v14" stroke="#fca5a5" stroke-width="2.5" stroke-linecap="round" />
-  <path d="M14 44h36" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="8" y="12" width="48" height="40" rx="8" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M22 28v14M32 22v20M42 28v14" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <path d="M14 44h36" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
 </svg>`;
 
 const FIREWALL_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="fwGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fb923c" />
-      <stop offset="100%" stop-color="#f97316" />
-    </linearGradient>
-  </defs>
-  <path d="M12 8h40v12H12zm0 16h40v12H12zm0 16h40v12H12z" fill="#1e1b4b" stroke="url(#fwGrad)" stroke-width="2" />
-  <path d="M22 8v48M42 8v48" stroke="url(#fwGrad)" stroke-width="2" />
-  <path d="M12 20h40M12 36h40" stroke="#1e1b4b" stroke-width="2.5" />
+  <path d="M12 8h40v12H12zm0 16h40v12H12zm0 16h40v12H12z" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <path d="M22 8v48M42 8v48" stroke="{ink}" stroke-width="2" />
+  <path d="M12 20h40M12 36h40" stroke="{fill}" stroke-width="2.5" />
 </svg>`;
 
 const WIRELESS_AP_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="apGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2dd4bf" />
-      <stop offset="100%" stop-color="#14b8a6" />
-    </linearGradient>
-  </defs>
-  <circle cx="32" cy="46" r="8" fill="#115e59" stroke="url(#apGrad)" stroke-width="2" />
-  <path d="M32 38v-24M24 24a12 12 0 0 1 16 0M16 16a24 24 0 0 1 32 0M8 8a36 36 0 0 1 48 0" fill="none" stroke="url(#apGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="32" cy="46" r="8" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <path d="M32 38v-24M24 24a12 12 0 0 1 16 0M16 16a24 24 0 0 1 32 0M8 8a36 36 0 0 1 48 0" fill="none" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
 </svg>`;
 
 const SERVER_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="srvGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#c084fc" />
-      <stop offset="100%" stop-color="#a855f7" />
-    </linearGradient>
-  </defs>
-  <rect x="10" y="8" width="44" height="48" rx="4" fill="#2e1065" stroke="url(#srvGrad)" stroke-width="2.5" />
-  <rect x="14" y="14" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
-  <rect x="14" y="28" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
-  <rect x="14" y="42" width="36" height="8" rx="2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.5" />
-  <circle cx="18" cy="18" r="2" fill="#22c55e" />
-  <circle cx="18" cy="32" r="2" fill="#22c55e" />
-  <circle cx="18" cy="46" r="2" fill="#22c55e" />
+  <rect x="10" y="8" width="44" height="48" rx="4" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <rect x="14" y="14" width="36" height="8" rx="2" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="14" y="28" width="36" height="8" rx="2" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <rect x="14" y="42" width="36" height="8" rx="2" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <circle cx="18" cy="18" r="2" fill="{ok}" />
+  <circle cx="18" cy="32" r="2" fill="{ok}" />
+  <circle cx="18" cy="46" r="2" fill="{ok}" />
 </svg>`;
 
 const WORKSTATION_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="wsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#818cf8" />
-      <stop offset="100%" stop-color="#6366f1" />
-    </linearGradient>
-  </defs>
-  <rect x="4" y="12" width="34" height="24" rx="2" fill="#1e1b4b" stroke="url(#wsGrad)" stroke-width="2.5" />
-  <path d="M12 36v8M8 44h18" stroke="url(#wsGrad)" stroke-width="2.5" stroke-linecap="round" />
-  <rect x="44" y="8" width="16" height="40" rx="3" fill="#1e1b4b" stroke="url(#wsGrad)" stroke-width="2" />
-  <rect x="48" y="42" width="8" height="2" fill="#818cf8" />
+  <rect x="4" y="12" width="34" height="24" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M12 36v8M8 44h18" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="44" y="8" width="16" height="40" rx="3" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <rect x="48" y="42" width="8" height="2" fill="{ink}" />
 </svg>`;
 
 const DESKTOP_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="dtGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#93c5fd" />
-      <stop offset="100%" stop-color="#3b82f6" />
-    </linearGradient>
-  </defs>
-  <rect x="8" y="14" width="38" height="26" rx="2" fill="#172554" stroke="url(#dtGrad)" stroke-width="2.5" />
-  <path d="M18 40v8M12 48h22" stroke="url(#dtGrad)" stroke-width="2.5" stroke-linecap="round" />
-  <rect x="50" y="14" width="6" height="34" rx="1" fill="#172554" stroke="url(#dtGrad)" stroke-width="1.5" />
+  <rect x="8" y="14" width="38" height="26" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M18 40v8M12 48h22" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="50" y="14" width="6" height="34" rx="1" fill="{fill}" stroke="{ink}" stroke-width="1.5" />
 </svg>`;
 
 const LAPTOP_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="ltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f472b6" />
-      <stop offset="100%" stop-color="#ec4899" />
-    </linearGradient>
-  </defs>
-  <rect x="12" y="16" width="40" height="26" rx="3" fill="#1e1b4b" stroke="url(#ltGrad)" stroke-width="2.5" />
-  <path d="M4 46h56l-4-6H8z" fill="#0f172a" stroke="url(#ltGrad)" stroke-width="2.5" stroke-linejoin="round" />
+  <rect x="12" y="16" width="40" height="26" rx="3" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M4 46h56l-4-6H8z" fill="{canvas}" stroke="{ink}" stroke-width="2.5" stroke-linejoin="round" />
 </svg>`;
 
 const ENDPOINT_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="epGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a78bfa" />
-      <stop offset="100%" stop-color="#8b5cf6" />
-    </linearGradient>
-  </defs>
-  <rect x="14" y="16" width="36" height="24" rx="2" fill="#1e1b4b" stroke="url(#epGrad)" stroke-width="2.5" />
-  <path d="M22 40v8M18 48h28" stroke="url(#epGrad)" stroke-width="2.5" stroke-linecap="round" />
+  <rect x="14" y="16" width="36" height="24" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M22 40v8M18 48h28" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
 </svg>`;
 
 const PRINTER_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="prGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fbbf24" />
-      <stop offset="100%" stop-color="#f59e0b" />
-    </linearGradient>
-  </defs>
-  <path d="M16 26h32v24H16z" fill="#78350f" stroke="url(#prGrad)" stroke-width="2.5" />
-  <path d="M20 26v-12h24v12" fill="none" stroke="url(#prGrad)" stroke-width="2" />
-  <path d="M12 36h40" stroke="url(#prGrad)" stroke-width="2.5" />
-  <path d="M24 42h16M24 46h12" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" />
+  <path d="M16 26h32v24H16z" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M20 26v-12h24v12" fill="none" stroke="{ink}" stroke-width="2" />
+  <path d="M12 36h40" stroke="{ink}" stroke-width="2.5" />
+  <path d="M24 42h16M24 46h12" stroke="{ink}" stroke-width="2" stroke-linecap="round" />
 </svg>`;
 
 const CAMERA_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="camGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#34d399" />
-      <stop offset="100%" stop-color="#10b981" />
-    </linearGradient>
-  </defs>
-  <path d="M32 10a18 18 0 0 0-18 18v8h36v-8a18 18 0 0 0-18-18z" fill="#064e3b" stroke="url(#camGrad)" stroke-width="2.5" />
-  <circle cx="32" cy="28" r="8" fill="#022c22" stroke="url(#camGrad)" stroke-width="2" />
-  <circle cx="32" cy="28" r="3" fill="#10b981" />
-  <path d="M10 40h44v6H10z" fill="url(#camGrad)" />
+  <path d="M32 10a18 18 0 0 0-18 18v8h36v-8a18 18 0 0 0-18-18z" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <circle cx="32" cy="28" r="8" fill="{canvas}" stroke="{ink}" stroke-width="2" />
+  <circle cx="32" cy="28" r="3" fill="{ink}" />
+  <path d="M10 40h44v6H10z" fill="{ink}" />
 </svg>`;
 
 const IOT_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="iotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a3e635" />
-      <stop offset="100%" stop-color="#84cc16" />
-    </linearGradient>
-  </defs>
-  <rect x="16" y="16" width="32" height="32" rx="4" fill="#3f6212" stroke="url(#iotGrad)" stroke-width="2.5" />
-  <path d="M32 8v8M32 48v8M8 32h8M48 32h8" stroke="url(#iotGrad)" stroke-width="2.5" stroke-linecap="round" />
-  <circle cx="32" cy="32" r="6" fill="#84cc16" />
+  <rect x="16" y="16" width="32" height="32" rx="4" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M32 8v8M32 48v8M8 32h8M48 32h8" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="32" cy="32" r="6" fill="{ink}" />
 </svg>`;
 
 const PLC_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="plcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4ade80" />
-      <stop offset="100%" stop-color="#22c55e" />
-    </linearGradient>
-  </defs>
-  <rect x="8" y="10" width="48" height="44" rx="4" fill="#14532d" stroke="url(#plcGrad)" stroke-width="2.5" />
-  <path d="M20 10v44M32 10v44M44 10v44" stroke="url(#plcGrad)" stroke-width="2" />
-  <circle cx="14" cy="20" r="2" fill="#22c55e" />
-  <circle cx="14" cy="28" r="2" fill="#22c55e" />
-  <circle cx="26" cy="20" r="2" fill="#ef4444" />
-  <circle cx="38" cy="20" r="2" fill="#22c55e" />
+  <rect x="8" y="10" width="48" height="44" rx="4" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M20 10v44M32 10v44M44 10v44" stroke="{ink}" stroke-width="2" />
+  <circle cx="14" cy="20" r="2" fill="{ok}" />
+  <circle cx="14" cy="28" r="2" fill="{ok}" />
+  <circle cx="26" cy="20" r="2" fill="{alert}" />
+  <circle cx="38" cy="20" r="2" fill="{ok}" />
 </svg>`;
 
 const RTU_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="rtuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a7f3d0" />
-      <stop offset="100%" stop-color="#34d399" />
-    </linearGradient>
-  </defs>
-  <rect x="10" y="14" width="44" height="38" rx="6" fill="#064e3b" stroke="url(#rtuGrad)" stroke-width="2.5" />
-  <path d="M22 6v8M42 6v8M18 24h28M18 32h28" stroke="url(#rtuGrad)" stroke-width="2" stroke-linecap="round" />
-  <circle cx="32" cy="42" r="3" fill="#34d399" />
+  <rect x="10" y="14" width="44" height="38" rx="6" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M22 6v8M42 6v8M18 24h28M18 32h28" stroke="{ink}" stroke-width="2" stroke-linecap="round" />
+  <circle cx="32" cy="42" r="3" fill="{ink}" />
 </svg>`;
 
 const STORAGE_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="stGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#94a3b8" />
-      <stop offset="100%" stop-color="#64748b" />
-    </linearGradient>
-  </defs>
-  <rect x="12" y="8" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
-  <rect x="12" y="26" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
-  <rect x="12" y="44" width="40" height="12" rx="2" fill="#1e293b" stroke="url(#stGrad)" stroke-width="2" />
-  <circle cx="18" cy="14" r="1.5" fill="#38bdf8" />
-  <circle cx="18" cy="32" r="1.5" fill="#38bdf8" />
-  <circle cx="18" cy="50" r="1.5" fill="#38bdf8" />
-  <path d="M42 14h6M42 32h6M42 50h6" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" />
+  <rect x="12" y="8" width="40" height="12" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <rect x="12" y="26" width="40" height="12" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <rect x="12" y="44" width="40" height="12" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <circle cx="18" cy="14" r="1.5" fill="{info}" />
+  <circle cx="18" cy="32" r="1.5" fill="{info}" />
+  <circle cx="18" cy="50" r="1.5" fill="{info}" />
+  <path d="M42 14h6M42 32h6M42 50h6" stroke="{ink}" stroke-width="2" stroke-linecap="round" />
 </svg>`;
 
 const VIRTUAL_MACHINE_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="vmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#e879f9" />
-      <stop offset="100%" stop-color="#d946ef" />
-    </linearGradient>
-  </defs>
-  <rect x="6" y="24" width="24" height="24" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
-  <rect x="34" y="24" width="24" height="24" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
-  <rect x="20" y="8" width="24" height="12" rx="2" fill="#4a044e" stroke="url(#vmGrad)" stroke-width="2" />
-  <path d="M32 20v4M18 36h4M46 36h4" stroke="url(#vmGrad)" stroke-width="2" />
+  <rect x="6" y="24" width="24" height="24" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <rect x="34" y="24" width="24" height="24" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <rect x="20" y="8" width="24" height="12" rx="2" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <path d="M32 20v4M18 36h4M46 36h4" stroke="{ink}" stroke-width="2" />
 </svg>`;
 
 const MOBILE_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="mobGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6ee7b7" />
-      <stop offset="100%" stop-color="#10b981" />
-    </linearGradient>
-  </defs>
-  <rect x="18" y="8" width="28" height="48" rx="6" fill="#064e3b" stroke="url(#mobGrad)" stroke-width="2.5" />
-  <circle cx="32" cy="50" r="3" fill="#10b981" />
-  <rect x="28" y="12" width="8" height="2" rx="1" fill="#6ee7b7" />
+  <rect x="18" y="8" width="28" height="48" rx="6" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <circle cx="32" cy="50" r="3" fill="{ink}" />
+  <rect x="28" y="12" width="8" height="2" rx="1" fill="{ink}" />
 </svg>`;
 
 const LOAD_BALANCER_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="lbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#fda4af" />
-      <stop offset="100%" stop-color="#f43f5e" />
-    </linearGradient>
-  </defs>
-  <circle cx="32" cy="32" r="26" fill="#4c0519" stroke="url(#lbGrad)" stroke-width="2.5" />
-  <path d="M16 32h10M38 24l8-6M38 40l8 6" stroke="url(#lbGrad)" stroke-width="2.5" stroke-linecap="round" />
-  <path d="M46 14v4h-4M46 50v-4h-4" fill="none" stroke="url(#lbGrad)" stroke-width="2.5" stroke-linejoin="round" />
+  <circle cx="32" cy="32" r="26" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M16 32h10M38 24l8-6M38 40l8 6" stroke="{ink}" stroke-width="2.5" stroke-linecap="round" />
+  <path d="M46 14v4h-4M46 50v-4h-4" fill="none" stroke="{ink}" stroke-width="2.5" stroke-linejoin="round" />
 </svg>`;
 
 const MODEM_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="modGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee" />
-      <stop offset="100%" stop-color="#06b6d4" />
-    </linearGradient>
-  </defs>
-  <rect x="10" y="24" width="44" height="24" rx="4" fill="#083344" stroke="url(#modGrad)" stroke-width="2.5" />
-  <path d="M16 10v14M48 6v18" stroke="url(#modGrad)" stroke-width="2" stroke-linecap="round" />
-  <circle cx="20" cy="36" r="2" fill="#22d3ee" />
-  <circle cx="28" cy="36" r="2" fill="#22d3ee" />
-  <circle cx="36" cy="36" r="2" fill="#22d3ee" />
+  <rect x="10" y="24" width="44" height="24" rx="4" fill="{fill}" stroke="{ink}" stroke-width="2.5" />
+  <path d="M16 10v14M48 6v18" stroke="{ink}" stroke-width="2" stroke-linecap="round" />
+  <circle cx="20" cy="36" r="2" fill="{ink}" />
+  <circle cx="28" cy="36" r="2" fill="{ink}" />
+  <circle cx="36" cy="36" r="2" fill="{ink}" />
 </svg>`;
 
 const UNKNOWN_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="unkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#cbd5e1" />
-      <stop offset="100%" stop-color="#94a3b8" />
-    </linearGradient>
-  </defs>
-  <circle cx="32" cy="32" r="26" fill="#1e293b" stroke="url(#unkGrad)" stroke-width="2" />
-  <text x="32" y="42" font-family="'Inter', sans-serif" font-size="28" font-weight="bold" fill="#cbd5e1" text-anchor="middle">?</text>
+  <circle cx="32" cy="32" r="26" fill="{fill}" stroke="{ink}" stroke-width="2" />
+  <text x="32" y="42" font-family="'Inter', sans-serif" font-size="28" font-weight="bold" fill="{ink}" text-anchor="middle">?</text>
 </svg>`;
 
 const SUBNET_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="subnetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee" />
-      <stop offset="100%" stop-color="#0891b2" />
-    </linearGradient>
-  </defs>
-  <path d="M18 38a10 10 0 0 1 0-20 14 14 0 0 1 27.5-3A10 10 0 0 1 46 38z" fill="#083344" stroke="url(#subnetGrad)" stroke-width="2.5" stroke-linejoin="round" />
-  <ellipse cx="32" cy="26" rx="6" ry="2.5" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5" />
-  <path d="M26 26v4c0 1.38 2.68 2.5 6 2.5s6-1.12 6-2.5v-4" fill="none" stroke="#22d3ee" stroke-width="1.5" />
-  <path d="M26 30v4c0 1.38 2.68 2.5 6 2.5s6-1.12 6-2.5v-4" fill="none" stroke="#22d3ee" stroke-width="1.5" />
+  <path d="M18 38a10 10 0 0 1 0-20 14 14 0 0 1 27.5-3A10 10 0 0 1 46 38z" fill="{fill}" stroke="{ink}" stroke-width="2.5" stroke-linejoin="round" />
+  <ellipse cx="32" cy="26" rx="6" ry="2.5" fill="{canvas}" stroke="{ink}" stroke-width="1.5" />
+  <path d="M26 26v4c0 1.38 2.68 2.5 6 2.5s6-1.12 6-2.5v-4" fill="none" stroke="{ink}" stroke-width="1.5" />
+  <path d="M26 30v4c0 1.38 2.68 2.5 6 2.5s6-1.12 6-2.5v-4" fill="none" stroke="{ink}" stroke-width="1.5" />
 </svg>`;
 
-// Map of category ID to premium SVG string
+// Map of category ID to its SVG template
 const CATEGORY_SVGS = {
   router: ROUTER_SVG,
   switch: SWITCH_SVG,
@@ -387,6 +333,31 @@ const CATEGORY_SVGS = {
 const getSvgDataUrl = (svgStr) =>
   `data:image/svg+xml;base64,${window.btoa(svgStr.trim())}`;
 
+/** Every category's icon as a data URL, painted in the given palette. */
+const paintIcons = (palette) =>
+  Object.fromEntries(
+    Object.entries(CATEGORY_SVGS).map(([group, template]) => {
+      const family = familyOf(group);
+      const slots = {
+        ink: palette[`${family}Ink`],
+        fill: palette[`${family}Fill`],
+        canvas: palette.canvas,
+        ok: palette.statusOk,
+        alert: palette.statusAlert,
+        info: palette.statusInfo,
+      };
+      return [
+        group,
+        getSvgDataUrl(
+          template.replace(
+            /\{(ink|fill|canvas|ok|alert|info)\}/g,
+            (_, slot) => slots[slot],
+          ),
+        ),
+      ];
+    }),
+  );
+
 const CATEGORY_LABELS = {
   router: "Router",
   switch: "Switch",
@@ -412,20 +383,19 @@ const CATEGORY_LABELS = {
   host: "Host",
 };
 
-/** Format bits-per-second into a human-readable speed string. */
 /* Edge colour by the evidence backing the link. LLDP, CDP and EDP all describe
- * a physical cable and share the topology palette; ARP is L3 reachability, and
- * anything weaker (FDB) stays neutral grey. EDP is Extreme's discovery protocol
- * and is the only neighbour source on an all-Extreme estate, so it must not
- * fall through to the generic colour. */
-const LINK_TYPE_COLORS = {
-  lldp: "#3b82f6",
-  cdp: "#f59e0b",
-  edp: "#a78bfa",
-  arp: "#06b6d4",
-  default: "#475569",
+ * a physical cable; ARP is L3 reachability, and anything weaker (FDB) stays
+ * the neutral edge colour. EDP is Extreme's discovery protocol and is the only
+ * neighbour source on an all-Extreme estate, so it must not fall through to
+ * the generic colour. Values are palette roles. */
+const LINK_TYPE_ROLES = {
+  lldp: "lldp",
+  cdp: "cdp",
+  edp: "edp",
+  arp: "arp",
 };
 
+/** Format bits-per-second into a human-readable speed string. */
 const formatSpeed = (bps) => {
   if (!bps || bps <= 0) return null;
   if (bps >= 1_000_000_000)
@@ -435,12 +405,108 @@ const formatSpeed = (bps) => {
   return `${bps} bps`;
 };
 
+const MAC_ONLY_SUBNET = "MAC-Only / FDB";
+const subnetTitle = (subnet) =>
+  subnet === MAC_ONLY_SUBNET ? "MAC-Only / FDB Cluster" : subnet;
+
+/* The endpoint evidence table. MAC identifies the row; values that may be cut
+ * short keep their full text in a tooltip, as before. */
+const EVIDENCE_COLUMNS = [
+  {
+    key: "mac",
+    header: "MAC",
+    isRowHeader: true,
+    mono: true,
+    cell: (endpoint) => (
+      <span title={endpoint.mac}>{endpoint.mac || endpoint.id}</span>
+    ),
+  },
+  {
+    key: "ip",
+    header: "IP",
+    mono: true,
+    cell: (endpoint) => endpoint.ip || "—",
+  },
+  {
+    key: "hostname",
+    header: "Hostname",
+    cell: (endpoint) => {
+      const hasResolvedHostname =
+        endpoint.label &&
+        endpoint.label !== endpoint.ip &&
+        endpoint.label !== endpoint.mac;
+      return (
+        <span title={hasResolvedHostname ? endpoint.label : ""}>
+          {hasResolvedHostname ? endpoint.label : "—"}
+        </span>
+      );
+    },
+  },
+  {
+    key: "vendor",
+    header: "Vendor",
+    cell: (endpoint) => endpoint.vendor || "Unknown",
+  },
+  {
+    key: "port",
+    header: "Port",
+    cell: (endpoint) => endpoint.source_port || "—",
+  },
+  {
+    key: "portDescription",
+    header: "Port Description",
+    cell: (endpoint) => (
+      <span title={endpoint.source_port_desc || ""}>
+        {endpoint.source_port_desc || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "vlan",
+    header: "VLAN",
+    cell: (endpoint) => endpoint.vlan_id || "—",
+  },
+  {
+    key: "speed",
+    header: "Speed",
+    nowrap: true,
+    cell: (endpoint) => formatSpeed(endpoint.speed_bps) || "—",
+  },
+  {
+    key: "source",
+    header: "Source",
+    className: "nmap-evidence__link-type",
+    cell: (endpoint) => endpoint.link_type || "—",
+  },
+  {
+    key: "asset",
+    header: "Asset",
+    nowrap: true,
+    cell: (endpoint) =>
+      endpoint.asset_id ? (
+        <a
+          href={`/assets/${endpoint.asset_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="nmap-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span aria-hidden="true">🔗</span> Matched
+          <span className="cc-sr-only"> (opens in a new tab)</span>
+        </a>
+      ) : (
+        <span className="nmap-muted">Unmatched</span>
+      ),
+  },
+];
+
 export default function NetworkMap() {
   const { scanId: paramScanId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const scanId = paramScanId || searchParams.get("scan_id") || null;
 
+  const pageRef = useRef(null);
   const containerRef = useRef(null);
   const networkRef = useRef(null);
 
@@ -472,6 +538,8 @@ export default function NetworkMap() {
   const [endpointPage, setEndpointPage] = useState(0);
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
   const [selectedActionHelp, setSelectedActionHelp] = useState(null);
+  /* The subnets waiting on the expand-all confirmation; null when closed. */
+  const [pendingExpand, setPendingExpand] = useState(null);
 
   const [subnetMask, setSubnetMask] = useState(24);
   const [layoutMode, setLayoutMode] = useState("hierarchical"); // "hierarchical" or "force"
@@ -487,6 +555,18 @@ export default function NetworkMap() {
   // Declared before fetchTopology, which resets them on every load.
   const expandedSubnetsRef = useRef(new Set());
   const filteredSubnetsRef = useRef(new Set());
+
+  // The canvas palette and the icons painted in it: read from the page's
+  // computed style when the graph first needs them, and again when the theme
+  // changes (below). A ref, because vis-network reads them outside rendering.
+  const canvasRef = useRef(null);
+  const canvasColours = useCallback(() => {
+    if (!canvasRef.current) {
+      const palette = readCanvasPalette(pageRef.current);
+      canvasRef.current = { palette, icons: paintIcons(palette) };
+    }
+    return canvasRef.current;
+  }, []);
 
   /* ── Fetch topology data ──────────────────────────────────────────────── */
   const fetchTopology = useCallback(async () => {
@@ -619,15 +699,19 @@ export default function NetworkMap() {
     switch (action) {
       case "Run ARP-enabled scan":
         setSelectedActionHelp({
-          title: "🚀 Run ARP-enabled Scan",
+          icon: "🚀",
+          title: "Run ARP-enabled Scan",
           content: (
             <div>
               <p>
                 To resolve MAC addresses to IP addresses, configure a new scan
                 targeting your network subnets with SNMP enabled.
               </p>
-              <p style={{ marginTop: "12px" }}>
-                Ensure you select <strong>🗺️ Network Topology (SNMP)</strong>{" "}
+              <p>
+                Ensure you select{" "}
+                <strong>
+                  <span aria-hidden="true">🗺️</span> Network Topology (SNMP)
+                </strong>{" "}
                 during setup and specify your router credentials.
               </p>
             </div>
@@ -638,7 +722,8 @@ export default function NetworkMap() {
         break;
       case "Add gateway/router SNMP target":
         setSelectedActionHelp({
-          title: "🔌 Add SNMP target",
+          icon: "🔌",
+          title: "Add SNMP target",
           content: (
             <div>
               <p>
@@ -646,7 +731,7 @@ export default function NetworkMap() {
                 topology engine queries the gateway&apos;s ARP table to
                 associate MAC addresses with their host IP addresses.
               </p>
-              <p style={{ marginTop: "12px" }}>
+              <p>
                 Go to the scan setup screen to add your network router IPs as
                 scan targets.
               </p>
@@ -658,15 +743,16 @@ export default function NetworkMap() {
         break;
       case "Enable ARP table collection":
         setSelectedActionHelp({
-          title: "🔍 Enable ARP Table Collection",
+          icon: "🔍",
+          title: "Enable ARP Table Collection",
           content: (
             <div>
               <p>
                 ARP (Address Resolution Protocol) mappings are critical to
                 connect L2 physical switchports to L3 IP networks.
               </p>
-              <p style={{ marginTop: "12px" }}>To resolve this:</p>
-              <ol style={{ paddingLeft: "20px", marginTop: "8px" }}>
+              <p>To resolve this:</p>
+              <ol>
                 <li>Configure your gateway router to allow SNMP access.</li>
                 <li>
                   Ensure the router&apos;s SNMP configuration allows access to
@@ -684,7 +770,8 @@ export default function NetworkMap() {
         break;
       case "Enable LLDP/CDP on infrastructure devices":
         setSelectedActionHelp({
-          title: "🌐 Enable LLDP/CDP Link Discovery",
+          icon: "🌐",
+          title: "Enable LLDP/CDP Link Discovery",
           content: (
             <div>
               <p>
@@ -692,16 +779,8 @@ export default function NetworkMap() {
                 Protocol (LLDP) or Cisco Discovery Protocol (CDP) to discover
                 neighbor links between managed switches.
               </p>
-              <p style={{ marginTop: "12px" }}>
-                How to enable this on your infrastructure:
-              </p>
-              <ul
-                style={{
-                  paddingLeft: "20px",
-                  marginTop: "8px",
-                  listStyleType: "disc",
-                }}
-              >
+              <p>How to enable this on your infrastructure:</p>
+              <ul>
                 <li>
                   <strong>Cisco Switches/Routers:</strong> Enter global
                   configuration mode and execute <code>cdp run</code> or{" "}
@@ -719,7 +798,8 @@ export default function NetworkMap() {
         break;
       case "Correlate with asset inventory":
         setSelectedActionHelp({
-          title: "📋 Correlate with Asset Inventory",
+          icon: "📋",
+          title: "Correlate with Asset Inventory",
           content: (
             <div>
               <p>
@@ -727,7 +807,7 @@ export default function NetworkMap() {
                 been resolved to active IP addresses or matched with registered
                 corporate assets.
               </p>
-              <p style={{ marginTop: "12px" }}>
+              <p>
                 Ensure these devices are properly registered in your asset
                 management system, or run a credentialed scan to automatically
                 match active hosts.
@@ -746,6 +826,8 @@ export default function NetworkMap() {
   // Subnet expand/collapse logic
   const formatNode = useCallback(
     (n) => {
+      const { palette, icons } = canvasColours();
+
       if (n.tier === "subnet") {
         const isExpanded = expandedSubnetsRef.current.has(n.id);
         const isMacOnly = isMacOnlySubnet(n.subnet);
@@ -758,15 +840,15 @@ export default function NetworkMap() {
               ? n.subnet
               : `${n.subnet}\n(${n.host_count} hosts)`,
           shape: "image",
-          image: getSvgDataUrl(SUBNET_SVG),
+          image: icons.subnet,
           size: isMacOnly ? 42 : 36,
           font: {
-            color: "#22d3ee",
+            color: palette[`${familyOf("subnet")}Ink`],
             size: 11,
             bold: true,
             face: "Inter, sans-serif",
             strokeWidth: 3,
-            strokeColor: "#0f172a",
+            strokeColor: palette.canvas,
             vadjust: 34,
           },
           level: 2,
@@ -778,10 +860,8 @@ export default function NetworkMap() {
       }
 
       const group = n.group || "unknown";
-      const nodeImage = getSvgDataUrl(
-        CATEGORY_SVGS[group] || CATEGORY_SVGS.unknown,
-      );
-      const themeColor = GROUP_COLORS[group]?.border || "#cbd5e1";
+      const nodeImage = icons[group] || icons.unknown;
+      const themeColor = palette[`${familyOf(group)}Ink`];
 
       if (n.tier === "host") {
         return {
@@ -791,11 +871,11 @@ export default function NetworkMap() {
           image: nodeImage,
           size: 26,
           font: {
-            color: "#cbd5e1",
+            color: palette.labelMuted,
             size: 9,
             face: "Inter, sans-serif",
             strokeWidth: 2,
-            strokeColor: "#0f172a",
+            strokeColor: palette.canvas,
             vadjust: 26,
           },
           level: 3,
@@ -835,7 +915,7 @@ export default function NetworkMap() {
           bold: true,
           face: "Inter, sans-serif",
           strokeWidth: 3,
-          strokeColor: "#0f172a",
+          strokeColor: palette.canvas,
           vadjust: 36,
         },
         size: nodeSize,
@@ -844,12 +924,13 @@ export default function NetworkMap() {
         _data: n,
       };
     },
-    [isMacOnlySubnet],
+    [isMacOnlySubnet, canvasColours],
   );
 
   /* ── Filter / Sync Viewable Graph ─────────────────────────────────────────── */
   const syncGraphView = useCallback(() => {
     if (!dsNodesRef.current || !dsEdgesRef.current) return;
+    const { palette } = canvasColours();
 
     // Filter subnets out
     const visibleSubnetNodes = allNodesRef.current.filter(
@@ -922,7 +1003,7 @@ export default function NetworkMap() {
           id: `edge:host:${h.id}`,
           from: sNodeId,
           to: h.id,
-          color: { color: "#475569" },
+          color: { color: palette.edge },
           width: 1,
           smooth: { type: "continuous" },
         });
@@ -1003,12 +1084,12 @@ export default function NetworkMap() {
           label: e.label || "",
           width: thickness,
           color: {
-            color: LINK_TYPE_COLORS[e.link_type] || LINK_TYPE_COLORS.default,
-            highlight: "#60a5fa",
+            color: palette[LINK_TYPE_ROLES[e.link_type]] || palette.edge,
+            highlight: palette.edgeHighlight,
           },
           dashes: e.speed_bps && e.speed_bps < 100_000_000 ? [5, 5] : false,
           smooth: { type: "continuous" },
-          font: { size: 9, color: "var(--text-faint)", strokeWidth: 0 },
+          font: { size: 9, color: palette.labelMuted, strokeWidth: 0 },
           title: hoverTitle,
         };
       });
@@ -1022,7 +1103,7 @@ export default function NetworkMap() {
       nodes: dsNodesRef.current.length,
       edges: dsEdgesRef.current.length,
     }));
-  }, [searchQuery, formatNode, isMacOnlySubnet]);
+  }, [searchQuery, formatNode, isMacOnlySubnet, canvasColours]);
 
   // Expand/collapse and filter handlers call syncGraphView outside the
   // initialisation try/catch, so a render failure there would surface as an
@@ -1081,6 +1162,27 @@ export default function NetworkMap() {
     safeSyncGraphView,
   };
 
+  /* ── Follow the theme ─────────────────────────────────────────────────────── */
+  // PreferencesContext sets or removes `data-theme` on <html>, sometimes after
+  // the graph has been drawn. The palette is read again and the graph re-synced
+  // in place, exactly as a filter change does, so zoom and pan survive.
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const palette = readCanvasPalette(pageRef.current);
+      const previous = canvasRef.current?.palette;
+      if (previous && JSON.stringify(previous) === JSON.stringify(palette)) {
+        return;
+      }
+      canvasRef.current = { palette, icons: paintIcons(palette) };
+      graphActionsRef.current.safeSyncGraphView();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
   /* ── Initialise vis-network canvas ────────────────────────────────────────── */
   useEffect(() => {
     if (
@@ -1104,9 +1206,9 @@ export default function NetworkMap() {
           nodes: {
             borderWidth: 2,
             borderWidthSelected: 3,
+            // No colour: vis-network's own shadow colour applies.
             shadow: {
               enabled: true,
-              color: "rgba(0, 0, 0, 0.4)",
               size: 6,
               x: 0,
               y: 4,
@@ -1244,19 +1346,7 @@ export default function NetworkMap() {
     }
   };
 
-  const handleExpandAll = () => {
-    const visibleSubnets = subnets.filter(
-      (s) => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s),
-    );
-    if (visibleSubnets.length > 15) {
-      if (
-        !window.confirm(
-          "Expanding more than 15 subnets simultaneously may slow down the view. Continue?",
-        )
-      ) {
-        return;
-      }
-    }
+  const expandSubnets = (visibleSubnets) => {
     const nextExpanded = new Set(expandedSubnetsRef.current);
     visibleSubnets.forEach((s) => {
       nextExpanded.add(`subnet:${s}`);
@@ -1264,6 +1354,21 @@ export default function NetworkMap() {
     expandedSubnetsRef.current = nextExpanded;
     setExpandedSubnets(new Set(nextExpanded));
     safeSyncGraphView();
+  };
+
+  /* Expanding a large map is slow but entirely reversible, so this asks in the
+     design system's confirmation dialog rather than window.confirm — same
+     threshold, same wording, and Expand keeps the focus the native prompt gave
+     its OK button. */
+  const handleExpandAll = () => {
+    const visibleSubnets = subnets.filter(
+      (s) => !filteredSubnetsRef.current.has(s) && !isMacOnlySubnet(s),
+    );
+    if (visibleSubnets.length > 15) {
+      setPendingExpand(visibleSubnets);
+      return;
+    }
+    expandSubnets(visibleSubnets);
   };
 
   const handleCollapseAll = () => {
@@ -1287,365 +1392,363 @@ export default function NetworkMap() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [topology.nodes]);
 
+  const canvasHidden = Boolean(
+    loading || error || allNodesRef.current.length === 0,
+  );
+
   return (
     <AppLayout>
-      <div className="nmap-container">
-        {/* Header */}
-        <div className="nmap-header">
-          <div className="nmap-title-group">
-            <h1 className="nmap-title">🗺️ Network Topology Map</h1>
-            <span className="nmap-subtitle">
+      <div className="nmap-page" ref={pageRef}>
+        <header className="nmap-header">
+          <div className="nmap-header__titles">
+            <h1 className="nmap-title">
+              <span className="nmap-glyph" aria-hidden="true">
+                🗺️
+              </span>{" "}
+              Network Topology Map
+            </h1>
+            <p className="nmap-subtitle">
               {scanId ? `Scan ID: ${scanId}` : "Corporate network architecture"}
-            </span>
+            </p>
           </div>
-          <div className="nmap-header-actions">
-            <div className="nmap-stats">
-              <span className="nmap-stat">
-                <span className="nmap-stat-num">{stats.nodes}</span> Visible
-                Nodes
+          <div className="nmap-header__actions">
+            <p className="nmap-stats">
+              <span>
+                <strong className="nmap-stats__value">{stats.nodes}</strong>{" "}
+                Visible Nodes
               </span>
-              <span className="nmap-stat-divider">•</span>
-              <span className="nmap-stat">
-                <span className="nmap-stat-num">{stats.hosts}</span> Total Hosts
+              <span className="nmap-stats__divider" aria-hidden="true">
+                •
               </span>
-            </div>
-            <button
-              className="nmap-btn nmap-btn--refresh"
+              <span>
+                <strong className="nmap-stats__value">{stats.hosts}</strong>{" "}
+                Total Hosts
+              </span>
+            </p>
+            <CcureButton
+              variant="secondary"
+              size="sm"
               onClick={fetchTopology}
-              disabled={loading}
+              loading={loading}
             >
-              {loading ? "Syncing..." : "↻ Refresh"}
-            </button>
+              {loading ? (
+                "Syncing..."
+              ) : (
+                <>
+                  <span aria-hidden="true">↻</span> Refresh
+                </>
+              )}
+            </CcureButton>
           </div>
-        </div>
+        </header>
 
-        {/* Global Controls Panel */}
-        <div className="nmap-controls-bar">
-          <div className="nmap-controls-left">
-            <button
-              className="nmap-control-btn"
+        <section className="nmap-toolbar" aria-label="Map controls">
+          <div className="nmap-toolbar__actions">
+            <CcureButton
+              variant="secondary"
+              size="sm"
               onClick={handleFit}
               title="Fit Entire Network View"
             >
-              🔍 Fit Screen
-            </button>
-            <button
-              className="nmap-control-btn"
+              <span aria-hidden="true">🔍</span> Fit Screen
+            </CcureButton>
+            <CcureButton
+              variant="secondary"
+              size="sm"
               onClick={handleExpandAll}
               title="Expand All Visible Subnets"
             >
-              📂 Expand All
-            </button>
-            <button
-              className="nmap-control-btn"
+              <span aria-hidden="true">📂</span> Expand All
+            </CcureButton>
+            <CcureButton
+              variant="secondary"
+              size="sm"
               onClick={handleCollapseAll}
               title="Collapse All Subnets"
             >
-              📁 Collapse All
-            </button>
+              <span aria-hidden="true">📁</span> Collapse All
+            </CcureButton>
+          </div>
 
+          <div className="nmap-toolbar__fields">
             {/* Configurable Subnet size selection */}
-            <div className="nmap-control-select-group">
-              <span className="nmap-control-select-label">Subnet Mask:</span>
-              <select
-                value={subnetMask}
-                onChange={(e) => setSubnetMask(Number(e.target.value))}
-                className="nmap-control-select"
-                title="Regroup network topology by mask bits"
-              >
-                <option value={16}>Class B (/16)</option>
-                <option value={22}>Class C Extended (/22)</option>
-                <option value={23}>Class C Extended (/23)</option>
-                <option value={24}>Class C (/24)</option>
-              </select>
-            </div>
+            <CcureSelect
+              label="Subnet mask"
+              fieldClassName="nmap-field"
+              value={subnetMask}
+              onChange={(e) => setSubnetMask(Number(e.target.value))}
+              title="Regroup network topology by mask bits"
+            >
+              <option value={16}>Class B (/16)</option>
+              <option value={22}>Class C Extended (/22)</option>
+              <option value={23}>Class C Extended (/23)</option>
+              <option value={24}>Class C (/24)</option>
+            </CcureSelect>
 
             {/* Freshness window — keeps decommissioned adjacency out of the map */}
             {!scanId && (
-              <div className="nmap-control-select-group">
-                <span className="nmap-control-select-label">Seen within:</span>
-                <select
-                  value={activeWithinDays}
-                  onChange={(e) => setActiveWithinDays(Number(e.target.value))}
-                  className="nmap-control-select"
-                  title="Only show links observed within this window"
-                >
-                  <option value={7}>Last 7 days</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={90}>Last 90 days</option>
-                  <option value={0}>All recorded history</option>
-                </select>
-              </div>
+              <CcureSelect
+                label="Seen within"
+                fieldClassName="nmap-field"
+                value={activeWithinDays}
+                onChange={(e) => setActiveWithinDays(Number(e.target.value))}
+                title="Only show links observed within this window"
+              >
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value={0}>All recorded history</option>
+              </CcureSelect>
             )}
 
             {/* Layout Mode selection */}
-            <div className="nmap-control-select-group">
-              <span className="nmap-control-select-label">Layout:</span>
-              <select
-                value={layoutMode}
-                onChange={(e) => setLayoutMode(e.target.value)}
-                className="nmap-control-select"
-                title="Switch layout styling engine"
-              >
-                <option value="hierarchical">Hierarchy</option>
-                <option value="force">Force-Directed</option>
-              </select>
-            </div>
-          </div>
-          <div className="nmap-controls-right">
-            <input
-              type="text"
+            <CcureSelect
+              label="Layout"
+              fieldClassName="nmap-field"
+              value={layoutMode}
+              onChange={(e) => setLayoutMode(e.target.value)}
+              title="Switch layout styling engine"
+            >
+              <option value="hierarchical">Hierarchy</option>
+              <option value="force">Force-Directed</option>
+            </CcureSelect>
+
+            <CcureInput
+              label="Search hosts"
+              fieldClassName="nmap-field nmap-field--search"
               placeholder="Search IP, Hostname, MAC..."
               value={searchQuery}
               onChange={handleSearchChange}
-              className="nmap-search-input"
             />
           </div>
-        </div>
+        </section>
 
-        <div
-          className="nmap-quality-strip"
+        <section
+          className="nmap-quality"
           role="status"
           aria-label="Topology data quality summary"
         >
-          <div className="nmap-quality-item">
-            <span className="nmap-quality-value">
-              {topologyQuality.macOnly}
-            </span>
-            <span className="nmap-quality-label">MAC-only endpoints</span>
-          </div>
-          <div className="nmap-quality-item">
-            <span className="nmap-quality-value">
-              {topologyQuality.ipResolved}
-            </span>
-            <span className="nmap-quality-label">IPs resolved</span>
-          </div>
-          <div className="nmap-quality-item">
-            <span className="nmap-quality-value">
-              {topologyQuality.sources}
-            </span>
-            <span className="nmap-quality-label">Topology sources</span>
-          </div>
-          <div
-            className={`nmap-quality-pill ${topologyQuality.hasArp ? "is-good" : "is-warn"}`}
-          >
+          <ul className="nmap-quality__metrics">
+            <li className="nmap-quality__item">
+              <strong className="nmap-quality__value">
+                {topologyQuality.macOnly}
+              </strong>{" "}
+              <span className="nmap-quality__label">MAC-only endpoints</span>
+            </li>
+            <li className="nmap-quality__item">
+              <strong className="nmap-quality__value">
+                {topologyQuality.ipResolved}
+              </strong>{" "}
+              <span className="nmap-quality__label">IPs resolved</span>
+            </li>
+            <li className="nmap-quality__item">
+              <strong className="nmap-quality__value">
+                {topologyQuality.sources}
+              </strong>{" "}
+              <span className="nmap-quality__label">Topology sources</span>
+            </li>
+          </ul>
+          <CcureBadge variant={topologyQuality.hasArp ? "success" : "warning"}>
             {topologyQuality.hasArp ? "ARP present" : "ARP missing"}
-          </div>
-          <div
-            className={`nmap-quality-pill ${topologyQuality.hasLldpOrCdp ? "is-good" : "is-warn"}`}
+          </CcureBadge>
+          <CcureBadge
+            variant={topologyQuality.hasLldpOrCdp ? "success" : "warning"}
           >
             {topologyQuality.hasLldpOrCdp
               ? "Neighbour discovery present"
               : "No neighbour discovery (LLDP/CDP/EDP)"}
-          </div>
-        </div>
+          </CcureBadge>
+        </section>
 
         {/* Main content layout */}
         <div className="nmap-body">
           {/* Graph canvas */}
-          <div
-            className="nmap-graph-wrapper"
-            role="region"
+          <section
+            className="nmap-graph"
             aria-label="Interactive Topology Map View"
           >
             {loading && (
-              <div className="nmap-loading">
-                <div className="nmap-spinner" />
-                <span>Loading topology nodes...</span>
-              </div>
+              <CcureLoader
+                className="nmap-graph__state"
+                label="Loading topology nodes..."
+              />
             )}
             {error && (
-              <div className="nmap-error">
-                <span className="nmap-error-icon">⚠️</span>
-                <span>{error}</span>
-                <button
-                  className="nmap-btn nmap-btn--retry"
-                  onClick={fetchTopology}
-                  aria-label="Retry loading network topology map"
-                >
+              <div className="nmap-graph__state">
+                <CcureAlert variant="danger" className="nmap-graph__alert">
+                  {error}
+                </CcureAlert>
+                <CcureButton variant="secondary" onClick={fetchTopology}>
                   Retry
-                </button>
+                </CcureButton>
               </div>
             )}
             {!loading && !error && allNodesRef.current.length === 0 && (
-              <div className="nmap-empty">
-                <span className="nmap-empty-icon">🔍</span>
-                <h3>No Network Nodes Discovered</h3>
-                <p>
-                  Run a network scan configured with SNMP to view the device
-                  hierarchy.
-                </p>
-              </div>
+              <CcureEmptyState
+                className="nmap-graph__state"
+                icon="🔍"
+                title="No Network Nodes Discovered"
+                description="Run a network scan configured with SNMP to view the device hierarchy."
+              />
             )}
             <div
               ref={containerRef}
               className="nmap-canvas"
-              style={{
-                display:
-                  loading || error || allNodesRef.current.length === 0
-                    ? "none"
-                    : "block",
-              }}
+              hidden={canvasHidden}
             />
-          </div>
+          </section>
 
           {/* Sidebar for Filters & Detail Display */}
-          <div
+          <aside
             className="nmap-sidebar"
-            role="complementary"
             aria-label="Topology controls and metadata sidebar"
           >
+            {/* The selection is made on the canvas; say what it is. */}
+            <p className="cc-sr-only" role="status">
+              {selectedNode
+                ? `Selected ${selectedNode.tier || "host"} ${selectedNode.label || selectedNode.id}`
+                : ""}
+            </p>
+
             {/* Subnet Filtering Checkboxes */}
-            <div className="nmap-filter-card">
-              <h3 className="nmap-legend-title">Subnets ({subnets.length})</h3>
-              <div className="nmap-filter-actions">
-                <button
-                  onClick={selectAllSubnets}
-                  className="nmap-filter-link"
-                  aria-label="Select all subnets to view on graph"
-                >
-                  Select All
-                </button>
-                <span className="nmap-filter-divider">|</span>
-                <button
-                  onClick={deselectAllSubnets}
-                  className="nmap-filter-link"
-                  aria-label="Deselect and hide all subnets on graph"
-                >
-                  Clear
-                </button>
+            <CcureCard className="nmap-panel">
+              <div className="nmap-panel__header">
+                <h2 className="nmap-panel__title">
+                  Subnets ({subnets.length})
+                </h2>
+                <div className="nmap-panel__actions">
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={selectAllSubnets}
+                  >
+                    Select All
+                  </CcureButton>
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={deselectAllSubnets}
+                  >
+                    Clear
+                  </CcureButton>
+                </div>
               </div>
-              <div
-                className="nmap-subnet-list"
-                role="group"
-                aria-label="Subnet filter list checkbox elements"
-              >
-                {subnets.map((subnet) => (
-                  <label key={subnet} className="nmap-subnet-checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={!filteredSubnets.has(subnet)}
-                      onChange={() => toggleSubnetFilter(subnet)}
-                      aria-label={`Toggle visibility of subnet ${subnet}`}
-                    />
-                    <span className="nmap-subnet-label">{subnet}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+              <fieldset className="nmap-subnets">
+                <legend className="cc-sr-only">Visible subnets</legend>
+                <ul className="nmap-subnets__list">
+                  {subnets.map((subnet) => (
+                    <li key={subnet}>
+                      <label className="nmap-subnet">
+                        <input
+                          type="checkbox"
+                          className="nmap-subnet__input"
+                          checked={!filteredSubnets.has(subnet)}
+                          onChange={() => toggleSubnetFilter(subnet)}
+                        />
+                        <span className="nmap-subnet__label">{subnet}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+            </CcureCard>
 
             {/* Legend */}
-            <div className="nmap-legend-card">
-              <h3 className="nmap-legend-title">Device Types</h3>
-              {legendItems.map((item) => (
-                <div key={item.group} className="nmap-legend-item">
-                  <span
-                    className="nmap-legend-dot"
-                    style={{
-                      background:
-                        GROUP_COLORS[item.group]?.background || "#64748b",
-                    }}
-                  />
-                  <span className="nmap-legend-label">{item.label}</span>
-                </div>
-              ))}
-            </div>
+            <CcureCard className="nmap-panel">
+              <h2 className="nmap-panel__title">Device Types</h2>
+              <ul className="nmap-legend">
+                {legendItems.map((item) => (
+                  <li key={item.group} className="nmap-legend__item">
+                    <span
+                      className={`nmap-swatch nmap-swatch--${familyOf(item.group)}`}
+                      aria-hidden="true"
+                    />
+                    <span className="nmap-legend__label">{item.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </CcureCard>
 
             {/* Node metadata info */}
             {selectedNode && (
-              <div className="nmap-detail-card nmap-detail-card--wide">
-                <h3 className="nmap-detail-title">
+              <CcureCard className="nmap-panel nmap-detail">
+                <h2 className="nmap-panel__title nmap-detail__title">
                   {selectedNode.label || selectedNode.id}
-                </h3>
-                <div className="nmap-detail-rows">
+                </h2>
+                <dl className="nmap-detail__rows">
                   {selectedNode.ip && (
-                    <div className="nmap-detail-row">
-                      <span className="nmap-detail-key">IP</span>
-                      <span className="nmap-detail-val">{selectedNode.ip}</span>
+                    <div className="nmap-detail__row">
+                      <dt>IP</dt>
+                      <dd>{selectedNode.ip}</dd>
                     </div>
                   )}
                   {selectedNode.mac && (
-                    <div className="nmap-detail-row">
-                      <span className="nmap-detail-key">MAC</span>
-                      <span
-                        className="nmap-detail-val"
-                        style={{ fontFamily: "var(--mono)" }}
-                      >
-                        {selectedNode.mac}
-                      </span>
+                    <div className="nmap-detail__row">
+                      <dt>MAC</dt>
+                      <dd className="nmap-mono">{selectedNode.mac}</dd>
                     </div>
                   )}
-                  <div className="nmap-detail-row">
-                    <span className="nmap-detail-key">Tier</span>
-                    <span
-                      className="nmap-detail-val"
-                      style={{ textTransform: "capitalize" }}
-                    >
+                  <div className="nmap-detail__row">
+                    <dt>Tier</dt>
+                    <dd className="nmap-detail__tier">
                       {selectedNode.tier || "host"}
-                    </span>
+                    </dd>
                   </div>
                   {selectedNode.subnet && (
-                    <div className="nmap-detail-row">
-                      <span className="nmap-detail-key">Subnet</span>
-                      <span className="nmap-detail-val">
-                        {selectedNode.subnet}
-                      </span>
+                    <div className="nmap-detail__row">
+                      <dt>Subnet</dt>
+                      <dd>{selectedNode.subnet}</dd>
                     </div>
                   )}
                   {selectedNode.tier === "subnet" && (
-                    <div className="nmap-detail-row">
-                      <span className="nmap-detail-key">Total Hosts</span>
-                      <span className="nmap-detail-val">
-                        {selectedNode.host_count}
-                      </span>
+                    <div className="nmap-detail__row">
+                      <dt>Total Hosts</dt>
+                      <dd>{selectedNode.host_count}</dd>
                     </div>
                   )}
-                  {selectedNode.tier === "subnet" &&
-                    selectedNode.host_count > 50 && (
-                      <div
-                        className="nmap-capped-warning"
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#f59e0b",
-                          marginTop: "8px",
-                        }}
-                      >
-                        ⚠️ Capped at 50 hosts on graph for layout visibility.
-                        Use the search bar to locate specific hosts in this
-                        subnet.
-                      </div>
-                    )}
-                </div>
+                </dl>
+                {selectedNode.tier === "subnet" &&
+                  selectedNode.host_count > 50 && (
+                    <CcureAlert
+                      variant="warning"
+                      live={false}
+                      className="nmap-detail__alert"
+                    >
+                      Capped at 50 hosts on graph for layout visibility. Use the
+                      search bar to locate specific hosts in this subnet.
+                    </CcureAlert>
+                  )}
                 {selectedNode.tier === "subnet" &&
                   selectedNode.data_quality && (
-                    <div className="nmap-quality-grid">
-                      <div>
-                        <strong>{selectedNode.data_quality.mac_only}</strong>
+                    <ul className="nmap-detail__quality">
+                      <li>
+                        <strong>{selectedNode.data_quality.mac_only}</strong>{" "}
                         <span>MAC-only</span>
-                      </div>
-                      <div>
-                        <strong>{selectedNode.data_quality.ip_resolved}</strong>
+                      </li>
+                      <li>
+                        <strong>{selectedNode.data_quality.ip_resolved}</strong>{" "}
                         <span>IP resolved</span>
-                      </div>
-                      <div>
+                      </li>
+                      <li>
                         <strong>
                           {selectedNode.data_quality.asset_matches}
-                        </strong>
+                        </strong>{" "}
                         <span>asset matches</span>
-                      </div>
-                      <div>
+                      </li>
+                      <li>
                         <strong>
                           {selectedNode.data_quality.source_count}
-                        </strong>
+                        </strong>{" "}
                         <span>sources</span>
-                      </div>
-                    </div>
+                      </li>
+                    </ul>
                   )}
 
                 {selectedNode.tier === "subnet" && (
-                  <div className="nmap-endpoint-panel">
-                    <button
-                      className="nmap-btn--evidence-modal"
+                  <div className="nmap-detail__endpoints">
+                    <CcureButton
+                      variant="secondary"
+                      block
                       onClick={() => {
                         setEndpointSearch("");
                         setEndpointPage(0);
@@ -1653,253 +1756,202 @@ export default function NetworkMap() {
                       }}
                       title="Open detailed endpoint evidence table in overlay"
                     >
-                      📊 View Endpoint Evidence ({selectedEndpoints.length}{" "}
-                      devices)
-                    </button>
+                      <span aria-hidden="true">📊</span> View Endpoint Evidence
+                      ({selectedEndpoints.length} devices)
+                    </CcureButton>
                     {!!selectedNode.recommended_actions?.length && (
-                      <div
-                        className="nmap-actions-panel"
-                        style={{ marginTop: "12px" }}
-                      >
-                        <strong>Recommended Next Actions</strong>
-                        {selectedNode.recommended_actions.map((action) => (
-                          <button
-                            key={action}
-                            type="button"
-                            className="nmap-action-btn"
-                            onClick={() => handleActionClick(action)}
-                            aria-label={`Click to learn how to resolve: ${action}`}
-                          >
-                            {action}
-                          </button>
-                        ))}
+                      <div className="nmap-actions">
+                        <h3 className="nmap-actions__title">
+                          Recommended Next Actions
+                        </h3>
+                        <ul className="nmap-actions__list">
+                          {selectedNode.recommended_actions.map((action) => (
+                            <li key={action}>
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
+                                className="nmap-actions__button"
+                                onClick={() => handleActionClick(action)}
+                              >
+                                {action}
+                              </CcureButton>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                   </div>
                 )}
 
                 {selectedNode.asset_id && (
-                  <button
-                    className="nmap-btn nmap-btn--asset"
+                  <CcureButton
+                    variant="primary"
+                    block
+                    className="nmap-detail__asset"
                     onClick={() => navigate(`/assets/${selectedNode.asset_id}`)}
-                    aria-label={`View asset details for ${selectedNode.label}`}
                   >
-                    View Asset Details →
-                  </button>
+                    View Asset Details
+                    <span className="cc-sr-only">
+                      {" "}
+                      for {selectedNode.label || selectedNode.id}
+                    </span>
+                    <span aria-hidden="true"> →</span>
+                  </CcureButton>
                 )}
-              </div>
+              </CcureCard>
             )}
-          </div>
+          </aside>
         </div>
       </div>
 
       {isEvidenceModalOpen &&
         selectedNode &&
         selectedNode.tier === "subnet" && (
-          <Modal
-            isOpen={isEvidenceModalOpen}
+          <CcureModal
+            open={isEvidenceModalOpen}
             onClose={() => setIsEvidenceModalOpen(false)}
-            title={`📊 Endpoint Evidence — ${selectedNode.subnet === "MAC-Only / FDB" ? "MAC-Only / FDB Cluster" : selectedNode.subnet}`}
-            size="large"
+            size="lg"
+            className="nmap-modal"
+            title={
+              <>
+                <span aria-hidden="true">📊</span> Endpoint Evidence —{" "}
+                {subnetTitle(selectedNode.subnet)}
+              </>
+            }
+            footer={
+              <nav className="nmap-pager" aria-label="Endpoint pages">
+                <CcureButton
+                  variant="secondary"
+                  onClick={() =>
+                    setEndpointPage((page) => Math.max(0, page - 1))
+                  }
+                  disabled={endpointPage === 0}
+                >
+                  Previous
+                </CcureButton>
+                <CcureButton
+                  variant="secondary"
+                  onClick={() => setEndpointPage((page) => page + 1)}
+                  disabled={
+                    (endpointPage + 1) * endpointPageSize >=
+                    selectedEndpoints.length
+                  }
+                >
+                  Show next 50
+                </CcureButton>
+              </nav>
+            }
           >
-            <div className="nmap-endpoint-head">
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  width: "100%",
-                }}
-              >
-                <div>
-                  <strong>Subnet Device List</strong>
-                  <span>
-                    Showing{" "}
-                    {pagedEndpoints.length
-                      ? endpointPage * endpointPageSize + 1
-                      : 0}
-                    -
-                    {Math.min(
-                      (endpointPage + 1) * endpointPageSize,
-                      selectedEndpoints.length,
-                    )}{" "}
-                    of {selectedEndpoints.length}
-                  </span>
+            <div className="nmap-evidence__head">
+              <p className="nmap-evidence__summary">
+                <strong>Subnet Device List</strong>
+                <span>
+                  Showing{" "}
+                  {pagedEndpoints.length
+                    ? endpointPage * endpointPageSize + 1
+                    : 0}
+                  -
+                  {Math.min(
+                    (endpointPage + 1) * endpointPageSize,
+                    selectedEndpoints.length,
+                  )}{" "}
+                  of {selectedEndpoints.length}
+                </span>
+              </p>
+              <dl className="nmap-evidence__stats">
+                <div className="nmap-evidence__stat">
+                  <dt>Total Devices:</dt>
+                  <dd>{selectedEndpoints.length}</dd>
                 </div>
-              </div>
-              <div className="nmap-modal-mini-stats">
-                <div className="mini-stat-badge">
-                  <span className="mini-stat-label">Total Devices:</span>
-                  <span className="mini-stat-val">
-                    {selectedEndpoints.length}
-                  </span>
+                <div className="nmap-evidence__stat">
+                  <dt>IPs Resolved:</dt>
+                  <dd>{selectedEndpoints.filter((e) => e.ip).length}</dd>
                 </div>
-                <div className="mini-stat-badge">
-                  <span className="mini-stat-label">IPs Resolved:</span>
-                  <span className="mini-stat-val">
-                    {selectedEndpoints.filter((e) => e.ip).length}
-                  </span>
-                </div>
-                <div className="mini-stat-badge">
-                  <span className="mini-stat-label">Asset Matches:</span>
-                  <span className="mini-stat-val is-match-count">
+                <div className="nmap-evidence__stat">
+                  <dt>Asset Matches:</dt>
+                  <dd className="nmap-evidence__matches">
                     {
                       selectedEndpoints.filter(
                         (e) => e.asset_match_status === "matched",
                       ).length
                     }
-                  </span>
+                  </dd>
                 </div>
-              </div>
-              <input
-                className="nmap-endpoint-search"
+              </dl>
+              <CcureInput
+                label="Search endpoint evidence"
+                fieldClassName="nmap-evidence__search"
                 value={endpointSearch}
                 onChange={(event) => {
                   setEndpointSearch(event.target.value);
                   setEndpointPage(0);
                 }}
                 placeholder="Search MAC, vendor, port, description, speed, VLAN..."
-                aria-label="Search endpoint evidence"
               />
             </div>
-            <div
-              className="nmap-endpoint-table"
-              role="table"
-              aria-label="Endpoint evidence table"
-            >
-              <div
-                className="nmap-endpoint-row nmap-endpoint-row--head"
-                role="row"
-              >
-                <span>MAC</span>
-                <span>IP</span>
-                <span>Hostname</span>
-                <span>Vendor</span>
-                <span>Port</span>
-                <span>Port Description</span>
-                <span>VLAN</span>
-                <span>Speed</span>
-                <span>Source</span>
-                <span>Asset</span>
-              </div>
-              {pagedEndpoints.map((endpoint) => {
-                const hasResolvedHostname =
-                  endpoint.label &&
-                  endpoint.label !== endpoint.ip &&
-                  endpoint.label !== endpoint.mac;
-                return (
-                  <div
-                    className="nmap-endpoint-row"
-                    role="row"
-                    key={endpoint.id}
-                  >
-                    <span title={endpoint.mac}>
-                      {endpoint.mac || endpoint.id}
-                    </span>
-                    <span>{endpoint.ip || "—"}</span>
-                    <span title={hasResolvedHostname ? endpoint.label : ""}>
-                      {hasResolvedHostname ? endpoint.label : "—"}
-                    </span>
-                    <span>{endpoint.vendor || "Unknown"}</span>
-                    <span>{endpoint.source_port || "—"}</span>
-                    <span title={endpoint.source_port_desc || ""}>
-                      {endpoint.source_port_desc || "—"}
-                    </span>
-                    <span>{endpoint.vlan_id || "—"}</span>
-                    <span>{formatSpeed(endpoint.speed_bps) || "—"}</span>
-                    <span style={{ textTransform: "uppercase" }}>
-                      {endpoint.link_type || "—"}
-                    </span>
-                    <span>
-                      {endpoint.asset_id ? (
-                        <a
-                          href={`/assets/${endpoint.asset_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="nmap-asset-link"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          🔗 Matched
-                        </a>
-                      ) : (
-                        <span className="is-muted">Unmatched</span>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-              {!pagedEndpoints.length && (
-                <div className="nmap-endpoint-empty">
-                  No endpoints match this filter.
-                </div>
-              )}
-            </div>
-            <div className="nmap-endpoint-pager">
-              <button
-                className="btn btn--secondary"
-                onClick={() => setEndpointPage((page) => Math.max(0, page - 1))}
-                disabled={endpointPage === 0}
-              >
-                Previous
-              </button>
-              <button
-                className="btn btn--secondary"
-                onClick={() => setEndpointPage((page) => page + 1)}
-                disabled={
-                  (endpointPage + 1) * endpointPageSize >=
-                  selectedEndpoints.length
-                }
-              >
-                Show next 50
-              </button>
-            </div>
-          </Modal>
+            <CcureTable
+              caption={`Endpoints in ${subnetTitle(selectedNode.subnet)}`}
+              className="nmap-evidence__table"
+              density="compact"
+              columns={EVIDENCE_COLUMNS}
+              rows={pagedEndpoints}
+              rowKey={(endpoint) => endpoint.id}
+              emptyMessage="No endpoints match this filter."
+            />
+          </CcureModal>
         )}
 
       {selectedActionHelp && (
-        <Modal
-          isOpen={!!selectedActionHelp}
+        <CcureModal
+          open={!!selectedActionHelp}
           onClose={() => setSelectedActionHelp(null)}
-          title={selectedActionHelp.title}
-          size="medium"
+          size="md"
+          className="nmap-modal"
+          title={
+            <>
+              <span aria-hidden="true">{selectedActionHelp.icon}</span>{" "}
+              {selectedActionHelp.title}
+            </>
+          }
+          footer={
+            selectedActionHelp.actionUrl ? (
+              <CcureButton
+                variant="primary"
+                onClick={() => {
+                  navigate(selectedActionHelp.actionUrl);
+                  setSelectedActionHelp(null);
+                }}
+              >
+                {selectedActionHelp.actionLabel || "Proceed"}
+              </CcureButton>
+            ) : (
+              <CcureButton
+                variant="secondary"
+                onClick={() => setSelectedActionHelp(null)}
+              >
+                Got it
+              </CcureButton>
+            )
+          }
         >
-          <div
-            style={{
-              lineHeight: "1.6",
-              fontSize: "0.9rem",
-              color: "var(--text-mid)",
-            }}
-          >
-            {selectedActionHelp.content}
-            <div
-              style={{
-                marginTop: "24px",
-                display: "flex",
-                justifyContent: "flex-end",
-              }}
-            >
-              {selectedActionHelp.actionUrl ? (
-                <button
-                  className="btn btn--primary"
-                  onClick={() => {
-                    navigate(selectedActionHelp.actionUrl);
-                    setSelectedActionHelp(null);
-                  }}
-                >
-                  {selectedActionHelp.actionLabel || "Proceed"}
-                </button>
-              ) : (
-                <button
-                  className="btn btn--secondary"
-                  onClick={() => setSelectedActionHelp(null)}
-                >
-                  Got it
-                </button>
-              )}
-            </div>
-          </div>
-        </Modal>
+          <div className="nmap-help">{selectedActionHelp.content}</div>
+        </CcureModal>
       )}
+
+      <CcureConfirmDialog
+        open={pendingExpand !== null}
+        title="Expand every subnet?"
+        warning="Expanding more than 15 subnets simultaneously may slow down the view. Continue?"
+        confirmLabel="Expand all"
+        tone="info"
+        initialFocus="confirm"
+        onConfirm={() => {
+          const pending = pendingExpand;
+          setPendingExpand(null);
+          if (pending) expandSubnets(pending);
+        }}
+        onCancel={() => setPendingExpand(null)}
+      />
     </AppLayout>
   );
 }

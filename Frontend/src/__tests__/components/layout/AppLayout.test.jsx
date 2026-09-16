@@ -563,19 +563,23 @@ describe("AppLayout — sidebar state", () => {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 describe("AppLayout — panels", () => {
+  /* Both panels are disclosure popovers named by aria-label, not modals: the
+     trigger carries aria-expanded and aria-controls and the page behind stays
+     interactive, so they are groups. The settings drawer below is a real modal
+     and keeps its dialog role. */
   it("opens the notifications panel from the bell and closes the others", async () => {
     const u = userEvent.setup();
     await renderShell();
     await u.click(iconButton("Help", /^help$/i));
     expect(
-      screen.getByRole("dialog", { name: "Help Center" }),
+      screen.getByRole("group", { name: "Help Center" }),
     ).toBeInTheDocument();
     await u.click(screen.getByTitle("Notifications"));
     expect(
-      screen.getByRole("dialog", { name: "Notifications" }),
+      screen.getByRole("group", { name: "Notifications" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("dialog", { name: "Help Center" }),
+      screen.queryByRole("group", { name: "Help Center" }),
     ).not.toBeInTheDocument();
   });
 

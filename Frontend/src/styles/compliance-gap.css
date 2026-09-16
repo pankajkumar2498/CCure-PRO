@@ -1,0 +1,190 @@
+/* ============================================================================
+   Compliance workspace — the gap-analysis dialog
+   ----------------------------------------------------------------------------
+   Batch 31. The dialog drew itself with twenty-three inline style objects and
+   eleven colour literals — a hand-set light grey toolbar and summary that did
+   not follow the theme — plus dashboard.css (.db-btn, .db-table,
+   .db-sev-badge) and compliance.css (.crosswalk-tag, .mono). The framework
+   choices are CcureSelect, Recalculate Gap is a CcureButton, the breakdown is
+   a CcureTable with CcureBadge statuses and crosswalk references; this file
+   lays them out. Everything resolves through `--ccure-*` tokens in both
+   themes.
+
+   The shared dialog container and the header's Gap Analysis trigger are
+   untouched.
+   ============================================================================ */
+
+.cwg-gap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+/* ── The framework pair and Recalculate Gap ───────────────────────────────── */
+.cwg-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwg-pickers__field {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+}
+
+/* The result on screen no longer matches the chosen pair. A note rather than a
+   removal: the dialog's whole body is conditioned on the result, so dropping it
+   would take the framework selects with it. */
+.cwg-stale {
+  margin: 0;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwg-pickers__arrow {
+  padding-bottom: var(--ccure-space-sm);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text-secondary);
+}
+
+.cwg-pickers__action {
+  margin-inline-start: auto;
+}
+
+/* ── The result: the pair, the score and the counts ───────────────────────── */
+.cwg-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwg-summary__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+}
+
+.cwg-summary__intro {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.cwg-summary__title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-semibold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cwg-summary__context {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text-secondary);
+}
+
+.cwg-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin: 0;
+}
+
+.cwg-score__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.cwg-score__value {
+  font-size: var(--ccure-text-3xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-primary-text);
+}
+
+.cwg-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs) var(--ccure-space-lg);
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+}
+
+.cwg-stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ccure-space-xs);
+}
+
+.cwg-stat dt {
+  color: var(--ccure-text-secondary);
+}
+
+.cwg-stat dd {
+  margin: 0;
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+}
+
+.cwg-stat .cwg-stat__pass {
+  color: var(--ccure-success-text);
+}
+
+.cwg-stat .cwg-stat__fail {
+  color: var(--ccure-danger-text);
+}
+
+/* ── The breakdown ────────────────────────────────────────────────────────── */
+/* Scrolls vertically when the target framework is long; the table keeps its
+   own horizontal scroll. */
+.cwg-results {
+  max-height: 22rem;
+  overflow: hidden auto;
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwg-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwg-pickers {
+    align-items: stretch;
+  }
+
+  .cwg-pickers__arrow {
+    display: none;
+  }
+
+  .cwg-pickers__action {
+    margin-inline-start: 0;
+  }
+
+  .cwg-score {
+    align-items: flex-start;
+  }
+}

@@ -1,0 +1,502 @@
+/* ============================================================================
+   Compliance workspace — the Dashboard, Controls, Policies and Findings tabs
+   ----------------------------------------------------------------------------
+   Batch 26B. These tabs drew themselves from compliance.css (metric cards,
+   gradient scores, KPI lists, quadrant bars, NIST function badges), from
+   dashboard.css (.db-card, .db-table, .db-status, .db-sev-badge, .db-tag,
+   .db-btn, .db-input) and from about 130 inline style objects carrying some
+   sixty colour literals. Everything here resolves through `--ccure-*` tokens
+   in both themes. Cards, tables, badges, severity, buttons, fields, progress
+   bars and pagination are design-system components; this file lays them out.
+
+   compliance.css, dashboard.css and scan.css are untouched: the workspace's
+   other tabs, its header and its dialogs still use them.
+   ============================================================================ */
+
+/* ── Shared ───────────────────────────────────────────────────────────────── */
+/* Each tab's root: a card or section that must be allowed to shrink below its
+   table's width, so the table scrolls inside it rather than the page. */
+.cwv-controls,
+.cwv-policies,
+.cwv-findings {
+  min-width: 0;
+}
+
+.cwv-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+  padding: var(--ccure-space-lg);
+  color: var(--ccure-text);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.cwv-view__title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+}
+
+.cwv-muted {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-mono {
+  font-family: var(--ccure-font-mono);
+}
+
+.cwv-strong {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.cwv-caps {
+  font-size: var(--ccure-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cwv-cell__title {
+  display: block;
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.cwv-cell__detail {
+  display: block;
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-cell__detail--measure {
+  max-width: 26rem;
+}
+
+.cwv-cell__detail--reason {
+  max-width: 16rem;
+  line-height: var(--ccure-leading-normal);
+}
+
+.cwv-table-message {
+  padding: var(--ccure-space-lg);
+  text-align: center;
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+}
+
+.cwv-filters .cc-field {
+  min-width: min(100%, 11rem);
+}
+
+.cwv-filters__clear {
+  align-self: flex-end;
+}
+
+.cwv-filters--bar {
+  padding: var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+/* CcurePagination has no first or last page control; the two buttons sit
+   beside it. */
+.cwv-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+}
+
+.cwv-paging .cc-pagination {
+  flex: 1 1 auto;
+}
+
+.cwv-paging__jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+/* ── Dashboard ────────────────────────────────────────────────────────────── */
+.cwv-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  min-width: 0;
+}
+
+.cwv-dashboard__scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--ccure-space-lg);
+}
+
+.cwv-score {
+  margin: 0;
+  font-size: var(--ccure-text-3xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The number carries the value; the colour repeats its band (80 and above,
+   50 and above, below 50). */
+.cwv-score--high {
+  color: var(--ccure-success-text);
+}
+
+.cwv-score--medium {
+  color: var(--ccure-warning-text);
+}
+
+.cwv-score--low {
+  color: var(--ccure-danger-text);
+}
+
+.cwv-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.cwv-kpis__item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-kpis__value {
+  margin: 0;
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.cwv-kpis__value--success {
+  color: var(--ccure-success-text);
+}
+
+.cwv-kpis__value--danger {
+  color: var(--ccure-danger-text);
+}
+
+.cwv-kpis__value--info {
+  color: var(--ccure-info-text);
+}
+
+.cwv-reports {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-md);
+}
+
+.cwv-reports__menu {
+  flex: 1 1 18rem;
+  min-width: min(100%, 16rem);
+}
+
+.cwv-segmented {
+  display: inline-flex;
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-3xs);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+/* The chosen format: raised, outlined and bold — not colour alone. */
+.cc-btn.cwv-segmented__option[aria-pressed="true"] {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-primary-text);
+  background: var(--ccure-surface);
+  border-color: var(--ccure-primary);
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.cwv-reports__quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs) var(--ccure-space-sm);
+  margin-top: var(--ccure-space-md);
+  padding-top: var(--ccure-space-md);
+  border-top: 1px dashed var(--ccure-border);
+}
+
+.cwv-reports__quick-label {
+  margin-right: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cwv-bars__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.5rem;
+  align-items: end;
+  gap: var(--ccure-space-md);
+}
+
+.cwv-bars__value {
+  font-weight: var(--ccure-weight-bold);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-text);
+}
+
+.cwv-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+}
+
+.cwv-nis2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  align-items: start;
+  gap: var(--ccure-space-md);
+}
+
+.cwv-nis2__fact {
+  min-width: 0;
+}
+
+.cwv-nis2__label {
+  margin: 0 0 var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-nis2__ceiling {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-danger-text);
+}
+
+.cwv-nis2__liability {
+  margin: 0;
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-warning-text);
+}
+
+.cwv-sla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--ccure-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cwv-sla__item {
+  padding: var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwv-sla__deadline {
+  margin: 0 0 var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+}
+
+.cwv-sla__deadline--danger {
+  color: var(--ccure-danger-text);
+}
+
+.cwv-sla__deadline--warning {
+  color: var(--ccure-warning-text);
+}
+
+.cwv-sla__deadline--info {
+  color: var(--ccure-info-text);
+}
+
+.cwv-sla__text {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+.cwv-controls__filters {
+  margin-bottom: var(--ccure-space-md);
+}
+
+.cwv-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0 0 var(--ccure-space-md);
+}
+
+/* The number reads first on screen; the term comes first to a reader. */
+.cwv-tiles__item {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwv-tiles__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-tiles__value {
+  margin: 0;
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.cwv-tiles__value--success {
+  color: var(--ccure-success-text);
+}
+
+.cwv-tiles__value--danger {
+  color: var(--ccure-danger-text);
+}
+
+.cwv-tiles__value--warning {
+  color: var(--ccure-warning-text);
+}
+
+.cwv-tiles__value--neutral {
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Policies ─────────────────────────────────────────────────────────────── */
+.cc-btn.cwv-disclosure {
+  justify-content: flex-start;
+  gap: var(--ccure-space-xs);
+  font-weight: var(--ccure-weight-semibold);
+  text-align: start;
+  white-space: normal;
+}
+
+.cwv-disclosure__chevron {
+  display: inline-block;
+  width: 1em;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.cwv-policy__name {
+  font-weight: inherit;
+  text-align: start;
+}
+
+.cwv-policy__rules {
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  background: var(--ccure-surface-sunken);
+}
+
+.cwv-policy__rules-title {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.cwv-policy__rules-scroll {
+  max-height: 25rem;
+  overflow: auto;
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.cwv-code {
+  display: block;
+  margin-top: var(--ccure-space-3xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-primary-text);
+  overflow-wrap: anywhere;
+}
+
+/* ── Findings ─────────────────────────────────────────────────────────────── */
+.cwv-asset {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.cwv-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwv-view {
+    padding: var(--ccure-space-md);
+  }
+
+  .cwv-paging,
+  .cwv-paging .cc-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cwv-paging .cc-pagination__controls {
+    flex-wrap: wrap;
+  }
+
+  .cwv-filters,
+  .cwv-reports {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Its 18rem basis is a width in a row and would become a height here. */
+  .cwv-reports__menu {
+    flex-basis: auto;
+  }
+
+  .cwv-bars__item {
+    grid-template-columns: minmax(0, 1fr) 3rem;
+  }
+
+  .cwv-policy__rules {
+    padding: var(--ccure-space-sm);
+  }
+}

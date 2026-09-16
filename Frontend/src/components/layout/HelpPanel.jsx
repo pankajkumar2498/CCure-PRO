@@ -282,12 +282,17 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
       f.tags.some((t) => t.includes(query.toLowerCase())),
   );
 
+  /* A disclosure popover, not a modal. The trigger carries aria-expanded and
+     aria-controls, there is no scrim, the page behind stays interactive, and an
+     outside click or Escape closes it. `role="dialog"` promised modal semantics
+     this panel does not implement — a focus trap and an inert background — so
+     it names a group instead, which keeps the name without the false promise. */
   return (
     <div
       className="shh-panel"
       ref={panelRef}
       id={id}
-      role="dialog"
+      role="group"
       aria-label="Help Center"
       tabIndex={-1}
     >

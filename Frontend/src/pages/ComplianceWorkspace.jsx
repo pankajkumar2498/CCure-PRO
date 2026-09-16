@@ -3,105 +3,42 @@
  * Compliance baselines, controls, rules, exceptions, and scoring dashboards.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import axiosInstance from "../api/axiosInstance";
 import AppLayout from "../components/layout/AppLayout";
-import Modal from "../components/layout/Modal";
 import { useAuth } from "../context/AuthContext";
 import { useToasts, ToastContainer } from "../components/common/Toast";
-import "../styles/dashboard.css";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureConfirmDialog,
+  CcureField,
+  CcureInput,
+  CcureLoader,
+  CcureModal,
+  CcurePagination,
+  CcurePasswordField,
+  CcureProgress,
+  CcureSelect,
+  CcureSeverityBadge,
+  CcureTable,
+  CcureTableStatus,
+  CcureTabPanel,
+  CcureTabs,
+  useCcureTabs,
+} from "../design-system";
 import "../styles/compliance.css";
 import "../styles/scan.css";
-
-function Skeleton({ h = 14, w = "100%", style }) {
-  return (
-    <div
-      className="db-skeleton"
-      style={{ height: h, width: w, borderRadius: 4, ...style }}
-    />
-  );
-}
-
-function PaginationBar({
-  currentPage,
-  pageSize,
-  totalItems,
-  totalPages,
-  onPageChange,
-  onPageSizeChange,
-  loading,
-  itemLabel = "items",
-  sizerOptions = [10, 25, 50, 100],
-  customSummary,
-}) {
-  const displayPage = Math.min(currentPage, totalPages);
-  const startRange = totalItems === 0 ? 0 : (displayPage - 1) * pageSize + 1;
-  const endRange = Math.min(displayPage * pageSize, totalItems);
-
-  return (
-    <div className="cw-pagination">
-      <span className="cw-pagination-summary">
-        {customSummary ||
-          (totalItems === 0
-            ? `No ${itemLabel} found`
-            : `Showing ${startRange}–${endRange} of ${totalItems} ${itemLabel}`)}
-      </span>
-
-      <div className="cw-pagination-controls">
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === 1}
-          onClick={() => onPageChange(1)}
-        >
-          «
-        </button>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === 1}
-          onClick={() => onPageChange((p) => p - 1)}
-        >
-          Prev
-        </button>
-        <span className="cw-pagination-page-indicator">
-          Page {displayPage} of {totalPages}
-        </span>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === totalPages}
-          onClick={() => onPageChange((p) => p + 1)}
-        >
-          Next
-        </button>
-        <button
-          className="cw-pagination-btn"
-          disabled={loading || displayPage === totalPages}
-          onClick={() => onPageChange(totalPages)}
-        >
-          »
-        </button>
-      </div>
-
-      <div className="cw-pagination-sizer">
-        <span>Show</span>
-        <select
-          className="cw-pagination-select"
-          value={pageSize}
-          onChange={(e) => {
-            onPageSizeChange(Number(e.target.value));
-            onPageChange(1);
-          }}
-        >
-          {sizerOptions.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <span>per page</span>
-      </div>
-    </div>
-  );
-}
+import "../styles/compliance-exceptions.css";
+import "../styles/compliance-views.css";
+import "../styles/compliance-writes.css";
+import "../styles/compliance-attestation.css";
+import "../styles/compliance-credentials.css";
+import "../styles/compliance-execution.css";
+import "../styles/compliance-gap.css";
+import "../styles/compliance-workspace.css";
 
 function useClientPagination(items, initialPageSize = 25) {
   const [page, setPage] = useState(1);
@@ -410,6 +347,316 @@ const FRAMEWORK_CATALOGUE = [
 // showing one fewer for a moment.
 const FALLBACK_ACTIVE_FRAMEWORK_IDS = ["cfw_iso27001_2022", "cfw_nist_csf_v2"];
 
+// The Exceptions tab: the pending findings the workspace has already read,
+// paged in the browser. Nothing here writes. CcurePagination has no first or
+// last page control, which the tab has always offered, so those two buttons
+// sit beside it.
+function ExceptionsPanel({ exceptions, pagination, loading }) {
+  const headingId = useId();
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    cardRef,
+    totalPages,
+    displayPage,
+    paginatedItems,
+  } = pagination;
+
+  const columns = [
+    {
+      key: "control_id",
+      header: "Control ID",
+      isRowHeader: true,
+      mono: true,
+      cell: (exc) => exc.control_id,
+    },
+    {
+      key: "asset_id",
+      header: "Asset ID",
+      mono: true,
+      cell: (exc) => exc.asset_id || "Global",
+    },
+    {
+      key: "reason",
+      header: "Waiver Reason",
+      cell: (exc) => exc.evidence?.note || exc.reason || "—",
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (exc) => <CcureBadge variant="info">{exc.status}</CcureBadge>,
+    },
+  ];
+
+  return (
+    <section ref={cardRef} className="cwx-panel" aria-labelledby={headingId}>
+      <h2 id={headingId} className="cwx-panel__title">
+        Exceptions
+      </h2>
+
+      <div className="cwx-panel__paging">
+        <CcurePagination
+          page={page}
+          pageSize={pageSize}
+          total={exceptions.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50, 100]}
+          label="Exceptions pagination"
+          itemNoun="waivers"
+          disabled={loading}
+        />
+        <div className="cwx-panel__jump" role="group" aria-label="Jump to page">
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            disabled={loading || displayPage === 1}
+            onClick={() => setPage(1)}
+          >
+            First page
+          </CcureButton>
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            disabled={loading || displayPage === totalPages}
+            onClick={() => setPage(totalPages)}
+          >
+            Last page
+          </CcureButton>
+        </div>
+      </div>
+
+      <CcureTableStatus
+        loading={loading}
+        count={exceptions.length}
+        noun="waivers"
+      />
+      <CcureTable
+        caption="Pending exceptions and waivers"
+        columns={columns}
+        rows={paginatedItems}
+        rowKey={(exc) => exc.id}
+        loading={loading}
+        emptyMessage="No pending exceptions or waivers recorded."
+      />
+    </section>
+  );
+}
+
+// The dashboard's score colour follows the bands `getScoreClass` already
+// decides; this only names them for the stylesheet.
+const SCORE_TONE = {
+  "radial-score--high": "high",
+  "radial-score--medium": "medium",
+  "radial-score--low": "low",
+};
+
+// NIST CSF 2.0 Functions keep a distinct badge each on the theme breakdown.
+const NIST_FUNCTION_BADGE = {
+  GV: "primary",
+  ID: "info",
+  PR: "success",
+  DE: "warning",
+  RS: "danger",
+  RC: "neutral",
+};
+
+// Paging for the Policies and Findings tabs: CcurePagination, plus the first
+// and last page buttons the tabs have always offered, which it has no control
+// for.
+function PagingControls({
+  pagination,
+  total,
+  loading,
+  label,
+  itemNoun,
+  sizes,
+}) {
+  const { page, setPage, pageSize, setPageSize, totalPages, displayPage } =
+    pagination;
+  return (
+    <div className="cwv-paging">
+      <CcurePagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        pageSizeOptions={sizes}
+        label={label}
+        itemNoun={itemNoun}
+        disabled={loading}
+      />
+      <div className="cwv-paging__jump" role="group" aria-label="Jump to page">
+        <CcureButton
+          variant="ghost"
+          size="sm"
+          disabled={loading || displayPage === 1}
+          onClick={() => setPage(1)}
+        >
+          First page
+        </CcureButton>
+        <CcureButton
+          variant="ghost"
+          size="sm"
+          disabled={loading || displayPage === totalPages}
+          onClick={() => setPage(totalPages)}
+        >
+          Last page
+        </CcureButton>
+      </div>
+    </div>
+  );
+}
+
+/* The attestation dialog's evidence: its heading, the upload field the dialog
+   passes in as children, and the attached files with their removal.
+
+   Removal asks first. A file's Remove turns its row into a question — Delete
+   file or Keep file — with focus on Keep file, so a stray Enter backs out
+   rather than deleting. The question's buttons ignore a click that is part of
+   a double-click, whose second click lands where Remove was; and Delete file is
+   busy and disabled while its request is out, as is every other Remove. Keep
+   file or Escape returns focus to the file's Remove. After a removal, focus
+   goes to that Remove if the file is still listed (the API refused), otherwise
+   to the list's heading.
+
+   The question is asked in the row rather than in a second dialog: the shared
+   dialog container closes on any Escape that reaches the document, so a nested
+   confirmation would take the attestation form down with it. `onRemove` is the
+   page's removal handler, unchanged — it sends the DELETE, re-reads the list
+   and reports the outcome, and it never rejects. */
+function AttestationEvidence({ files, onRemove, children }) {
+  const headingId = useId();
+  const promptId = useId();
+  const [askingId, setAskingId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  const headingRef = useRef(null);
+  const keepRef = useRef(null);
+  const removeRefs = useRef(new Map());
+  const inFlight = useRef(false);
+  const focusAfter = useRef(null);
+
+  useEffect(() => {
+    if (askingId !== null) keepRef.current?.focus();
+  }, [askingId]);
+
+  useEffect(() => {
+    const id = focusAfter.current;
+    if (id === null || askingId !== null || removingId !== null) return;
+    focusAfter.current = null;
+    const remove = removeRefs.current.get(id);
+    if (remove && files.some((f) => f.id === id)) remove.focus();
+    else headingRef.current?.focus();
+  }, [files, askingId, removingId]);
+
+  const backOut = (file) => {
+    focusAfter.current = file.id;
+    setAskingId(null);
+  };
+  const onQuestionKeyDown = (event, file) => {
+    if (event.key !== "Escape" || inFlight.current) return;
+    // Answers the question only; the dialog stays open.
+    event.stopPropagation();
+    backOut(file);
+  };
+  const deleteFile = async (event, file) => {
+    if (event.detail > 1 || inFlight.current) return;
+    inFlight.current = true;
+    setRemovingId(file.id);
+    try {
+      await onRemove(file);
+    } finally {
+      inFlight.current = false;
+      focusAfter.current = file.id;
+      setRemovingId(null);
+      setAskingId(null);
+    }
+  };
+
+  return (
+    <div className="cwa-section">
+      <h3
+        id={headingId}
+        ref={headingRef}
+        tabIndex={-1}
+        className="cwa-section__title"
+      >
+        Attached evidence
+      </h3>
+      {children}
+      {files.length > 0 && (
+        <ul className="cwa-evidence" aria-labelledby={headingId}>
+          {files.map((f) => (
+            <li key={f.id} className="cwa-evidence__item">
+              <span className="cwa-evidence__file">
+                <span aria-hidden="true">📎</span> {f.filename}{" "}
+                <span className="cwa-evidence__size">
+                  ({Math.round(f.size_bytes / 1024)} KB)
+                </span>
+              </span>
+              {askingId === f.id ? (
+                <div
+                  role="group"
+                  aria-labelledby={promptId}
+                  className="cwa-evidence__question"
+                >
+                  <span id={promptId} className="cwa-evidence__prompt">
+                    Delete {f.filename}? This cannot be undone.
+                  </span>
+                  <CcureButton
+                    variant="danger"
+                    size="sm"
+                    loading={removingId === f.id}
+                    onClick={(e) => deleteFile(e, f)}
+                    onKeyDown={(e) => onQuestionKeyDown(e, f)}
+                  >
+                    Delete file
+                  </CcureButton>
+                  <CcureButton
+                    ref={keepRef}
+                    variant="secondary"
+                    size="sm"
+                    disabled={removingId === f.id}
+                    onClick={(e) => {
+                      if (e.detail <= 1) backOut(f);
+                    }}
+                    onKeyDown={(e) => onQuestionKeyDown(e, f)}
+                  >
+                    Keep file
+                  </CcureButton>
+                </div>
+              ) : (
+                <CcureButton
+                  ref={(el) => {
+                    if (el) removeRefs.current.set(f.id, el);
+                    else removeRefs.current.delete(f.id);
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${f.filename}`}
+                  disabled={removingId !== null}
+                  onClick={() => setAskingId(f.id)}
+                >
+                  Remove
+                </CcureButton>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
   const roleName = (user?.role?.name || "")
@@ -421,6 +668,16 @@ export default function ComplianceWorkspace() {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const [activeTab, setActiveTab] = useState("dashboard");
+  // The tab list and the panel it controls share one id base; the page owns
+  // which tab is chosen.
+  const workspaceTabs = useCcureTabs(activeTab, {
+    value: activeTab,
+    onChange: setActiveTab,
+  });
+  // The framework whose uninstall is being confirmed, and whether its request
+  // is out.
+  const [uninstallTarget, setUninstallTarget] = useState(null);
+  const [uninstallBusy, setUninstallBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [marketplace, setMarketplace] = useState([]);
@@ -448,6 +705,11 @@ export default function ComplianceWorkspace() {
   const [newCredPassword, setNewCredPassword] = useState("");
   const [newCredKeyContent, setNewCredKeyContent] = useState("");
   const [newCredPort, setNewCredPort] = useState(22);
+  // A credential save or deletion in flight, and the credential whose deletion
+  // is being confirmed.
+  const [savingCredential, setSavingCredential] = useState(false);
+  const [credentialToDelete, setCredentialToDelete] = useState(null);
+  const [deletingCredential, setDeletingCredential] = useState(false);
 
   const [remediationCredSource, setRemediationCredSource] = useState("jit"); // jit | stored
   const [selectedCredId, setSelectedCredId] = useState("");
@@ -457,6 +719,10 @@ export default function ComplianceWorkspace() {
   const [jitPassword, setJitPassword] = useState("");
   const [jitKeyContent, setJitKeyContent] = useState("");
   const [emergencyBypass, setEmergencyBypass] = useState(false);
+  // The Approvals Queue decision being confirmed — { req, kind } with kind
+  // "cancel", "approve" or "reject" — and whether its request is out.
+  const [queueDecision, setQueueDecision] = useState(null);
+  const [queueDecisionBusy, setQueueDecisionBusy] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanPollCount, setScanPollCount] = useState(0); // Active framework filter & gap analysis states
   // Scan progress is read from the run itself rather than guessed from a
@@ -493,6 +759,10 @@ export default function ComplianceWorkspace() {
     useState("cfw_iso27001_2022");
   const [gapTargetFramework, setGapTargetFramework] = useState("cfw_nis2");
   const [loadingGapAnalysis, setLoadingGapAnalysis] = useState(false);
+  /* True when the dialog's framework choices have moved away from the result
+     on screen. The result is kept — dropping it would empty the dialog, whose
+     body is conditioned on it — and labelled instead. */
+  const [gapStale, setGapStale] = useState(false);
   const [perFrameworkScores, setPerFrameworkScores] = useState([]);
 
   // The catalogue entries this installation actually offers, in the order the
@@ -850,6 +1120,7 @@ export default function ComplianceWorkspace() {
         `/compliance/gap-analysis?source_framework_id=${sourceId}&target_framework_id=${targetId}`,
       );
       setGapAnalysis(res.data);
+      setGapStale(false);
       setModalType("gap_analysis");
       setModalOpen(true);
     } catch (e) {
@@ -1042,12 +1313,7 @@ export default function ComplianceWorkspace() {
   };
 
   const handleUninstallFramework = async (id) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to uninstall this compliance framework? This will hide its policies, findings, approvals, and dashboard averages.",
-      )
-    )
-      return;
+    // Asked first by the Marketplace's uninstall dialog.
     try {
       await axiosInstance.post(`/compliance/marketplace/${id}/uninstall`);
       pushToast("Framework uninstalled successfully.", "success");
@@ -1469,6 +1735,12 @@ export default function ComplianceWorkspace() {
           (e.response?.data?.detail || e.response?.data?.message || e.message),
         "error",
       );
+      /* A refused dispatch used to leave the one-time secret in state, so it
+         was back in the field the next time the dialog opened, for any finding
+         or request. The username is kept: it is not a secret, and retyping it
+         on every retry is the worse trade. */
+      setJitPassword("");
+      setJitKeyContent("");
     }
   };
 
@@ -1514,6 +1786,10 @@ export default function ComplianceWorkspace() {
           (e.response?.data?.detail || e.response?.data?.message || e.message),
         "error",
       );
+      /* Same as the remediation path: a refused dispatch must not leave the
+         one-time secret sitting in state for the next dialog. */
+      setJitPassword("");
+      setJitKeyContent("");
     }
   };
 
@@ -1582,599 +1858,333 @@ export default function ComplianceWorkspace() {
 
   return (
     <AppLayout pageTitle="Policy Compliance Workspace">
-      <div className="db-page">
-        {loading && <div className="loading-bar" />}
+      <div className="cwh-page">
+        {loading && (
+          <CcureProgress
+            className="cwh-loading"
+            label="Loading compliance data"
+            showValue={false}
+          />
+        )}
 
         {/* Workspace Header */}
-        <div className="db-page-header">
-          <div>
-            <div className="db-page-title">Policy Compliance</div>
-            <div className="db-page-subtitle">
+        <div className="cwh-header">
+          <div className="cwh-heading">
+            <h1 className="cwh-title">Policy Compliance</h1>
+            <p className="cwh-subtitle">
               Standard catalogs, baseline verification scans, manual
               attestations, crosswalk gap analysis, and exception waivers.
-            </div>
+            </p>
           </div>
-          <div
-            className="db-header-actions"
-            style={{ display: "flex", gap: "10px", alignItems: "center" }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span
-                style={{
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  color: "var(--text-muted)",
-                }}
-              >
-                Framework:
-              </span>
-              <select
-                className="cw-pagination-select"
-                value={selectedFrameworkId}
-                onChange={(e) => setSelectedFrameworkId(e.target.value)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  fontSize: "0.85rem",
-                  background: "var(--bg-white)",
-                  border: "1px solid var(--border)",
-                  fontWeight: 600,
-                }}
-              >
-                <option value="all">All Frameworks</option>
-                {activeFrameworks.map((fw) => (
-                  <option key={`fw_sel_${fw.id}`} value={fw.id}>
-                    {fw.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="cwh-toolbar">
+            <CcureSelect
+              label="Framework"
+              fieldClassName="cwh-filter"
+              value={selectedFrameworkId}
+              onChange={(e) => setSelectedFrameworkId(e.target.value)}
+            >
+              <option value="all">All Frameworks</option>
+              {activeFrameworks.map((fw) => (
+                <option key={`fw_sel_${fw.id}`} value={fw.id}>
+                  {fw.name}
+                </option>
+              ))}
+            </CcureSelect>
             {(selectedFrameworkId === "cfw_iec_62443" ||
               selectedFrameworkId === "cfw_nist_800_82_r3") && (
               <>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                <CcureSelect
+                  label="Purdue Level"
+                  fieldClassName="cwh-filter"
+                  value={purdueLevelFilter}
+                  onChange={(e) => setPurdueLevelFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Purdue Level:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={purdueLevelFilter}
-                    onChange={(e) => setPurdueLevelFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All Purdue Levels</option>
-                    <option value="L0">Level 0 (Physical Process)</option>
-                    <option value="L1">
-                      Level 1 (Basic Control - PLCs/RTUs)
-                    </option>
-                    <option value="L2">
-                      Level 2 (Area Control - HMIs/SCADA)
-                    </option>
-                    <option value="L3">
-                      Level 3 (Site Operations/Historians)
-                    </option>
-                    <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
-                    {selectedFrameworkId === "cfw_nist_800_82_r3" && (
-                      <>
-                        <option value="L4">Level 4 (Enterprise Network)</option>
-                        <option value="L5">
-                          Level 5 (Enterprise Cloud / External)
-                        </option>
-                      </>
-                    )}
-                  </select>
-                </div>
+                  <option value="all">All Purdue Levels</option>
+                  <option value="L0">Level 0 (Physical Process)</option>
+                  <option value="L1">
+                    Level 1 (Basic Control - PLCs/RTUs)
+                  </option>
+                  <option value="L2">
+                    Level 2 (Area Control - HMIs/SCADA)
+                  </option>
+                  <option value="L3">
+                    Level 3 (Site Operations/Historians)
+                  </option>
+                  <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
+                  {selectedFrameworkId === "cfw_nist_800_82_r3" && (
+                    <>
+                      <option value="L4">Level 4 (Enterprise Network)</option>
+                      <option value="L5">
+                        Level 5 (Enterprise Cloud / External)
+                      </option>
+                    </>
+                  )}
+                </CcureSelect>
 
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                <CcureSelect
+                  label="Component Type"
+                  fieldClassName="cwh-filter"
+                  value={componentTypeFilter}
+                  onChange={(e) => setComponentTypeFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Component Type:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={componentTypeFilter}
-                    onChange={(e) => setComponentTypeFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All Component Types</option>
-                    {selectedFrameworkId === "cfw_nist_800_82_r3" ? (
-                      <>
-                        <option value="PLC">
-                          PLC (Programmable Logic Controller)
-                        </option>
-                        <option value="RTU">RTU (Remote Terminal Unit)</option>
-                        <option value="SCADA">
-                          SCADA (Supervisory Control)
-                        </option>
-                        <option value="DCS">
-                          DCS (Distributed Control System)
-                        </option>
-                        <option value="SIS">
-                          SIS (Safety Instrumented System)
-                        </option>
-                        <option value="HMI">
-                          HMI (Human-Machine Interface)
-                        </option>
-                        <option value="HISTORIAN">
-                          HISTORIAN (Process Historian)
-                        </option>
-                        <option value="IED">
-                          IED (Intelligent Electronic Device)
-                        </option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="NDD">NDD (Network Device)</option>
-                        <option value="EDR">EDR (Embedded Device)</option>
-                        <option value="HDR">HDR (Host Device)</option>
-                        <option value="SW">SW (Software Application)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
+                  <option value="all">All Component Types</option>
+                  {selectedFrameworkId === "cfw_nist_800_82_r3" ? (
+                    <>
+                      <option value="PLC">
+                        PLC (Programmable Logic Controller)
+                      </option>
+                      <option value="RTU">RTU (Remote Terminal Unit)</option>
+                      <option value="SCADA">SCADA (Supervisory Control)</option>
+                      <option value="DCS">
+                        DCS (Distributed Control System)
+                      </option>
+                      <option value="SIS">
+                        SIS (Safety Instrumented System)
+                      </option>
+                      <option value="HMI">HMI (Human-Machine Interface)</option>
+                      <option value="HISTORIAN">
+                        HISTORIAN (Process Historian)
+                      </option>
+                      <option value="IED">
+                        IED (Intelligent Electronic Device)
+                      </option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="NDD">NDD (Network Device)</option>
+                      <option value="EDR">EDR (Embedded Device)</option>
+                      <option value="HDR">HDR (Host Device)</option>
+                      <option value="SW">SW (Software Application)</option>
+                    </>
+                  )}
+                </CcureSelect>
 
                 {selectedFrameworkId === "cfw_iec_62443" && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
+                  <CcureSelect
+                    label="Target SL"
+                    fieldClassName="cwh-filter"
+                    value={slLevelFilter}
+                    onChange={(e) => setSlLevelFilter(e.target.value)}
                   >
-                    <span
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 600,
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      Target SL:
-                    </span>
-                    <select
-                      className="cw-pagination-select"
-                      value={slLevelFilter}
-                      onChange={(e) => setSlLevelFilter(e.target.value)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: "6px",
-                        fontSize: "0.85rem",
-                        background: "var(--bg-white)",
-                        border: "1px solid var(--border)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      <option value="all">All Security Levels</option>
-                      <option value="SL1">
-                        SL-1 (Protection against casual violation)
-                      </option>
-                      <option value="SL2">
-                        SL-2 (Protection against simple intentional violation)
-                      </option>
-                      <option value="SL3">
-                        SL-3 (Protection against sophisticated violation)
-                      </option>
-                      <option value="SL4">
-                        SL-4 (Protection against high motivation state actors)
-                      </option>
-                    </select>
-                  </div>
+                    <option value="all">All Security Levels</option>
+                    <option value="SL1">
+                      SL-1 (Protection against casual violation)
+                    </option>
+                    <option value="SL2">
+                      SL-2 (Protection against simple intentional violation)
+                    </option>
+                    <option value="SL3">
+                      SL-3 (Protection against sophisticated violation)
+                    </option>
+                    <option value="SL4">
+                      SL-4 (Protection against high motivation state actors)
+                    </option>
+                  </CcureSelect>
                 )}
               </>
             )}
             {selectedFrameworkId === "cfw_nerc_cip" && (
               <>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                <CcureSelect
+                  label="Regional Entity"
+                  fieldClassName="cwh-filter"
+                  value={regionalEntityFilter}
+                  onChange={(e) => setRegionalEntityFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Regional Entity:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={regionalEntityFilter}
-                    onChange={(e) => setRegionalEntityFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="WECC">
-                      WECC (Western Electricity Coordinating Council)
-                    </option>
-                    <option value="SERC">SERC Reliability Corporation</option>
-                    <option value="TEXAS_RE">
-                      Texas RE (Texas Reliability Entity)
-                    </option>
-                    <option value="RELIABILITY_FIRST">
-                      ReliabilityFirst (RF)
-                    </option>
-                    <option value="MRO">
-                      MRO (Midwest Reliability Organization)
-                    </option>
-                    <option value="NPCC">
-                      NPCC (Northeast Power Coordinating Council)
-                    </option>
-                  </select>
-                </div>
+                  <option value="WECC">
+                    WECC (Western Electricity Coordinating Council)
+                  </option>
+                  <option value="SERC">SERC Reliability Corporation</option>
+                  <option value="TEXAS_RE">
+                    Texas RE (Texas Reliability Entity)
+                  </option>
+                  <option value="RELIABILITY_FIRST">
+                    ReliabilityFirst (RF)
+                  </option>
+                  <option value="MRO">
+                    MRO (Midwest Reliability Organization)
+                  </option>
+                  <option value="NPCC">
+                    NPCC (Northeast Power Coordinating Council)
+                  </option>
+                </CcureSelect>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                <CcureSelect
+                  label="BES Impact"
+                  fieldClassName="cwh-filter"
+                  value={besImpactLevelFilter}
+                  onChange={(e) => setBesImpactLevelFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    BES Impact:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={besImpactLevelFilter}
-                    onChange={(e) => setBesImpactLevelFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All BES Impact Baselines</option>
-                    <option value="High">High Impact BES Cyber Systems</option>
-                    <option value="Medium">
-                      Medium Impact BES Cyber Systems
-                    </option>
-                    <option value="Low">Low Impact BES Cyber Systems</option>
-                  </select>
-                </div>
+                  <option value="all">All BES Impact Baselines</option>
+                  <option value="High">High Impact BES Cyber Systems</option>
+                  <option value="Medium">
+                    Medium Impact BES Cyber Systems
+                  </option>
+                  <option value="Low">Low Impact BES Cyber Systems</option>
+                </CcureSelect>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                <CcureSelect
+                  label="Standard"
+                  fieldClassName="cwh-filter"
+                  value={standardNumberFilter}
+                  onChange={(e) => setStandardNumberFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Standard:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={standardNumberFilter}
-                    onChange={(e) => setStandardNumberFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">
-                      All Standards (CIP-002 to CIP-014)
-                    </option>
-                    <option value="CIP-002">
-                      CIP-002 (Asset Categorization)
-                    </option>
-                    <option value="CIP-003">
-                      CIP-003 (Security Management)
-                    </option>
-                    <option value="CIP-004">
-                      CIP-004 (Personnel & Training)
-                    </option>
-                    <option value="CIP-005">
-                      CIP-005 (Electronic Security Perimeters)
-                    </option>
-                    <option value="CIP-006">CIP-006 (Physical Security)</option>
-                    <option value="CIP-007">
-                      CIP-007 (System Security Management)
-                    </option>
-                    <option value="CIP-008">
-                      CIP-008 (Incident Reporting)
-                    </option>
-                    <option value="CIP-009">CIP-009 (Recovery Plans)</option>
-                    <option value="CIP-010">
-                      CIP-010 (Configuration & Change Mgmt)
-                    </option>
-                    <option value="CIP-011">
-                      CIP-011 (Information Protection)
-                    </option>
-                    <option value="CIP-012">
-                      CIP-012 (Control Center Comms)
-                    </option>
-                    <option value="CIP-013">
-                      CIP-013 (Supply Chain Risk Mgmt)
-                    </option>
-                    <option value="CIP-014">
-                      CIP-014 (Physical Security Substation)
-                    </option>
-                  </select>
-                </div>
+                  <option value="all">
+                    All Standards (CIP-002 to CIP-014)
+                  </option>
+                  <option value="CIP-002">
+                    CIP-002 (Asset Categorization)
+                  </option>
+                  <option value="CIP-003">CIP-003 (Security Management)</option>
+                  <option value="CIP-004">
+                    CIP-004 (Personnel & Training)
+                  </option>
+                  <option value="CIP-005">
+                    CIP-005 (Electronic Security Perimeters)
+                  </option>
+                  <option value="CIP-006">CIP-006 (Physical Security)</option>
+                  <option value="CIP-007">
+                    CIP-007 (System Security Management)
+                  </option>
+                  <option value="CIP-008">CIP-008 (Incident Reporting)</option>
+                  <option value="CIP-009">CIP-009 (Recovery Plans)</option>
+                  <option value="CIP-010">
+                    CIP-010 (Configuration & Change Mgmt)
+                  </option>
+                  <option value="CIP-011">
+                    CIP-011 (Information Protection)
+                  </option>
+                  <option value="CIP-012">
+                    CIP-012 (Control Center Comms)
+                  </option>
+                  <option value="CIP-013">
+                    CIP-013 (Supply Chain Risk Mgmt)
+                  </option>
+                  <option value="CIP-014">
+                    CIP-014 (Physical Security Substation)
+                  </option>
+                </CcureSelect>
               </>
             )}
             {selectedFrameworkId === "cfw_nis2" && (
               <>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                <CcureSelect
+                  label="Entity Scope"
+                  fieldClassName="cwh-filter"
+                  value={nis2EntityTypeFilter}
+                  onChange={(e) => setNis2EntityTypeFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Entity Scope:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={nis2EntityTypeFilter}
-                    onChange={(e) => setNis2EntityTypeFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All Entities</option>
-                    <option value="essential">
-                      Essential Entity (Art. 3.1)
-                    </option>
-                    <option value="important">
-                      Important Entity (Art. 3.2)
-                    </option>
-                  </select>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                  <option value="all">All Entities</option>
+                  <option value="essential">Essential Entity (Art. 3.1)</option>
+                  <option value="important">Important Entity (Art. 3.2)</option>
+                </CcureSelect>
+                <CcureSelect
+                  label="Sector"
+                  fieldClassName="cwh-filter"
+                  value={nis2SectorFilter}
+                  onChange={(e) => setNis2SectorFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Sector:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={nis2SectorFilter}
-                    onChange={(e) => setNis2SectorFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">
-                      All 18 Critical Sectors (Annex I & II)
-                    </option>
-                    <option value="energy">
-                      Energy (Electricity, Oil, Gas, Hydrogen, Heating)
-                    </option>
-                    <option value="transport">
-                      Transport (Air, Rail, Water, Road)
-                    </option>
-                    <option value="banking">
-                      Banking & Credit Institutions
-                    </option>
-                    <option value="financial_market_infra">
-                      Financial Market Infrastructures
-                    </option>
-                    <option value="health">
-                      Health & Healthcare (Hospitals, Pharma, Labs)
-                    </option>
-                    <option value="drinking_water">
-                      Drinking Water Supply & Distribution
-                    </option>
-                    <option value="wastewater">
-                      Wastewater Collection & Treatment
-                    </option>
-                    <option value="digital_infrastructure">
-                      Digital Infrastructure (DNS, TLD, Cloud, DC, CDN)
-                    </option>
-                    <option value="ict">
-                      ICT Service Management (B2B Managed Services & MSPs)
-                    </option>
-                    <option value="public_admin">
-                      Public Administration (Central & Regional)
-                    </option>
-                    <option value="space">
-                      Space (Operators of Ground-Based Infrastructure)
-                    </option>
-                    <option value="postal_courier">
-                      Postal & Courier Services
-                    </option>
-                    <option value="waste_management">Waste Management</option>
-                    <option value="chemicals">
-                      Chemicals Production, Processing & Distribution
-                    </option>
-                    <option value="food">
-                      Food Production, Processing & Wholesale Distribution
-                    </option>
-                    <option value="manufacturing">
-                      Manufacturing (Medical, Electronics, Machinery)
-                    </option>
-                    <option value="digital_providers">
-                      Digital Providers (Online Marketplaces, Search, Social)
-                    </option>
-                    <option value="research">Research Organisations</option>
-                  </select>
-                </div>
+                  <option value="all">
+                    All 18 Critical Sectors (Annex I & II)
+                  </option>
+                  <option value="energy">
+                    Energy (Electricity, Oil, Gas, Hydrogen, Heating)
+                  </option>
+                  <option value="transport">
+                    Transport (Air, Rail, Water, Road)
+                  </option>
+                  <option value="banking">Banking & Credit Institutions</option>
+                  <option value="financial_market_infra">
+                    Financial Market Infrastructures
+                  </option>
+                  <option value="health">
+                    Health & Healthcare (Hospitals, Pharma, Labs)
+                  </option>
+                  <option value="drinking_water">
+                    Drinking Water Supply & Distribution
+                  </option>
+                  <option value="wastewater">
+                    Wastewater Collection & Treatment
+                  </option>
+                  <option value="digital_infrastructure">
+                    Digital Infrastructure (DNS, TLD, Cloud, DC, CDN)
+                  </option>
+                  <option value="ict">
+                    ICT Service Management (B2B Managed Services & MSPs)
+                  </option>
+                  <option value="public_admin">
+                    Public Administration (Central & Regional)
+                  </option>
+                  <option value="space">
+                    Space (Operators of Ground-Based Infrastructure)
+                  </option>
+                  <option value="postal_courier">
+                    Postal & Courier Services
+                  </option>
+                  <option value="waste_management">Waste Management</option>
+                  <option value="chemicals">
+                    Chemicals Production, Processing & Distribution
+                  </option>
+                  <option value="food">
+                    Food Production, Processing & Wholesale Distribution
+                  </option>
+                  <option value="manufacturing">
+                    Manufacturing (Medical, Electronics, Machinery)
+                  </option>
+                  <option value="digital_providers">
+                    Digital Providers (Online Marketplaces, Search, Social)
+                  </option>
+                  <option value="research">Research Organisations</option>
+                </CcureSelect>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                <CcureSelect
+                  label="Member State"
+                  fieldClassName="cwh-filter"
+                  value={nis2MemberStateFilter}
+                  onChange={(e) => setNis2MemberStateFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    Member State:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={nis2MemberStateFilter}
-                    onChange={(e) => setNis2MemberStateFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">
-                      All EU (Generic / ENISA Coordinated)
-                    </option>
-                    <option value="DE">
-                      Germany — BSI (Bundesamt für Sicherheit in der
-                      Informationstechnik)
-                    </option>
-                    <option value="FR">
-                      France — ANSSI (Agence nationale de la sécurité des SI)
-                    </option>
-                    <option value="IT">
-                      Italy — ACN (Agenzia per la Cybersicurezza Nazionale)
-                    </option>
-                    <option value="NL">Netherlands — NCSC-NL</option>
-                    <option value="BE">
-                      Belgium — CCB (Centre for Cybersecurity Belgium)
-                    </option>
-                    <option value="ES">Spain — INCIBE / CCN-CERT</option>
-                    <option value="SE">
-                      Sweden — MSB (Myndigheten för samhällsskydd och beredskap)
-                    </option>
-                    <option value="PL">Poland — NASK / CERT Polska</option>
-                    <option value="IE">Ireland — NCSC-IE</option>
-                  </select>
-                </div>
+                  <option value="all">
+                    All EU (Generic / ENISA Coordinated)
+                  </option>
+                  <option value="DE">
+                    Germany — BSI (Bundesamt für Sicherheit in der
+                    Informationstechnik)
+                  </option>
+                  <option value="FR">
+                    France — ANSSI (Agence nationale de la sécurité des SI)
+                  </option>
+                  <option value="IT">
+                    Italy — ACN (Agenzia per la Cybersicurezza Nazionale)
+                  </option>
+                  <option value="NL">Netherlands — NCSC-NL</option>
+                  <option value="BE">
+                    Belgium — CCB (Centre for Cybersecurity Belgium)
+                  </option>
+                  <option value="ES">Spain — INCIBE / CCN-CERT</option>
+                  <option value="SE">
+                    Sweden — MSB (Myndigheten för samhällsskydd och beredskap)
+                  </option>
+                  <option value="PL">Poland — NASK / CERT Polska</option>
+                  <option value="IE">Ireland — NCSC-IE</option>
+                </CcureSelect>
               </>
             )}
             {selectedFrameworkId === "cfw_nist_800_53_r5" && (
               <>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                <CcureSelect
+                  label="FedRAMP Baseline"
+                  fieldClassName="cwh-filter"
+                  value={impactLevelFilter}
+                  onChange={(e) => setImpactLevelFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    FedRAMP Baseline:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={impactLevelFilter}
-                    onChange={(e) => setImpactLevelFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All Impact Baselines</option>
-                    <option value="LOW">FedRAMP LOW Impact Baseline</option>
-                    <option value="MODERATE">
-                      FedRAMP MODERATE Impact Baseline
-                    </option>
-                    <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
-                  </select>
-                </div>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
+                  <option value="all">All Impact Baselines</option>
+                  <option value="LOW">FedRAMP LOW Impact Baseline</option>
+                  <option value="MODERATE">
+                    FedRAMP MODERATE Impact Baseline
+                  </option>
+                  <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
+                </CcureSelect>
+                <label className="cwh-check">
                   <input
                     type="checkbox"
                     checked={zeroTrustOnly}
@@ -2185,133 +2195,62 @@ export default function ComplianceWorkspace() {
               </>
             )}
             {selectedFrameworkId === "cfw_dpdp_2023" && (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              <CcureSelect
+                label="SDF Scope"
+                fieldClassName="cwh-filter"
+                value={sdfScopeFilter}
+                onChange={(e) => setSdfScopeFilter(e.target.value)}
               >
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  SDF Scope:
-                </span>
-                <select
-                  className="cw-pagination-select"
-                  value={sdfScopeFilter}
-                  onChange={(e) => setSdfScopeFilter(e.target.value)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: "6px",
-                    fontSize: "0.85rem",
-                    background: "var(--bg-white)",
-                    border: "1px solid var(--border)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <option value="all">All Fiduciaries (General + SDF)</option>
-                  <option value="sdf_mandatory">
-                    Significant Data Fiduciary (SDF Mandatory)
-                  </option>
-                  <option value="general_fiduciary">
-                    General Data Fiduciary
-                  </option>
-                </select>
-              </div>
+                <option value="all">All Fiduciaries (General + SDF)</option>
+                <option value="sdf_mandatory">
+                  Significant Data Fiduciary (SDF Mandatory)
+                </option>
+                <option value="general_fiduciary">
+                  General Data Fiduciary
+                </option>
+              </CcureSelect>
             )}
             {selectedFrameworkId === "cfw_gdpr" && (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              <CcureSelect
+                label="Privacy Role"
+                fieldClassName="cwh-filter"
+                value={privacyRoleFilter}
+                onChange={(e) => setPrivacyRoleFilter(e.target.value)}
               >
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  Privacy Role:
-                </span>
-                <select
-                  className="cw-pagination-select"
-                  value={privacyRoleFilter}
-                  onChange={(e) => setPrivacyRoleFilter(e.target.value)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: "6px",
-                    fontSize: "0.85rem",
-                    background: "var(--bg-white)",
-                    border: "1px solid var(--border)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <option value="all">
-                    All Roles (Controller & Processor)
-                  </option>
-                  <option value="controller">Data Controller</option>
-                  <option value="processor">Data Processor</option>
-                </select>
-              </div>
+                <option value="all">All Roles (Controller & Processor)</option>
+                <option value="controller">Data Controller</option>
+                <option value="processor">Data Processor</option>
+              </CcureSelect>
             )}
             {selectedFrameworkId === "cfw_pci_dss_v4" && (
               <>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                <CcureSelect
+                  label="SAQ Profile"
+                  fieldClassName="cwh-filter"
+                  value={saqProfileFilter}
+                  onChange={(e) => setSaqProfileFilter(e.target.value)}
                 >
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    SAQ Profile:
-                  </span>
-                  <select
-                    className="cw-pagination-select"
-                    value={saqProfileFilter}
-                    onChange={(e) => setSaqProfileFilter(e.target.value)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      fontSize: "0.85rem",
-                      background: "var(--bg-white)",
-                      border: "1px solid var(--border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <option value="all">All SAQ Profiles (Full ~300)</option>
-                    <option value="saq_a">
-                      SAQ A (E-Commerce Outsourced ~31)
-                    </option>
-                    <option value="saq_a_ep">
-                      SAQ A-EP (E-Commerce Direct ~190)
-                    </option>
-                    <option value="saq_b_ip">
-                      SAQ B-IP (Standalone IP Terminals)
-                    </option>
-                    <option value="saq_c">
-                      SAQ C (Payment Application Systems)
-                    </option>
-                    <option value="saq_d_merchant">
-                      SAQ D Merchant (All Other Merchants)
-                    </option>
-                    <option value="saq_d_service_provider">
-                      SAQ D Service Provider (Service Providers)
-                    </option>
-                  </select>
-                </div>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
+                  <option value="all">All SAQ Profiles (Full ~300)</option>
+                  <option value="saq_a">
+                    SAQ A (E-Commerce Outsourced ~31)
+                  </option>
+                  <option value="saq_a_ep">
+                    SAQ A-EP (E-Commerce Direct ~190)
+                  </option>
+                  <option value="saq_b_ip">
+                    SAQ B-IP (Standalone IP Terminals)
+                  </option>
+                  <option value="saq_c">
+                    SAQ C (Payment Application Systems)
+                  </option>
+                  <option value="saq_d_merchant">
+                    SAQ D Merchant (All Other Merchants)
+                  </option>
+                  <option value="saq_d_service_provider">
+                    SAQ D Service Provider (Service Providers)
+                  </option>
+                </CcureSelect>
+                <label className="cwh-check">
                   <input
                     type="checkbox"
                     checked={cdeScopeFilter}
@@ -2321,93 +2260,65 @@ export default function ComplianceWorkspace() {
                 </label>
               </>
             )}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
+            <CcureSelect
+              label="Gap Source"
+              fieldClassName="cwh-filter"
+              value={gapSourceFramework}
+              onChange={(e) => setGapSourceFramework(e.target.value)}
             >
-              <span
-                style={{
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  color: "var(--text-muted)",
-                }}
+              {activeFrameworks.map((fw) => (
+                <option key={`tb_src_${fw.id}`} value={fw.id}>
+                  {fw.longName}
+                </option>
+              ))}
+            </CcureSelect>
+            <div className="cwh-actions">
+              <CcureButton
+                variant="secondary"
+                onClick={() =>
+                  fetchGapAnalysis(
+                    gapSourceFramework,
+                    selectedFrameworkId === "all"
+                      ? gapTargetFramework
+                      : selectedFrameworkId,
+                  )
+                }
+                loading={loadingGapAnalysis}
               >
-                Gap Source:
-              </span>
-              <select
-                className="cw-pagination-select"
-                value={gapSourceFramework}
-                onChange={(e) => setGapSourceFramework(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: "6px",
-                  fontSize: "0.85rem",
-                  background: "var(--bg-white)",
-                  border: "1px solid var(--border)",
-                  fontWeight: 600,
-                }}
+                <span aria-hidden="true">📊</span>{" "}
+                {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
+              </CcureButton>
+              <CcureButton
+                variant="primary"
+                onClick={handleTriggerComplianceScan}
+                disabled={loading}
               >
-                {activeFrameworks.map((fw) => (
-                  <option key={`tb_src_${fw.id}`} value={fw.id}>
-                    {fw.longName}
-                  </option>
-                ))}
-              </select>
+                <span aria-hidden="true">⚡</span> Run Compliance Scan
+              </CcureButton>
+              {activeTab === "policies" && (
+                <CcureButton
+                  variant="secondary"
+                  onClick={() => {
+                    setModalType("policy");
+                    setModalOpen(true);
+                  }}
+                >
+                  <span aria-hidden="true">+</span> Create Baseline Policy
+                </CcureButton>
+              )}
             </div>
-            <button
-              className="db-btn db-btn--ghost"
-              onClick={() =>
-                fetchGapAnalysis(
-                  gapSourceFramework,
-                  selectedFrameworkId === "all"
-                    ? gapTargetFramework
-                    : selectedFrameworkId,
-                )
-              }
-              disabled={loadingGapAnalysis}
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
-            >
-              <span>
-                📊 {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
-              </span>
-            </button>
-            <button
-              className="db-btn db-btn--primary"
-              onClick={handleTriggerComplianceScan}
-              disabled={loading}
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
-            >
-              <span>⚡ Run Compliance Scan</span>
-            </button>
-            {activeTab === "policies" && (
-              <button
-                className="db-btn db-btn--ghost"
-                onClick={() => {
-                  setModalType("policy");
-                  setModalOpen(true);
-                }}
-              >
-                + Create Baseline Policy
-              </button>
-            )}
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div
-          style={{
-            padding: "0 28px",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            gap: 24,
-            background: "var(--bg-white)",
-            marginBottom: "2rem",
-          }}
-        >
-          {[
+        <CcureTabs
+          {...workspaceTabs.listProps}
+          label="Compliance workspace sections"
+          className="cwh-tabs"
+          /* Choosing a tab reads its data, so the arrow keys move focus and
+             Enter or Space chooses. */
+          activateOnFocus={false}
+          tabs={[
             { id: "dashboard", label: "Dashboard" },
             { id: "marketplace", label: "Marketplace" },
             { id: "policies", label: "Policies" },
@@ -2420,64 +2331,40 @@ export default function ComplianceWorkspace() {
             { id: "exceptions", label: "Exceptions" },
             { id: "credentials", label: "Credentials Manager" },
             { id: "approvals", label: "Approvals Queue" },
-          ].map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <div
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  padding: "16px 4px",
-                  fontSize: "0.85rem",
-                  fontWeight: active ? 700 : 500,
-                  color: active ? "var(--accent)" : "var(--text-muted)",
-                  borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                {tab.label}
-              </div>
-            );
-          })}
-        </div>
+          ]}
+        />
 
         {/* Tab Content */}
-        <div style={{ padding: "0 28px" }}>
+        <CcureTabPanel
+          {...workspaceTabs.panelProps(activeTab)}
+          className="cwh-content"
+        >
           {error && (
-            <div
-              className="db-alert db-alert--critical"
-              style={{ marginBottom: "2rem" }}
-            >
-              <span className="db-alert-icon">⚠️</span>
-              <div className="db-alert-body">
-                <strong>Connection or Database Error:</strong> {error}
-              </div>
-            </div>
+            <CcureAlert variant="danger" className="cwh-error">
+              <strong>Connection or Database Error:</strong> {error}
+            </CcureAlert>
           )}
 
           {activeTab === "dashboard" && summary && (
-            <div className="dashboard-view">
-              <div className="metrics-grid">
-                <div className="metric-card">
-                  <h3>Overall Score</h3>
-                  <div
-                    className={`radial-score ${getScoreClass(summary.score_pct)}`}
+            <div className="cwv-dashboard">
+              <div className="cwv-dashboard__scores">
+                <CcureCard title="Overall Score">
+                  <p
+                    className={`cwv-score cwv-score--${SCORE_TONE[getScoreClass(summary.score_pct)]}`}
                   >
                     {summary.score_pct}%
-                  </div>
-                </div>
-                <div className="metric-card">
-                  <h3>Risk-Weighted Score</h3>
-                  <div
-                    className={`radial-score ${getScoreClass(summary.weighted_score_pct)}`}
+                  </p>
+                </CcureCard>
+                <CcureCard title="Risk-Weighted Score">
+                  <p
+                    className={`cwv-score cwv-score--${SCORE_TONE[getScoreClass(summary.weighted_score_pct)]}`}
                   >
                     {summary.weighted_score_pct}%
-                  </div>
-                </div>
-                <div className="metric-card">
-                  <h3>
-                    {!selectedFrameworkId || selectedFrameworkId === "all"
+                  </p>
+                </CcureCard>
+                <CcureCard
+                  title={
+                    !selectedFrameworkId || selectedFrameworkId === "all"
                       ? "All Frameworks"
                       : selectedFrameworkId === "cfw_nist_csf_v2"
                         ? "NIST CSF Controls"
@@ -2496,258 +2383,171 @@ export default function ComplianceWorkspace() {
                                     : selectedFrameworkId ===
                                         "cfw_nist_800_53_r5"
                                       ? "NIST SP 800-53 R5 Controls"
-                                      : "ISO 27001 Controls"}
-                  </h3>
-
-                  <div className="kpis-list">
-                    <div>
-                      Passed:{" "}
-                      <span style={{ color: "var(--ok)" }}>
+                                      : "ISO 27001 Controls"
+                  }
+                >
+                  <dl className="cwv-kpis">
+                    <div className="cwv-kpis__item">
+                      <dt>Passed</dt>
+                      <dd className="cwv-kpis__value cwv-kpis__value--success">
                         {summary.kpis?.passed || 0}
-                      </span>
+                      </dd>
                     </div>
-                    <div>
-                      Failed:{" "}
-                      <span className="danger">
+                    <div className="cwv-kpis__item">
+                      <dt>Failed</dt>
+                      <dd className="cwv-kpis__value cwv-kpis__value--danger">
                         {summary.kpis?.failed || 0}
-                      </span>
+                      </dd>
                     </div>
-                    <div>
-                      Active Waivers:{" "}
-                      <span className="info">
+                    <div className="cwv-kpis__item">
+                      <dt>Active Waivers</dt>
+                      <dd className="cwv-kpis__value cwv-kpis__value--info">
                         {summary.kpis?.exceptions || 0}
-                      </span>
+                      </dd>
                     </div>
-                  </div>
-                </div>
+                  </dl>
+                </CcureCard>
               </div>
 
               {/* Executive Compliance Reports & SoA Hub */}
-              <div
-                className="db-card"
-                style={{
-                  marginBottom: "2rem",
-                  padding: "1.75rem",
-                  background:
-                    "linear-gradient(135deg, rgba(15, 23, 42, 0.03) 0%, rgba(30, 58, 138, 0.06) 100%)",
-                  border: "1px solid rgba(226, 232, 240, 0.8)",
-                  borderRadius: "12px",
-                }}
+              <CcureCard
+                title="Executive Compliance Reports & SoA Hub"
+                subtitle="Generate audit-grade Statement of Applicability (SoA) and regulatory assessment reports in PDF & DOCX formats."
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "1.25rem",
-                    flexWrap: "wrap",
-                    gap: "1rem",
-                  }}
-                >
-                  <div>
-                    <h3
-                      style={{
-                        margin: 0,
-                        fontSize: "1.15rem",
-                        fontWeight: "700",
-                        color: "#0F172A",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <span>📄</span> Executive Compliance Reports & SoA Hub
-                    </h3>
-                    <p
-                      style={{
-                        margin: "4px 0 0 0",
-                        fontSize: "0.85rem",
-                        color: "#64748B",
-                      }}
-                    >
-                      Generate audit-grade Statement of Applicability (SoA) and
-                      regulatory assessment reports in PDF & DOCX formats.
-                    </p>
-                  </div>
+                <div className="cwv-reports">
+                  <CcureSelect
+                    label="Report"
+                    fieldClassName="cwv-reports__menu"
+                    value={reportFw}
+                    onChange={(e) => setReportFw(e.target.value)}
+                  >
+                    {activeFrameworks
+                      .filter((fw) => fw.reportSlug)
+                      .map((fw) => (
+                        <option key={`rep_${fw.id}`} value={fw.reportSlug}>
+                          {fw.reportLabel}
+                        </option>
+                      ))}
+                    <option value="executive">
+                      Multi-Framework Executive Briefing
+                    </option>
+                  </CcureSelect>
+
                   <div
-                    style={{
-                      display: "flex",
-                      gap: "0.75rem",
-                      alignItems: "center",
-                      flexWrap: "wrap",
+                    className="cwv-segmented"
+                    role="group"
+                    aria-label="Report format"
+                  >
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      className="cwv-segmented__option"
+                      aria-pressed={reportFmt === "pdf"}
+                      onClick={() => setReportFmt("pdf")}
+                    >
+                      PDF
+                    </CcureButton>
+                    <CcureButton
+                      variant="secondary"
+                      size="sm"
+                      className="cwv-segmented__option"
+                      aria-pressed={reportFmt === "docx"}
+                      onClick={() => setReportFmt("docx")}
+                    >
+                      Word (.docx)
+                    </CcureButton>
+                  </div>
+
+                  <CcureButton
+                    variant="primary"
+                    disabled={loading}
+                    onClick={() => {
+                      let ep = `/compliance/reports/${reportFw}?fmt=${reportFmt}`;
+                      let fname = `${reportFw}_report.${reportFmt}`;
+                      if (reportFw === "soa") {
+                        // A Statement of Applicability covers one standard.
+                        // Without this the export emitted the controls of
+                        // every installed framework under an ISO 27001 title.
+                        const soaFw =
+                          selectedFrameworkId && selectedFrameworkId !== "all"
+                            ? selectedFrameworkId
+                            : "cfw_iso27001_2022";
+                        ep += `&framework_id=${soaFw}`;
+                        fname = `soa_${soaFw}.${reportFmt}`;
+                      }
+                      if (reportFw === "pci_dss_v4") {
+                        if (saqProfileFilter !== "all")
+                          ep += `&saq_profile=${saqProfileFilter}`;
+                        if (cdeScopeFilter) ep += "&cde_scope_only=true";
+                      } else if (
+                        reportFw === "dpdp_2023" &&
+                        sdfScopeFilter !== "all"
+                      ) {
+                        ep += `&sdf_scope=${sdfScopeFilter}`;
+                      } else if (
+                        reportFw === "gdpr" &&
+                        privacyRoleFilter !== "all"
+                      ) {
+                        ep += `&privacy_role=${privacyRoleFilter}`;
+                      } else if (reportFw === "nist_800_53_r5") {
+                        if (impactLevelFilter !== "all")
+                          ep += `&impact_level=${impactLevelFilter}`;
+                        if (zeroTrustOnly) ep += "&zero_trust_only=true";
+                      } else if (reportFw === "iec_62443") {
+                        if (purdueLevelFilter !== "all")
+                          ep += `&purdue_level=${purdueLevelFilter}`;
+                        if (componentTypeFilter !== "all")
+                          ep += `&component_type=${componentTypeFilter}`;
+                        if (slLevelFilter !== "all")
+                          ep += `&sl_level=${slLevelFilter}`;
+                      } else if (reportFw === "nist_800_82") {
+                        if (purdueLevelFilter !== "all")
+                          ep += `&purdue_level=${purdueLevelFilter}`;
+                        if (componentTypeFilter !== "all")
+                          ep += `&component_type=${componentTypeFilter}`;
+                      } else if (reportFw === "nerc_cip") {
+                        ep += `&regional_entity=${regionalEntityFilter}`;
+                        if (besImpactLevelFilter !== "all")
+                          ep += `&bes_impact_level=${besImpactLevelFilter}`;
+                        if (standardNumberFilter !== "all")
+                          ep += `&standard_number=${standardNumberFilter}`;
+                        if (purdueLevelFilter !== "all")
+                          ep += `&purdue_level=${purdueLevelFilter}`;
+                        if (componentTypeFilter !== "all")
+                          ep += `&component_type=${componentTypeFilter}`;
+                      } else if (reportFw === "nis2") {
+                        ep += `&nis2_entity_type=${nis2EntityTypeFilter}`;
+                        if (nis2SectorFilter !== "all")
+                          ep += `&nis2_sector=${nis2SectorFilter}`;
+                      } else if (reportFw === "executive") {
+                        ep = "/compliance/reports/executive";
+                        fname = "executive_compliance_report.pdf";
+                      }
+                      handleDownloadReport(ep, fname);
                     }}
                   >
-                    <select
-                      className="db-input"
-                      value={reportFw}
-                      onChange={(e) => setReportFw(e.target.value)}
-                      style={{
-                        padding: "0.45rem 0.75rem",
-                        fontSize: "0.85rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        background: "#FFFFFF",
-                        border: "1px solid #CBD5E1",
-                      }}
-                    >
-                      {activeFrameworks
-                        .filter((fw) => fw.reportSlug)
-                        .map((fw) => (
-                          <option key={`rep_${fw.id}`} value={fw.reportSlug}>
-                            {fw.reportLabel}
-                          </option>
-                        ))}
-                      <option value="executive">
-                        Multi-Framework Executive Briefing
-                      </option>
-                    </select>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        border: "1px solid #CBD5E1",
-                        borderRadius: "6px",
-                        overflow: "hidden",
-                        background: "#FFFFFF",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setReportFmt("pdf")}
-                        style={{
-                          padding: "0.45rem 0.85rem",
-                          fontSize: "0.82rem",
-                          fontWeight: "600",
-                          border: "none",
-                          cursor: "pointer",
-                          background:
-                            reportFmt === "pdf" ? "#0F172A" : "transparent",
-                          color: reportFmt === "pdf" ? "#FFFFFF" : "#475569",
-                        }}
-                      >
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReportFmt("docx")}
-                        style={{
-                          padding: "0.45rem 0.85rem",
-                          fontSize: "0.82rem",
-                          fontWeight: "600",
-                          border: "none",
-                          cursor: "pointer",
-                          background:
-                            reportFmt === "docx" ? "#2563EB" : "transparent",
-                          color: reportFmt === "docx" ? "#FFFFFF" : "#475569",
-                        }}
-                      >
-                        Word (.docx)
-                      </button>
-                    </div>
-
-                    <button
-                      className="db-btn db-btn--primary"
-                      disabled={loading}
-                      style={{
-                        padding: "0.45rem 1.1rem",
-                        fontSize: "0.85rem",
-                        fontWeight: "600",
-                      }}
-                      onClick={() => {
-                        let ep = `/compliance/reports/${reportFw}?fmt=${reportFmt}`;
-                        let fname = `${reportFw}_report.${reportFmt}`;
-                        if (reportFw === "soa") {
-                          // A Statement of Applicability covers one standard.
-                          // Without this the export emitted the controls of
-                          // every installed framework under an ISO 27001 title.
-                          const soaFw =
-                            selectedFrameworkId && selectedFrameworkId !== "all"
-                              ? selectedFrameworkId
-                              : "cfw_iso27001_2022";
-                          ep += `&framework_id=${soaFw}`;
-                          fname = `soa_${soaFw}.${reportFmt}`;
-                        }
-                        if (reportFw === "pci_dss_v4") {
-                          if (saqProfileFilter !== "all")
-                            ep += `&saq_profile=${saqProfileFilter}`;
-                          if (cdeScopeFilter) ep += "&cde_scope_only=true";
-                        } else if (
-                          reportFw === "dpdp_2023" &&
-                          sdfScopeFilter !== "all"
-                        ) {
-                          ep += `&sdf_scope=${sdfScopeFilter}`;
-                        } else if (
-                          reportFw === "gdpr" &&
-                          privacyRoleFilter !== "all"
-                        ) {
-                          ep += `&privacy_role=${privacyRoleFilter}`;
-                        } else if (reportFw === "nist_800_53_r5") {
-                          if (impactLevelFilter !== "all")
-                            ep += `&impact_level=${impactLevelFilter}`;
-                          if (zeroTrustOnly) ep += "&zero_trust_only=true";
-                        } else if (reportFw === "iec_62443") {
-                          if (purdueLevelFilter !== "all")
-                            ep += `&purdue_level=${purdueLevelFilter}`;
-                          if (componentTypeFilter !== "all")
-                            ep += `&component_type=${componentTypeFilter}`;
-                          if (slLevelFilter !== "all")
-                            ep += `&sl_level=${slLevelFilter}`;
-                        } else if (reportFw === "nist_800_82") {
-                          if (purdueLevelFilter !== "all")
-                            ep += `&purdue_level=${purdueLevelFilter}`;
-                          if (componentTypeFilter !== "all")
-                            ep += `&component_type=${componentTypeFilter}`;
-                        } else if (reportFw === "nerc_cip") {
-                          ep += `&regional_entity=${regionalEntityFilter}`;
-                          if (besImpactLevelFilter !== "all")
-                            ep += `&bes_impact_level=${besImpactLevelFilter}`;
-                          if (standardNumberFilter !== "all")
-                            ep += `&standard_number=${standardNumberFilter}`;
-                          if (purdueLevelFilter !== "all")
-                            ep += `&purdue_level=${purdueLevelFilter}`;
-                          if (componentTypeFilter !== "all")
-                            ep += `&component_type=${componentTypeFilter}`;
-                        } else if (reportFw === "nis2") {
-                          ep += `&nis2_entity_type=${nis2EntityTypeFilter}`;
-                          if (nis2SectorFilter !== "all")
-                            ep += `&nis2_sector=${nis2SectorFilter}`;
-                        } else if (reportFw === "executive") {
-                          ep = "/compliance/reports/executive";
-                          fname = "executive_compliance_report.pdf";
-                        }
-                        handleDownloadReport(ep, fname);
-                      }}
-                    >
-                      {loading
-                        ? "Generating..."
-                        : `📥 Download ${reportFmt.toUpperCase()} Report`}
-                    </button>
-                  </div>
+                    {loading ? (
+                      "Generating..."
+                    ) : (
+                      <>
+                        <span aria-hidden="true">📥</span> Download{" "}
+                        {reportFmt.toUpperCase()} Report
+                      </>
+                    )}
+                  </CcureButton>
                 </div>
 
                 <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    flexWrap: "wrap",
-                    paddingTop: "0.75rem",
-                    borderTop: "1px dashed #CBD5E1",
-                  }}
+                  className="cwv-reports__quick"
+                  role="group"
+                  aria-label="Quick downloads"
                 >
-                  <span
-                    style={{
-                      fontSize: "0.78rem",
-                      fontWeight: "600",
-                      color: "#64748B",
-                      alignSelf: "center",
-                      marginRight: "0.5rem",
-                    }}
-                  >
+                  <span className="cwv-reports__quick-label" aria-hidden="true">
                     Quick Downloads:
                   </span>
-                  <button
-                    className="db-btn db-btn--ghost"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() =>
                       handleDownloadReport(
                         "/compliance/reports/soa?fmt=pdf",
@@ -2756,10 +2556,10 @@ export default function ComplianceWorkspace() {
                     }
                   >
                     SoA PDF
-                  </button>
-                  <button
-                    className="db-btn db-btn--ghost"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                  </CcureButton>
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() =>
                       handleDownloadReport(
                         "/compliance/reports/soa?fmt=docx",
@@ -2768,10 +2568,10 @@ export default function ComplianceWorkspace() {
                     }
                   >
                     SoA Word
-                  </button>
-                  <button
-                    className="db-btn db-btn--ghost"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                  </CcureButton>
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() =>
                       handleDownloadReport(
                         "/compliance/reports/executive",
@@ -2780,10 +2580,10 @@ export default function ComplianceWorkspace() {
                     }
                   >
                     Executive Brief (PDF)
-                  </button>
-                  <button
-                    className="db-btn db-btn--ghost"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                  </CcureButton>
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() =>
                       handleDownloadReport(
                         "/compliance/reports/nist_csf?fmt=pdf",
@@ -2792,166 +2592,97 @@ export default function ComplianceWorkspace() {
                     }
                   >
                     NIST CSF PDF
-                  </button>
+                  </CcureButton>
                 </div>
-              </div>
+              </CcureCard>
 
-              <div className="quadrant-scores">
+              <CcureCard
+                title={
+                  !selectedFrameworkId || selectedFrameworkId === "all"
+                    ? "Compliance Score by Framework"
+                    : selectedFrameworkId === "cfw_nist_csf_v2"
+                      ? "NIST CSF 2.0 Core Functions Breakdown"
+                      : selectedFrameworkId === "cfw_cis_v8_1"
+                        ? "CIS Controls v8.1 Safeguards Breakdown"
+                        : selectedFrameworkId === "cfw_soc2_type2"
+                          ? "SOC 2 Trust Services Criteria Breakdown"
+                          : selectedFrameworkId === "cfw_cert_in_2022"
+                            ? "CERT-In Directions & CCMP Themes Breakdown"
+                            : selectedFrameworkId === "cfw_pci_dss_v4"
+                              ? "PCI-DSS v4.0 12 Principal Requirements Breakdown"
+                              : selectedFrameworkId === "cfw_dpdp_2023"
+                                ? "DPDP Act 2023 6 Key Governance Principles Breakdown"
+                                : selectedFrameworkId === "cfw_gdpr"
+                                  ? "EU GDPR 7 Core Privacy Principles Breakdown"
+                                  : selectedFrameworkId === "cfw_nist_800_53_r5"
+                                    ? "NIST SP 800-53 R5 20 Control Families Breakdown"
+                                    : selectedFrameworkId === "cfw_nis2"
+                                      ? "EU NIS 2 Directive 10 Risk Management Domains (Art. 21.2)"
+                                      : "ISO 27001 Themes Quadrant Breakdown"
+                }
+              >
                 {/* ── All Frameworks: per-framework comparison chart ── */}
                 {!selectedFrameworkId || selectedFrameworkId === "all" ? (
-                  <>
-                    <h3>Compliance Score by Framework</h3>
-                    <div className="quadrant-grid">
-                      {perFrameworkScores.length === 0 ? (
-                        <p
-                          style={{
-                            color: "var(--text-muted)",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          No enabled frameworks with scored controls yet.
-                          Install and run a compliance scan to populate scores.
-                        </p>
-                      ) : (
-                        perFrameworkScores.map((fw) => (
-                          <div key={fw.id} className="quad-item">
-                            <span className="quad-label">{fw.name}</span>
-                            <div className="progress-container">
-                              <div
-                                className="comp-progress-fill"
-                                style={{ width: `${fw.score}%` }}
-                              />
-                            </div>
-                            <span className="quad-value">{fw.score}%</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </>
+                  perFrameworkScores.length === 0 ? (
+                    <p className="cwv-muted">
+                      No enabled frameworks with scored controls yet. Install
+                      and run a compliance scan to populate scores.
+                    </p>
+                  ) : (
+                    <ul className="cwv-bars">
+                      {perFrameworkScores.map((fw) => (
+                        <li key={fw.id} className="cwv-bars__item">
+                          <CcureProgress
+                            label={fw.name}
+                            value={fw.score}
+                            showValue={false}
+                          />
+                          <span className="cwv-bars__value">{fw.score}%</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
                 ) : (
                   /* ── Single Framework: per-theme breakdown ── */
-                  <>
-                    <h3>
-                      {selectedFrameworkId === "cfw_nist_csf_v2"
-                        ? "NIST CSF 2.0 Core Functions Breakdown"
-                        : selectedFrameworkId === "cfw_cis_v8_1"
-                          ? "CIS Controls v8.1 Safeguards Breakdown"
-                          : selectedFrameworkId === "cfw_soc2_type2"
-                            ? "SOC 2 Trust Services Criteria Breakdown"
-                            : selectedFrameworkId === "cfw_cert_in_2022"
-                              ? "CERT-In Directions & CCMP Themes Breakdown"
-                              : selectedFrameworkId === "cfw_pci_dss_v4"
-                                ? "PCI-DSS v4.0 12 Principal Requirements Breakdown"
-                                : selectedFrameworkId === "cfw_dpdp_2023"
-                                  ? "DPDP Act 2023 6 Key Governance Principles Breakdown"
-                                  : selectedFrameworkId === "cfw_gdpr"
-                                    ? "EU GDPR 7 Core Privacy Principles Breakdown"
-                                    : selectedFrameworkId ===
-                                        "cfw_nist_800_53_r5"
-                                      ? "NIST SP 800-53 R5 20 Control Families Breakdown"
-                                      : selectedFrameworkId === "cfw_nis2"
-                                        ? "EU NIS 2 Directive 10 Risk Management Domains (Art. 21.2)"
-                                        : "ISO 27001 Themes Quadrant Breakdown"}
-                    </h3>
-
+                  <div className="cwv-breakdown">
                     {selectedFrameworkId === "cfw_nis2" && (
-                      <div
-                        style={{
-                          background: "var(--bg-card)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          padding: "16px",
-                          marginBottom: "20px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          <h4
-                            style={{
-                              margin: 0,
-                              color: "var(--text-main)",
-                              fontSize: "0.95rem",
-                            }}
-                          >
-                            💶 EU NIS 2 Regulatory Fine Risk Exposure Calculator
-                            (Article 32 & 34)
-                          </h4>
-                          <span
-                            style={{
-                              background:
-                                nis2EntityTypeFilter === "important"
-                                  ? "#f59e0b"
-                                  : "#2563eb",
-                              color: "#fff",
-                              fontSize: "0.75rem",
-                              fontWeight: 700,
-                              padding: "3px 8px",
-                              borderRadius: "4px",
-                            }}
+                      <CcureCard
+                        headingLevel={3}
+                        title={
+                          <>
+                            <span aria-hidden="true">💶</span> EU NIS 2
+                            Regulatory Fine Risk Exposure Calculator (Article 32
+                            & 34)
+                          </>
+                        }
+                        actions={
+                          <CcureBadge
+                            variant={
+                              nis2EntityTypeFilter === "important"
+                                ? "warning"
+                                : "info"
+                            }
                           >
                             {nis2EntityTypeFilter === "important"
                               ? "Important Entity (Art. 3.2)"
                               : "Essential Entity (Art. 3.1)"}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr 1fr",
-                            gap: "16px",
-                            alignItems: "center",
-                          }}
-                        >
-                          <div>
-                            <label
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--text-muted)",
-                                display: "block",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              Annual Global Turnover (EUR €):
-                            </label>
-                            <input
-                              type="number"
-                              className="cw-pagination-select"
-                              value={nis2AnnualTurnover}
-                              onChange={(e) =>
-                                setNis2AnnualTurnover(Number(e.target.value))
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "6px 10px",
-                                borderRadius: "6px",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--text-muted)",
-                                marginBottom: "4px",
-                              }}
-                            >
+                          </CcureBadge>
+                        }
+                      >
+                        <div className="cwv-nis2">
+                          <CcureInput
+                            type="number"
+                            label="Annual Global Turnover (EUR €)"
+                            value={nis2AnnualTurnover}
+                            onChange={(e) =>
+                              setNis2AnnualTurnover(Number(e.target.value))
+                            }
+                          />
+                          <div className="cwv-nis2__fact">
+                            <p className="cwv-nis2__label">
                               Statutory Fine Ceiling:
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "1.1rem",
-                                fontWeight: 700,
-                                color: "var(--danger)",
-                              }}
-                            >
+                            </p>
+                            <p className="cwv-nis2__ceiling">
                               €
                               {nis2EntityTypeFilter === "important"
                                 ? Math.max(
@@ -2962,1603 +2693,1018 @@ export default function ComplianceWorkspace() {
                                     10000000,
                                     nis2AnnualTurnover * 0.02,
                                   ).toLocaleString()}
-                            </div>
+                            </p>
                           </div>
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--text-muted)",
-                                marginBottom: "4px",
-                              }}
-                            >
+                          <div className="cwv-nis2__fact">
+                            <p className="cwv-nis2__label">
                               Executive Board Liability Exposure:
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                color: "var(--warning)",
-                              }}
-                            >
+                            </p>
+                            <p className="cwv-nis2__liability">
                               Article 20 Personal Liability & Operational Ban
-                            </div>
+                            </p>
                           </div>
                         </div>
-                      </div>
+                      </CcureCard>
                     )}
 
                     {selectedFrameworkId === "cfw_nis2" && (
-                      <div
-                        style={{
-                          background: "#f8fafc",
-                          border: "1px solid #cbd5e1",
-                          borderRadius: "8px",
-                          padding: "16px",
-                          marginBottom: "20px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          <h4
-                            style={{
-                              margin: 0,
-                              color: "#1e293b",
-                              fontSize: "0.95rem",
-                            }}
-                          >
-                            🚨 Article 23 CSIRT Mandatory Incident Reporting SLA
-                            Readiness Tracker
-                          </h4>
-                          <span
-                            style={{
-                              background: "#059669",
-                              color: "#fff",
-                              fontSize: "0.75rem",
-                              fontWeight: 700,
-                              padding: "3px 8px",
-                              borderRadius: "4px",
-                            }}
-                          >
+                      <CcureCard
+                        headingLevel={3}
+                        title={
+                          <>
+                            <span aria-hidden="true">🚨</span> Article 23 CSIRT
+                            Mandatory Incident Reporting SLA Readiness Tracker
+                          </>
+                        }
+                        actions={
+                          <CcureBadge variant="success">
                             Directive SLA Enforced
-                          </span>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr 1fr",
-                            gap: "12px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              background: "#ffffff",
-                              padding: "12px",
-                              borderRadius: "6px",
-                              border: "1px solid #e2e8f0",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "0.78rem",
-                                fontWeight: 700,
-                                color: "#e11d48",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              ⚡ Early Warning (≤ 24 Hours)
-                            </div>
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: "0.78rem",
-                                color: "#475569",
-                              }}
-                            >
+                          </CcureBadge>
+                        }
+                      >
+                        <ul className="cwv-sla">
+                          <li className="cwv-sla__item">
+                            <p className="cwv-sla__deadline cwv-sla__deadline--danger">
+                              <span aria-hidden="true">⚡</span> Early Warning
+                              (≤ 24 Hours)
+                            </p>
+                            <p className="cwv-sla__text">
                               Submit initial CSIRT warning indicating whether
                               incident is suspect/unlawful or has cross-border
                               impact.
                             </p>
-                          </div>
-
-                          <div
-                            style={{
-                              background: "#ffffff",
-                              padding: "12px",
-                              borderRadius: "6px",
-                              border: "1px solid #e2e8f0",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "0.78rem",
-                                fontWeight: 700,
-                                color: "#d97706",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              ⏰ Incident Notification (≤ 72 Hours)
-                            </div>
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: "0.78rem",
-                                color: "#475569",
-                              }}
-                            >
+                          </li>
+                          <li className="cwv-sla__item">
+                            <p className="cwv-sla__deadline cwv-sla__deadline--warning">
+                              <span aria-hidden="true">⏰</span> Incident
+                              Notification (≤ 72 Hours)
+                            </p>
+                            <p className="cwv-sla__text">
                               Submit formal incident notification updating
                               initial assessment, severity metrics, and
                               technical IoC indicators.
                             </p>
-                          </div>
-
-                          <div
-                            style={{
-                              background: "#ffffff",
-                              padding: "12px",
-                              borderRadius: "6px",
-                              border: "1px solid #e2e8f0",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: "0.78rem",
-                                fontWeight: 700,
-                                color: "#2563eb",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              📋 Final Report (≤ 1 Month)
-                            </div>
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: "0.78rem",
-                                color: "#475569",
-                              }}
-                            >
+                          </li>
+                          <li className="cwv-sla__item">
+                            <p className="cwv-sla__deadline cwv-sla__deadline--info">
+                              <span aria-hidden="true">📋</span> Final Report (≤
+                              1 Month)
+                            </p>
+                            <p className="cwv-sla__text">
                               Provide complete root-cause analysis, forensic
                               evidence, technical remediations applied, and
                               cross-border impact.
                             </p>
-                          </div>
-                        </div>
-                      </div>
+                          </li>
+                        </ul>
+                      </CcureCard>
                     )}
-                    <div className="quadrant-grid">
+                    <ul className="cwv-bars">
                       {Object.entries(summary.quadrant_scores || {}).map(
                         ([key, val]) => (
-                          <div key={key} className="quad-item">
-                            <span
-                              className={
+                          <li key={key} className="cwv-bars__item">
+                            <CcureProgress
+                              label={
                                 ["GV", "ID", "PR", "DE", "RS", "RC"].includes(
                                   key,
+                                ) ? (
+                                  <CcureBadge
+                                    variant={NIST_FUNCTION_BADGE[key]}
+                                    mono
+                                  >
+                                    {THEME_LABELS[key] || key}
+                                  </CcureBadge>
+                                ) : (
+                                  THEME_LABELS[key] || key
                                 )
-                                  ? `nist-badge nist-badge--${key}`
-                                  : "quad-label"
                               }
-                            >
-                              {THEME_LABELS[key] || key}
-                            </span>
-                            <div className="progress-container">
-                              <div
-                                className="comp-progress-fill"
-                                style={{ width: `${val}%` }}
-                              />
-                            </div>
-                            <span className="quad-value">{val}%</span>
-                          </div>
+                              value={val}
+                              showValue={false}
+                            />
+                            <span className="cwv-bars__value">{val}%</span>
+                          </li>
                         ),
                       )}
-                    </div>
-                  </>
+                    </ul>
+                  </div>
                 )}
-              </div>
+              </CcureCard>
             </div>
           )}
 
           {activeTab === "marketplace" && (
-            <div className="marketplace-view grid-3">
-              {marketplace.map((fw) => (
-                <div key={fw.framework_id} className="framework-card">
-                  <div className="framework-card-header">
-                    <div className="fw-icon">🔒</div>
-                    <h3>{fw.name}</h3>
-                    <p className="fw-meta">
+            <section
+              className="cww-marketplace"
+              aria-labelledby="cww-marketplace-title"
+            >
+              <h2 id="cww-marketplace-title" className="cww-title">
+                Framework Marketplace
+              </h2>
+              <div className="cww-marketplace__grid">
+                {marketplace.map((fw) => (
+                  <CcureCard
+                    key={fw.framework_id}
+                    headingLevel={3}
+                    title={fw.name}
+                    className="cww-framework"
+                  >
+                    <span className="cww-framework__icon" aria-hidden="true">
+                      🔒
+                    </span>
+                    <p className="cww-framework__meta">
                       Code: {fw.code} | Version: {fw.version}
                     </p>
-                    <p className="fw-reqs">
+                    <p className="cww-framework__reqs">
                       Total Requirements: {fw.controls_count}
                     </p>
-                  </div>
-                  <div className="framework-card-actions">
-                    {fw.is_installed ? (
-                      <>
-                        <div className="framework-installed-badge">
-                          ✓ Installed
-                        </div>
-                        <button
-                          className="db-btn db-btn--danger fw-action-btn"
+                    <div className="cww-framework__actions">
+                      {fw.is_installed ? (
+                        <>
+                          <CcureBadge variant="success" dot>
+                            Installed
+                          </CcureBadge>
+                          <CcureButton
+                            variant="danger"
+                            size="sm"
+                            disabled={!isComplianceAdmin}
+                            title={
+                              !isComplianceAdmin
+                                ? "Requires Org Admin or Superadmin permission"
+                                : ""
+                            }
+                            aria-describedby={
+                              !isComplianceAdmin
+                                ? `cww-permission-${fw.framework_id}`
+                                : undefined
+                            }
+                            aria-haspopup="dialog"
+                            onClick={() =>
+                              isComplianceAdmin && setUninstallTarget(fw)
+                            }
+                          >
+                            Uninstall
+                          </CcureButton>
+                        </>
+                      ) : (
+                        <CcureButton
+                          variant="primary"
+                          size="sm"
                           disabled={!isComplianceAdmin}
                           title={
                             !isComplianceAdmin
                               ? "Requires Org Admin or Superadmin permission"
                               : ""
                           }
-                          style={{
-                            opacity: !isComplianceAdmin ? 0.5 : 1,
-                            cursor: !isComplianceAdmin
-                              ? "not-allowed"
-                              : "pointer",
-                          }}
-                          onClick={() =>
-                            isComplianceAdmin &&
-                            handleUninstallFramework(fw.framework_id)
-                          }
-                        >
-                          Uninstall
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="framework-status-placeholder" />
-                        <button
-                          className="db-btn db-btn--primary fw-action-btn"
-                          disabled={!isComplianceAdmin}
-                          title={
+                          aria-describedby={
                             !isComplianceAdmin
-                              ? "Requires Org Admin or Superadmin permission"
-                              : ""
+                              ? `cww-permission-${fw.framework_id}`
+                              : undefined
                           }
-                          style={{
-                            opacity: !isComplianceAdmin ? 0.5 : 1,
-                            cursor: !isComplianceAdmin
-                              ? "not-allowed"
-                              : "pointer",
-                          }}
                           onClick={() =>
                             isComplianceAdmin &&
                             handleInstallFramework(fw.framework_id)
                           }
                         >
                           Install
-                        </button>
-                      </>
+                        </CcureButton>
+                      )}
+                    </div>
+                    {!isComplianceAdmin && (
+                      <p
+                        id={`cww-permission-${fw.framework_id}`}
+                        className="cww-framework__hint"
+                      >
+                        Requires Org Admin or Superadmin permission
+                      </p>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                  </CcureCard>
+                ))}
+              </div>
+              {/* Uninstalling hides a framework's policies, findings, approvals
+                  and dashboard averages, so it asks first: Cancel takes focus,
+                  Escape backs out, and the question cannot be answered twice
+                  while its request is out. */}
+              <CcureConfirmDialog
+                open={uninstallTarget !== null}
+                title="Uninstall framework"
+                subtitle={uninstallTarget?.name}
+                warning="Are you sure you want to uninstall this compliance framework? This will hide its policies, findings, approvals, and dashboard averages."
+                confirmLabel="Uninstall"
+                cancelLabel="Cancel"
+                tone="danger"
+                busy={uninstallBusy}
+                onCancel={() => setUninstallTarget(null)}
+                onConfirm={async () => {
+                  if (uninstallBusy || !uninstallTarget) return;
+                  setUninstallBusy(true);
+                  await handleUninstallFramework(uninstallTarget.framework_id);
+                  setUninstallBusy(false);
+                  setUninstallTarget(null);
+                }}
+              />
+            </section>
           )}
 
           {activeTab === "policies" && (
-            <div
+            <section
               ref={policiesPagination.cardRef}
-              className="db-card"
-              style={{ padding: 0 }}
+              className="cwv-policies cwv-view"
+              aria-labelledby="cwv-policies-title"
             >
-              <PaginationBar
-                currentPage={policiesPagination.page}
-                pageSize={policiesPagination.pageSize}
-                totalItems={policies.length}
-                totalPages={policiesPagination.totalPages}
-                onPageChange={policiesPagination.setPage}
-                onPageSizeChange={policiesPagination.setPageSize}
+              <h2 id="cwv-policies-title" className="cwv-view__title">
+                Policies
+              </h2>
+              <PagingControls
+                pagination={policiesPagination}
+                total={policies.length}
                 loading={loading}
-                itemLabel="policies"
-                sizerOptions={[10, 25, 50, 100]}
+                label="Policies pagination"
+                itemNoun="policies"
+                sizes={[10, 25, 50, 100]}
               />
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead>
+              <CcureTableStatus
+                loading={loading && policies.length === 0}
+                count={policies.length}
+                noun="policies"
+              />
+              <CcureTable
+                caption="Baseline policies"
+                loading={loading && policies.length === 0}
+                columns={[
+                  { key: "name", header: "Baseline Name" },
+                  { key: "platform", header: "Platform" },
+                  { key: "version", header: "Version" },
+                  { key: "rules", header: "Rules Count" },
+                  { key: "status", header: "Status" },
+                ]}
+              >
+                {policies.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={5} className="cwv-table-message">
+                      No baseline policies defined. Click &quot;Create Baseline
+                      Policy&quot; to define one.
+                    </td>
+                  </tr>
+                )}
+                {policiesPagination.paginatedItems.map((p) => (
+                  <React.Fragment key={p.id}>
                     <tr>
-                      <th>Baseline Name</th>
-                      <th>Platform</th>
-                      <th>Version</th>
-                      <th>Rules Count</th>
-                      <th>Status</th>
+                      <th scope="row" className="cwv-policy__name">
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
+                          className="cwv-disclosure"
+                          aria-expanded={expandedPolicyId === p.id}
+                          aria-controls={
+                            expandedPolicyId === p.id
+                              ? `cwv-policy-rules-${p.id}`
+                              : undefined
+                          }
+                          onClick={() => handleTogglePolicy(p.id)}
+                        >
+                          <span
+                            className="cwv-disclosure__chevron"
+                            aria-hidden="true"
+                          >
+                            {expandedPolicyId === p.id ? "▼" : "▶"}
+                          </span>
+                          {p.name}
+                        </CcureButton>
+                      </th>
+                      <td>
+                        <CcureBadge>{p.target_platform}</CcureBadge>
+                      </td>
+                      <td className="cwv-mono">v{p.version_number}</td>
+                      <td className="cwv-strong">{p.rules_count}</td>
+                      <td>
+                        <CcureBadge variant="success">{p.status}</CcureBadge>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {policies.length === 0 && (
+                    {expandedPolicyId === p.id && (
                       <tr>
                         <td
                           colSpan={5}
-                          style={{ textAlign: "center", padding: "24px" }}
+                          id={`cwv-policy-rules-${p.id}`}
+                          className="cwv-policy__rules"
                         >
-                          No baseline policies defined. Click &quot;Create
-                          Baseline Policy&quot; to define one.
+                          <h3 className="cwv-policy__rules-title">
+                            <span aria-hidden="true">📋</span> Policy Rules &
+                            Check Parameters
+                          </h3>
+                          {loadingRules ? (
+                            <p className="cwv-muted" role="status">
+                              Loading policy rules...
+                            </p>
+                          ) : policyRules.length === 0 ? (
+                            <p className="cwv-muted">
+                              No rules linked to this policy.
+                            </p>
+                          ) : (
+                            <div className="cwv-policy__rules-scroll">
+                              <CcureTable
+                                caption={`Rules in ${p.name}`}
+                                stickyHeader
+                                rows={policyRules}
+                                rowKey={(r) => r.id}
+                                columns={[
+                                  {
+                                    key: "control",
+                                    header: "Control ID",
+                                    isRowHeader: true,
+                                    mono: true,
+                                    nowrap: true,
+                                    cell: (r) =>
+                                      (() => {
+                                        // `String.replace` with a
+                                        // string pattern swaps only the
+                                        // first match, so a NIST CSF id
+                                        // like PR_AA_05 rendered as
+                                        // "PR.AA_05". The framework
+                                        // prefix is stripped generically
+                                        // and every separator replaced.
+                                        const rawNum =
+                                          r.control_number ||
+                                          (r.control_id
+                                            ? r.control_id
+                                                .replace(
+                                                  /^cct_[a-z0-9]+(?:_[a-z0-9]+)*?_(?=\d|[a-z]{2}_)/i,
+                                                  "",
+                                                )
+                                                .replace(/_/g, ".")
+                                            : "");
+                                        if (
+                                          rawNum.startsWith("A.") ||
+                                          rawNum.startsWith("GV.") ||
+                                          rawNum.startsWith("ID.") ||
+                                          rawNum.startsWith("PR.") ||
+                                          rawNum.startsWith("DE.") ||
+                                          rawNum.startsWith("RS.") ||
+                                          rawNum.startsWith("RC.")
+                                        ) {
+                                          return rawNum;
+                                        }
+                                        if (/^\d+\.\d+/.test(rawNum)) {
+                                          return `A.${rawNum}`;
+                                        }
+                                        return rawNum || "N/A";
+                                      })(),
+                                  },
+                                  {
+                                    key: "title",
+                                    header: "Rule & Control Title",
+                                    cell: (r) => (
+                                      <>
+                                        <span className="cwv-cell__title">
+                                          {r.control_title}
+                                        </span>
+                                        <span className="cwv-cell__detail">
+                                          Rule Code:{" "}
+                                          <span className="cwv-mono">
+                                            {r.rule_name}
+                                          </span>
+                                        </span>
+                                      </>
+                                    ),
+                                  },
+                                  {
+                                    key: "severity",
+                                    header: "Severity",
+                                    cell: (r) => (
+                                      <CcureSeverityBadge
+                                        severity={r.severity || "medium"}
+                                      />
+                                    ),
+                                  },
+                                  {
+                                    key: "logic",
+                                    header: "Checking Logic",
+                                    cell: (r) =>
+                                      r.evidence_source === "manual" ? (
+                                        <CcureBadge>Manual Review</CcureBadge>
+                                      ) : (
+                                        <>
+                                          <CcureBadge variant="primary">
+                                            {r.evidence_source}
+                                          </CcureBadge>
+                                          {r.check_definition && (
+                                            <code className="cwv-code">
+                                              {r.check_definition.key}{" "}
+                                              {r.check_definition.operator}{" "}
+                                              {r.check_definition.expected}
+                                            </code>
+                                          )}
+                                        </>
+                                      ),
+                                  },
+                                  {
+                                    key: "actions",
+                                    header: "Actions",
+                                    cell: (r) => (
+                                      <CcureButton
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenEditRule({
+                                            rule_id: r.id,
+                                            rule_name: r.rule_name,
+                                            severity: r.severity,
+                                            check_definition:
+                                              r.check_definition,
+                                            control_title: r.control_title,
+                                            evidence: {},
+                                          });
+                                        }}
+                                      >
+                                        Configure
+                                      </CcureButton>
+                                    ),
+                                  },
+                                ]}
+                              />
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}
-                    {policiesPagination.paginatedItems.map((p) => (
-                      <React.Fragment key={p.id}>
-                        <tr
-                          onClick={() => handleTogglePolicy(p.id)}
-                          style={{
-                            cursor: "pointer",
-                            transition: "background 0.2s",
-                          }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.background =
-                              "rgba(0,0,0,0.02)")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = "none")
-                          }
-                        >
-                          <td style={{ fontWeight: 600 }}>
-                            <span
-                              style={{
-                                marginRight: 8,
-                                display: "inline-block",
-                                width: 12,
-                              }}
-                            >
-                              {expandedPolicyId === p.id ? "▼" : "▶"}
-                            </span>
-                            {p.name}
-                          </td>
-                          <td>
-                            <span className="db-tag">{p.target_platform}</span>
-                          </td>
-                          <td className="mono">v{p.version_number}</td>
-                          <td style={{ fontWeight: 600 }}>{p.rules_count}</td>
-                          <td>
-                            <span className="db-status db-status--complete">
-                              {p.status}
-                            </span>
-                          </td>
-                        </tr>
-                        {expandedPolicyId === p.id && (
-                          <tr>
-                            <td
-                              colSpan={5}
-                              style={{
-                                background: "rgba(0,0,0,0.02)",
-                                padding: "20px 24px",
-                              }}
-                            >
-                              <h4
-                                style={{
-                                  margin: "0 0 12px 0",
-                                  fontSize: "0.85rem",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                }}
-                              >
-                                <span style={{ color: "var(--accent)" }}>
-                                  📋
-                                </span>{" "}
-                                Policy Rules & Check Parameters
-                              </h4>
-                              {loadingRules ? (
-                                <div
-                                  style={{
-                                    padding: 12,
-                                    color: "var(--text-muted)",
-                                    fontSize: "0.8rem",
-                                  }}
-                                >
-                                  Loading policy rules...
-                                </div>
-                              ) : policyRules.length === 0 ? (
-                                <div
-                                  style={{
-                                    padding: 12,
-                                    color: "var(--text-muted)",
-                                    fontSize: "0.8rem",
-                                  }}
-                                >
-                                  No rules linked to this policy.
-                                </div>
-                              ) : (
-                                <div
-                                  className="db-table-wrap"
-                                  style={{
-                                    border: "1px solid var(--border)",
-                                    borderRadius: 6,
-                                    maxHeight: "400px",
-                                    overflowY: "auto",
-                                    background: "#fff",
-                                  }}
-                                >
-                                  <table
-                                    className="db-table"
-                                    style={{ margin: 0 }}
-                                  >
-                                    <thead>
-                                      <tr>
-                                        <th
-                                          style={{
-                                            background: "#f8f9fa",
-                                            position: "sticky",
-                                            top: 0,
-                                            zIndex: 1,
-                                          }}
-                                        >
-                                          Control ID
-                                        </th>
-                                        <th
-                                          style={{
-                                            background: "#f8f9fa",
-                                            position: "sticky",
-                                            top: 0,
-                                            zIndex: 1,
-                                          }}
-                                        >
-                                          Rule & Control Title
-                                        </th>
-                                        <th
-                                          style={{
-                                            background: "#f8f9fa",
-                                            position: "sticky",
-                                            top: 0,
-                                            zIndex: 1,
-                                          }}
-                                        >
-                                          Severity
-                                        </th>
-                                        <th
-                                          style={{
-                                            background: "#f8f9fa",
-                                            position: "sticky",
-                                            top: 0,
-                                            zIndex: 1,
-                                          }}
-                                        >
-                                          Checking Logic
-                                        </th>
-                                        <th
-                                          style={{
-                                            background: "#f8f9fa",
-                                            position: "sticky",
-                                            top: 0,
-                                            zIndex: 1,
-                                          }}
-                                        >
-                                          Actions
-                                        </th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {policyRules.map((r) => {
-                                        const sevClass =
-                                          r.severity === "CRITICAL"
-                                            ? "db-sev-badge--critical"
-                                            : r.severity === "HIGH"
-                                              ? "db-sev-badge--high"
-                                              : r.severity === "MEDIUM"
-                                                ? "db-sev-badge--medium"
-                                                : r.severity === "LOW"
-                                                  ? "db-sev-badge--low"
-                                                  : "db-sev-badge--info";
-                                        return (
-                                          <tr key={r.id}>
-                                            <td
-                                              className="mono"
-                                              style={{
-                                                fontSize: "0.72rem",
-                                                fontWeight: 600,
-                                              }}
-                                            >
-                                              {(() => {
-                                                // `String.replace` with a
-                                                // string pattern swaps only the
-                                                // first match, so a NIST CSF id
-                                                // like PR_AA_05 rendered as
-                                                // "PR.AA_05". The framework
-                                                // prefix is stripped generically
-                                                // and every separator replaced.
-                                                const rawNum =
-                                                  r.control_number ||
-                                                  (r.control_id
-                                                    ? r.control_id
-                                                        .replace(
-                                                          /^cct_[a-z0-9]+(?:_[a-z0-9]+)*?_(?=\d|[a-z]{2}_)/i,
-                                                          "",
-                                                        )
-                                                        .replace(/_/g, ".")
-                                                    : "");
-                                                if (
-                                                  rawNum.startsWith("A.") ||
-                                                  rawNum.startsWith("GV.") ||
-                                                  rawNum.startsWith("ID.") ||
-                                                  rawNum.startsWith("PR.") ||
-                                                  rawNum.startsWith("DE.") ||
-                                                  rawNum.startsWith("RS.") ||
-                                                  rawNum.startsWith("RC.")
-                                                ) {
-                                                  return rawNum;
-                                                }
-                                                if (/^\d+\.\d+/.test(rawNum)) {
-                                                  return `A.${rawNum}`;
-                                                }
-                                                return rawNum || "N/A";
-                                              })()}
-                                            </td>
-                                            <td>
-                                              <div
-                                                style={{
-                                                  fontWeight: 600,
-                                                  fontSize: "0.76rem",
-                                                }}
-                                              >
-                                                {r.control_title}
-                                              </div>
-                                              <div
-                                                style={{
-                                                  fontSize: "0.68rem",
-                                                  color: "var(--text-muted)",
-                                                }}
-                                              >
-                                                Rule Code:{" "}
-                                                <span className="mono">
-                                                  {r.rule_name}
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td>
-                                              <span
-                                                className={`db-sev-badge ${sevClass}`}
-                                                style={{
-                                                  textTransform: "capitalize",
-                                                }}
-                                              >
-                                                {r.severity
-                                                  ? r.severity.toLowerCase()
-                                                  : "medium"}
-                                              </span>
-                                            </td>
-                                            <td style={{ fontSize: "0.72rem" }}>
-                                              {r.evidence_source ===
-                                              "manual" ? (
-                                                <span className="db-tag">
-                                                  Manual Review
-                                                </span>
-                                              ) : (
-                                                <div>
-                                                  <span className="db-tag db-tag--primary">
-                                                    {r.evidence_source}
-                                                  </span>
-                                                  {r.check_definition && (
-                                                    <code
-                                                      className="mono"
-                                                      style={{
-                                                        display: "block",
-                                                        fontSize: "0.65rem",
-                                                        marginTop: 4,
-                                                        color: "var(--accent)",
-                                                      }}
-                                                    >
-                                                      {r.check_definition.key}{" "}
-                                                      {
-                                                        r.check_definition
-                                                          .operator
-                                                      }{" "}
-                                                      {
-                                                        r.check_definition
-                                                          .expected
-                                                      }
-                                                    </code>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td>
-                                              <button
-                                                className="db-btn db-btn--ghost"
-                                                style={{
-                                                  padding: "4px 8px",
-                                                  fontSize: "0.68rem",
-                                                }}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleOpenEditRule({
-                                                    rule_id: r.id,
-                                                    rule_name: r.rule_name,
-                                                    severity: r.severity,
-                                                    check_definition:
-                                                      r.check_definition,
-                                                    control_title:
-                                                      r.control_title,
-                                                    evidence: {},
-                                                  });
-                                                }}
-                                              >
-                                                Configure
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </React.Fragment>
+                ))}
+              </CcureTable>
+            </section>
           )}
 
           {activeTab === "controls" && (
-            <div className="db-card" style={{ padding: "1.25rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1rem" }}>
-                    Control Register
-                  </h3>
-                  <div
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--text-muted)",
-                      marginTop: "2px",
-                    }}
-                  >
-                    Every control of the selected framework, with its current
-                    verdict and attestation state.
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <input
-                    type="search"
-                    placeholder="Search controls…"
-                    value={controlsSearch}
-                    onChange={(e) => setControlsSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") fetchTabData();
-                    }}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border)",
-                      fontSize: "0.82rem",
-                      minWidth: "200px",
-                    }}
-                  />
-                  <select
-                    className="cw-pagination-select"
-                    value={controlsStatusFilter}
-                    onChange={(e) => {
-                      setControlsStatusFilter(e.target.value);
-                      setTimeout(fetchTabData, 0);
-                    }}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border)",
-                      fontSize: "0.82rem",
-                    }}
-                  >
-                    <option value="all">All statuses</option>
-                    <option value="pass">Implemented</option>
-                    <option value="fail">Not implemented</option>
-                    <option value="manual_review">Awaiting review</option>
-                    <option value="not_assessed">Not assessed</option>
-                    <option value="not_applicable">Excluded</option>
-                    <option value="exception">Exception</option>
-                  </select>
-                </div>
+            <CcureCard
+              title="Control Register"
+              subtitle="Every control of the selected framework, with its current verdict and attestation state."
+              className="cwv-controls"
+            >
+              <div className="cwv-filters cwv-controls__filters">
+                <CcureInput
+                  type="search"
+                  label="Search controls"
+                  placeholder="Search controls…"
+                  value={controlsSearch}
+                  onChange={(e) => setControlsSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") fetchTabData();
+                  }}
+                />
+                <CcureSelect
+                  label="Status"
+                  value={controlsStatusFilter}
+                  onChange={(e) => {
+                    setControlsStatusFilter(e.target.value);
+                    setTimeout(fetchTabData, 0);
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pass">Implemented</option>
+                  <option value="fail">Not implemented</option>
+                  <option value="manual_review">Awaiting review</option>
+                  <option value="not_assessed">Not assessed</option>
+                  <option value="not_applicable">Excluded</option>
+                  <option value="exception">Exception</option>
+                </CcureSelect>
               </div>
 
               {/* Readiness, not a single percentage. "62% compliant" cannot
                   distinguish a framework nobody has assessed from one that was
                   assessed and failed. */}
               {controlsData?.summary && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                    gap: "8px",
-                    marginBottom: "1rem",
-                  }}
-                >
+                <dl className="cwv-tiles">
                   {[
-                    ["Implemented", controlsData.summary.passed, "#2c6f52"],
-                    ["Not implemented", controlsData.summary.failed, "#9d2f2a"],
+                    ["Implemented", controlsData.summary.passed, "success"],
+                    ["Not implemented", controlsData.summary.failed, "danger"],
                     [
                       "Awaiting review",
                       controlsData.summary.awaiting_review,
-                      "#8a6210",
+                      "warning",
                     ],
                     [
                       "Not assessed",
                       controlsData.summary.not_assessed,
-                      "#6b7583",
+                      "neutral",
                     ],
                     [
                       "Excluded",
                       controlsData.summary.not_applicable,
-                      "#6b7583",
+                      "neutral",
                     ],
-                  ].map(([label, value, color]) => (
-                    <div
-                      key={label}
-                      style={{
-                        border: "1px solid var(--border)",
-                        borderRadius: "6px",
-                        padding: "10px 12px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "1.4rem",
-                          fontWeight: 700,
-                          color,
-                          lineHeight: 1,
-                        }}
+                  ].map(([label, value, tone]) => (
+                    <div key={label} className="cwv-tiles__item">
+                      <dt className="cwv-tiles__label">{label}</dt>
+                      <dd
+                        className={`cwv-tiles__value cwv-tiles__value--${tone}`}
                       >
                         {value}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.7rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          color: "var(--text-muted)",
-                          marginTop: "4px",
-                        }}
-                      >
-                        {label}
-                      </div>
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               )}
 
-              <div style={{ overflowX: "auto" }}>
-                <table className="db-table" style={{ fontSize: "0.8rem" }}>
-                  <thead>
-                    <tr>
-                      <th>Ref</th>
-                      <th>Control</th>
-                      <th>Theme</th>
-                      <th>Mode</th>
-                      <th>Status</th>
-                      <th>Evidence</th>
-                      <th>Reviewed</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(controlsData?.data || []).length === 0 ? (
-                      <tr>
-                        <td colSpan={8} style={{ textAlign: "center" }}>
-                          {loading
-                            ? "Loading controls…"
-                            : "No controls match the current filter."}
-                        </td>
-                      </tr>
-                    ) : (
-                      controlsData.data.map((c) => (
-                        <tr key={c.control_id}>
-                          <td className="mono" style={{ fontWeight: 600 }}>
-                            {c.control_number}
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{c.title}</div>
-                            {c.description && (
-                              <div
-                                style={{
-                                  fontSize: "0.72rem",
-                                  color: "var(--text-muted)",
-                                  marginTop: "2px",
-                                  maxWidth: "420px",
-                                }}
-                              >
-                                {c.description}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {/* NIST CSF is Function ▸ Category ▸ Subcategory.
-                                Printing the bare `theme` code showed "GV"
-                                against all 31 Govern rows and named neither
-                                level. The API derives both from the
-                                Subcategory id and returns null for frameworks
-                                that are not CSF, so this falls back cleanly. */}
-                            <div style={{ fontWeight: 600 }}>
-                              {c.function || THEME_LABELS[c.theme] || c.theme}
-                            </div>
-                            {c.category && (
-                              <div
-                                style={{
-                                  fontSize: "0.7rem",
-                                  color: "var(--text-muted)",
-                                  marginTop: "2px",
-                                }}
-                              >
-                                {c.category} · {c.category_name}
-                              </div>
-                            )}
-                          </td>
-                          <td
-                            style={{
-                              textTransform: "uppercase",
-                              fontSize: "0.7rem",
-                            }}
-                          >
-                            {c.scannability}
-                          </td>
-                          <td>
-                            <span
-                              className={`db-status-badge db-status-badge--${
-                                c.status === "pass"
-                                  ? "success"
-                                  : c.status === "fail"
-                                    ? "danger"
-                                    : c.status === "not_applicable"
-                                      ? "neutral"
-                                      : "warning"
-                              }`}
-                            >
-                              {c.status === "not_assessed"
-                                ? "NOT ASSESSED"
-                                : c.status.replace(/_/g, " ").toUpperCase()}
-                            </span>
-                          </td>
-                          <td>
-                            {c.evidence_file_count > 0
-                              ? `📎 ${c.evidence_file_count}`
-                              : "—"}
-                          </td>
-                          <td>
-                            {c.reviewed_at
-                              ? new Date(c.reviewed_at).toLocaleDateString()
-                              : "—"}
-                          </td>
-                          <td>
-                            <button
-                              className="db-btn db-btn--primary"
-                              style={{
-                                padding: "4px 8px",
-                                fontSize: "0.72rem",
-                              }}
-                              onClick={() => openAttestModal(c)}
-                            >
-                              Attest
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+              <CcureTableStatus
+                loading={loading && (controlsData?.data || []).length === 0}
+                count={(controlsData?.data || []).length}
+                noun="controls"
+              />
+              <CcureTable
+                caption="Control register"
+                rows={controlsData?.data || []}
+                rowKey={(c) => c.control_id}
+                loading={loading && (controlsData?.data || []).length === 0}
+                emptyMessage="No controls match the current filter."
+                columns={[
+                  {
+                    key: "ref",
+                    header: "Ref",
+                    isRowHeader: true,
+                    mono: true,
+                    nowrap: true,
+                    cell: (c) => c.control_number,
+                  },
+                  {
+                    key: "control",
+                    header: "Control",
+                    cell: (c) => (
+                      <>
+                        <span className="cwv-cell__title">{c.title}</span>
+                        {c.description && (
+                          <span className="cwv-cell__detail cwv-cell__detail--measure">
+                            {c.description}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: "theme",
+                    header: "Theme",
+                    cell: (c) => (
+                      <>
+                        {/* NIST CSF is Function ▸ Category ▸ Subcategory.
+                            Printing the bare `theme` code showed "GV"
+                            against all 31 Govern rows and named neither
+                            level. The API derives both from the
+                            Subcategory id and returns null for frameworks
+                            that are not CSF, so this falls back cleanly. */}
+                        <span className="cwv-cell__title">
+                          {c.function || THEME_LABELS[c.theme] || c.theme}
+                        </span>
+                        {c.category && (
+                          <span className="cwv-cell__detail">
+                            {c.category} · {c.category_name}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: "mode",
+                    header: "Mode",
+                    cell: (c) => (
+                      <span className="cwv-caps">{c.scannability}</span>
+                    ),
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    cell: (c) => (
+                      <CcureBadge
+                        variant={
+                          c.status === "pass"
+                            ? "success"
+                            : c.status === "fail"
+                              ? "danger"
+                              : c.status === "not_applicable"
+                                ? "neutral"
+                                : "warning"
+                        }
+                      >
+                        {c.status === "not_assessed"
+                          ? "NOT ASSESSED"
+                          : c.status.replace(/_/g, " ").toUpperCase()}
+                      </CcureBadge>
+                    ),
+                  },
+                  {
+                    key: "evidence",
+                    header: "Evidence",
+                    nowrap: true,
+                    cell: (c) =>
+                      c.evidence_file_count > 0 ? (
+                        <>
+                          <span aria-hidden="true">📎</span>{" "}
+                          {c.evidence_file_count}
+                        </>
+                      ) : (
+                        "—"
+                      ),
+                  },
+                  {
+                    key: "reviewed",
+                    header: "Reviewed",
+                    nowrap: true,
+                    cell: (c) =>
+                      c.reviewed_at
+                        ? new Date(c.reviewed_at).toLocaleDateString()
+                        : "—",
+                  },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    cell: (c) => (
+                      <CcureButton
+                        variant="primary"
+                        size="sm"
+                        onClick={() => openAttestModal(c)}
+                      >
+                        Attest
+                      </CcureButton>
+                    ),
+                  },
+                ]}
+              />
+            </CcureCard>
           )}
 
-          {activeTab === "findings" &&
-            (() => {
-              return (
-                <div
-                  ref={findingsPagination.cardRef}
-                  className="db-card"
-                  style={{ padding: 0 }}
+          {activeTab === "findings" && (
+            <section
+              ref={findingsPagination.cardRef}
+              className="cwv-findings cwv-view"
+              aria-labelledby="cwv-findings-title"
+            >
+              <h2 id="cwv-findings-title" className="cwv-view__title">
+                Findings
+              </h2>
+
+              {/* Filter controls bar */}
+              <div className="cwv-filters cwv-filters--bar">
+                <CcureInput
+                  label="Search findings"
+                  placeholder="Search by Control, Rule..."
+                  value={filterSearch}
+                  onChange={(e) => setFilterSearch(e.target.value)}
+                />
+                <CcureSelect
+                  label="Asset"
+                  value={filterAsset}
+                  onChange={(e) => setFilterAsset(e.target.value)}
                 >
-                  {/* Filter controls bar */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "12px",
-                      padding: "16px 24px",
-                      background: "rgba(0,0,0,0.02)",
-                      borderBottom: "1px solid var(--border)",
-                      borderTopLeftRadius: 8,
-                      borderTopRightRadius: 8,
-                      flexWrap: "wrap",
-                      alignItems: "center",
+                  <option value="all">All Assets</option>
+                  {uniqueAssets.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.hostname && a.hostname !== "Unknown"
+                        ? `${a.hostname} (${a.ip})`
+                        : a.ip || a.id}
+                    </option>
+                  ))}
+                </CcureSelect>
+                <CcureSelect
+                  label="Status"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="pass">Pass</option>
+                  <option value="fail">Fail</option>
+                  <option value="manual_review">Manual Review</option>
+                </CcureSelect>
+                <CcureSelect
+                  label="Severity"
+                  value={filterSeverity}
+                  onChange={(e) => setFilterSeverity(e.target.value)}
+                >
+                  <option value="all">All Severities</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="LOW">Low</option>
+                </CcureSelect>
+
+                {selectedFrameworkId === "cfw_cis_v8_1" && (
+                  <CcureSelect
+                    label="Implementation group"
+                    value={filterIg}
+                    onChange={(e) => setFilterIg(e.target.value)}
+                  >
+                    <option value="all">All Groups (IG1-3)</option>
+                    <option value="ig1">IG1 (Cyber Hygiene)</option>
+                    <option value="ig2">IG2 (Enterprise)</option>
+                    <option value="ig3">IG3 (Advanced)</option>
+                  </CcureSelect>
+                )}
+
+                {(filterSearch ||
+                  filterAsset !== "all" ||
+                  filterStatus !== "all" ||
+                  filterSeverity !== "all") && (
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
+                    className="cwv-filters__clear"
+                    onClick={() => {
+                      setFilterSearch("");
+                      setFilterAsset("all");
+                      setFilterStatus("all");
+                      setFilterSeverity("all");
+                      findingsPagination.setPage(1);
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        SEARCH FINDINGS
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Search by Control, Rule..."
-                        className="db-input"
-                        value={filterSearch}
-                        onChange={(e) => setFilterSearch(e.target.value)}
-                        style={{
-                          minWidth: "220px",
-                          padding: "6px 12px",
-                          fontSize: "0.8rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                        }}
-                      />
-                    </div>
+                    Clear Filters
+                  </CcureButton>
+                )}
+              </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        FILTER BY ASSET
-                      </label>
-                      <select
-                        className="db-select"
-                        value={filterAsset}
-                        onChange={(e) => setFilterAsset(e.target.value)}
-                        style={{
-                          minWidth: "180px",
-                          padding: "6px 12px",
-                          fontSize: "0.8rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          background: "#fff",
-                        }}
-                      >
-                        <option value="all">All Assets</option>
-                        {uniqueAssets.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.hostname && a.hostname !== "Unknown"
-                              ? `${a.hostname} (${a.ip})`
-                              : a.ip || a.id}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+              <PagingControls
+                pagination={findingsPagination}
+                total={filteredFindings.length}
+                loading={loading}
+                label="Findings pagination"
+                itemNoun={
+                  findings.length !== filteredFindings.length
+                    ? `findings (filtered from ${findings.length} total)`
+                    : "findings"
+                }
+                sizes={[25, 50, 100, 250]}
+              />
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        STATUS
-                      </label>
-                      <select
-                        className="db-select"
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        style={{
-                          minWidth: "120px",
-                          padding: "6px 12px",
-                          fontSize: "0.8rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          background: "#fff",
-                        }}
-                      >
-                        <option value="all">All Statuses</option>
-                        <option value="pass">Pass</option>
-                        <option value="fail">Fail</option>
-                        <option value="manual_review">Manual Review</option>
-                      </select>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        SEVERITY
-                      </label>
-                      <select
-                        className="db-select"
-                        value={filterSeverity}
-                        onChange={(e) => setFilterSeverity(e.target.value)}
-                        style={{
-                          minWidth: "120px",
-                          padding: "6px 12px",
-                          fontSize: "0.8rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          background: "#fff",
-                        }}
-                      >
-                        <option value="all">All Severities</option>
-                        <option value="CRITICAL">Critical</option>
-                        <option value="HIGH">High</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="LOW">Low</option>
-                      </select>
-                    </div>
-
-                    {selectedFrameworkId === "cfw_cis_v8_1" && (
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                        }}
-                      >
-                        <label
-                          style={{
-                            fontSize: "0.7rem",
-                            color: "var(--text-muted)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          IMPLEMENTATION GROUP
-                        </label>
-                        <select
-                          className="db-select"
-                          value={filterIg}
-                          onChange={(e) => setFilterIg(e.target.value)}
-                          style={{
-                            minWidth: "160px",
-                            padding: "6px 12px",
-                            fontSize: "0.8rem",
-                            border: "1px solid var(--border)",
-                            borderRadius: "4px",
-                            background: "#fff",
-                          }}
-                        >
-                          <option value="all">All Groups (IG1-3)</option>
-                          <option value="ig1">IG1 (Cyber Hygiene)</option>
-                          <option value="ig2">IG2 (Enterprise)</option>
-                          <option value="ig3">IG3 (Advanced)</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {(filterSearch ||
-                      filterAsset !== "all" ||
-                      filterStatus !== "all" ||
-                      filterSeverity !== "all") && (
-                      <button
-                        className="db-btn db-btn--ghost"
-                        onClick={() => {
-                          setFilterSearch("");
-                          setFilterAsset("all");
-                          setFilterStatus("all");
-                          setFilterSeverity("all");
-                          findingsPagination.setPage(1);
-                        }}
-                        style={{
-                          padding: "6px 12px",
-                          fontSize: "0.8rem",
-                          marginTop: "16px",
-                        }}
-                      >
-                        Clear Filters
-                      </button>
-                    )}
-                  </div>
-
-                  <PaginationBar
-                    currentPage={findingsPagination.page}
-                    pageSize={findingsPagination.pageSize}
-                    totalItems={filteredFindings.length}
-                    totalPages={findingsPagination.totalPages}
-                    onPageChange={findingsPagination.setPage}
-                    onPageSizeChange={findingsPagination.setPageSize}
-                    loading={loading}
-                    sizerOptions={[25, 50, 100, 250]}
-                    customSummary={
-                      filteredFindings.length === 0
-                        ? "No findings match your filters"
-                        : `Showing ${(findingsPagination.displayPage - 1) * findingsPagination.pageSize + 1}–${Math.min(findingsPagination.displayPage * findingsPagination.pageSize, filteredFindings.length)} of ${filteredFindings.length} findings${
-                            findings.length !== filteredFindings.length
-                              ? ` (filtered from ${findings.length} total)`
-                              : ""
-                          }`
-                    }
-                  />
-
-                  <div
-                    className="db-table-wrap"
-                    style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0 }}
-                  >
-                    <table className="db-table">
-                      <thead>
-                        <tr>
-                          <th>Control ID</th>
-                          <th>Rule / Control Title</th>
-                          <th>Severity</th>
-                          <th>Asset Name / IP</th>
-                          <th>Scan Mode</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {loading ? (
-                          [1, 2, 3, 4, 5].map((i) => (
-                            <tr key={i}>
-                              <td>
-                                <Skeleton h={16} w={120} />
-                              </td>
-                              <td>
-                                <Skeleton
-                                  h={16}
-                                  w={200}
-                                  style={{ marginBottom: 4 }}
-                                />
-                                <Skeleton h={10} w={100} />
-                              </td>
-                              <td>
-                                <Skeleton h={20} w={60} />
-                              </td>
-                              <td>
-                                <Skeleton h={14} w={100} />
-                              </td>
-                              <td>
-                                <Skeleton h={18} w={80} />
-                              </td>
-                              <td>
-                                <Skeleton h={20} w={70} />
-                              </td>
-                              <td>
-                                <Skeleton h={24} w={150} />
-                              </td>
-                            </tr>
-                          ))
-                        ) : filteredFindings.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={7}
-                              style={{ textAlign: "center", padding: "24px" }}
-                            >
-                              No matching compliance findings discovered.
-                            </td>
-                          </tr>
-                        ) : (
-                          findingsPagination.paginatedItems.map((f) => {
-                            const sevClass =
-                              f.severity === "CRITICAL"
-                                ? "db-sev-badge--critical"
-                                : f.severity === "HIGH"
-                                  ? "db-sev-badge--high"
-                                  : f.severity === "MEDIUM"
-                                    ? "db-sev-badge--medium"
-                                    : f.severity === "LOW"
-                                      ? "db-sev-badge--low"
-                                      : "db-sev-badge--info";
-                            return (
-                              <tr key={f.id}>
-                                <td
-                                  className="mono"
-                                  style={{ fontWeight: 600 }}
-                                >
-                                  {f.control_id}
-                                </td>
-                                <td>
-                                  <div style={{ fontWeight: 600 }}>
-                                    {f.control_title}
-                                  </div>
-                                  {f.rule_name && (
-                                    <div
-                                      style={{
-                                        fontSize: "0.68rem",
-                                        color: "var(--text-muted)",
-                                      }}
-                                    >
-                                      Rule Code:{" "}
-                                      <span className="mono">
-                                        {f.rule_name}
-                                      </span>
-                                    </div>
-                                  )}
-                                </td>
-                                <td>
-                                  <span
-                                    className={`db-sev-badge ${sevClass}`}
-                                    style={{ textTransform: "capitalize" }}
-                                  >
-                                    {f.severity
-                                      ? f.severity.toLowerCase()
-                                      : "medium"}
-                                  </span>
-                                </td>
-                                <td style={{ fontSize: "0.72rem" }}>
-                                  {f.asset_hostname &&
-                                  f.asset_hostname !== "Unknown" ? (
-                                    <div>
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: "6px",
-                                        }}
-                                      >
-                                        <span style={{ fontWeight: 600 }}>
-                                          {f.asset_hostname}
-                                        </span>
-                                        {f.asset_reboot_pending && (
-                                          <span
-                                            className="db-status"
-                                            style={{
-                                              background:
-                                                "rgba(234,179,8,0.12)",
-                                              color: "#fcd34d",
-                                              fontSize: "0.58rem",
-                                              padding: "1px 5px",
-                                              borderRadius: "3px",
-                                              lineHeight: "1",
-                                            }}
-                                            title="System reboot is required to apply configuration changes."
-                                          >
-                                            Reboot Required
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div
-                                        style={{
-                                          color: "var(--text-muted)",
-                                          fontSize: "0.68rem",
-                                        }}
-                                        className="mono"
-                                      >
-                                        {f.asset_ip}
-                                      </div>
-                                    </div>
-                                  ) : f.asset_ip ? (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                      }}
-                                    >
-                                      <span className="mono">{f.asset_ip}</span>
-                                      {f.asset_reboot_pending && (
-                                        <span
-                                          className="db-status"
-                                          style={{
-                                            background: "rgba(234,179,8,0.12)",
-                                            color: "#fcd34d",
-                                            fontSize: "0.58rem",
-                                            padding: "1px 5px",
-                                            borderRadius: "3px",
-                                            lineHeight: "1",
-                                          }}
-                                          title="System reboot is required to apply configuration changes."
-                                        >
-                                          Reboot Required
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    "Global"
-                                  )}
-                                </td>
-                                <td>
-                                  <span className="db-tag">{f.source}</span>
-                                </td>
-                                <td>
-                                  <span
-                                    className={`db-status ${
-                                      f.status === "pass"
-                                        ? "db-status--complete"
-                                        : f.status === "fail"
-                                          ? "db-status--failed"
-                                          : "db-status--queued"
-                                    }`}
-                                  >
-                                    {f.status}
-                                  </span>
-                                  {/* The engine already writes a plain-English
-                                      reason into the evidence payload whenever
-                                      a control could not be assessed. It was
-                                      never displayed, so `manual_review`
-                                      reached the operator with no indication of
-                                      what to do about it. */}
-                                  {f.status === "manual_review" &&
-                                    f.status_reason && (
-                                      <div
-                                        style={{
-                                          fontSize: "0.7rem",
-                                          color: "var(--text-muted)",
-                                          marginTop: "4px",
-                                          maxWidth: "260px",
-                                          lineHeight: 1.4,
-                                        }}
-                                      >
-                                        {f.status_reason}
-                                      </div>
-                                    )}
-                                </td>
-                                <td className="actions-cell">
-                                  {f.status === "fail" && (
-                                    <>
-                                      <button
-                                        className="db-btn db-btn--primary"
-                                        style={{
-                                          padding: "4px 8px",
-                                          fontSize: "0.72rem",
-                                        }}
-                                        onClick={() => {
-                                          setSelectedFinding(f);
-                                          setModalType("remediate");
-                                          setModalOpen(true);
-                                        }}
-                                      >
-                                        Remediate
-                                      </button>
-                                      <button
-                                        className="db-btn db-btn--ghost"
-                                        style={{
-                                          padding: "4px 8px",
-                                          fontSize: "0.72rem",
-                                        }}
-                                        onClick={() => {
-                                          setSelectedFinding(f);
-                                          setModalType("exception");
-                                          setModalOpen(true);
-                                        }}
-                                      >
-                                        Waiver
-                                      </button>
-                                    </>
-                                  )}
-                                  {f.status === "manual_review" && (
-                                    <button
-                                      className="db-btn db-btn--primary"
-                                      style={{
-                                        padding: "4px 8px",
-                                        fontSize: "0.72rem",
-                                      }}
-                                      onClick={() => openAttestModal(f)}
-                                    >
-                                      Verify
-                                    </button>
-                                  )}
-                                  {f.rule_id && (
-                                    <button
-                                      className="db-btn db-btn--ghost"
-                                      style={{
-                                        padding: "4px 8px",
-                                        fontSize: "0.72rem",
-                                      }}
-                                      onClick={() => handleOpenEditRule(f)}
-                                    >
-                                      Edit Rule
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })
+              <CcureTableStatus
+                loading={loading}
+                count={filteredFindings.length}
+                noun="findings"
+              />
+              <CcureTable
+                caption="Compliance findings"
+                rows={findingsPagination.paginatedItems}
+                rowKey={(f) => f.id}
+                loading={loading}
+                loadingRows={5}
+                emptyMessage="No matching compliance findings discovered."
+                columns={[
+                  {
+                    key: "control",
+                    header: "Control ID",
+                    isRowHeader: true,
+                    mono: true,
+                    nowrap: true,
+                    cell: (f) => f.control_id,
+                  },
+                  {
+                    key: "title",
+                    header: "Rule / Control Title",
+                    cell: (f) => (
+                      <>
+                        <span className="cwv-cell__title">
+                          {f.control_title}
+                        </span>
+                        {f.rule_name && (
+                          <span className="cwv-cell__detail">
+                            Rule Code:{" "}
+                            <span className="cwv-mono">{f.rule_name}</span>
+                          </span>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })()}
+                      </>
+                    ),
+                  },
+                  {
+                    key: "severity",
+                    header: "Severity",
+                    cell: (f) => (
+                      <CcureSeverityBadge severity={f.severity || "medium"} />
+                    ),
+                  },
+                  {
+                    key: "asset",
+                    header: "Asset Name / IP",
+                    cell: (f) =>
+                      f.asset_hostname && f.asset_hostname !== "Unknown" ? (
+                        <>
+                          <span className="cwv-asset">
+                            <span className="cwv-cell__title">
+                              {f.asset_hostname}
+                            </span>
+                            {f.asset_reboot_pending && (
+                              <CcureBadge
+                                variant="warning"
+                                title="System reboot is required to apply configuration changes."
+                              >
+                                Reboot Required
+                              </CcureBadge>
+                            )}
+                          </span>
+                          <span className="cwv-cell__detail cwv-mono">
+                            {f.asset_ip}
+                          </span>
+                        </>
+                      ) : f.asset_ip ? (
+                        <span className="cwv-asset">
+                          <span className="cwv-mono">{f.asset_ip}</span>
+                          {f.asset_reboot_pending && (
+                            <CcureBadge
+                              variant="warning"
+                              title="System reboot is required to apply configuration changes."
+                            >
+                              Reboot Required
+                            </CcureBadge>
+                          )}
+                        </span>
+                      ) : (
+                        "Global"
+                      ),
+                  },
+                  {
+                    key: "source",
+                    header: "Scan Mode",
+                    cell: (f) => <CcureBadge>{f.source}</CcureBadge>,
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    cell: (f) => (
+                      <>
+                        <CcureBadge
+                          variant={
+                            f.status === "pass"
+                              ? "success"
+                              : f.status === "fail"
+                                ? "danger"
+                                : "info"
+                          }
+                        >
+                          {f.status}
+                        </CcureBadge>
+                        {/* The engine already writes a plain-English
+                            reason into the evidence payload whenever
+                            a control could not be assessed. It was
+                            never displayed, so `manual_review`
+                            reached the operator with no indication of
+                            what to do about it. */}
+                        {f.status === "manual_review" && f.status_reason && (
+                          <span className="cwv-cell__detail cwv-cell__detail--reason">
+                            {f.status_reason}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    cell: (f) => (
+                      <span className="cwv-actions">
+                        {f.status === "fail" && (
+                          <>
+                            <CcureButton
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedFinding(f);
+                                setModalType("remediate");
+                                setModalOpen(true);
+                              }}
+                            >
+                              Remediate
+                            </CcureButton>
+                            <CcureButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedFinding(f);
+                                setModalType("exception");
+                                setModalOpen(true);
+                              }}
+                            >
+                              Waiver
+                            </CcureButton>
+                          </>
+                        )}
+                        {f.status === "manual_review" && (
+                          <CcureButton
+                            variant="primary"
+                            size="sm"
+                            onClick={() => openAttestModal(f)}
+                          >
+                            Verify
+                          </CcureButton>
+                        )}
+                        {f.rule_id && (
+                          <CcureButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditRule(f)}
+                          >
+                            Edit Rule
+                          </CcureButton>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </section>
+          )}
 
           {activeTab === "exceptions" && (
-            <div
-              ref={exceptionsPagination.cardRef}
-              className="db-card"
-              style={{ padding: 0 }}
-            >
-              <PaginationBar
-                currentPage={exceptionsPagination.page}
-                pageSize={exceptionsPagination.pageSize}
-                totalItems={exceptions.length}
-                totalPages={exceptionsPagination.totalPages}
-                onPageChange={exceptionsPagination.setPage}
-                onPageSizeChange={exceptionsPagination.setPageSize}
-                loading={loading}
-                itemLabel="waivers"
-                sizerOptions={[10, 25, 50, 100]}
-              />
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead>
-                    <tr>
-                      <th>Control ID</th>
-                      <th>Asset ID</th>
-                      <th>Waiver Reason</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exceptions.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          style={{ textAlign: "center", padding: "24px" }}
-                        >
-                          No pending exceptions or waivers recorded.
-                        </td>
-                      </tr>
-                    )}
-                    {exceptionsPagination.paginatedItems.map((exc) => (
-                      <tr key={exc.id}>
-                        <td className="mono" style={{ fontWeight: 600 }}>
-                          {exc.control_id}
-                        </td>
-                        <td className="mono">{exc.asset_id || "Global"}</td>
-                        <td>{exc.evidence?.note || exc.reason || "—"}</td>
-                        <td>
-                          <span className="db-status db-status--queued">
-                            {exc.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ExceptionsPanel
+              exceptions={exceptions}
+              pagination={exceptionsPagination}
+              loading={loading}
+            />
           )}
 
           {activeTab === "credentials" && (
-            <div
-              style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}
-            >
-              <div
-                ref={credentialsPagination.cardRef}
-                className="db-card"
-                style={{ flex: 1, padding: 0 }}
-              >
-                <div
-                  style={{
-                    padding: "16px 24px",
-                    borderBottom: "1px solid var(--border)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Saved Credentials
-                </div>
-                <PaginationBar
-                  currentPage={credentialsPagination.page}
-                  pageSize={credentialsPagination.pageSize}
-                  totalItems={credentialsList.length}
-                  totalPages={credentialsPagination.totalPages}
-                  onPageChange={credentialsPagination.setPage}
-                  onPageSizeChange={credentialsPagination.setPageSize}
-                  loading={loading}
-                  itemLabel="credentials"
-                  sizerOptions={[10, 25, 50, 100]}
-                />
-                <div className="db-table-wrap">
-                  <table className="db-table">
-                    <thead>
-                      <tr>
-                        <th>Nickname</th>
-                        <th>Username</th>
-                        <th>Port</th>
-                        <th>Auth Method</th>
-                        {isComplianceAdmin && <th>Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {credentialsList.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={isComplianceAdmin ? 5 : 4}
-                            style={{ textAlign: "center", padding: "24px" }}
+            <div className="cwc-layout">
+              <div ref={credentialsPagination.cardRef} className="cwc-list">
+                <CcureCard title="Saved Credentials" bodyFlush>
+                  <div className="cwc-paging">
+                    <PagingControls
+                      pagination={credentialsPagination}
+                      total={credentialsList.length}
+                      loading={loading}
+                      label="Credentials pagination"
+                      itemNoun="credentials"
+                      sizes={[10, 25, 50, 100]}
+                    />
+                  </div>
+                  <CcureTableStatus
+                    loading={loading}
+                    count={credentialsList.length}
+                    noun="credentials"
+                  />
+                  <CcureTable
+                    caption="Saved credentials"
+                    columns={[
+                      {
+                        key: "name",
+                        header: "Nickname",
+                        isRowHeader: true,
+                        className: "cwc-name",
+                        cell: (c) => c.name,
+                      },
+                      {
+                        key: "username",
+                        header: "Username",
+                        cell: (c) => c.username,
+                      },
+                      {
+                        key: "port",
+                        header: "Port",
+                        mono: true,
+                        cell: (c) => c.port,
+                      },
+                      {
+                        key: "auth_method",
+                        header: "Auth Method",
+                        nowrap: true,
+                        cell: (c) => (
+                          <CcureBadge
+                            variant={
+                              c.auth_method === "key" ? "primary" : "neutral"
+                            }
                           >
-                            No saved credentials registered.
-                          </td>
-                        </tr>
-                      )}
-                      {credentialsPagination.paginatedItems.map((c) => (
-                        <tr key={c.id}>
-                          <td style={{ fontWeight: 600 }}>{c.name}</td>
-                          <td>{c.username}</td>
-                          <td className="mono">{c.port}</td>
-                          <td>
-                            <span
-                              className={`db-tag ${c.auth_method === "key" ? "db-tag--primary" : ""}`}
-                            >
-                              {c.auth_method === "key" ? "SSH Key" : "Password"}
-                            </span>
-                          </td>
-                          {isComplianceAdmin && (
-                            <td>
-                              <button
-                                className="db-btn db-btn--ghost"
-                                style={{
-                                  padding: "4px 8px",
-                                  fontSize: "0.68rem",
-                                  color: "var(--critical)",
-                                }}
-                                onClick={async () => {
-                                  if (
-                                    window.confirm(
-                                      `Are you sure you want to delete ${c.name}?`,
-                                    )
-                                  ) {
-                                    try {
-                                      await axiosInstance.delete(
-                                        `/compliance/credentials/${c.id}`,
-                                      );
-                                      pushToast(
-                                        "Credential deleted successfully.",
-                                        "success",
-                                      );
-                                      fetchTabData();
-                                    } catch (e) {
-                                      pushToast(
-                                        "Delete failed: " +
-                                          (e.response?.data?.detail ||
-                                            e.response?.data?.message ||
-                                            e.message),
-                                        "error",
-                                      );
-                                    }
-                                  }
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            {c.auth_method === "key" ? "SSH Key" : "Password"}
+                          </CcureBadge>
+                        ),
+                      },
+                      ...(isComplianceAdmin
+                        ? [
+                            {
+                              key: "actions",
+                              header: "Actions",
+                              cell: (c) => (
+                                <CcureButton
+                                  variant="ghost"
+                                  size="sm"
+                                  className="cwc-delete"
+                                  aria-label={`Delete ${c.name}`}
+                                  aria-haspopup="dialog"
+                                  onClick={() => setCredentialToDelete(c)}
+                                >
+                                  Delete
+                                </CcureButton>
+                              ),
+                            },
+                          ]
+                        : []),
+                    ]}
+                    rows={credentialsPagination.paginatedItems}
+                    rowKey={(c) => c.id}
+                    loading={loading}
+                    emptyMessage="No saved credentials registered."
+                  />
+                </CcureCard>
               </div>
 
               {isComplianceAdmin && (
-                <div className="db-card" style={{ width: "350px" }}>
-                  <div style={{ fontWeight: 600, marginBottom: "16px" }}>
-                    Register Credential
-                  </div>
+                <CcureCard title="Register Credential" className="cwc-register">
                   <form
-                    className="compliance-form"
+                    className="cwc-form"
                     onSubmit={async (e) => {
                       e.preventDefault();
+                      if (savingCredential) return;
+                      setSavingCredential(true);
                       try {
                         await axiosInstance.post("/compliance/credentials", {
                           name: newCredName,
@@ -4589,506 +3735,592 @@ export default function ComplianceWorkspace() {
                               err.message),
                           "error",
                         );
+                      } finally {
+                        setSavingCredential(false);
                       }
                     }}
                   >
-                    <label>Name / Nickname</label>
-                    <input
-                      type="text"
+                    <CcureInput
+                      label="Name / Nickname"
                       value={newCredName}
                       onChange={(e) => setNewCredName(e.target.value)}
                       placeholder="e.g. Production Webservers"
                       required
                     />
 
-                    <label>Username</label>
-                    <input
-                      type="text"
+                    <CcureInput
+                      label="Username"
                       value={newCredUsername}
                       onChange={(e) => setNewCredUsername(e.target.value)}
                       placeholder="e.g. root"
                       required
                     />
 
-                    <label>Port</label>
-                    <input
+                    <CcureInput
                       type="number"
+                      label="Port"
                       value={newCredPort}
                       onChange={(e) => setNewCredPort(e.target.value)}
                       required
                     />
 
-                    <label>Authentication Method</label>
-                    <select
+                    <CcureSelect
+                      label="Authentication Method"
                       value={newCredAuthMethod}
-                      onChange={(e) => setNewCredAuthMethod(e.target.value)}
+                      /* Switching method drops whatever the other method held:
+                         it is sent as null once the method changes, and
+                         keeping it meant it returned if the operator switched
+                         back. */
+                      onChange={(e) => {
+                        setNewCredAuthMethod(e.target.value);
+                        setNewCredPassword("");
+                        setNewCredKeyContent("");
+                      }}
                     >
                       <option value="password">Password</option>
                       <option value="key">Private SSH Key</option>
-                    </select>
+                    </CcureSelect>
 
+                    {/* The secret is typed here and sent once, in the request
+                        body. `new-password` stops the browser offering the
+                        signed-in user's own password into a field that stores
+                        someone else's, and keeps a revealed field out of form
+                        history. */}
                     {newCredAuthMethod === "password" ? (
-                      <>
-                        <label>Password</label>
-                        <input
-                          type="password"
-                          value={newCredPassword}
-                          onChange={(e) => setNewCredPassword(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                        />
-                      </>
+                      <CcurePasswordField
+                        label="Password"
+                        value={newCredPassword}
+                        onChange={(e) => setNewCredPassword(e.target.value)}
+                        placeholder="••••••••"
+                        hint="Stored encrypted. The saved list never shows it."
+                        autoComplete="new-password"
+                        required
+                      />
                     ) : (
-                      <>
-                        <label>Private Key Content</label>
+                      <CcureField
+                        id="cwc-key"
+                        label="Private Key Content"
+                        hint="Stored encrypted. The saved list never shows it."
+                        required
+                      >
                         <textarea
+                          id="cwc-key"
+                          className="cc-field__control cwc-key"
                           value={newCredKeyContent}
                           onChange={(e) => setNewCredKeyContent(e.target.value)}
                           placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.72rem",
-                            height: "100px",
-                          }}
+                          aria-describedby="cwc-key-hint"
                           required
                         />
-                      </>
+                      </CcureField>
                     )}
 
-                    <button
+                    <CcureButton
                       type="submit"
-                      className="db-btn db-btn--primary"
-                      style={{ marginTop: "1rem", width: "100%" }}
+                      variant="primary"
+                      block
+                      loading={savingCredential}
+                      className="cwc-submit"
                     >
                       Save Target Credential
-                    </button>
+                    </CcureButton>
                   </form>
-                </div>
+                </CcureCard>
               )}
+
+              {/* Deleting asks in a design-system dialog rather than the
+                  browser's confirm, which focuses OK: here Cancel takes focus,
+                  Escape cancels, and the dialog is busy and cannot be dismissed
+                  or confirmed again while the DELETE is out. */}
+              <CcureConfirmDialog
+                open={credentialToDelete !== null}
+                title="Delete credential"
+                subtitle="The stored password or key is removed with it. This cannot be undone."
+                warning={
+                  credentialToDelete
+                    ? `Are you sure you want to delete ${credentialToDelete.name}?`
+                    : null
+                }
+                confirmLabel="Delete credential"
+                busy={deletingCredential}
+                onCancel={() => setCredentialToDelete(null)}
+                onConfirm={async () => {
+                  if (deletingCredential || !credentialToDelete) return;
+                  const c = credentialToDelete;
+                  setDeletingCredential(true);
+                  try {
+                    await axiosInstance.delete(
+                      `/compliance/credentials/${c.id}`,
+                    );
+                    pushToast("Credential deleted successfully.", "success");
+                    fetchTabData();
+                  } catch (e) {
+                    pushToast(
+                      "Delete failed: " +
+                        (e.response?.data?.detail ||
+                          e.response?.data?.message ||
+                          e.message),
+                      "error",
+                    );
+                  } finally {
+                    setDeletingCredential(false);
+                    setCredentialToDelete(null);
+                  }
+                }}
+              />
             </div>
           )}
 
           {activeTab === "approvals" && (
-            <div
+            <section
               ref={approvalsPagination.cardRef}
-              className="db-card"
-              style={{ padding: 0 }}
+              className="cwe-queue"
+              aria-labelledby="cwe-queue-title"
             >
-              <div
-                style={{
-                  padding: "16px 24px",
-                  borderBottom: "1px solid var(--border)",
-                  fontWeight: 600,
-                }}
-              >
+              <h2 id="cwe-queue-title" className="cwe-queue__title">
                 Remediation Approvals Queue
-              </div>
-              <PaginationBar
-                currentPage={approvalsPagination.page}
-                pageSize={approvalsPagination.pageSize}
-                totalItems={approvalsList.length}
-                totalPages={approvalsPagination.totalPages}
-                onPageChange={approvalsPagination.setPage}
-                onPageSizeChange={approvalsPagination.setPageSize}
+              </h2>
+              <PagingControls
+                pagination={approvalsPagination}
+                total={approvalsList.length}
                 loading={loading}
-                itemLabel="tickets"
-                sizerOptions={[10, 25, 50, 100]}
+                label="Approvals pagination"
+                itemNoun="tickets"
+                sizes={[10, 25, 50, 100]}
               />
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead>
-                    <tr>
-                      <th>Ticket ID</th>
-                      <th>Control & Asset</th>
-                      <th>Fix Command</th>
-                      <th>Requested By</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvalsList.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          style={{ textAlign: "center", padding: "24px" }}
-                        >
-                          No approval tickets in this status.
-                        </td>
-                      </tr>
-                    )}
-                    {approvalsPagination.paginatedItems.map((req) => (
-                      <tr key={req.id}>
-                        <td className="mono" style={{ fontSize: "0.72rem" }}>
-                          {req.id}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: "0.78rem" }}>
-                            {req.id.startsWith("crrq_rollback_") && (
-                              <span
-                                style={{
-                                  background: "rgba(245, 124, 0, 0.1)",
-                                  color: "#f57c00",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  fontSize: "0.65rem",
-                                  marginRight: "8px",
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Rollback
-                              </span>
-                            )}
-                            {req.control_id} - {req.control_title}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--text-muted)",
-                            }}
-                          >
-                            Target Host:{" "}
-                            <span className="mono">{req.asset_ip}</span>
-                          </div>
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            fontSize: "0.68rem",
-                            maxWidth: "250px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <code>{req.fix_command}</code>
-                        </td>
-                        <td style={{ fontSize: "0.75rem" }}>
-                          {req.requested_by}
-                        </td>
-                        <td>
-                          <span
-                            className={`db-status ${
-                              req.status === "pending_approval"
-                                ? "db-status--queued"
-                                : req.status === "approved" ||
-                                    req.status === "executed"
-                                  ? "db-status--active"
-                                  : "db-status--suspended"
-                            }`}
-                            style={{ textTransform: "capitalize" }}
-                          >
-                            {req.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td>
-                          {req.status === "pending_approval" && (
-                            <div style={{ display: "flex", gap: "8px" }}>
-                              {req.requested_by === user?.id ? (
-                                <button
-                                  className="db-btn db-btn--ghost"
-                                  style={{
-                                    padding: "4px 8px",
-                                    fontSize: "0.68rem",
-                                    color: "var(--critical)",
-                                  }}
-                                  onClick={async () => {
-                                    const label = req.id.startsWith(
-                                      "crrq_rollback_",
-                                    )
-                                      ? "rollback"
-                                      : "remediation";
-                                    if (
-                                      window.confirm(
-                                        `Are you sure you want to cancel this ${label} request?`,
-                                      )
-                                    ) {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/cancel`,
-                                        );
-                                        pushToast(
-                                          `${label.charAt(0).toUpperCase() + label.slice(1)} request cancelled successfully.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Cancellation failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }
-                                  }}
-                                >
-                                  {req.id.startsWith("crrq_rollback_")
-                                    ? "Cancel Rollback"
-                                    : "Cancel Request"}
-                                </button>
-                              ) : isComplianceAdmin ? (
-                                <>
-                                  <button
-                                    className="db-btn db-btn--primary"
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "0.68rem",
-                                    }}
-                                    onClick={async () => {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/approve`,
-                                          { status: "approved" },
-                                        );
-                                        const label = req.id.startsWith(
-                                          "crrq_rollback_",
-                                        )
-                                          ? "Rollback"
-                                          : "Remediation request";
-                                        pushToast(
-                                          `${label} approved and queued.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Approval failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    className="db-btn db-btn--ghost"
-                                    style={{
-                                      padding: "4px 8px",
-                                      fontSize: "0.68rem",
-                                      color: "var(--critical)",
-                                    }}
-                                    onClick={async () => {
-                                      try {
-                                        await axiosInstance.post(
-                                          `/compliance/remediations/requests/${req.id}/approve`,
-                                          { status: "rejected" },
-                                        );
-                                        const label = req.id.startsWith(
-                                          "crrq_rollback_",
-                                        )
-                                          ? "Rollback"
-                                          : "Remediation request";
-                                        pushToast(
-                                          `${label} rejected.`,
-                                          "success",
-                                        );
-                                        fetchTabData();
-                                      } catch (e) {
-                                        pushToast(
-                                          "Rejection failed: " +
-                                            (e.response?.data?.detail ||
-                                              e.response?.data?.message ||
-                                              e.message),
-                                          "error",
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "var(--text-muted)",
-                                    fontStyle: "italic",
-                                  }}
-                                >
-                                  Pending approval
-                                </span>
-                              )}
-                            </div>
+              <CcureTableStatus
+                loading={loading}
+                count={approvalsList.length}
+                noun="tickets"
+              />
+              <CcureTable
+                caption="Remediation approval requests"
+                columns={[
+                  {
+                    key: "id",
+                    header: "Ticket ID",
+                    isRowHeader: true,
+                    mono: true,
+                    className: "cwe-ticket",
+                    cell: (req) => req.id,
+                  },
+                  {
+                    key: "control",
+                    header: "Control & Asset",
+                    cell: (req) => (
+                      <span className="cwe-cell">
+                        <span className="cwe-cell__control">
+                          {req.id.startsWith("crrq_rollback_") && (
+                            <CcureBadge
+                              variant="warning"
+                              className="cwe-rollback"
+                            >
+                              Rollback
+                            </CcureBadge>
                           )}
-                          {(req.status === "executed" ||
-                            req.status === "failed") &&
-                            req.execution_log && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: "8px",
-                                  alignItems: "center",
+                          {req.control_id} - {req.control_title}
+                        </span>
+                        <span className="cwe-cell__detail">
+                          Target Host:{" "}
+                          <span className="cwe-mono">{req.asset_ip}</span>
+                        </span>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "fix_command",
+                    header: "Fix Command",
+                    cell: (req) => (
+                      <code className="cwe-command">{req.fix_command}</code>
+                    ),
+                  },
+                  {
+                    key: "requested_by",
+                    header: "Requested By",
+                    cell: (req) => req.requested_by,
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    nowrap: true,
+                    // The status is the badge's word; the colour repeats it.
+                    cell: (req) => (
+                      <CcureBadge
+                        className="cwe-status"
+                        variant={
+                          req.status === "pending_approval"
+                            ? "warning"
+                            : req.status === "executed"
+                              ? "success"
+                              : req.status === "approved"
+                                ? "info"
+                                : req.status === "failed"
+                                  ? "danger"
+                                  : "neutral"
+                        }
+                      >
+                        {req.status.replace("_", " ")}
+                      </CcureBadge>
+                    ),
+                  },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    cell: (req) => (
+                      <span className="cwe-actions">
+                        {req.status === "pending_approval" &&
+                          (req.requested_by === user?.id ? (
+                            <CcureButton
+                              variant="ghost"
+                              size="sm"
+                              className="cwe-danger-text"
+                              aria-haspopup="dialog"
+                              aria-label={`${
+                                req.id.startsWith("crrq_rollback_")
+                                  ? "Cancel Rollback"
+                                  : "Cancel Request"
+                              } ${req.id}`}
+                              onClick={() =>
+                                setQueueDecision({ req, kind: "cancel" })
+                              }
+                            >
+                              {req.id.startsWith("crrq_rollback_")
+                                ? "Cancel Rollback"
+                                : "Cancel Request"}
+                            </CcureButton>
+                          ) : isComplianceAdmin ? (
+                            <>
+                              <CcureButton
+                                variant="primary"
+                                size="sm"
+                                aria-haspopup="dialog"
+                                aria-label={`Approve ${req.id}`}
+                                onClick={() =>
+                                  setQueueDecision({ req, kind: "approve" })
+                                }
+                              >
+                                Approve
+                              </CcureButton>
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
+                                className="cwe-danger-text"
+                                aria-haspopup="dialog"
+                                aria-label={`Reject ${req.id}`}
+                                onClick={() =>
+                                  setQueueDecision({ req, kind: "reject" })
+                                }
+                              >
+                                Reject
+                              </CcureButton>
+                            </>
+                          ) : (
+                            <span className="cwe-pending">
+                              Pending approval
+                            </span>
+                          ))}
+                        {(req.status === "executed" ||
+                          req.status === "failed") &&
+                          req.execution_log && (
+                            <>
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
+                                aria-haspopup="dialog"
+                                aria-label={`View Logs for ${req.id}`}
+                                onClick={() => {
+                                  setSelectedFinding({
+                                    control_id: req.control_id,
+                                    control_title: req.control_title,
+                                    asset_ip: req.asset_ip,
+                                    execution_log: req.execution_log,
+                                  });
+                                  setModalType("log_viewer");
+                                  setModalOpen(true);
                                 }}
                               >
-                                <button
-                                  className="db-btn db-btn--ghost"
-                                  style={{
-                                    padding: "4px 8px",
-                                    fontSize: "0.68rem",
-                                  }}
-                                  onClick={() => {
-                                    setSelectedFinding({
-                                      control_id: req.control_id,
-                                      control_title: req.control_title,
-                                      asset_ip: req.asset_ip,
-                                      execution_log: req.execution_log,
-                                    });
-                                    setModalType("log_viewer");
-                                    setModalOpen(true);
-                                  }}
-                                >
-                                  View Logs
-                                </button>
-                                {req.status === "executed" &&
-                                  !req.id.startsWith("crrq_rollback_") &&
-                                  (() => {
-                                    const hasActiveRollback =
-                                      approvalsList.some(
-                                        (r) =>
-                                          r.finding_id === req.finding_id &&
-                                          r.id.startsWith("crrq_rollback_") &&
-                                          (r.status === "pending_approval" ||
-                                            r.status === "approved"),
-                                      );
-                                    if (!hasActiveRollback) {
-                                      return (
-                                        <button
-                                          className="db-btn db-btn--ghost"
-                                          style={{
-                                            padding: "4px 8px",
-                                            fontSize: "0.68rem",
-                                            color: "#f57c00",
-                                          }}
-                                          onClick={() => {
-                                            setSelectedFinding({
-                                              id: req.id,
-                                              control_id: req.control_id,
-                                              control_title: req.control_title,
-                                              asset_ip: req.asset_ip,
-                                              fix_command: req.fix_command,
-                                              recommendation_text:
-                                                "Reverse the security control and reopen the port on the target machine.",
-                                            });
-                                            setModalType("rollback");
-                                            setModalOpen(true);
-                                          }}
-                                        >
-                                          Rollback
-                                        </button>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                              </div>
-                            )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                                View Logs
+                              </CcureButton>
+                              {req.status === "executed" &&
+                                !req.id.startsWith("crrq_rollback_") &&
+                                (() => {
+                                  const hasActiveRollback = approvalsList.some(
+                                    (r) =>
+                                      r.finding_id === req.finding_id &&
+                                      r.id.startsWith("crrq_rollback_") &&
+                                      (r.status === "pending_approval" ||
+                                        r.status === "approved"),
+                                  );
+                                  if (!hasActiveRollback) {
+                                    return (
+                                      <CcureButton
+                                        variant="ghost"
+                                        size="sm"
+                                        className="cwe-danger-text"
+                                        aria-haspopup="dialog"
+                                        aria-label={`Rollback ${req.id}`}
+                                        onClick={() => {
+                                          setSelectedFinding({
+                                            id: req.id,
+                                            control_id: req.control_id,
+                                            control_title: req.control_title,
+                                            asset_ip: req.asset_ip,
+                                            fix_command: req.fix_command,
+                                            recommendation_text:
+                                              "Reverse the security control and reopen the port on the target machine.",
+                                          });
+                                          setModalType("rollback");
+                                          setModalOpen(true);
+                                        }}
+                                      >
+                                        Rollback
+                                      </CcureButton>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                            </>
+                          )}
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={approvalsPagination.paginatedItems}
+                rowKey={(req) => req.id}
+                loading={loading}
+                emptyMessage="No approval tickets in this status."
+              />
+
+              {/* Cancelling, approving and rejecting each ask first. Approving
+                  queues a script to run on a customer host with the
+                  credentials the request was made with, and rejecting or
+                  cancelling clears those credentials, so none of them is a
+                  single click: Go back takes focus, Escape goes back, and the
+                  question is busy and cannot be answered twice while its
+                  request is out. */}
+              <CcureConfirmDialog
+                open={queueDecision !== null}
+                title={
+                  queueDecision
+                    ? `${
+                        queueDecision.kind === "cancel"
+                          ? "Cancel"
+                          : queueDecision.kind === "approve"
+                            ? "Approve"
+                            : "Reject"
+                      } ${
+                        queueDecision.req.id.startsWith("crrq_rollback_")
+                          ? "rollback"
+                          : "remediation"
+                      } request`
+                    : ""
+                }
+                subtitle={
+                  queueDecision
+                    ? `${queueDecision.req.id} — ${queueDecision.req.control_id} on ${queueDecision.req.asset_ip}`
+                    : undefined
+                }
+                warning={
+                  !queueDecision
+                    ? null
+                    : queueDecision.kind === "cancel"
+                      ? `Are you sure you want to cancel this ${
+                          queueDecision.req.id.startsWith("crrq_rollback_")
+                            ? "rollback"
+                            : "remediation"
+                        } request?`
+                      : queueDecision.kind === "approve"
+                        ? `Approving queues this ${
+                            queueDecision.req.id.startsWith("crrq_rollback_")
+                              ? "rollback"
+                              : "remediation"
+                          } to run on ${queueDecision.req.asset_ip} with the credentials it was requested with.`
+                        : `Rejecting closes this ${
+                            queueDecision.req.id.startsWith("crrq_rollback_")
+                              ? "rollback"
+                              : "remediation"
+                          } request and clears the credentials held with it; it will not run.`
+                }
+                confirmLabel={
+                  !queueDecision
+                    ? "Confirm"
+                    : queueDecision.kind === "cancel"
+                      ? queueDecision.req.id.startsWith("crrq_rollback_")
+                        ? "Cancel Rollback"
+                        : "Cancel Request"
+                      : queueDecision.kind === "approve"
+                        ? "Approve"
+                        : "Reject"
+                }
+                cancelLabel="Go back"
+                tone={queueDecision?.kind === "approve" ? "info" : "danger"}
+                busy={queueDecisionBusy}
+                onCancel={() => setQueueDecision(null)}
+                onConfirm={async () => {
+                  if (queueDecisionBusy || !queueDecision) return;
+                  const { req, kind } = queueDecision;
+                  setQueueDecisionBusy(true);
+                  if (kind === "cancel") {
+                    const label = req.id.startsWith("crrq_rollback_")
+                      ? "rollback"
+                      : "remediation";
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/cancel`,
+                      );
+                      pushToast(
+                        `${label.charAt(0).toUpperCase() + label.slice(1)} request cancelled successfully.`,
+                        "success",
+                      );
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Cancellation failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  } else if (kind === "approve") {
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/approve`,
+                        { status: "approved" },
+                      );
+                      const label = req.id.startsWith("crrq_rollback_")
+                        ? "Rollback"
+                        : "Remediation request";
+                      pushToast(`${label} approved and queued.`, "success");
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Approval failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  } else {
+                    try {
+                      await axiosInstance.post(
+                        `/compliance/remediations/requests/${req.id}/approve`,
+                        { status: "rejected" },
+                      );
+                      const label = req.id.startsWith("crrq_rollback_")
+                        ? "Rollback"
+                        : "Remediation request";
+                      pushToast(`${label} rejected.`, "success");
+                      fetchTabData();
+                    } catch (e) {
+                      pushToast(
+                        "Rejection failed: " +
+                          (e.response?.data?.detail ||
+                            e.response?.data?.message ||
+                            e.message),
+                        "error",
+                      );
+                    }
+                  }
+                  setQueueDecisionBusy(false);
+                  setQueueDecision(null);
+                }}
+              />
+            </section>
           )}
-        </div>
+        </CcureTabPanel>
       </div>
 
       {/* Dynamic Popups Modals */}
-      <Modal
-        isOpen={modalOpen}
+      <CcureModal
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
+        closeLabel="Close"
         title={
-          modalType === "policy"
-            ? "Create Policy Baseline"
-            : modalType === "attest"
-              ? "Control Manual Attestation"
-              : modalType === "exception"
-                ? "Request Exception Waiver"
-                : modalType === "edit_rule"
-                  ? "Configure Rule Parameters"
-                  : modalType.toUpperCase()
+          {
+            policy: "Create Policy Baseline",
+            attest: "Control Manual Attestation",
+            exception: "Request Exception Waiver",
+            edit_rule: "Configure Rule Parameters",
+            // Named for the person reading them rather than by their type.
+            remediate: "Remediate Finding",
+            rollback: "Roll Back Remediation",
+            log_viewer: "Execution Log",
+            gap_analysis: "Gap Analysis",
+          }[modalType]
         }
+        aria-label="Compliance dialog"
         size={
           modalType === "policy" ||
           modalType === "attest" ||
           modalType === "exception" ||
           modalType === "edit_rule"
-            ? "medium"
-            : "large"
+            ? "md"
+            : "lg"
+        }
+        className={
+          modalType === "policy" ||
+          modalType === "attest" ||
+          modalType === "exception" ||
+          modalType === "edit_rule"
+            ? ""
+            : "cwh-modal--wide"
         }
       >
         {modalType === "policy" && (
-          <form onSubmit={handleCreatePolicy} className="compliance-form">
-            <label>Policy Name</label>
-            <input
-              type="text"
+          <form onSubmit={handleCreatePolicy} className="cww-form">
+            <CcureInput
+              label="Policy Name"
               value={newPolicyName}
               onChange={(e) => setNewPolicyName(e.target.value)}
               required
             />
-            <label>Target Platform</label>
-            <select
+            <CcureSelect
+              label="Target Platform"
               value={newPolicyPlatform}
               onChange={(e) => setNewPolicyPlatform(e.target.value)}
             >
               <option value="any">Any</option>
               <option value="windows">Windows</option>
               <option value="linux">Linux</option>
-            </select>
-            <label>Rules IDs (comma separated)</label>
-            <input
-              type="text"
+            </CcureSelect>
+            <CcureInput
+              label="Rule IDs"
+              hint="Comma separated."
               value={newPolicyRules}
               onChange={(e) => setNewPolicyRules(e.target.value)}
               placeholder="crl_net_tls_001_v1, crl_auth_mfa_001_v1"
               required
             />
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Publish Baseline
-            </button>
+            </CcureButton>
           </form>
         )}
 
         {modalType === "attest" && (
-          <form onSubmit={handleSubmitAttestation} className="compliance-form">
+          <form onSubmit={handleSubmitAttestation} className="cww-form">
             {selectedControl?.control_number && (
-              <div
-                style={{
-                  background: "rgba(0,0,0,0.03)",
-                  padding: "10px 12px",
-                  borderRadius: "6px",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+              <div className="cwa-control">
+                <p className="cwa-control__title">
                   {selectedControl.control_number} — {selectedControl.title}
-                </div>
+                </p>
                 {selectedControl.description && (
-                  <div
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--text-muted)",
-                      marginTop: "4px",
-                      lineHeight: 1.45,
-                    }}
-                  >
+                  <p className="cwa-control__description">
                     {selectedControl.description}
-                  </div>
+                  </p>
                 )}
               </div>
             )}
 
-            <label>Applicability &amp; Status</label>
-            <select
+            <CcureSelect
+              label="Applicability & Status"
               value={attestStatus}
               onChange={(e) => setAttestStatus(e.target.value)}
             >
@@ -5101,58 +4333,50 @@ export default function ComplianceWorkspace() {
               <option value="not_applicable">
                 Not applicable — excluded from scope
               </option>
-            </select>
+            </CcureSelect>
 
-            <label style={{ marginTop: "1rem" }}>
-              {attestStatus === "not_applicable"
-                ? "Justification for exclusion (required)"
-                : "Justification for inclusion"}
-            </label>
-            <textarea
-              value={attestJustification}
-              onChange={(e) => setAttestJustification(e.target.value)}
-              required={attestStatus === "not_applicable"}
-              placeholder={
+            <CcureField
+              id="cwa-justification"
+              label={
                 attestStatus === "not_applicable"
-                  ? "Why this control does not apply to the organization's ISMS scope."
-                  : "Why this control is applicable — defaults to the control objective if left blank."
+                  ? "Justification for exclusion"
+                  : "Justification for inclusion"
               }
-              style={{ minHeight: "70px" }}
-            />
-            {attestStatus === "not_applicable" && (
-              <div
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  marginTop: "4px",
-                }}
-              >
-                ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to
-                carry a documented justification.
-              </div>
-            )}
+              required={attestStatus === "not_applicable"}
+              hint={
+                attestStatus === "not_applicable"
+                  ? "ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to carry a documented justification."
+                  : undefined
+              }
+            >
+              <textarea
+                id="cwa-justification"
+                className="cc-field__control cww-form__textarea"
+                value={attestJustification}
+                onChange={(e) => setAttestJustification(e.target.value)}
+                required={attestStatus === "not_applicable"}
+                aria-describedby={
+                  attestStatus === "not_applicable"
+                    ? "cwa-justification-hint"
+                    : undefined
+                }
+                placeholder={
+                  attestStatus === "not_applicable"
+                    ? "Why this control does not apply to the organization's ISMS scope."
+                    : "Why this control is applicable — defaults to the control objective if left blank."
+                }
+              />
+            </CcureField>
 
             {selectedControl?.evidence_checklist &&
               selectedControl.evidence_checklist.length > 0 && (
-                <div style={{ marginTop: "1rem" }}>
-                  <label
-                    style={{
-                      fontWeight: 600,
-                      display: "block",
-                      marginBottom: "6px",
-                    }}
-                  >
+                <div className="cwa-section">
+                  <h3 id="cwa-checklist-title" className="cwa-section__title">
                     Audit evidence expected for this control
-                  </label>
+                  </h3>
                   <ul
-                    style={{
-                      background: "rgba(0,0,0,0.03)",
-                      padding: "10px 10px 10px 26px",
-                      borderRadius: "6px",
-                      fontSize: "0.8rem",
-                      margin: 0,
-                      lineHeight: 1.5,
-                    }}
+                    className="cwa-checklist"
+                    aria-labelledby="cwa-checklist-title"
                   >
                     {selectedControl.evidence_checklist.map((item, idx) => (
                       <li key={idx}>{item}</li>
@@ -5165,137 +4389,111 @@ export default function ComplianceWorkspace() {
                 finding model since the first migration with no upload path
                 behind it, and the checklist above used to be pre-ticked
                 checkboxes that were never read or submitted. */}
-            <div style={{ marginTop: "1rem" }}>
-              <label style={{ fontWeight: 600, display: "block" }}>
-                Attached evidence
-              </label>
-              <input
-                type="file"
-                accept={EVIDENCE_ACCEPT}
-                disabled={uploadingEvidence}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUploadEvidence(selectedControl.id, f);
-                  e.target.value = "";
-                }}
-                style={{ marginTop: "6px", fontSize: "0.8rem" }}
-              />
-              {uploadingEvidence && (
-                <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>
-                  Uploading…
-                </div>
-              )}
-              {controlEvidence.length > 0 && (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: "8px 0 0",
-                    fontSize: "0.78rem",
+            <AttestationEvidence
+              files={controlEvidence}
+              onRemove={(f) => handleDeleteEvidence(f.id, selectedControl.id)}
+            >
+              <CcureField
+                id="cwa-evidence-file"
+                label="Add evidence file"
+                hint={`Accepted: ${EVIDENCE_ACCEPT.replace(/\./g, "")
+                  .toUpperCase()
+                  .split(",")
+                  .join(
+                    ", ",
+                  )}. Up to ${MAX_EVIDENCE_BYTES / (1024 * 1024)} MB.`}
+              >
+                <input
+                  id="cwa-evidence-file"
+                  type="file"
+                  className="cwa-file"
+                  accept={EVIDENCE_ACCEPT}
+                  disabled={uploadingEvidence}
+                  aria-describedby="cwa-evidence-file-hint"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadEvidence(selectedControl.id, f);
+                    e.target.value = "";
                   }}
-                >
-                  {controlEvidence.map((f) => (
-                    <li
-                      key={f.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                        padding: "4px 8px",
-                        background: "rgba(0,0,0,0.03)",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      <span>
-                        📎 {f.filename}{" "}
-                        <span style={{ color: "var(--text-muted)" }}>
-                          ({Math.round(f.size_bytes / 1024)} KB)
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        className="db-btn db-btn--ghost"
-                        style={{ padding: "2px 6px", fontSize: "0.7rem" }}
-                        onClick={() =>
-                          handleDeleteEvidence(f.id, selectedControl.id)
-                        }
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                />
+              </CcureField>
+              {uploadingEvidence && <CcureLoader inline label="Uploading…" />}
+            </AttestationEvidence>
 
-            <label style={{ marginTop: "1rem" }}>Next review date</label>
-            <input
+            <CcureInput
               type="date"
+              label="Next review date"
               value={attestNextReview}
               onChange={(e) => setAttestNextReview(e.target.value)}
             />
 
-            <label style={{ marginTop: "1rem" }}>Reviewer note</label>
-            <textarea
-              value={attestNote}
-              onChange={(e) => setAttestNote(e.target.value)}
-              required
-            />
-            <button
+            <CcureField id="cwa-note" label="Reviewer note" required>
+              <textarea
+                id="cwa-note"
+                className="cc-field__control cww-form__textarea"
+                value={attestNote}
+                onChange={(e) => setAttestNote(e.target.value)}
+                required
+              />
+            </CcureField>
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Save Attestation
-            </button>
+            </CcureButton>
           </form>
         )}
 
         {modalType === "exception" && (
-          <form onSubmit={handleSubmitException} className="compliance-form">
-            <label>Reason for Exception Waiver</label>
-            <textarea
-              value={exceptionReason}
-              onChange={(e) => setExceptionReason(e.target.value)}
+          <form onSubmit={handleSubmitException} className="cww-form">
+            <CcureField
+              id="cww-waiver-reason"
+              label="Reason for Exception Waiver"
               required
-            />
-            <label>Expiry Date</label>
-            <input
+            >
+              <textarea
+                id="cww-waiver-reason"
+                className="cc-field__control cww-form__textarea"
+                value={exceptionReason}
+                onChange={(e) => setExceptionReason(e.target.value)}
+                required
+              />
+            </CcureField>
+            <CcureInput
               type="date"
+              label="Expiry Date"
               value={exceptionExpiry}
               onChange={(e) => setExceptionExpiry(e.target.value)}
               required
             />
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Request Waiver
-            </button>
+            </CcureButton>
           </form>
         )}
 
         {modalType === "edit_rule" && selectedFinding && (
-          <form onSubmit={handleSubmitEditRule} className="compliance-form">
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
-              Editing Rule:{" "}
-              <span className="mono">{selectedFinding.rule_name}</span>
-            </h3>
-            <p
-              style={{
-                margin: "0.25rem 0 1rem",
-                fontSize: "0.8rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              Control: {selectedFinding.control_title}
-            </p>
+          <form onSubmit={handleSubmitEditRule} className="cww-form">
+            <div className="cww-form__intro">
+              <h3 className="cww-form__heading">
+                Editing Rule:{" "}
+                <span className="cww-mono">{selectedFinding.rule_name}</span>
+              </h3>
+              <p className="cww-form__context">
+                Control: {selectedFinding.control_title}
+              </p>
+            </div>
 
-            <label>Severity Level</label>
-            <select
+            <CcureSelect
+              label="Severity Level"
               value={editRuleSeverity}
               onChange={(e) => setEditRuleSeverity(e.target.value)}
             >
@@ -5304,473 +4502,304 @@ export default function ComplianceWorkspace() {
               <option value="MEDIUM">Medium</option>
               <option value="LOW">Low</option>
               <option value="INFO">Info</option>
-            </select>
+            </CcureSelect>
 
-            <label>Expected Rule Value</label>
-            <input
-              type="text"
+            <CcureInput
+              label="Expected Rule Value"
               value={editRuleExpected}
               onChange={(e) => setEditRuleExpected(e.target.value)}
+              hint={
+                <>
+                  Current evidence value is:{" "}
+                  <code className="cww-code">
+                    {JSON.stringify(selectedFinding.evidence)}
+                  </code>
+                </>
+              }
               required
             />
-            <p
-              style={{
-                margin: "0.25rem 0",
-                fontSize: "0.72rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              Current evidence value is:{" "}
-              <code
-                className="mono"
-                style={{
-                  background: "rgba(0,0,0,0.05)",
-                  padding: "2px 4px",
-                  borderRadius: 3,
-                }}
-              >
-                {JSON.stringify(selectedFinding.evidence)}
-              </code>
-            </p>
 
-            <button
+            <CcureButton
               type="submit"
-              className="db-btn db-btn--primary"
-              style={{ marginTop: "1rem" }}
+              variant="primary"
+              block
+              className="cww-form__submit"
             >
               Save Rule Configuration
-            </button>
+            </CcureButton>
           </form>
         )}
 
         {modalType === "gap_analysis" && gapAnalysis && (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-          >
-            {/* Interactive Any-to-Any Framework Selector Bar */}
-            <div
-              style={{
-                background: "#f1f5f9",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  flexWrap: "wrap",
+          <div className="cwg-gap">
+            {/* Choosing a framework sends nothing: the pair is read only when
+                Recalculate Gap is pressed. The result below stays on screen
+                until the new one arrives, and says so once the choices no
+                longer match it. */}
+            <div className="cwg-pickers">
+              <CcureSelect
+                label="Source Baseline"
+                fieldClassName="cwg-pickers__field"
+                value={gapSourceFramework}
+                onChange={(e) => {
+                  setGapSourceFramework(e.target.value);
+                  setGapStale(true);
                 }}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#334155",
-                    }}
-                  >
-                    Source Baseline:
-                  </label>
-                  <select
-                    value={gapSourceFramework}
-                    onChange={(e) => setGapSourceFramework(e.target.value)}
-                    style={{
-                      padding: "5px 8px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      background: "#ffffff",
-                    }}
-                  >
-                    {activeFrameworks.map((fw) => (
-                      <option key={`modal_src_${fw.id}`} value={fw.id}>
-                        {fw.longName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {activeFrameworks.map((fw) => (
+                  <option key={`modal_src_${fw.id}`} value={fw.id}>
+                    {fw.longName}
+                  </option>
+                ))}
+              </CcureSelect>
 
-                <span style={{ fontWeight: 800, color: "#64748b" }}>➔</span>
+              <span className="cwg-pickers__arrow" aria-hidden="true">
+                ➔
+              </span>
 
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#334155",
-                    }}
-                  >
-                    Target Mandate:
-                  </label>
-                  <select
-                    value={gapTargetFramework}
-                    onChange={(e) => setGapTargetFramework(e.target.value)}
-                    style={{
-                      padding: "5px 8px",
-                      borderRadius: "6px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      background: "#ffffff",
-                    }}
-                  >
-                    {activeFrameworks.map((fw) => (
-                      <option key={`modal_tgt_${fw.id}`} value={fw.id}>
-                        {fw.longName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <CcureSelect
+                label="Target Mandate"
+                fieldClassName="cwg-pickers__field"
+                value={gapTargetFramework}
+                onChange={(e) => {
+                  setGapTargetFramework(e.target.value);
+                  setGapStale(true);
+                }}
+              >
+                {activeFrameworks.map((fw) => (
+                  <option key={`modal_tgt_${fw.id}`} value={fw.id}>
+                    {fw.longName}
+                  </option>
+                ))}
+              </CcureSelect>
 
-              <button
-                className="db-btn db-btn--primary"
+              <CcureButton
+                variant="primary"
+                className="cwg-pickers__action"
                 onClick={() =>
                   fetchGapAnalysis(gapSourceFramework, gapTargetFramework)
                 }
-                disabled={loadingGapAnalysis}
-                style={{
-                  padding: "6px 14px",
-                  fontSize: "0.82rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
+                loading={loadingGapAnalysis}
               >
-                <span>🔄</span>{" "}
+                <span aria-hidden="true">🔄</span>{" "}
                 {loadingGapAnalysis ? "Calculating..." : "Recalculate Gap"}
-              </button>
+              </CcureButton>
             </div>
-            <div
-              style={{
-                background: "#f8fafc",
-                padding: "16px",
-                borderRadius: "8px",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
-                    {gapAnalysis.source_framework?.code} ➔{" "}
+
+            {gapStale && (
+              <p className="cwg-stale" role="status">
+                Showing the previous result. Press Recalculate Gap to compare
+                the frameworks now chosen.
+              </p>
+            )}
+
+            <div className="cwg-summary">
+              <div className="cwg-summary__head">
+                <div className="cwg-summary__intro">
+                  {/* The arrow is drawn, and "to" is what is read. */}
+                  <h3 className="cwg-summary__title">
+                    {gapAnalysis.source_framework?.code}{" "}
+                    <span aria-hidden="true">➔</span>
+                    <span className="cc-sr-only">to</span>{" "}
                     {gapAnalysis.target_framework?.code}
                   </h3>
-                  <p
-                    style={{
-                      margin: "4px 0 0",
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <p className="cwg-summary__context">
                     Estimated baseline compliance posture for{" "}
                     {gapAnalysis.target_framework?.name} based on existing{" "}
                     {gapAnalysis.source_framework?.name} scan findings.
                   </p>
                 </div>
-                <div
-                  style={{
-                    fontSize: "2rem",
-                    fontWeight: 800,
-                    color: "var(--accent)",
-                  }}
-                >
-                  {gapAnalysis.summary?.estimated_score_pct}%
-                </div>
+                <p className="cwg-score">
+                  <span className="cwg-score__label">Estimated score</span>
+                  <span className="cwg-score__value">
+                    {gapAnalysis.summary?.estimated_score_pct}%
+                  </span>
+                </p>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "16px",
-                  marginTop: "12px",
-                  fontSize: "0.8rem",
-                }}
-              >
-                <div>
-                  Target Controls:{" "}
-                  <strong>{gapAnalysis.summary?.total_target_controls}</strong>
+              {/* Pass and fail are named by their terms; the colour repeats
+                  them. */}
+              <dl className="cwg-stats">
+                <div className="cwg-stat">
+                  <dt>Target Controls</dt>
+                  <dd>{gapAnalysis.summary?.total_target_controls}</dd>
                 </div>
-                <div>
-                  Crosswalk Mapped:{" "}
-                  <strong>{gapAnalysis.summary?.mapped_controls}</strong>
+                <div className="cwg-stat">
+                  <dt>Crosswalk Mapped</dt>
+                  <dd>{gapAnalysis.summary?.mapped_controls}</dd>
                 </div>
-                <div>
-                  Estimated Pass:{" "}
-                  <strong style={{ color: "var(--ok)" }}>
+                <div className="cwg-stat">
+                  <dt>Estimated Pass</dt>
+                  <dd className="cwg-stat__pass">
                     {gapAnalysis.summary?.estimated_pass}
-                  </strong>
+                  </dd>
                 </div>
-                <div>
-                  Estimated Fail:{" "}
-                  <strong style={{ color: "var(--danger)" }}>
+                <div className="cwg-stat">
+                  <dt>Estimated Fail</dt>
+                  <dd className="cwg-stat__fail">
                     {gapAnalysis.summary?.estimated_fail}
-                  </strong>
+                  </dd>
                 </div>
-              </div>
+              </dl>
             </div>
 
-            <div style={{ maxHeight: "350px", overflowY: "auto" }}>
-              <table className="db-table" style={{ fontSize: "0.78rem" }}>
-                <thead>
-                  <tr>
-                    <th>
-                      {gapAnalysis.target_framework?.code || "Target"} Control
-                    </th>
-                    <th>Title</th>
-                    <th>
-                      Mapped {gapAnalysis.source_framework?.code || "Source"}{" "}
-                      Controls
-                    </th>
-                    <th>Estimated Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(gapAnalysis.controls || []).map((c) => (
-                    <tr key={c.control_id}>
-                      <td className="mono" style={{ fontWeight: 600 }}>
-                        {c.control_number}
-                      </td>
-                      <td>{c.title}</td>
-                      <td>
+            {/* Scrolls when the target framework is long, so a keyboard user
+                can reach and scroll it. */}
+            <div
+              className="cwg-results"
+              role="region"
+              aria-label="Estimated status by control"
+              tabIndex={0}
+            >
+              <CcureTable
+                caption={`${gapAnalysis.target_framework?.code || "Target"} controls estimated from ${gapAnalysis.source_framework?.code || "source"} findings`}
+                columns={[
+                  {
+                    key: "control_number",
+                    header: `${gapAnalysis.target_framework?.code || "Target"} Control`,
+                    isRowHeader: true,
+                    mono: true,
+                    nowrap: true,
+                    cell: (c) => c.control_number,
+                  },
+                  {
+                    key: "title",
+                    header: "Title",
+                    cell: (c) => c.title,
+                  },
+                  {
+                    key: "crosswalk",
+                    header: `Mapped ${gapAnalysis.source_framework?.code || "Source"} Controls`,
+                    cell: (c) => (
+                      <span className="cwg-refs">
                         {(c.crosswalk || []).map((iso) => (
-                          <span
-                            key={iso}
-                            className="crosswalk-tag"
-                            style={{ marginRight: 4 }}
-                          >
+                          <CcureBadge key={iso} mono>
                             {iso}
-                          </span>
+                          </CcureBadge>
                         ))}
-                      </td>
-                      <td>
-                        <span
-                          className={`db-sev-badge ${
-                            c.estimated_status === "pass"
-                              ? "db-sev-badge--low"
-                              : c.estimated_status === "fail"
-                                ? "db-sev-badge--critical"
-                                : "db-sev-badge--info"
-                          }`}
-                        >
-                          {c.estimated_status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "estimated_status",
+                    header: "Estimated Status",
+                    nowrap: true,
+                    // The status is the badge's word; the colour repeats it.
+                    cell: (c) => (
+                      <CcureBadge
+                        variant={
+                          c.estimated_status === "pass"
+                            ? "success"
+                            : c.estimated_status === "fail"
+                              ? "danger"
+                              : "info"
+                        }
+                      >
+                        {c.estimated_status}
+                      </CcureBadge>
+                    ),
+                  },
+                ]}
+                rows={gapAnalysis.controls || []}
+                rowKey={(c) => c.control_id}
+                emptyMessage="No target controls to compare."
+              />
             </div>
           </div>
         )}
-
         {(modalType === "remediate" || modalType === "rollback") &&
           selectedFinding && (
-            <div
-              className="compliance-form"
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              <div>
-                <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
+            <div className="cwe-guide">
+              <div className="cwe-guide__intro">
+                <h3 className="cwe-guide__heading">
                   {modalType === "rollback"
                     ? "Rollback Security Rule"
                     : "Remediation Guide"}
-                  : <span className="mono">{selectedFinding.control_id}</span>
+                  :{" "}
+                  <span className="cwe-mono">{selectedFinding.control_id}</span>
                 </h3>
-                <p
-                  style={{
-                    margin: "0.25rem 0 1rem",
-                    fontSize: "0.8rem",
-                    color: "var(--text-muted)",
-                  }}
-                >
+                <p className="cwe-guide__context">
                   Control Name: {selectedFinding.control_title}
                 </p>
               </div>
 
-              <div
-                style={{
-                  padding: "12px",
-                  background: "rgba(0,0,0,0.02)",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    fontWeight: 600,
-                  }}
-                >
-                  Target Machine / IP
-                </div>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: "0.8rem",
-                    marginTop: "2px",
-                  }}
-                >
+              <div className="cwe-target">
+                <p className="cwe-label">Target Machine / IP</p>
+                <p className="cwe-target__value">
                   {selectedFinding.asset_hostname &&
                   selectedFinding.asset_hostname !== "Unknown"
                     ? `${selectedFinding.asset_hostname} (${selectedFinding.asset_ip})`
                     : selectedFinding.asset_ip}
-                </div>
+                </p>
               </div>
 
-              <div>
-                <label
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text-muted)",
-                    fontWeight: 600,
-                    display: "block",
-                    marginBottom: "6px",
-                    textTransform: "uppercase",
-                  }}
-                >
+              <div className="cwe-section">
+                <h4 className="cwe-label">
                   {modalType === "rollback"
                     ? "Warning Description"
                     : "How to Resolve This Finding"}
-                </label>
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    lineHeight: 1.5,
-                    background: "var(--bg-light)",
-                    padding: "12px",
-                    borderRadius: "4px",
-                    borderLeft: `3px solid ${modalType === "rollback" ? "#f57c00" : "var(--accent)"}`,
-                    color: "var(--text)",
-                  }}
-                >
-                  {modalType === "rollback"
-                    ? "This action will execute a script to reverse the security control and reopen the port on the target machine."
-                    : selectedFinding.recommendation_text ||
+                </h4>
+                {/* A rollback's warning is an alert in words, not only an
+                    orange rule beside a paragraph. */}
+                {modalType === "rollback" ? (
+                  <CcureAlert variant="warning" live={false}>
+                    This action will execute a script to reverse the security
+                    control and reopen the port on the target machine.
+                  </CcureAlert>
+                ) : (
+                  <p className="cwe-guide__advice">
+                    {selectedFinding.recommendation_text ||
                       "No recommendation text registered."}
-                </div>
+                  </p>
+                )}
               </div>
 
               {selectedFinding.fix_command && (
-                <div>
-                  <label
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                      fontWeight: 600,
-                      display: "block",
-                      marginBottom: "6px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Automated Repair Script
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <pre
-                      className="mono"
-                      style={{
-                        background: "#272822",
-                        color: "#f8f8f2",
-                        padding: "12px",
-                        borderRadius: "4px",
-                        fontSize: "0.72rem",
-                        overflowX: "auto",
-                        margin: 0,
-                        maxHeight: "150px",
-                      }}
-                    >
-                      {selectedFinding.fix_command}
-                    </pre>
-                    <button
-                      type="button"
-                      className="db-btn db-btn--ghost"
-                      style={{
-                        position: "absolute",
-                        right: "6px",
-                        top: "6px",
-                        padding: "2px 6px",
-                        fontSize: "0.6rem",
-                        background: "rgba(255,255,255,0.15)",
-                        color: "#fff",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
+                <div className="cwe-section">
+                  <div className="cwe-section__bar">
+                    <h4 id="cwe-script-title" className="cwe-label">
+                      Automated Repair Script
+                    </h4>
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Copy repair script"
                       onClick={() =>
                         handleCopyCommand(selectedFinding.fix_command)
                       }
                     >
                       Copy
-                    </button>
+                    </CcureButton>
                   </div>
+                  {/* Scrollable, so a keyboard user can reach and scroll it. */}
+                  <pre
+                    className="cwe-console"
+                    role="region"
+                    aria-labelledby="cwe-script-title"
+                    tabIndex={0}
+                  >
+                    {selectedFinding.fix_command}
+                  </pre>
                 </div>
               )}
 
-              <div
-                style={{
-                  borderTop: "1px solid var(--border)",
-                  paddingTop: "12px",
-                  marginTop: "8px",
-                }}
-              >
-                <label
-                  style={{
-                    fontWeight: 600,
-                    display: "block",
-                    marginBottom: "8px",
-                    fontSize: "0.8rem",
-                  }}
-                >
+              <fieldset className="cwe-credentials">
+                <legend className="cwe-credentials__legend">
                   Execution Credentials
-                </label>
-                <div
-                  style={{ display: "flex", gap: "16px", marginBottom: "12px" }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                    }}
-                  >
+                </legend>
+                <div className="cwe-choices">
+                  <label className="cwe-choice">
                     <input
                       type="radio"
+                      name="cwe-credential-source"
                       checked={remediationCredSource === "jit"}
                       onChange={() => setRemediationCredSource("jit")}
                     />
                     One-time JIT Credentials
                   </label>
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                    }}
-                  >
+                  <label className="cwe-choice">
                     <input
                       type="radio"
+                      name="cwe-credential-source"
                       checked={remediationCredSource === "stored"}
                       onChange={() => setRemediationCredSource("stored")}
                     />
@@ -5778,206 +4807,116 @@ export default function ComplianceWorkspace() {
                   </label>
                 </div>
 
+                {/* A stored credential is chosen by its name and account and
+                    sent as its id; its secret never reaches the page. */}
                 {remediationCredSource === "stored" ? (
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Select Saved Credential
-                    </label>
-                    <select
-                      value={selectedCredId}
-                      onChange={(e) => setSelectedCredId(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        borderRadius: "4px",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      <option value="">-- Choose Credential --</option>
-                      {credentialsList.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.username})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "10px",
-                    }}
+                  <CcureSelect
+                    label="Select Saved Credential"
+                    value={selectedCredId}
+                    onChange={(e) => setSelectedCredId(e.target.value)}
                   >
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        SSH Username
-                      </label>
-                      <input
-                        type="text"
-                        value={jitUsername}
-                        onChange={(e) => setJitUsername(e.target.value)}
-                        placeholder="e.g. root"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        SSH Port
-                      </label>
-                      <input
-                        type="number"
-                        value={jitPort}
-                        onChange={(e) => setJitPort(e.target.value)}
-                        placeholder="22"
-                      />
-                    </div>
-                    <div style={{ gridColumn: "span 2" }}>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        Auth Method
-                      </label>
-                      <select
-                        value={jitAuthMethod}
-                        onChange={(e) => setJitAuthMethod(e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "8px",
-                          borderRadius: "4px",
-                          border: "1px solid var(--border)",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        <option value="password">Password</option>
-                        <option value="key">Private SSH Key</option>
-                      </select>
-                    </div>
+                    <option value="">-- Choose Credential --</option>
+                    {credentialsList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.username})
+                      </option>
+                    ))}
+                  </CcureSelect>
+                ) : (
+                  <div className="cwe-jit">
+                    <CcureInput
+                      label="SSH Username"
+                      value={jitUsername}
+                      onChange={(e) => setJitUsername(e.target.value)}
+                      placeholder="e.g. root"
+                    />
+                    <CcureInput
+                      type="number"
+                      label="SSH Port"
+                      value={jitPort}
+                      onChange={(e) => setJitPort(e.target.value)}
+                      placeholder="22"
+                    />
+                    <CcureSelect
+                      label="Auth Method"
+                      fieldClassName="cwe-jit__wide"
+                      value={jitAuthMethod}
+                      /* Switching method drops whatever the other method held.
+                         That value is never sent once the method changes, and
+                         keeping it in state meant it came back if the operator
+                         switched away and back again. */
+                      onChange={(e) => {
+                        setJitAuthMethod(e.target.value);
+                        setJitPassword("");
+                        setJitKeyContent("");
+                      }}
+                    >
+                      <option value="password">Password</option>
+                      <option value="key">Private SSH Key</option>
+                    </CcureSelect>
+                    {/* `new-password`: the browser must not offer the signed-in
+                        user's own password into a field that sends someone
+                        else's, nor keep a revealed value in form history. */}
                     {jitAuthMethod === "password" ? (
-                      <div style={{ gridColumn: "span 2" }}>
-                        <label
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--text-muted)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Password
-                        </label>
-                        <input
-                          type="password"
-                          value={jitPassword}
-                          onChange={(e) => setJitPassword(e.target.value)}
-                          placeholder="••••••••"
-                        />
-                      </div>
+                      <CcurePasswordField
+                        className="cwe-jit__wide"
+                        label="Password"
+                        value={jitPassword}
+                        onChange={(e) => setJitPassword(e.target.value)}
+                        placeholder="••••••••"
+                        hint="Encrypted with this request; not added to saved credentials."
+                        autoComplete="new-password"
+                      />
                     ) : (
-                      <div style={{ gridColumn: "span 2" }}>
-                        <label
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--text-muted)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Private Key Content
-                        </label>
+                      <CcureField
+                        id="cwe-jit-key"
+                        className="cwe-jit__wide"
+                        label="Private Key Content"
+                        hint="Encrypted with this request; not added to saved credentials."
+                      >
                         <textarea
+                          id="cwe-jit-key"
+                          className="cc-field__control cwe-key"
                           value={jitKeyContent}
                           onChange={(e) => setJitKeyContent(e.target.value)}
                           placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "0.72rem",
-                            height: "80px",
-                            width: "100%",
-                            boxSizing: "border-box",
-                          }}
+                          aria-describedby="cwe-jit-key-hint"
                         />
-                      </div>
+                      </CcureField>
                     )}
                   </div>
                 )}
-              </div>
+              </fieldset>
 
               {isComplianceAdmin && (
-                <div
-                  style={{
-                    marginTop: "8px",
-                    borderTop: "1px solid var(--border)",
-                    paddingTop: "12px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.78rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                    }}
-                  >
+                <div className="cwe-bypass">
+                  <label className="cwe-choice cwe-choice--strong">
                     <input
                       type="checkbox"
                       checked={emergencyBypass}
                       onChange={(e) => setEmergencyBypass(e.target.checked)}
+                      aria-describedby="cwe-bypass-note"
                     />
-                    ⚡ Emergency Bypass (Direct Execution - Skip Approvals
-                    Queue)
+                    <span aria-hidden="true">⚡</span> Emergency Bypass (Direct
+                    Execution - Skip Approvals Queue)
                   </label>
-                  <p
-                    style={{
-                      margin: "0.25rem 0 0 20px",
-                      fontSize: "0.68rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
+                  <p id="cwe-bypass-note" className="cwe-bypass__note">
                     Note: Emergency bypass will log a critical priority incident
                     alert to the IP audit logs.
                   </p>
                 </div>
               )}
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  marginTop: "20px",
-                  justifyContent: "flex-end",
-                }}
-              >
+              {/* Dispatch is a danger action for a rollback and whenever the
+                  bypass would run the script at once rather than queue it. */}
+              <div className="cwe-guide__actions">
                 {selectedFinding.fix_command ? (
-                  <button
-                    type="button"
-                    className="db-btn db-btn--primary"
+                  <CcureButton
+                    variant={
+                      modalType === "rollback" || emergencyBypass
+                        ? "danger"
+                        : "primary"
+                    }
                     onClick={() => {
                       if (modalType === "rollback") {
                         handleRollback(selectedFinding.id);
@@ -5986,107 +4925,62 @@ export default function ComplianceWorkspace() {
                       }
                       setModalOpen(false);
                     }}
-                    style={{
-                      background:
-                        modalType === "rollback" ? "#f57c00" : undefined,
-                      borderColor:
-                        modalType === "rollback" ? "#f57c00" : undefined,
-                    }}
                   >
+                    <span aria-hidden="true">🚀</span>{" "}
                     {modalType === "rollback"
-                      ? "🚀 Dispatch Rollback Request"
-                      : "🚀 Dispatch Fix Request"}
-                  </button>
+                      ? "Dispatch Rollback Request"
+                      : "Dispatch Fix Request"}
+                  </CcureButton>
                 ) : (
-                  <button
-                    type="button"
-                    className="db-btn db-btn--ghost"
-                    style={{ cursor: "not-allowed", opacity: 0.6 }}
-                    disabled
-                  >
+                  <CcureButton variant="secondary" disabled>
+                    <span aria-hidden="true">⚙️</span>{" "}
                     {modalType === "rollback"
-                      ? "⚙️ No Automated Rollback Available"
-                      : "⚙️ No Automated Fix Available"}
-                  </button>
+                      ? "No Automated Rollback Available"
+                      : "No Automated Fix Available"}
+                  </CcureButton>
                 )}
-                <button
-                  type="button"
-                  className="db-btn db-btn--ghost"
+                <CcureButton
+                  variant="ghost"
                   onClick={() => setModalOpen(false)}
                 >
                   Close Guide
-                </button>
+                </CcureButton>
               </div>
             </div>
           )}
 
         {modalType === "log_viewer" && selectedFinding && (
-          <div
-            className="compliance-form"
-            style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-          >
-            <div>
-              <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
+          <div className="cwe-guide">
+            <div className="cwe-guide__intro">
+              <h3 className="cwe-guide__heading">
                 Execution Log:{" "}
-                <span className="mono">{selectedFinding.control_id}</span>
+                <span className="cwe-mono">{selectedFinding.control_id}</span>
               </h3>
-              <p
-                style={{
-                  margin: "0.25rem 0 1rem",
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                }}
-              >
+              <p className="cwe-guide__context">
                 Target IP: {selectedFinding.asset_ip}
               </p>
             </div>
-            <div>
-              <label
-                style={{
-                  fontSize: "0.72rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 600,
-                  display: "block",
-                  marginBottom: "6px",
-                  textTransform: "uppercase",
-                }}
-              >
+            <div className="cwe-section">
+              <h4 id="cwe-log-title" className="cwe-label">
                 Console Output
-              </label>
+              </h4>
               <pre
-                className="mono"
-                style={{
-                  background: "#272822",
-                  color: "#f8f8f2",
-                  padding: "12px",
-                  borderRadius: "4px",
-                  fontSize: "0.72rem",
-                  overflowX: "auto",
-                  margin: 0,
-                  maxHeight: "300px",
-                }}
+                className="cwe-console cwe-console--tall"
+                role="region"
+                aria-labelledby="cwe-log-title"
+                tabIndex={0}
               >
                 {selectedFinding.execution_log || "No console output recorded."}
               </pre>
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginTop: "12px",
-              }}
-            >
-              <button
-                type="button"
-                className="db-btn db-btn--ghost"
-                onClick={() => setModalOpen(false)}
-              >
+            <div className="cwe-guide__actions">
+              <CcureButton variant="ghost" onClick={() => setModalOpen(false)}>
                 Close Logs
-              </button>
+              </CcureButton>
             </div>
           </div>
         )}
-      </Modal>
+      </CcureModal>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );

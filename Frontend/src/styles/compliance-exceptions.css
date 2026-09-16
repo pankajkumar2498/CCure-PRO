@@ -1,0 +1,71 @@
+/* ============================================================================
+   Compliance workspace — the Exceptions tab
+   ----------------------------------------------------------------------------
+   Batch 26A. The tab drew itself from dashboard.css (.db-card, .db-table,
+   .db-status), compliance.css (.cw-pagination) and two inline style objects.
+   Everything here resolves through `--ccure-*` tokens in both themes. The
+   table, status badge, buttons and pagination are design-system components;
+   this file lays them out.
+
+   dashboard.css, compliance.css and scan.css are untouched: the workspace's
+   other tabs still use every class this tab used.
+   ============================================================================ */
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+.cwx-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+  padding: var(--ccure-space-lg);
+  color: var(--ccure-text);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.cwx-panel__title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+}
+
+/* ── Paging ───────────────────────────────────────────────────────────────── */
+/* CcurePagination has no first or last page control, and the tab has always
+   offered both, so the two buttons sit beside it rather than inside it. */
+.cwx-panel__paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+}
+
+.cwx-panel__paging .cc-pagination {
+  flex: 1 1 auto;
+}
+
+.cwx-panel__jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwx-panel {
+    padding: var(--ccure-space-md);
+  }
+
+  .cwx-panel__paging,
+  .cwx-panel__paging .cc-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cwx-panel__paging .cc-pagination__controls {
+    flex-wrap: wrap;
+  }
+}

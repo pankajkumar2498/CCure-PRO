@@ -17,18 +17,32 @@
  *   • Cancel / Retry support
  *   • Scan intensity selector (before pipeline starts)
  *   • Failure handling with phase-specific retry
+ *
+ * Checkpoint 3C batch 24 — on the design system. The automatic start, the
+ * dispatch requests, the ticket and progress sockets, cancel, retry and restart
+ * are unchanged, and pinned by src/__tests__/pages/scan/Phase3Results.test.jsx,
+ * written against the page before migration.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import ScanStepper from "../../components/layout/ScanStepper";
-import Modal from "../../components/layout/Modal";
 import CVELink from "../../components/common/CVELink";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import api from "../../api/axiosInstance";
 import { stopScan } from "../../api/scans";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureModal,
+  CcureProgress,
+  CcureSeverityBadge,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/phase3-results.css";
 
 /** Progress-socket URL for a scan. Derived from the axios base URL only. */
 function buildScanProgressUrl(scanId, ticket) {
@@ -91,46 +105,22 @@ async function waitForPhase(scanId, phase, signal) {
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
-const SEV_COLOR = {
-  Critical: "#ff4d4d",
-  High: "#f97316",
-  Medium: "#f59e0b",
-  Low: "#22c55e",
-  Info: "#60a5fa",
-  critical: "#ff4d4d",
-  high: "#f97316",
-  medium: "#f59e0b",
-  low: "#22c55e",
-  info: "#60a5fa",
-};
-
-const getSevColor = (sev) => {
-  if (!sev) return SEV_COLOR.Info;
-  // Try exact match, then title case, then lowercase
-  return (
-    SEV_COLOR[sev] ||
-    SEV_COLOR[sev.charAt(0).toUpperCase() + sev.slice(1).toLowerCase()] ||
-    SEV_COLOR[sev.toLowerCase()] ||
-    SEV_COLOR.Info
-  );
-};
-
-// GAP-07: device category → { icon, color, label } for richly-rendered badge
+// GAP-07: device category → { icon, label } for the device badge
 const DEVICE_CAT_META = {
-  router: { icon: "🔀", color: "#60a5fa", label: "Router" },
-  switch: { icon: "🔗", color: "#818cf8", label: "Switch" },
-  firewall: { icon: "🛡", color: "#f97316", label: "Firewall" },
-  wireless_ap: { icon: "📡", color: "#22d3ee", label: "Wireless AP" },
-  printer: { icon: "🖨", color: "#a78bfa", label: "Printer" },
-  iot: { icon: "⚙", color: "#fb923c", label: "IoT/ICS" },
-  server: { icon: "🖥", color: "#34d399", label: "Server" },
-  endpoint: { icon: "💻", color: "#94a3b8", label: "Endpoint" },
-  voip: { icon: "📞", color: "#f472b6", label: "VoIP" },
-  storage: { icon: "💾", color: "#fbbf24", label: "Storage" },
-  network_appliance: { icon: "🔌", color: "#64748b", label: "Net Appliance" },
-  scada_ics: { icon: "🏭", color: "#f43f5e", label: "Industrial/OT" },
-  virtual_machine: { icon: "🌐", color: "#a855f7", label: "Virtual Machine" },
-  unknown: { icon: "❓", color: "var(--text-muted)", label: "Unknown" },
+  router: { icon: "🔀", label: "Router" },
+  switch: { icon: "🔗", label: "Switch" },
+  firewall: { icon: "🛡", label: "Firewall" },
+  wireless_ap: { icon: "📡", label: "Wireless AP" },
+  printer: { icon: "🖨", label: "Printer" },
+  iot: { icon: "⚙", label: "IoT/ICS" },
+  server: { icon: "🖥", label: "Server" },
+  endpoint: { icon: "💻", label: "Endpoint" },
+  voip: { icon: "📞", label: "VoIP" },
+  storage: { icon: "💾", label: "Storage" },
+  network_appliance: { icon: "🔌", label: "Net Appliance" },
+  scada_ics: { icon: "🏭", label: "Industrial/OT" },
+  virtual_machine: { icon: "🌐", label: "Virtual Machine" },
+  unknown: { icon: "❓", label: "Unknown" },
 };
 
 // GAP-06 + Deep Probes: count all active exploit / misconfiguration conditions on a host
@@ -198,6 +188,597 @@ const PHASE_MESSAGES = {
     desc: "Analyzing services for CVEs and security risks.",
   },
 };
+
+/* ── Presentation ─────────────────────────────────────────────────────────── */
+
+/* A glyph repeats what its text already says, so assistive technology skips
+   it. It stays on screen. */
+function Glyph({ children }) {
+  return (
+    <span className="p3-glyph" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
+/* The host name a result table shows: the hostname, else the mDNS name, else
+   the first NetBIOS name. "Unknown" stays when there is nothing better. */
+const displayHostName = (host) => {
+  let displayHost = host.hostname;
+  if (!displayHost || displayHost === "Unknown") {
+    if (host.mdns_name) displayHost = host.mdns_name;
+    else if (host.netbios_names && host.netbios_names.length)
+      displayHost = host.netbios_names[0].name;
+  }
+  return displayHost;
+};
+
+const Muted = ({ children = "—" }) => (
+  <span className="p3-muted">{children}</span>
+);
+
+function FilterGroup({ label, value, onChange, options }) {
+  return (
+    <div className="p3-filter" role="group" aria-label={label}>
+      {options.map(([val, lbl]) => (
+        <CcureButton
+          key={val}
+          variant="secondary"
+          size="sm"
+          className="p3-filter__option"
+          aria-pressed={value === val}
+          onClick={() => onChange(val)}
+        >
+          {lbl}
+        </CcureButton>
+      ))}
+    </div>
+  );
+}
+
+function SectionHeading({ number, title, description, timing }) {
+  return (
+    <div className="p3-section__header">
+      <div>
+        <h2 className="p3-section__title">
+          <span className="p3-section__badge" aria-hidden="true">
+            ✓
+          </span>{" "}
+          {number}. {title}
+        </h2>
+        <p className="p3-section__desc">{description}</p>
+      </div>
+      {timing ? <span className="p3-timing">{timing}s</span> : null}
+    </div>
+  );
+}
+
+const severityCount = (hosts, band) => {
+  let count = 0;
+  hosts.forEach((h) => {
+    (h.cves || []).forEach((cve) => {
+      const sev = (cve.severity || "Info").toLowerCase();
+      if (sev === band) count++;
+    });
+  });
+  return count;
+};
+
+/* Findings a host's deep probes established, in the order they are listed. */
+const misconfigurationBadges = (host) => {
+  const badges = [];
+  const ftp = host.ftp_info || {};
+  const http = host.http_audit || {};
+  const smb = host.smb_info || {};
+  const tls = host.tls_info || {};
+
+  if (host.heartbleed_info?.vulnerable)
+    badges.push({ label: "Heartbleed", tone: "danger", icon: "💉" });
+  if (host.smb_ms17010_info?.ms17010_likely)
+    badges.push({ label: "EternalBlue", tone: "danger", icon: "💣" });
+  if (host.ldap_info?.anonymous_bind?.allowed)
+    badges.push({ label: "LDAP Anon Bind", tone: "warning", icon: "🔓" });
+  if (host.dns_info?.zone_transfer?.vulnerable)
+    badges.push({ label: "DNS Zone Transfer", tone: "warning", icon: "📡" });
+  if (ftp.anonymous_login)
+    badges.push({ label: "FTP Anon Login", tone: "warning", icon: "📂" });
+  if (ftp.write_access)
+    badges.push({ label: "FTP Write Access", tone: "danger", icon: "✍️" });
+  if (ftp.weak_credentials?.length)
+    badges.push({
+      label: `FTP Weak Creds (${ftp.weak_credentials.length})`,
+      tone: "warning",
+      icon: "🔑",
+    });
+  if (http.exposed_paths?.length)
+    badges.push({
+      label: `Exposed Paths (${http.exposed_paths.length})`,
+      tone: "warning",
+      icon: "📁",
+    });
+  if (http.admin_panels?.length)
+    badges.push({
+      label: `Admin Panels (${http.admin_panels.length})`,
+      tone: "warning",
+      icon: "⚙️",
+    });
+  if (http.dangerous_methods?.length)
+    badges.push({
+      label: "Dangerous HTTP Methods",
+      tone: "warning",
+      icon: "🔧",
+    });
+  if (smb.open && smb.null_session)
+    badges.push({ label: "SMB Null Session", tone: "warning", icon: "🗂" });
+  if (tls.cert_expired)
+    badges.push({ label: "TLS Cert Expired", tone: "warning", icon: "🔒" });
+  return badges;
+};
+
+/**
+ * CcureModal's own outside-click handling never fires (it reads the React
+ * event's currentTarget after dispatch, when React has already cleared it).
+ * The legacy report dialog closed on a click outside it, so the page listens
+ * for a click on this dialog's own overlay, as ScanHistory does.
+ */
+function useCloseOnOverlayClick(active, dialogClass, onClose) {
+  useEffect(() => {
+    if (!active) return undefined;
+    const onClick = (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.classList.contains("cc-modal__overlay") &&
+        target.firstElementChild?.classList.contains(dialogClass)
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [active, dialogClass, onClose]);
+}
+
+function RiskReport({
+  open,
+  onClose,
+  scanNo,
+  target,
+  hosts,
+  phase1Summary,
+  phase3Summary,
+  pipelinePhaseTimings,
+}) {
+  useCloseOnOverlayClick(open, "p3-report", onClose);
+
+  const totalCves = hosts.reduce((sum, h) => sum + (h.cves?.length ?? 0), 0);
+  const hostsWithCves = hosts.filter((h) => (h.cves?.length ?? 0) > 0);
+
+  return (
+    <CcureModal
+      open={open}
+      onClose={onClose}
+      title="Risk Report - Full Assessment"
+      subtitle={`Scan No. ${scanNo ?? "-"} - Target: ${target}`}
+      size="lg"
+      closeLabel="Close"
+      closeOnOverlayClick={false}
+      className="p3-report"
+    >
+      <div className="p3-report__intro">
+        <h3 className="p3-report__heading">
+          <Glyph>✓</Glyph> Full Pipeline Complete
+        </h3>
+        <p className="p3-report__lead">
+          All scan phases finished successfully. Complete vulnerability analysis
+          and risk assessment below.
+        </p>
+      </div>
+
+      <dl className="p3-stats">
+        <div className="p3-stat p3-stat--success">
+          <dt className="p3-stat__label">Total Hosts Audited</dt>
+          <dd className="p3-stat__value">
+            {phase3Summary?.total_hosts ?? hosts.length}
+          </dd>
+        </div>
+        <div className="p3-stat p3-stat--danger">
+          <dt className="p3-stat__label">Total CVEs Found</dt>
+          <dd className="p3-stat__value">{totalCves}</dd>
+        </div>
+        <div className="p3-stat p3-stat--danger">
+          <dt className="p3-stat__label">Critical Risk Hosts</dt>
+          <dd className="p3-stat__value">
+            {
+              hosts.filter(
+                (h) => (h.host_risk_level || "").toLowerCase() === "critical",
+              ).length
+            }
+          </dd>
+        </div>
+        <div className="p3-stat p3-stat--warning">
+          <dt className="p3-stat__label">High Risk Hosts</dt>
+          <dd className="p3-stat__value">
+            {
+              hosts.filter(
+                (h) => (h.host_risk_level || "").toLowerCase() === "high",
+              ).length
+            }
+          </dd>
+        </div>
+      </dl>
+
+      <section className="p3-report__block">
+        <h3 className="p3-report__heading">
+          <Glyph>📊</Glyph> Scan Timeline
+        </h3>
+        <dl className="p3-timeline">
+          <div className="p3-timeline__item">
+            <dt>Phase 1: Discovery</dt>
+            <dd>{fmtSec(phase1Summary?.scan_duration)}s</dd>
+          </div>
+          <div className="p3-timeline__item">
+            <dt>Phase 2: Port Scan</dt>
+            <dd>
+              {pipelinePhaseTimings.portScan
+                ? fmtSec(pipelinePhaseTimings.portScan)
+                : "—"}
+              s
+            </dd>
+          </div>
+          <div className="p3-timeline__item">
+            <dt>Phase 3: Vulnerability Audit</dt>
+            <dd>
+              {pipelinePhaseTimings.vulnScan
+                ? fmtSec(pipelinePhaseTimings.vulnScan)
+                : "—"}
+              s
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="p3-report__block">
+        <h3 className="p3-report__heading">
+          <Glyph>⚠️</Glyph> Vulnerability Severity Distribution
+        </h3>
+        <ul className="p3-distribution">
+          {[
+            ["critical", "Critical"],
+            ["high", "High"],
+            ["medium", "Medium"],
+            ["low", "Low"],
+            ["info", "Info"],
+          ].map(([band, label]) => (
+            <li
+              key={band}
+              className={`p3-distribution__item p3-distribution__item--${band}`}
+            >
+              <span className="p3-distribution__count">
+                {severityCount(hosts, band)}
+              </span>
+              <span className="p3-distribution__label">{label}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="p3-report__block">
+        <h3 className="p3-report__heading">
+          <Glyph>🖥️</Glyph> Affected Hosts ({hosts.length} total)
+        </h3>
+        <CcureTable
+          caption="Affected hosts"
+          density="compact"
+          rows={hosts}
+          rowKey={(host) => host.ip_address}
+          columns={[
+            {
+              key: "ip_address",
+              header: "IP Address",
+              isRowHeader: true,
+              mono: true,
+            },
+            {
+              key: "hostname",
+              header: "Hostname",
+              cell: (host) =>
+                usefulText(host.hostname) || <Muted>Not detected</Muted>,
+            },
+            {
+              key: "open_ports",
+              header: "Open Ports",
+              cell: (host) =>
+                (host.open_ports || []).length > 0
+                  ? `${(host.open_ports || []).length}`
+                  : "—",
+            },
+            {
+              key: "os",
+              header: "OS",
+              cell: (host) =>
+                usefulText(host.os_guess) || <Muted>Not detected</Muted>,
+            },
+            {
+              key: "cves",
+              header: "Vulnerabilities",
+              align: "center",
+              cell: (host) => (
+                <span className="p3-strong">{host.cves?.length ?? 0}</span>
+              ),
+            },
+            {
+              key: "risk",
+              header: "Risk",
+              cell: (host) => (
+                <CcureSeverityBadge severity={host.host_risk_level || "Info"} />
+              ),
+            },
+            {
+              key: "status",
+              header: "Status",
+              cell: (host) => (
+                <CcureBadge variant={host.is_active ? "success" : "neutral"}>
+                  <Glyph>{host.is_active ? "✓" : "○"}</Glyph>{" "}
+                  {host.is_active ? "Active" : "Inactive"}
+                </CcureBadge>
+              ),
+            },
+          ]}
+        />
+      </section>
+
+      <section className="p3-report__block">
+        <h3 className="p3-report__heading">
+          <Glyph>🔍</Glyph> Detailed Vulnerability Analysis
+        </h3>
+        {hostsWithCves.map((host) => {
+          const badges = misconfigurationBadges(host);
+          return (
+            <article key={host.ip_address} className="p3-host">
+              <div className="p3-host__header">
+                <div className="p3-host__identity">
+                  <span className="p3-mono p3-strong">{host.ip_address}</span>{" "}
+                  <span className="p3-muted">
+                    {usefulText(host.hostname) || <Muted>Not detected</Muted>}
+                  </span>
+                </div>
+                <span className="p3-host__risk">
+                  <CcureSeverityBadge severity={host.host_risk_level} /> Risk
+                </span>
+              </div>
+
+              <div className="p3-host__body">
+                {badges.length > 0 && (
+                  <div className="p3-findings">
+                    <p className="p3-findings__label">
+                      <Glyph>⚡</Glyph> Active Misconfiguration Findings
+                    </p>
+                    <ul className="p3-badges">
+                      {badges.map((b, i) => (
+                        <li key={i}>
+                          <CcureBadge variant={b.tone}>
+                            <Glyph>{b.icon}</Glyph> {b.label}
+                          </CcureBadge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {host.ftp_info?.open && (
+                  <div className="p3-probe p3-probe--ftp">
+                    <p className="p3-probe__title">
+                      <Glyph>📂</Glyph> FTP Service
+                    </p>
+                    {truncateEvidence(host.ftp_info.banner) && (
+                      <p className="p3-probe__line">
+                        Banner:{" "}
+                        <code className="p3-code">
+                          {truncateEvidence(host.ftp_info.banner)}
+                        </code>
+                      </p>
+                    )}
+                    {(host.ftp_info.issues || []).length > 0 && (
+                      <ul className="p3-probe__issues">
+                        {(host.ftp_info.issues || []).map((issue, i) => (
+                          <li key={i}>
+                            <Glyph>•</Glyph> {issue}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {(host.ftp_info.weak_credentials || []).length > 0 && (
+                      <p className="p3-probe__line">
+                        <strong className="p3-tone-warning">
+                          Weak credentials accepted:
+                        </strong>{" "}
+                        {host.ftp_info.weak_credentials.map((c, i) => (
+                          <code key={i} className="p3-code p3-cred">
+                            {maskCredential(c)}
+                          </code>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {host.http_audit &&
+                  (host.http_audit.exposed_paths?.length ||
+                    host.http_audit.admin_panels?.length ||
+                    host.http_audit.dangerous_methods?.length ||
+                    host.http_audit.issues?.length) && (
+                    <div className="p3-probe p3-probe--http">
+                      <p className="p3-probe__title">
+                        <Glyph>🌐</Glyph> HTTP Service
+                      </p>
+                      {truncateEvidence(host.http_audit.server_header) && (
+                        <p className="p3-probe__line">
+                          Server:{" "}
+                          <code className="p3-code">
+                            {truncateEvidence(host.http_audit.server_header)}
+                          </code>
+                        </p>
+                      )}
+                      {(host.http_audit.issues || []).length > 0 && (
+                        <ul className="p3-probe__issues">
+                          {(host.http_audit.issues || [])
+                            .slice(0, 4)
+                            .map((issue, i) => (
+                              <li key={i}>
+                                <Glyph>•</Glyph> {issue}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                      {(host.http_audit.exposed_paths || []).length > 0 && (
+                        <div className="p3-probe__group">
+                          <p className="p3-probe__subtitle">Exposed Paths:</p>
+                          <ul className="p3-paths">
+                            {host.http_audit.exposed_paths.map((p, i) => (
+                              <li key={i}>
+                                <code className="p3-code">
+                                  {p.path} [{p.status}]
+                                  {p.note?.includes("directory") ? (
+                                    <>
+                                      {" "}
+                                      <Glyph>📂</Glyph>
+                                    </>
+                                  ) : null}
+                                </code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {(host.http_audit.admin_panels || []).length > 0 && (
+                        <div className="p3-probe__group">
+                          <p className="p3-probe__subtitle">
+                            Admin Panels Detected:
+                          </p>
+                          <ul className="p3-probe__issues">
+                            {host.http_audit.admin_panels.map((p, i) => (
+                              <li key={i}>
+                                <Glyph>⚙️</Glyph> <strong>{p.product}</strong> @{" "}
+                                <code className="p3-code">{p.path}</code> (HTTP{" "}
+                                {p.status})
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {(host.http_audit.dangerous_methods || []).length > 0 && (
+                        <div className="p3-probe__group">
+                          <p className="p3-probe__subtitle">
+                            Dangerous Methods:
+                          </p>
+                          <p className="p3-probe__line">
+                            {host.http_audit.dangerous_methods.join(" | ")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {(host.cves || []).length > 0 && (
+                  <p className="p3-cves__label">CVEs</p>
+                )}
+                <ul className="p3-cves">
+                  {(host.cves || []).map((cve, idx) => (
+                    <li key={idx} className="p3-cve">
+                      <div className="p3-cve__head">
+                        <span className="p3-cve__id">
+                          <CVELink cveId={cve.cve_id || "Unknown CVE"} />
+                        </span>
+                        <CcureSeverityBadge severity={cve.severity || "Info"} />
+                      </div>
+                      {cve.cvss_score && (
+                        <p className="p3-cve__line">
+                          CVSS Score:{" "}
+                          <strong>
+                            {Number(cve.cvss_score || cve.cvss || 0).toFixed(1)}
+                          </strong>
+                          /10
+                        </p>
+                      )}
+                      {cve.description && (
+                        <p className="p3-cve__desc">
+                          {cve.description ||
+                            cve.desc ||
+                            "No description available"}
+                        </p>
+                      )}
+                      {cve.affected_software && (
+                        <p className="p3-cve__line">
+                          <strong>Affected:</strong> {cve.affected_software}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </article>
+          );
+        })}
+
+        {hostsWithCves.length === 0 && (
+          <p className="p3-empty">No vulnerabilities found in this scan.</p>
+        )}
+      </section>
+
+      <section className="p3-report__block p3-report__summary">
+        <h3 className="p3-report__heading">
+          <Glyph>📈</Glyph> Report Summary
+        </h3>
+        <ul className="p3-report__list">
+          <li>
+            Total hosts scanned: {phase3Summary?.total_hosts ?? hosts.length}
+          </li>
+          <li>Hosts with vulnerabilities: {hostsWithCves.length}</li>
+          <li>Total CVEs identified: {totalCves}</li>
+          <li>Critical severity: {severityCount(hosts, "critical")}</li>
+          <li>High severity: {severityCount(hosts, "high")}</li>
+          <li>
+            FTP misconfigurations:{" "}
+            {
+              hosts.filter(
+                (h) =>
+                  h.ftp_info?.anonymous_login ||
+                  h.ftp_info?.write_access ||
+                  h.ftp_info?.weak_credentials?.length,
+              ).length
+            }{" "}
+            host(s)
+          </li>
+          <li>
+            HTTP exposed paths:{" "}
+            {hosts.reduce(
+              (sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0),
+              0,
+            )}
+          </li>
+          <li>
+            HTTP admin panels found:{" "}
+            {hosts.reduce(
+              (sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0),
+              0,
+            )}
+          </li>
+          <li>
+            Active misconfiguration findings:{" "}
+            {hosts.reduce((sum, h) => sum + countActiveFindings(h), 0)}
+          </li>
+        </ul>
+      </section>
+
+      <p className="p3-tip">
+        <Glyph>📄</Glyph> <strong>Tip:</strong> Close this modal and navigate to
+        Scan History to export full PDF/XML reports with additional formatting
+        and charts.
+      </p>
+    </CcureModal>
+  );
+}
 
 /* ── Main Component ───────────────────────────────────────────────────────── */
 
@@ -612,393 +1193,290 @@ export default function Phase3Results() {
   const displayVulnHosts =
     filter3 === "active" ? activeVulnHosts : localVulnResults;
 
+  const failedPhaseLabel =
+    pipelineError?.phase === "PORT_SCAN" ? "Port Scan" : "Vulnerability Audit";
+
   return (
     <AppLayout pageTitle="Vulnerability Audit" saveStatus={saveStatus}>
       <ScanStepper current={currentStep} />
 
-      <div className="page-inner">
+      <div className="p3-page">
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">Vulnerability Audit</h2>
-            <p className="page-subtitle">
+        <header className="p3-header">
+          <div className="p3-header__text">
+            <h1 className="p3-title">Vulnerability Audit</h1>
+            <p className="p3-subtitle">
               Full pipeline execution from{" "}
-              <code className="ip-code">{target}</code>
+              <code className="p3-code">{target}</code>
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="p3-header__actions">
             {isScanning && (
-              <button className="btn btn--cancel" onClick={handleCancel}>
-                ✕ Cancel Scan
-              </button>
+              <CcureButton variant="danger" onClick={handleCancel}>
+                <Glyph>✕</Glyph> Cancel Scan
+              </CcureButton>
             )}
-            <button
-              className="btn btn--ghost"
-              onClick={() => navigate("/scan")}
-            >
-              ← Back
-            </button>
+            <CcureButton variant="secondary" onClick={() => navigate("/scan")}>
+              <Glyph>←</Glyph> Back
+            </CcureButton>
           </div>
-        </div>
+        </header>
 
         {/* PHASE 4: Unreachable Banner */}
         {isUnreachable && (
-          <div
-            style={{
-              margin: "16px 0",
-              padding: "16px 20px",
-              borderRadius: 8,
-              background: "rgba(245, 158, 11, 0.08)",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              color: "#92400e",
-            }}
+          <CcureAlert
+            variant="warning"
+            title="Host is unavailable/down/unreachable"
           >
-            <span style={{ fontSize: 24 }}>⚠️</span>
-            <div>
-              <strong style={{ display: "block", fontSize: 16 }}>
-                Host is unavailable/down/unreachable
-              </strong>
-              <p style={{ margin: "4px 0 0", fontSize: 14, opacity: 0.9 }}>
-                The automated pipeline stopped because Phase 1 (Discovery) found
-                no active hosts. Verify the target network and probes before
-                re-scanning.
-              </p>
-            </div>
-          </div>
+            The automated pipeline stopped because Phase 1 (Discovery) found no
+            active hosts. Verify the target network and probes before
+            re-scanning.
+          </CcureAlert>
         )}
 
         {/* ── Discovery Summary ───────────────────────────────────────────── */}
-        <div className="summary-bar" style={{ marginBottom: 16 }}>
-          <span className="summary-item">
-            <b>{phase1Summary?.total_hosts ?? safePhase1Hosts.length}</b> Total
-            discovered
-          </span>
-          <span className="summary-item summary-item--active">
-            <b>{phase1Summary?.active_hosts ?? activeDiscoveryHosts.length}</b>{" "}
+        <ul className="p3-summary" aria-label="Discovery summary">
+          <li className="p3-summary__item">
+            <strong>
+              {phase1Summary?.total_hosts ?? safePhase1Hosts.length}
+            </strong>{" "}
+            Total discovered
+          </li>
+          <li className="p3-summary__item p3-summary__item--active">
+            <strong>
+              {phase1Summary?.active_hosts ?? activeDiscoveryHosts.length}
+            </strong>{" "}
             Active
-          </span>
-          <span className="summary-item">
-            <b>
+          </li>
+          <li className="p3-summary__item">
+            <strong>
               {phase1Summary?.inactive_hosts ??
                 safePhase1Hosts.length - activeDiscoveryHosts.length}
-            </b>{" "}
+            </strong>{" "}
             Inactive
-          </span>
-          <span className="summary-item">
-            <b>{fmtSec(phase1Summary?.scan_duration)}s</b> Discovery time
-          </span>
-        </div>
+          </li>
+          <li className="p3-summary__item">
+            <strong>{fmtSec(phase1Summary?.scan_duration)}s</strong> Discovery
+            time
+          </li>
+        </ul>
 
         {/* ── Error State ─────────────────────────────────────────────────── */}
         {isError && pipelineError && (
-          <div className="pipeline-error-card">
-            <div className="pipeline-error-header">
-              <span className="pipeline-error-icon">⚠</span>
-              <div>
-                <strong>
-                  Pipeline failed at{" "}
-                  {pipelineError.phase === "PORT_SCAN"
-                    ? "Port Scan"
-                    : "Vulnerability Audit"}
-                </strong>
-                <p className="pipeline-error-detail">{pipelineError.message}</p>
-              </div>
-            </div>
-            <div className="pipeline-error-actions">
-              <button className="btn btn--primary" onClick={handleRetry}>
-                ↻ Retry from{" "}
-                {pipelineError.phase === "PORT_SCAN"
-                  ? "Port Scan"
-                  : "Vulnerability Audit"}
-              </button>
-              <button className="btn btn--ghost" onClick={handleRestart}>
-                ↺ Restart Full Pipeline
-              </button>
+          <div className="p3-outcome">
+            <CcureAlert
+              variant="danger"
+              title={`Pipeline failed at ${failedPhaseLabel}`}
+            >
+              {pipelineError.message}
+            </CcureAlert>
+            <div className="p3-actions">
+              <CcureButton onClick={handleRetry}>
+                <Glyph>↻</Glyph> Retry from {failedPhaseLabel}
+              </CcureButton>
+              <CcureButton variant="secondary" onClick={handleRestart}>
+                <Glyph>↺</Glyph> Restart Full Pipeline
+              </CcureButton>
             </div>
           </div>
         )}
 
         {/* ── Cancelled State ─────────────────────────────────────────────── */}
         {isCancelled && (
-          <div className="pipeline-cancelled-card">
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: "1.4rem" }}>⏹</span>
-              <div>
-                <strong>Scan Cancelled</strong>
-                <p className="muted" style={{ margin: "4px 0 0" }}>
-                  The pipeline was stopped by user request.
-                </p>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button className="btn btn--primary" onClick={handleRestart}>
-                ↺ Restart Pipeline
-              </button>
-              <button
-                className="btn btn--ghost"
+          <div className="p3-outcome">
+            <CcureAlert variant="info" title="Scan Cancelled">
+              The pipeline was stopped by user request.
+            </CcureAlert>
+            <div className="p3-actions">
+              <CcureButton onClick={handleRestart}>
+                <Glyph>↺</Glyph> Restart Pipeline
+              </CcureButton>
+              <CcureButton
+                variant="secondary"
                 onClick={() => navigate("/scan")}
               >
-                ← New Scan
-              </button>
+                <Glyph>←</Glyph> New Scan
+              </CcureButton>
             </div>
           </div>
         )}
 
         {/* ── Active Phase Progress ───────────────────────────────────────── */}
         {isScanning && activeMsg && (
-          <div
-            className="pipeline-progress-card"
-            style={{ padding: "16px 20px" }}
-          >
-            <div
-              className="pipeline-progress-header"
-              style={{ marginBottom: 12 }}
-            >
-              <div className="pipeline-pulse" />
+          <section className="p3-running" role="status">
+            <div className="p3-running__head">
+              <span className="p3-pulse" aria-hidden="true" />
               <div>
-                <h3
-                  className="pipeline-progress-title"
-                  style={{ fontSize: "0.95rem" }}
-                >
-                  {activeMsg.title}
-                </h3>
-                <p
-                  className="pipeline-progress-desc"
-                  style={{ fontSize: "0.8rem", marginTop: 2 }}
-                >
-                  {activeMsg.desc}
-                </p>
+                <h2 className="p3-running__title">{activeMsg.title}</h2>
+                <p className="p3-running__desc">{activeMsg.desc}</p>
               </div>
             </div>
-            <div
-              className="progress-bar progress-bar--pipeline"
-              style={{ height: 4 }}
-            >
-              <div className="progress-fill progress-fill--animated" />
-            </div>
-            <div className="pipeline-progress-meta" style={{ marginTop: 10 }}>
+            <CcureProgress
+              value={null}
+              label={activeMsg.title}
+              showValue={false}
+              className="p3-running__bar"
+            />
+            <p className="p3-running__meta">
               {pipelineState === PIPELINE_STATES.PORT_SCAN && (
-                <span className="muted" style={{ fontSize: 12 }}>
+                <>
                   Phase 2 of 3 · Intensity: <strong>{intensity}</strong>
-                </span>
+                </>
               )}
               {pipelineState === PIPELINE_STATES.VULN_SCAN && (
-                <span className="muted" style={{ fontSize: 12 }}>
+                <>
                   Phase 3 of 3 · {localPortHosts.length} host
                   {localPortHosts.length !== 1 ? "s" : ""} queued for audit
-                </span>
+                </>
               )}
-            </div>
-          </div>
+            </p>
+          </section>
         )}
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* SECTION 1: Discovery Results                                      */}
         {/* ══════════════════════════════════════════════════════════════════ */}
-        <section className="pipeline-section pipeline-section--done">
-          <div className="pipeline-section-header">
-            <div>
-              <h3 className="section-title">
-                <span className="section-badge section-badge--done">✓</span> 1.
-                Discovery Results
-              </h3>
-              <p className="muted">Live hosts detected during Phase 1.</p>
-            </div>
-          </div>
+        <section className="p3-section">
+          <SectionHeading
+            number={1}
+            title="Discovery Results"
+            description="Live hosts detected during Phase 1."
+          />
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              margin: "16px 0",
-              flexWrap: "wrap",
-            }}
-          >
-            <div className="filter-tabs">
-              {[
-                ["active", `Active (${activeDiscoveryHosts.length})`],
-                ["all", `All (${safePhase1Hosts.length})`],
-              ].map(([val, lbl]) => (
-                <button
-                  key={val}
-                  className={`filter-tab ${filter1 === val ? "filter-tab--active" : ""}`}
-                  onClick={() => setFilter1(val)}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterGroup
+            label="Show discovered hosts"
+            value={filter1}
+            onChange={setFilter1}
+            options={[
+              ["active", `Active (${activeDiscoveryHosts.length})`],
+              ["all", `All (${safePhase1Hosts.length})`],
+            ]}
+          />
 
-          <div className="results-table-wrap">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>IP Address</th>
-                  <th>Hostname</th>
-                  <th>MAC</th>
-                  <th>Vendor</th>
-                  <th>Method</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayDiscoveryHosts.map((host) => {
-                  let displayHost = host.hostname;
-                  if (!displayHost || displayHost === "Unknown") {
-                    if (host.mdns_name) displayHost = host.mdns_name;
-                    else if (host.netbios_names && host.netbios_names.length)
-                      displayHost = host.netbios_names[0].name;
-                  }
-                  return (
-                    <tr
-                      key={host.ip_address}
-                      className={
-                        host.is_active ? "row--active" : "row--inactive"
-                      }
-                    >
-                      <td>
-                        <code className="ip-code">{host.ip_address}</code>
-                      </td>
-                      <td>{displayHost || <span className="muted">—</span>}</td>
-                      <td>
-                        {host.mac_address || <span className="muted">—</span>}
-                      </td>
-                      <td>{host.vendor || <span className="muted">—</span>}</td>
-                      <td>
-                        {host.discovery_method || (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={`status-dot ${host.is_active ? "status-dot--up" : "status-dot--down"}`}
-                        />
-                        {host.is_active ? "Active" : "Inactive"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <CcureTable
+            caption="Discovered hosts"
+            density="compact"
+            rows={displayDiscoveryHosts}
+            rowKey={(host) => host.ip_address}
+            columns={[
+              {
+                key: "ip_address",
+                header: "IP Address",
+                isRowHeader: true,
+                mono: true,
+              },
+              {
+                key: "hostname",
+                header: "Hostname",
+                cell: (host) => displayHostName(host) || <Muted />,
+              },
+              {
+                key: "mac_address",
+                header: "MAC",
+                mono: true,
+                cell: (host) => host.mac_address || <Muted />,
+              },
+              {
+                key: "vendor",
+                header: "Vendor",
+                cell: (host) => host.vendor || <Muted />,
+              },
+              {
+                key: "discovery_method",
+                header: "Method",
+                cell: (host) => host.discovery_method || <Muted />,
+              },
+              {
+                key: "status",
+                header: "Status",
+                cell: (host) => (
+                  <span
+                    className={`p3-status ${host.is_active ? "p3-status--up" : "p3-status--down"}`}
+                  >
+                    <span className="p3-status__dot" aria-hidden="true" />
+                    {host.is_active ? "Active" : "Inactive"}
+                  </span>
+                ),
+              },
+            ]}
+          />
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* SECTION 2: Port Scan Results (appears after Phase 2 completes)    */}
         {/* ══════════════════════════════════════════════════════════════════ */}
         {localPortHosts.length > 0 && (
-          <section className="pipeline-section pipeline-section--reveal">
-            <div className="pipeline-section-header">
-              <div>
-                <h3 className="section-title">
-                  <span className="section-badge section-badge--done">✓</span>{" "}
-                  2. Port Scan Results
-                </h3>
-                <p className="muted">
-                  Open services discovered during Phase 2.
-                </p>
-              </div>
-              {pipelinePhaseTimings.portScan && (
-                <span className="pipeline-timing">
-                  {pipelinePhaseTimings.portScan}s
-                </span>
-              )}
-            </div>
+          <section className="p3-section">
+            <SectionHeading
+              number={2}
+              title="Port Scan Results"
+              description="Open services discovered during Phase 2."
+              timing={pipelinePhaseTimings.portScan}
+            />
 
-            <div className="summary-bar" style={{ marginBottom: 16 }}>
-              <span className="summary-item">
-                <b>{phase2Summary?.total_hosts ?? localPortHosts.length}</b>{" "}
+            <ul className="p3-summary" aria-label="Port scan summary">
+              <li className="p3-summary__item">
+                <strong>
+                  {phase2Summary?.total_hosts ?? localPortHosts.length}
+                </strong>{" "}
                 Hosts scanned
-              </span>
-              <span className="summary-item summary-item--active">
-                <b>
+              </li>
+              <li className="p3-summary__item p3-summary__item--active">
+                <strong>
                   {phase2Summary?.hosts_with_ports ??
                     localPortHosts.filter((h) => h.open_ports?.length).length}
-                </b>{" "}
+                </strong>{" "}
                 Have open ports
-              </span>
-              <span className="summary-item">
-                <b>{fmtSec(phase2Summary?.scan_duration)}s</b> Duration
-              </span>
-            </div>
+              </li>
+              <li className="p3-summary__item">
+                <strong>{fmtSec(phase2Summary?.scan_duration)}s</strong>{" "}
+                Duration
+              </li>
+            </ul>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                margin: "16px 0",
-                flexWrap: "wrap",
-              }}
-            >
-              <div className="filter-tabs">
-                {[
-                  ["active", `Active (${activePortHosts.length})`],
-                  ["all", `All (${localPortHosts.length})`],
-                ].map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    className={`filter-tab ${filter2 === val ? "filter-tab--active" : ""}`}
-                    onClick={() => setFilter2(val)}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterGroup
+              label="Show port-scanned hosts"
+              value={filter2}
+              onChange={setFilter2}
+              options={[
+                ["active", `Active (${activePortHosts.length})`],
+                ["all", `All (${localPortHosts.length})`],
+              ]}
+            />
 
-            <div className="results-table-wrap">
-              <table className="results-table">
-                <thead>
-                  <tr>
-                    <th>IP Address</th>
-                    <th>Hostname</th>
-                    <th>Open Ports</th>
-                    <th>OS (Guess)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayPortHosts.map((host) => {
-                    let displayHost = host.hostname;
-                    if (!displayHost || displayHost === "Unknown") {
-                      if (host.mdns_name) displayHost = host.mdns_name;
-                      else if (host.netbios_names && host.netbios_names.length)
-                        displayHost = host.netbios_names[0].name;
-                    }
-                    return (
-                      <tr
-                        key={host.ip_address}
-                        className={
-                          host.is_active ? "row--active" : "row--inactive"
-                        }
-                      >
-                        <td>
-                          <code className="ip-code">{host.ip_address}</code>
-                        </td>
-                        <td>
-                          {displayHost || <span className="muted">—</span>}
-                        </td>
-                        <td>
-                          {(host.open_ports || [])
-                            .map((p) => `${p.port}/${p.service}`)
-                            .join(", ") || <span className="muted">—</span>}
-                        </td>
-                        <td>
-                          {host.os_fingerprint_full?.os || host.os_guess || (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <CcureTable
+              caption="Port scan results"
+              density="compact"
+              rows={displayPortHosts}
+              rowKey={(host) => host.ip_address}
+              columns={[
+                {
+                  key: "ip_address",
+                  header: "IP Address",
+                  isRowHeader: true,
+                  mono: true,
+                },
+                {
+                  key: "hostname",
+                  header: "Hostname",
+                  cell: (host) => displayHostName(host) || <Muted />,
+                },
+                {
+                  key: "open_ports",
+                  header: "Open Ports",
+                  cell: (host) =>
+                    (host.open_ports || [])
+                      .map((p) => `${p.port}/${p.service}`)
+                      .join(", ") || <Muted />,
+                },
+                {
+                  key: "os",
+                  header: "OS (Guess)",
+                  cell: (host) =>
+                    host.os_fingerprint_full?.os || host.os_guess || <Muted />,
+                },
+              ]}
+            />
           </section>
         )}
 
@@ -1006,60 +1484,49 @@ export default function Phase3Results() {
         {/* SECTION 3: Vulnerability Results (appears after Phase 3)          */}
         {/* ══════════════════════════════════════════════════════════════════ */}
         {localVulnResults.length > 0 && (
-          <section className="pipeline-section pipeline-section--reveal">
-            <div className="pipeline-section-header">
-              <div>
-                <h3 className="section-title">
-                  <span className="section-badge section-badge--done">✓</span>{" "}
-                  3. Vulnerability Results
-                </h3>
-                <p className="muted">vulnerability findings below.</p>
-              </div>
-              {pipelinePhaseTimings.vulnScan && (
-                <span className="pipeline-timing">
-                  {pipelinePhaseTimings.vulnScan}s
-                </span>
-              )}
-            </div>
+          <section className="p3-section">
+            <SectionHeading
+              number={3}
+              title="Vulnerability Results"
+              description="vulnerability findings below."
+              timing={pipelinePhaseTimings.vulnScan}
+            />
 
-            <div className="summary-bar" style={{ marginBottom: 16 }}>
-              <span className="summary-item">
-                <b>{phase3Summary?.total_hosts ?? localVulnResults.length}</b>{" "}
+            <ul className="p3-summary" aria-label="Vulnerability audit summary">
+              <li className="p3-summary__item">
+                <strong>
+                  {phase3Summary?.total_hosts ?? localVulnResults.length}
+                </strong>{" "}
                 Audited
-              </span>
-              <span className="summary-item summary-item--danger">
-                <b>{phase3Summary?.critical_hosts ?? 0}</b> Critical
-              </span>
-              <span className="summary-item summary-item--warn">
-                <b>{phase3Summary?.high_risk_hosts ?? 0}</b> High risk
-              </span>
-              <span className="summary-item">
-                <b>{fmtSec(phase3Summary?.scan_duration)}s</b> Duration
-              </span>
+              </li>
+              <li className="p3-summary__item p3-summary__item--danger">
+                <strong>{phase3Summary?.critical_hosts ?? 0}</strong> Critical
+              </li>
+              <li className="p3-summary__item p3-summary__item--warning">
+                <strong>{phase3Summary?.high_risk_hosts ?? 0}</strong> High risk
+              </li>
+              <li className="p3-summary__item">
+                <strong>{fmtSec(phase3Summary?.scan_duration)}s</strong>{" "}
+                Duration
+              </li>
               {phase3Summary?.credentialed_hosts > 0 && (
-                <span className="summary-item" style={{ color: "#22c55e" }}>
-                  🔐 <b>{phase3Summary.credentialed_hosts}</b> Authenticated
-                </span>
+                <li className="p3-summary__item p3-summary__item--success">
+                  <Glyph>🔐</Glyph>{" "}
+                  <strong>{phase3Summary.credentialed_hosts}</strong>{" "}
+                  Authenticated
+                </li>
               )}
-            </div>
+            </ul>
 
             {/* Authenticated coverage. Which hosts were logged into bounds what
                 the package-level findings below can possibly cover, and a host
                 that was skipped is unassessed rather than clean. */}
             {phase3Summary?.credentialed_hosts !== undefined && (
-              <div
-                style={{
-                  margin: "0 0 16px",
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  background: "rgba(34, 197, 94, 0.07)",
-                  border: "1px solid rgba(34, 197, 94, 0.25)",
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                }}
-              >
-                <strong>🔐 Authenticated checks</strong>
-                <p style={{ margin: "6px 0 0", opacity: 0.92 }}>
+              <div className="p3-coverage">
+                <p className="p3-coverage__title">
+                  <Glyph>🔐</Glyph> Authenticated checks
+                </p>
+                <p className="p3-coverage__text">
                   {phase3Summary.credentialed_hosts} host
                   {phase3Summary.credentialed_hosts === 1
                     ? " was"
@@ -1070,18 +1537,19 @@ export default function Phase3Results() {
                   ones that are running but unreachable.
                 </p>
                 {phase3Summary.credentialed_skipped?.length > 0 && (
-                  <details style={{ marginTop: 8 }}>
-                    <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                  <details className="p3-coverage__skipped">
+                    <summary className="p3-coverage__summary">
                       {phase3Summary.credentialed_skipped.length} host
                       {phase3Summary.credentialed_skipped.length === 1
                         ? ""
                         : "s"}{" "}
                       not authenticated — findings for these are network-only
                     </summary>
-                    <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                    <ul className="p3-coverage__list">
                       {phase3Summary.credentialed_skipped.map((s) => (
                         <li key={s.target}>
-                          <code>{s.target}</code> — {s.reason}
+                          <code className="p3-code">{s.target}</code> —{" "}
+                          {s.reason}
                         </li>
                       ))}
                     </ul>
@@ -1090,180 +1558,126 @@ export default function Phase3Results() {
               </div>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                margin: "16px 0",
-                flexWrap: "wrap",
-              }}
-            >
-              <div className="filter-tabs">
-                {[
-                  ["active", `Active (${activeVulnHosts.length})`],
-                  ["all", `All (${localVulnResults.length})`],
-                ].map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    className={`filter-tab ${filter3 === val ? "filter-tab--active" : ""}`}
-                    onClick={() => setFilter3(val)}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <FilterGroup
+              label="Show audited hosts"
+              value={filter3}
+              onChange={setFilter3}
+              options={[
+                ["active", `Active (${activeVulnHosts.length})`],
+                ["all", `All (${localVulnResults.length})`],
+              ]}
+            />
 
-            <div className="results-table-wrap">
-              <table className="results-table">
-                <thead>
-                  <tr>
-                    <th>IP Address</th>
-                    <th>Device</th>
-                    <th>Operating System</th>
-                    <th>CVEs / Active</th>
-                    <th>Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayVulnHosts.map((host) => {
+            <CcureTable
+              caption="Vulnerability audit results"
+              density="compact"
+              rows={displayVulnHosts}
+              rowKey={(host) => host.ip_address}
+              columns={[
+                {
+                  key: "ip_address",
+                  header: "IP Address",
+                  isRowHeader: true,
+                  cell: (host) => {
+                    let hName = host.hostname;
+                    if (!hName || hName === "Unknown") {
+                      if (host.mdns_name) hName = host.mdns_name;
+                      else if (host.netbios_names && host.netbios_names.length)
+                        hName = host.netbios_names[0].name;
+                    }
+                    return (
+                      <>
+                        <span className="p3-mono">{host.ip_address}</span>
+                        {/* Whether this host's findings rest on an
+                            authenticated read of the OS or only on what the
+                            network exposed. The two are not comparable. */}
+                        {host.credentialed && (
+                          <CcureBadge
+                            variant="success"
+                            className="p3-auth"
+                            title={
+                              host.exposure_summary?.correlated_with_port_scan
+                                ? `Authenticated — ${host.exposure_summary.listeners_exposed ?? 0} listening service(s) confirmed reachable, ${host.exposure_summary.listeners_host_only ?? 0} host-only`
+                                : "Authenticated audit of the installed package inventory"
+                            }
+                          >
+                            <Glyph>🔐</Glyph> AUTH
+                          </CcureBadge>
+                        )}
+                        {hName && hName !== "Unknown" ? (
+                          <span className="p3-host-name">{hName}</span>
+                        ) : null}
+                      </>
+                    );
+                  },
+                },
+                {
+                  key: "device",
+                  header: "Device",
+                  cell: (host) => {
                     const devCat =
                       host.snmp_device_type ||
                       host.device_category ||
                       "unknown";
                     const catMeta =
                       DEVICE_CAT_META[devCat] || DEVICE_CAT_META.unknown;
+                    // GAP-07: device category badge with icon
+                    return devCat !== "unknown" ? (
+                      <CcureBadge
+                        variant="neutral"
+                        title={`Classified via: ${host.device_category_signal || "unknown"}`}
+                      >
+                        <Glyph>{catMeta.icon}</Glyph> {catMeta.label}
+                      </CcureBadge>
+                    ) : (
+                      <Muted />
+                    );
+                  },
+                },
+                {
+                  key: "os",
+                  header: "Operating System",
+                  cell: (host) =>
+                    host.os_fingerprint_full?.os || host.os_guess || <Muted />,
+                },
+                {
+                  key: "cves",
+                  header: "CVEs / Active",
+                  cell: (host) => {
                     const activeFindings = countActiveFindings(host);
                     return (
-                      <tr
-                        key={host.ip_address}
-                        className={
-                          host.is_active ? "row--active" : "row--inactive"
-                        }
-                      >
-                        <td>
-                          <code className="ip-code">{host.ip_address}</code>
-                          {/* Whether this host's findings rest on an
-                              authenticated read of the OS or only on what the
-                              network exposed. The two are not comparable. */}
-                          {host.credentialed && (
-                            <span
-                              title={
-                                host.exposure_summary?.correlated_with_port_scan
-                                  ? `Authenticated — ${host.exposure_summary.listeners_exposed ?? 0} listening service(s) confirmed reachable, ${host.exposure_summary.listeners_host_only ?? 0} host-only`
-                                  : "Authenticated audit of the installed package inventory"
-                              }
-                              style={{
-                                marginLeft: 6,
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: "#22c55e",
-                                border: "1px solid #22c55e",
-                                borderRadius: 4,
-                                padding: "1px 5px",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              🔐 AUTH
-                            </span>
-                          )}
-                          {(() => {
-                            let hName = host.hostname;
-                            if (!hName || hName === "Unknown") {
-                              if (host.mdns_name) hName = host.mdns_name;
-                              else if (
-                                host.netbios_names &&
-                                host.netbios_names.length
-                              )
-                                hName = host.netbios_names[0].name;
-                            }
-                            return hName && hName !== "Unknown" ? (
-                              <div
-                                className="muted small"
-                                style={{ marginTop: 4 }}
-                              >
-                                {hName}
-                              </div>
-                            ) : null;
-                          })()}
-                        </td>
-                        <td>
-                          {/* GAP-07: rich device category badge with icon + color */}
-                          {devCat !== "unknown" ? (
-                            <span
-                              title={`Classified via: ${host.device_category_signal || "unknown"}`}
-                              style={{
-                                fontSize: 11,
-                                background: `${catMeta.color}18`,
-                                border: `1px solid ${catMeta.color}55`,
-                                color: catMeta.color,
-                                padding: "2px 7px",
-                                borderRadius: 4,
-                                fontWeight: 600,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {catMeta.icon} {catMeta.label}
-                            </span>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          {host.os_fingerprint_full?.os || host.os_guess || (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          {/* GAP-06: CVE count + active exploit findings badge */}
-                          <span
-                            style={{
-                              color:
-                                (host.cves?.length ?? 0) > 0
-                                  ? SEV_COLOR.High
-                                  : "var(--text-faint)",
-                              fontFamily: "var(--mono)",
-                              fontSize: 12,
-                            }}
+                      <>
+                        {/* GAP-06: CVE count + active exploit findings badge */}
+                        <span
+                          className={`p3-count ${(host.cves?.length ?? 0) > 0 ? "p3-tone-warning" : "p3-muted"}`}
+                        >
+                          {(host.cves || []).length}
+                        </span>
+                        {activeFindings > 0 && (
+                          <CcureBadge
+                            variant="danger"
+                            className="p3-active"
+                            title="Active exploit conditions detected (Heartbleed, EternalBlue, LDAP anon, default creds, etc.)"
                           >
-                            {(host.cves || []).length}
-                          </span>
-                          {activeFindings > 0 && (
-                            <span
-                              title="Active exploit conditions detected (Heartbleed, EternalBlue, LDAP anon, default creds, etc.)"
-                              style={{
-                                marginLeft: 6,
-                                fontSize: 10,
-                                background: "rgba(255,77,77,0.15)",
-                                color: "#ff4d4d",
-                                border: "1px solid rgba(255,77,77,0.35)",
-                                borderRadius: 3,
-                                padding: "1px 5px",
-                                fontWeight: 700,
-                              }}
-                            >
-                              ⚡{activeFindings} active
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <span
-                            style={{
-                              color: getSevColor(host.host_risk_level),
-                              fontWeight: 700,
-                              fontSize: 12,
-                            }}
-                          >
-                            {host.host_risk_level || "Info"}
-                          </span>
-                        </td>
-                      </tr>
+                            <Glyph>⚡</Glyph>
+                            {activeFindings} active
+                          </CcureBadge>
+                        )}
+                      </>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  },
+                },
+                {
+                  key: "risk",
+                  header: "Risk",
+                  cell: (host) => (
+                    <CcureSeverityBadge
+                      severity={host.host_risk_level || "Info"}
+                    />
+                  ),
+                },
+              ]}
+            />
           </section>
         )}
 
@@ -1271,40 +1685,10 @@ export default function Phase3Results() {
         {/* PIPELINE COMPLETE — View Risk Report CTA                          */}
         {/* ══════════════════════════════════════════════════════════════════ */}
         {isDone && localVulnResults.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 12,
-              marginTop: 32,
-            }}
-          >
-            <button
-              className="btn btn--primary btn--lg"
-              onClick={proceedToReport}
-              style={{
-                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.transform = "scale(1.03)";
-                e.target.style.boxShadow =
-                  "0 12px 28px rgba(13, 110, 253, 0.25)";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = "scale(1)";
-                e.target.style.boxShadow =
-                  "0 4px 12px rgba(13, 110, 253, 0.15)";
-              }}
-              onMouseDown={(e) => {
-                e.target.style.transform = "scale(0.97)";
-              }}
-              onMouseUp={(e) => {
-                e.target.style.transform = "scale(1.03)";
-              }}
-            >
-              📊 View Risk Report →
-            </button>
+          <div className="p3-cta">
+            <CcureButton size="lg" onClick={proceedToReport}>
+              <Glyph>📊</Glyph> View Risk Report <Glyph>→</Glyph>
+            </CcureButton>
           </div>
         )}
       </div>
@@ -1312,1220 +1696,16 @@ export default function Phase3Results() {
       {/* ════════════════════════════════════════════════════════════════════════ */}
       {/* RISK REPORT MODAL                                                       */}
       {/* ════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={showReportModal}
+      <RiskReport
+        open={showReportModal}
         onClose={() => setShowReportModal(false)}
-        title="Risk Report - Full Assessment"
-        subtitle={`Scan No. ${scanNo ?? "-"} - Target: ${target}`}
-      >
-        <div style={{ maxHeight: "80vh", overflowY: "auto" }}>
-          {/* Report Header */}
-          <div
-            style={{
-              padding: "16px",
-              background: "var(--bg-app)",
-              borderRadius: "8px",
-              marginBottom: "16px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <h3 style={{ margin: 0, fontWeight: 600, marginBottom: 8 }}>
-              ✓ Full Pipeline Complete
-            </h3>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.9rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              All scan phases finished successfully. Complete vulnerability
-              analysis and risk assessment below.
-            </p>
-          </div>
-
-          {/* Summary Stats Grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: 12,
-              marginBottom: 24,
-            }}
-          >
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(34, 197, 94, 0.05)",
-                border: "1px solid rgba(34, 197, 94, 0.2)",
-                borderRadius: "8px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 500,
-                }}
-              >
-                Total Hosts Audited
-              </span>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: "2rem",
-                  fontWeight: 700,
-                  color: "#22c55e",
-                }}
-              >
-                {phase3Summary?.total_hosts ?? localVulnResults.length}
-              </p>
-            </div>
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(239, 68, 68, 0.05)",
-                border: "1px solid rgba(239, 68, 68, 0.2)",
-                borderRadius: "8px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 500,
-                }}
-              >
-                Total CVEs Found
-              </span>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: "2rem",
-                  fontWeight: 700,
-                  color: "#ef4444",
-                }}
-              >
-                {localVulnResults.reduce(
-                  (sum, h) => sum + (h.cves?.length ?? 0),
-                  0,
-                )}
-              </p>
-            </div>
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(255, 109, 0, 0.05)",
-                border: "1px solid rgba(255, 109, 0, 0.2)",
-                borderRadius: "8px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 500,
-                }}
-              >
-                Critical Risk Hosts
-              </span>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: "2rem",
-                  fontWeight: 700,
-                  color: "#ff6d00",
-                }}
-              >
-                {
-                  localVulnResults.filter(
-                    (h) =>
-                      (h.host_risk_level || "").toLowerCase() === "critical",
-                  ).length
-                }
-              </p>
-            </div>
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(249, 115, 22, 0.05)",
-                border: "1px solid rgba(249, 115, 22, 0.2)",
-                borderRadius: "8px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.8rem",
-                  color: "var(--text-muted)",
-                  fontWeight: 500,
-                }}
-              >
-                High Risk Hosts
-              </span>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: "2rem",
-                  fontWeight: 700,
-                  color: "#f97316",
-                }}
-              >
-                {
-                  localVulnResults.filter(
-                    (h) => (h.host_risk_level || "").toLowerCase() === "high",
-                  ).length
-                }
-              </p>
-            </div>
-          </div>
-
-          {/* Scan Timing */}
-          <div
-            style={{
-              padding: "16px",
-              background: "var(--bg-app)",
-              borderRadius: "8px",
-              marginBottom: "24px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 12px",
-                fontSize: "0.95rem",
-                fontWeight: 600,
-              }}
-            >
-              📊 Scan Timeline
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                gap: 12,
-                fontSize: "0.85rem",
-              }}
-            >
-              <div>
-                <span style={{ color: "var(--text-muted)" }}>
-                  Phase 1: Discovery
-                </span>
-                <p
-                  style={{
-                    margin: "4px 0",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                  }}
-                >
-                  {fmtSec(phase1Summary?.scan_duration)}s
-                </p>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-muted)" }}>
-                  Phase 2: Port Scan
-                </span>
-                <p
-                  style={{
-                    margin: "4px 0",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                  }}
-                >
-                  {pipelinePhaseTimings.portScan
-                    ? fmtSec(pipelinePhaseTimings.portScan)
-                    : "—"}
-                  s
-                </p>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-muted)" }}>
-                  Phase 3: Vulnerability Audit
-                </span>
-                <p
-                  style={{
-                    margin: "4px 0",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                  }}
-                >
-                  {pipelinePhaseTimings.vulnScan
-                    ? fmtSec(pipelinePhaseTimings.vulnScan)
-                    : "—"}
-                  s
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Risk Severity Breakdown */}
-          <div
-            style={{
-              padding: "16px",
-              background: "var(--bg-app)",
-              borderRadius: "8px",
-              marginBottom: "24px",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 12px",
-                fontSize: "0.95rem",
-                fontWeight: 600,
-              }}
-            >
-              ⚠️ Vulnerability Severity Distribution
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: 10,
-                fontSize: "0.85rem",
-              }}
-            >
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#ff4d4d",
-                  }}
-                >
-                  {(() => {
-                    let count = 0;
-                    localVulnResults.forEach((h) => {
-                      (h.cves || []).forEach((cve) => {
-                        const sev = (cve.severity || "Info").toLowerCase();
-                        if (sev === "critical") count++;
-                      });
-                    });
-                    return count;
-                  })()}
-                </div>
-                <span style={{ color: "var(--text-muted)" }}>Critical</span>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#f97316",
-                  }}
-                >
-                  {(() => {
-                    let count = 0;
-                    localVulnResults.forEach((h) => {
-                      (h.cves || []).forEach((cve) => {
-                        const sev = (cve.severity || "Info").toLowerCase();
-                        if (sev === "high") count++;
-                      });
-                    });
-                    return count;
-                  })()}
-                </div>
-                <span style={{ color: "var(--text-muted)" }}>High</span>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#f59e0b",
-                  }}
-                >
-                  {(() => {
-                    let count = 0;
-                    localVulnResults.forEach((h) => {
-                      (h.cves || []).forEach((cve) => {
-                        const sev = (cve.severity || "Info").toLowerCase();
-                        if (sev === "medium") count++;
-                      });
-                    });
-                    return count;
-                  })()}
-                </div>
-                <span style={{ color: "var(--text-muted)" }}>Medium</span>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#22c55e",
-                  }}
-                >
-                  {(() => {
-                    let count = 0;
-                    localVulnResults.forEach((h) => {
-                      (h.cves || []).forEach((cve) => {
-                        const sev = (cve.severity || "Info").toLowerCase();
-                        if (sev === "low") count++;
-                      });
-                    });
-                    return count;
-                  })()}
-                </div>
-                <span style={{ color: "var(--text-muted)" }}>Low</span>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontSize: "1.8rem",
-                    fontWeight: 700,
-                    color: "#60a5fa",
-                  }}
-                >
-                  {(() => {
-                    let count = 0;
-                    localVulnResults.forEach((h) => {
-                      (h.cves || []).forEach((cve) => {
-                        const sev = (cve.severity || "Info").toLowerCase();
-                        if (sev === "info") count++;
-                      });
-                    });
-                    return count;
-                  })()}
-                </div>
-                <span style={{ color: "var(--text-muted)" }}>Info</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Host Details Table */}
-          <div>
-            <p
-              style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: 12 }}
-            >
-              🖥️ Affected Hosts ({localVulnResults.length} total)
-            </p>
-            <div
-              style={{
-                overflowX: "auto",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                marginBottom: "24px",
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "var(--bg-app)" }}>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      IP Address
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Hostname
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Open Ports
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      OS
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "center",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Vulnerabilities
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Risk
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px",
-                        textAlign: "left",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {localVulnResults.map((host, idx) => (
-                    <tr
-                      key={host.ip_address}
-                      style={{
-                        borderBottom:
-                          idx < localVulnResults.length - 1
-                            ? "1px solid var(--border)"
-                            : "none",
-                      }}
-                    >
-                      <td style={{ padding: "12px" }}>
-                        <code
-                          style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: "0.8rem",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {host.ip_address}
-                        </code>
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px",
-                          fontSize: "0.8rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {usefulText(host.hostname) || (
-                          <span className="muted">Not detected</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px", fontSize: "0.8rem" }}>
-                        {(host.open_ports || []).length > 0
-                          ? `${(host.open_ports || []).length}`
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px",
-                          fontSize: "0.8rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {usefulText(host.os_guess) || (
-                          <span className="muted">Not detected</span>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px",
-                          textAlign: "center",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {host.cves?.length ?? 0}
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        <span
-                          style={{
-                            color: getSevColor(host.host_risk_level),
-                            fontWeight: 700,
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          {host.host_risk_level || "Info"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: "4px",
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            background: host.is_active
-                              ? "rgba(34, 197, 94, 0.1)"
-                              : "rgba(107, 114, 128, 0.1)",
-                            color: host.is_active ? "#22c55e" : "#6b7280",
-                          }}
-                        >
-                          {host.is_active ? "✓ Active" : "○ Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Vulnerability Details by Host */}
-          <div>
-            <p
-              style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: 12 }}
-            >
-              🔍 Detailed Vulnerability Analysis
-            </p>
-            {localVulnResults
-              .filter((h) => (h.cves?.length ?? 0) > 0)
-              .map((host) => (
-                <div
-                  key={host.ip_address}
-                  style={{
-                    marginBottom: "16px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                    overflow: "hidden",
-                  }}
-                >
-                  {/* Host Header */}
-                  <div
-                    style={{
-                      padding: "12px",
-                      background: "var(--bg-app)",
-                      borderBottom: "1px solid var(--border)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <code
-                        style={{
-                          fontFamily: "var(--mono)",
-                          fontSize: "0.9rem",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {host.ip_address}
-                      </code>
-                      <span
-                        style={{
-                          marginLeft: "12px",
-                          color: "var(--text-muted)",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {usefulText(host.hostname) || (
-                          <span className="muted">Not detected</span>
-                        )}
-                      </span>
-                    </div>
-                    <span
-                      style={{
-                        color: getSevColor(host.host_risk_level),
-                        fontWeight: 700,
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      {host.host_risk_level} Risk
-                    </span>
-                  </div>
-
-                  {/* CVEs List */}
-                  <div style={{ padding: "12px" }}>
-                    {/* ── Service Findings (FTP / HTTP / SMB deep probes) ──────── */}
-                    {(() => {
-                      const badges = [];
-                      const ftp = host.ftp_info || {};
-                      const http = host.http_audit || {};
-                      const smb = host.smb_info || {};
-                      const tls = host.tls_info || {};
-
-                      if (host.heartbleed_info?.vulnerable)
-                        badges.push({
-                          label: "Heartbleed",
-                          color: "#ff4d4d",
-                          icon: "💉",
-                        });
-                      if (host.smb_ms17010_info?.ms17010_likely)
-                        badges.push({
-                          label: "EternalBlue",
-                          color: "#ff4d4d",
-                          icon: "💣",
-                        });
-                      if (host.ldap_info?.anonymous_bind?.allowed)
-                        badges.push({
-                          label: "LDAP Anon Bind",
-                          color: "#f97316",
-                          icon: "🔓",
-                        });
-                      if (host.dns_info?.zone_transfer?.vulnerable)
-                        badges.push({
-                          label: "DNS Zone Transfer",
-                          color: "#f97316",
-                          icon: "📡",
-                        });
-                      if (ftp.anonymous_login)
-                        badges.push({
-                          label: "FTP Anon Login",
-                          color: "#f97316",
-                          icon: "📂",
-                        });
-                      if (ftp.write_access)
-                        badges.push({
-                          label: "FTP Write Access",
-                          color: "#ff4d4d",
-                          icon: "✍️",
-                        });
-                      if (ftp.weak_credentials?.length)
-                        badges.push({
-                          label: `FTP Weak Creds (${ftp.weak_credentials.length})`,
-                          color: "#f59e0b",
-                          icon: "🔑",
-                        });
-                      if (http.exposed_paths?.length)
-                        badges.push({
-                          label: `Exposed Paths (${http.exposed_paths.length})`,
-                          color: "#f59e0b",
-                          icon: "📁",
-                        });
-                      if (http.admin_panels?.length)
-                        badges.push({
-                          label: `Admin Panels (${http.admin_panels.length})`,
-                          color: "#f97316",
-                          icon: "⚙️",
-                        });
-                      if (http.dangerous_methods?.length)
-                        badges.push({
-                          label: "Dangerous HTTP Methods",
-                          color: "#f59e0b",
-                          icon: "🔧",
-                        });
-                      if (smb.open && smb.null_session)
-                        badges.push({
-                          label: "SMB Null Session",
-                          color: "#f97316",
-                          icon: "🗂",
-                        });
-                      if (tls.cert_expired)
-                        badges.push({
-                          label: "TLS Cert Expired",
-                          color: "#f59e0b",
-                          icon: "🔒",
-                        });
-
-                      if (!badges.length) return null;
-                      return (
-                        <div style={{ marginBottom: 14 }}>
-                          <div
-                            style={{
-                              fontSize: "0.78rem",
-                              color: "var(--text-muted)",
-                              fontWeight: 600,
-                              marginBottom: 6,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                            }}
-                          >
-                            ⚡ Active Misconfiguration Findings
-                          </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 6,
-                            }}
-                          >
-                            {badges.map((b, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  fontSize: 11,
-                                  padding: "3px 8px",
-                                  borderRadius: 4,
-                                  fontWeight: 600,
-                                  background: `${b.color}18`,
-                                  border: `1px solid ${b.color}55`,
-                                  color: b.color,
-                                }}
-                              >
-                                {b.icon} {b.label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* ── FTP Deep Findings ────────────────────────────────────── */}
-                    {host.ftp_info?.open && (
-                      <div
-                        style={{
-                          marginBottom: 14,
-                          padding: "10px 12px",
-                          background: "rgba(249,115,22,0.06)",
-                          borderLeft: "3px solid #f97316",
-                          borderRadius: 4,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "0.8rem",
-                            fontWeight: 700,
-                            marginBottom: 6,
-                            color: "#f97316",
-                          }}
-                        >
-                          📂 FTP Service
-                        </div>
-                        {truncateEvidence(host.ftp_info.banner) && (
-                          <div
-                            style={{
-                              fontSize: "0.78rem",
-                              color: "var(--text-muted)",
-                              marginBottom: 4,
-                            }}
-                          >
-                            Banner:{" "}
-                            <code>
-                              {truncateEvidence(host.ftp_info.banner)}
-                            </code>
-                          </div>
-                        )}
-                        {(host.ftp_info.issues || []).map((issue, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              fontSize: "0.78rem",
-                              color: "var(--text-mid)",
-                              marginBottom: 2,
-                            }}
-                          >
-                            • {issue}
-                          </div>
-                        ))}
-                        {(host.ftp_info.weak_credentials || []).length > 0 && (
-                          <div style={{ fontSize: "0.78rem", marginTop: 6 }}>
-                            <strong style={{ color: "#f59e0b" }}>
-                              Weak credentials accepted:
-                            </strong>{" "}
-                            {host.ftp_info.weak_credentials.map((c, i) => (
-                              <code
-                                key={i}
-                                style={{
-                                  marginRight: 6,
-                                  background: "rgba(0,0,0,0.15)",
-                                  padding: "1px 4px",
-                                  borderRadius: 3,
-                                }}
-                              >
-                                {maskCredential(c)}
-                              </code>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* ── HTTP Deep Findings ───────────────────────────────────── */}
-                    {host.http_audit &&
-                      (host.http_audit.exposed_paths?.length ||
-                        host.http_audit.admin_panels?.length ||
-                        host.http_audit.dangerous_methods?.length ||
-                        host.http_audit.issues?.length) && (
-                        <div
-                          style={{
-                            marginBottom: 14,
-                            padding: "10px 12px",
-                            background: "rgba(245,158,11,0.06)",
-                            borderLeft: "3px solid #f59e0b",
-                            borderRadius: 4,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "0.8rem",
-                              fontWeight: 700,
-                              marginBottom: 6,
-                              color: "#f59e0b",
-                            }}
-                          >
-                            🌐 HTTP Service
-                          </div>
-                          {truncateEvidence(host.http_audit.server_header) && (
-                            <div
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--text-muted)",
-                                marginBottom: 6,
-                              }}
-                            >
-                              Server:{" "}
-                              <code>
-                                {truncateEvidence(
-                                  host.http_audit.server_header,
-                                )}
-                              </code>
-                            </div>
-                          )}
-                          {/* Security header issues */}
-                          {(host.http_audit.issues || [])
-                            .slice(0, 4)
-                            .map((issue, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "var(--text-mid)",
-                                  marginBottom: 2,
-                                }}
-                              >
-                                • {issue}
-                              </div>
-                            ))}
-                          {/* Exposed paths */}
-                          {(host.http_audit.exposed_paths || []).length > 0 && (
-                            <div style={{ marginTop: 8 }}>
-                              <strong
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "#f97316",
-                                }}
-                              >
-                                Exposed Paths:
-                              </strong>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: 4,
-                                  marginTop: 4,
-                                }}
-                              >
-                                {host.http_audit.exposed_paths.map((p, i) => (
-                                  <code
-                                    key={i}
-                                    style={{
-                                      fontSize: 11,
-                                      background: "rgba(249,115,22,0.1)",
-                                      padding: "1px 6px",
-                                      borderRadius: 3,
-                                    }}
-                                  >
-                                    {p.path} [{p.status}]
-                                    {p.note?.includes("directory") ? " 📂" : ""}
-                                  </code>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Admin panels */}
-                          {(host.http_audit.admin_panels || []).length > 0 && (
-                            <div style={{ marginTop: 8 }}>
-                              <strong
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "#f97316",
-                                }}
-                              >
-                                Admin Panels Detected:
-                              </strong>
-                              {host.http_audit.admin_panels.map((p, i) => (
-                                <div
-                                  key={i}
-                                  style={{
-                                    fontSize: "0.78rem",
-                                    color: "var(--text-mid)",
-                                    marginTop: 2,
-                                  }}
-                                >
-                                  ⚙️ <strong>{p.product}</strong> @{" "}
-                                  <code>{p.path}</code> (HTTP {p.status})
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {/* Dangerous HTTP methods */}
-                          {(host.http_audit.dangerous_methods || []).length >
-                            0 && (
-                            <div style={{ marginTop: 8 }}>
-                              <strong
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "#f59e0b",
-                                }}
-                              >
-                                Dangerous Methods:
-                              </strong>
-                              <div
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "var(--text-mid)",
-                                  marginTop: 2,
-                                }}
-                              >
-                                {host.http_audit.dangerous_methods.join(" | ")}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                    {/* ── CVEs List ────────────────────────────────────────────── */}
-                    {(host.cves || []).length > 0 && (
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          fontSize: "0.8rem",
-                          marginBottom: 8,
-                          color: "var(--text-muted)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        CVEs
-                      </div>
-                    )}
-                    {(host.cves || []).map((cve, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          marginBottom:
-                            idx < (host.cves?.length ?? 0) - 1 ? "12px" : 0,
-                          paddingBottom:
-                            idx < (host.cves?.length ?? 0) - 1 ? "12px" : 0,
-                          borderBottom:
-                            idx < (host.cves?.length ?? 0) - 1
-                              ? "1px solid var(--border)"
-                              : "none",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            marginBottom: 6,
-                          }}
-                        >
-                          <code
-                            style={{
-                              fontFamily: "var(--mono)",
-                              fontSize: "0.85rem",
-                              fontWeight: 700,
-                              color: "#2563eb",
-                            }}
-                          >
-                            <CVELink cveId={cve.cve_id || "Unknown CVE"} />
-                          </code>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "4px 10px",
-                              borderRadius: "4px",
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              color: "#fff",
-                              background: getSevColor(cve.severity),
-                            }}
-                          >
-                            {cve.severity || "Info"}
-                          </span>
-                        </div>
-                        {cve.cvss_score && (
-                          <div style={{ marginBottom: 6 }}>
-                            <span
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--text-muted)",
-                              }}
-                            >
-                              CVSS Score:{" "}
-                              <strong>
-                                {Number(
-                                  cve.cvss_score || cve.cvss || 0,
-                                ).toFixed(1)}
-                              </strong>
-                              /10
-                            </span>
-                          </div>
-                        )}
-                        {cve.description && (
-                          <p
-                            style={{
-                              margin: "6px 0",
-                              fontSize: "0.8rem",
-                              color: "var(--text-mid)",
-                              lineHeight: 1.4,
-                            }}
-                          >
-                            {cve.description ||
-                              cve.desc ||
-                              "No description available"}
-                          </p>
-                        )}
-                        {cve.affected_software && (
-                          <div style={{ marginTop: 6 }}>
-                            <span
-                              style={{
-                                fontSize: "0.75rem",
-                                color: "var(--text-muted)",
-                              }}
-                            >
-                              <strong>Affected:</strong> {cve.affected_software}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-            {localVulnResults.filter((h) => (h.cves?.length ?? 0) > 0)
-              .length === 0 && (
-              <div
-                style={{
-                  padding: "24px",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <p>No vulnerabilities found in this scan.</p>
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              marginTop: "24px",
-              padding: "16px",
-              background: "rgba(59, 130, 246, 0.05)",
-              border: "1px solid rgba(59, 130, 246, 0.2)",
-              borderRadius: "8px",
-              fontSize: "0.85rem",
-            }}
-          >
-            <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
-              📈 Report Summary
-            </p>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: "20px",
-                color: "var(--text-mid)",
-              }}
-            >
-              <li>
-                Total hosts scanned:{" "}
-                {phase3Summary?.total_hosts ?? localVulnResults.length}
-              </li>
-              <li>
-                Hosts with vulnerabilities:{" "}
-                {
-                  localVulnResults.filter((h) => (h.cves?.length ?? 0) > 0)
-                    .length
-                }
-              </li>
-              <li>
-                Total CVEs identified:{" "}
-                {localVulnResults.reduce(
-                  (sum, h) => sum + (h.cves?.length ?? 0),
-                  0,
-                )}
-              </li>
-              <li>
-                Critical severity:{" "}
-                {(() => {
-                  let c = 0;
-                  localVulnResults.forEach((h) => {
-                    (h.cves || []).forEach((cv) => {
-                      if ((cv.severity || "Info").toLowerCase() === "critical")
-                        c++;
-                    });
-                  });
-                  return c;
-                })()}
-              </li>
-              <li>
-                High severity:{" "}
-                {(() => {
-                  let c = 0;
-                  localVulnResults.forEach((h) => {
-                    (h.cves || []).forEach((cv) => {
-                      if ((cv.severity || "Info").toLowerCase() === "high") c++;
-                    });
-                  });
-                  return c;
-                })()}
-              </li>
-              <li>
-                FTP misconfigurations:{" "}
-                {
-                  localVulnResults.filter(
-                    (h) =>
-                      h.ftp_info?.anonymous_login ||
-                      h.ftp_info?.write_access ||
-                      h.ftp_info?.weak_credentials?.length,
-                  ).length
-                }{" "}
-                host(s)
-              </li>
-              <li>
-                HTTP exposed paths:{" "}
-                {localVulnResults.reduce(
-                  (sum, h) => sum + (h.http_audit?.exposed_paths?.length ?? 0),
-                  0,
-                )}
-              </li>
-              <li>
-                HTTP admin panels found:{" "}
-                {localVulnResults.reduce(
-                  (sum, h) => sum + (h.http_audit?.admin_panels?.length ?? 0),
-                  0,
-                )}
-              </li>
-              <li>
-                Active misconfiguration findings:{" "}
-                {localVulnResults.reduce(
-                  (sum, h) => sum + countActiveFindings(h),
-                  0,
-                )}
-              </li>
-            </ul>
-          </div>
-
-          {/* Export Hint */}
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px",
-              background: "rgba(34, 197, 94, 0.05)",
-              border: "1px solid rgba(34, 197, 94, 0.2)",
-              borderRadius: "6px",
-              fontSize: "0.85rem",
-              color: "var(--text-muted)",
-            }}
-          >
-            📄 <strong>Tip:</strong> Close this modal and navigate to Scan
-            History to export full PDF/XML reports with additional formatting
-            and charts.
-          </div>
-        </div>
-      </Modal>
+        scanNo={scanNo}
+        target={target}
+        hosts={localVulnResults}
+        phase1Summary={phase1Summary}
+        phase3Summary={phase3Summary}
+        pipelinePhaseTimings={pipelinePhaseTimings}
+      />
     </AppLayout>
   );
 }

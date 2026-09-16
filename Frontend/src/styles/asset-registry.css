@@ -17,6 +17,8 @@
 
    `dashboard.css` is untouched: Phase A's census found 150 selectors and not
    one exclusive to a batch-10 page, so nothing here orphans a rule there.
+   Batch 16 stopped this page importing it; the page frame, card, chip and
+   risk bar it still borrowed are restated below in tokens.
    ============================================================================ */
 
 .ar-ai-center {
@@ -158,12 +160,146 @@
   flex-wrap: wrap;
 }
 
+/* ── Page frame ───────────────────────────────────────────────────────────────
+   Batch 16: `.db-page`, `.db-page-header`, `.db-page-title`,
+   `.db-page-subtitle`, `.db-header-actions` and `.db-card` from dashboard.css,
+   in tokens. */
+.ar-page {
+  background: var(--ccure-bg);
+  min-height: 100%;
+  padding-bottom: var(--ccure-space-4xl);
+}
+
+.ar-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-lg);
+  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-md);
+  border-bottom: 1px solid var(--ccure-border);
+  background: var(--ccure-surface);
+}
+
+.ar-page-title {
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+  line-height: var(--ccure-leading-tight);
+}
+
+.ar-page-subtitle {
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  flex-shrink: 0;
+}
+
+/* dashboard.css stacks the header on a narrow screen. Without this the actions
+   keep their width beside the title, and at 390px the page scrolled sideways —
+   the harness's mobile state caught it. */
+@media (max-width: 768px) {
+  .ar-page-header {
+    flex-direction: column;
+    gap: var(--ccure-space-sm);
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+  }
+}
+
+/* `position: relative` is load-bearing. The C / H / M headers carry their full
+   word in a visually hidden, absolutely positioned span. The legacy `th` was
+   `position: sticky`, which contained it; CcureTable's header cells are not
+   positioned, so the span took the viewport as its containing block, escaped
+   both this card's clipping and the table's scroll container, and made the
+   page scroll sideways at 390px (document 705px wide). Positioning the card
+   contains every such span inside it. */
+.ar-card {
+  position: relative;
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  overflow: hidden;
+}
+
+.ar-alert-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+}
+
+.ar-mono {
+  font-family: var(--ccure-font-mono, var(--mono));
+}
+
 /* ── Meaning ─────────────────────────────────────────────────────────────── */
 
-.ar-skel {
-  height: 12px;
+/* The neutral chip — was `.db-tag`. Defined before every chip modifier below
+   (managed, exposure, grade, issue, port state), which override its colours at
+   equal specificity by coming later. */
+.ar-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 1px;
+  padding: var(--ccure-space-3xs) var(--ccure-space-xs);
+  font-size: var(--ccure-text-xs);
   border-radius: var(--ccure-radius-sm);
   background: var(--ccure-surface-sunken);
+  color: var(--ccure-text-secondary);
+  border: 1px solid var(--ccure-border);
+}
+
+/* The asset address, a certificate's asset. Links now, where they were click
+   handlers on a row and on a `<div>`. */
+.ar-rowlink {
+  color: var(--ccure-text-link);
+  text-decoration: none;
+}
+
+.ar-rowlink:hover {
+  text-decoration: underline;
+}
+
+.ar-rowlink:focus-visible,
+.ar-linkish:focus-visible,
+.ar-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ccure-focus-ring);
+  border-radius: var(--ccure-radius-sm);
+}
+
+/* The managed chip as a toggle button. It keeps the chip's look; the button
+   only resets what a native button brings with it. */
+.ar-toggle {
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+/* ── Risk cell ────────────────────────────────────────────────────────────── */
+.ar-risk-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.ar-riskbar {
+  width: 3.75rem;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-border);
+  overflow: hidden;
+}
+
+.ar-riskbar-fill {
+  height: 100%;
 }
 
 /* ── Risk band ────────────────────────────────────────────────────────────────
@@ -380,16 +516,12 @@
   font-weight: var(--ccure-weight-bold);
 }
 
-.ar-pagebtn {
-  padding: var(--ccure-space-2xs) var(--ccure-space-sm);
-  font-size: var(--ccure-text-xs);
-}
-
 /* ── Managed state ────────────────────────────────────────────────────────────
    "✔ Managed" / "✗ Unmanaged" already reads as words with a glyph, so the
    colour reinforces rather than carries. The chip previously also set `cursor`
    from the permission, which told a sighted user whether it was operable and
-   nobody else; the permission gate on the handler is what actually decides. */
+   nobody else. Batch 16: with assets:update it is a button (`.ar-toggle`),
+   without it a plain chip — the element itself now says which. */
 .ar-managed--on {
   background: var(--ccure-success-bg);
   color: var(--ccure-success-text);
@@ -400,10 +532,6 @@
   background: var(--ccure-danger-bg);
   color: var(--ccure-danger-text);
   border: 1px solid var(--ccure-danger-border);
-}
-
-.ar-managed--actionable {
-  cursor: pointer;
 }
 
 /* ── Service exposure ─────────────────────────────────────────────────────────

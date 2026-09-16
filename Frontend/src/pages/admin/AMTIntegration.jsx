@@ -5,8 +5,16 @@
  * - Multi-tenant assets.json upload
  * - Real-time Coverage Gap, Fully Audited, and Shadow IT reporting
  * - Progress rings and detailed card grids
+ *
+ * Checkpoint 3C batch 20 — design-system migration. Presentation and
+ * accessibility only. The statistics load, the drilldown with its filters and
+ * paging, the CSV export, and the inventory import — its file checks and their
+ * messages, the multipart `file` field, and what follows success and failure —
+ * are the code that was here, and `__tests__/pages/admin/AMTIntegration.test.jsx`
+ * pins them. The import replaces the organisation's AMT inventory; nothing in
+ * this file changes whether, when or what it sends.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useId, useState, useEffect, useCallback } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   importAmtInventory,
@@ -14,6 +22,80 @@ import {
   getReconciliationDrilldown,
   exportReconciliationCsv,
 } from "../../api/assets";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureEmptyState,
+  CcureInput,
+  CcureLoader,
+  CcureTable,
+} from "../../design-system";
+import "../../styles/amt-integration.css";
+
+/* Each category's drilldown title and description, as the page has always
+   shown them. */
+const CATEGORY_TEXT = {
+  scanned: {
+    title: "Total Scanned Devices",
+    description: "Devices discovered during active network scanning.",
+  },
+  inventory: {
+    title: "AMT Inventory Records",
+    description: "All records imported from the corporate inventory file.",
+  },
+  matched: {
+    title: "Fully Audited Assets",
+    description:
+      "Assets verified in both active scans and corporate inventory reference.",
+  },
+  shadow_it: {
+    title: "Shadow IT Devices",
+    description:
+      "Unmanaged rogue devices found in scans but missing from AMT inventory.",
+  },
+  coverage_gap: {
+    title: "Coverage Gap Assets",
+    description:
+      "Official inventory devices that have not been detected in any active scans.",
+  },
+};
+
+const columnsFor = (headers) =>
+  headers.map((header) => ({ key: header, header }));
+
+const ASSET_COLUMNS = columnsFor([
+  "Hostname",
+  "IP Address",
+  "MAC Address",
+  "First Seen",
+  "Risk Score",
+  "Owner",
+]);
+
+const INVENTORY_COLUMNS = columnsFor([
+  "Asset Tag",
+  "Asset Name",
+  "Serial",
+  "Vendor",
+  "Asset Type",
+  "Owner/User",
+  "Status",
+  "Location",
+  "Department",
+]);
+
+/* The bands the coverage ring was always coloured by — 90, 75 and 50 — named
+   so the colour comes from a token rather than a literal. The percentage is
+   printed beside it, so the colour is never the only carrier. */
+const coverageBand = (pct) =>
+  pct >= 90 ? "strong" : pct >= 75 ? "good" : pct >= 50 ? "fair" : "low";
+
+/* Risk as the badge variant its literal colours stood for: red from 70, amber
+   from 40, green below. The score and level are printed in the badge. */
+const riskVariant = (score) =>
+  score >= 70 ? "danger" : score >= 40 ? "warning" : "success";
 
 export default function AMTIntegration() {
   const [stats, setStats] = useState(null);
@@ -39,6 +121,7 @@ export default function AMTIntegration() {
   const [deptFilter, setDeptFilter] = useState("");
   const [locFilter, setLocFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  const idBase = useId();
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -205,98 +288,82 @@ export default function AMTIntegration() {
     }
   };
 
-  const coverageColor = (pct) =>
-    pct >= 90
-      ? "#10b981"
-      : pct >= 75
-        ? "#14b8a6"
-        : pct >= 50
-          ? "#f59e0b"
-          : "#ef4444";
+  const categories = stats?.configured
+    ? [
+        {
+          key: "scanned",
+          label: "Total Scanned Devices",
+          value: stats.total_scanned,
+        },
+        {
+          key: "inventory",
+          label: "AMT Inventory Records",
+          value: stats.total_inventory,
+        },
+        {
+          key: "matched",
+          label: "Fully Audited (Scanned & Configured)",
+          value: stats.fully_audited,
+          tone: "success",
+        },
+        {
+          key: "shadow_it",
+          label: "Shadow IT (Unmanaged Rogue)",
+          value: stats.shadow_it,
+          tone: "warning",
+          help: "Discovered during active scans, but not present in your official AMT inventory file.",
+        },
+        {
+          key: "coverage_gap",
+          label: "Coverage Gap (Offline / Firewall)",
+          value: stats.coverage_gap,
+          tone: "danger",
+          help: "Listed in your AMT inventory records, but never successfully detected during active network scans.",
+        },
+      ]
+    : [];
+
+  const fileInputId = `${idBase}-file`;
+  const fileStatusId = `${idBase}-file-status`;
+  const isAssetCategory = categoryTypeIsAsset(activeCategory);
+  const categoryText = CATEGORY_TEXT[activeCategory];
 
   return (
     <AppLayout pageTitle="AMT Integration">
-      <div className="db-page" style={{ padding: "28px" }}>
-        {/* Header */}
-        <div
-          className="db-page-header"
-          style={{ marginBottom: 24, borderBottom: "none" }}
-        >
+      <div className="amt-page">
+        <header className="amt-header">
           <div>
-            <div className="db-page-title">
-              AMT Integration & Reconciliation
-            </div>
-            <div className="db-page-subtitle">
+            <h1 className="amt-title">AMT Integration &amp; Reconciliation</h1>
+            <p className="amt-subtitle">
               Configure and analyze CMDB coverage maps, Rogue Devices (Shadow
               IT), and scan gaps.
-            </div>
+            </p>
           </div>
-          <div className="db-header-actions">
-            <button
-              className="db-btn db-btn--ghost"
-              onClick={loadStats}
-              disabled={loading}
-            >
-              ↻ Refresh Stats
-            </button>
-          </div>
-        </div>
+          <CcureButton
+            variant="ghost"
+            size="sm"
+            onClick={loadStats}
+            disabled={loading}
+          >
+            <span aria-hidden="true">↻</span> Refresh Stats
+          </CcureButton>
+        </header>
 
         {error && (
-          <div
-            className="db-alert db-alert--critical"
-            style={{ marginBottom: 20 }}
-          >
-            <span className="db-alert-icon">⚠</span>
-            <div>{error}</div>
-          </div>
+          <CcureAlert variant="danger" className="amt-alert">
+            {error}
+          </CcureAlert>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1.8fr",
-            gap: 24,
-            alignItems: "start",
-          }}
-        >
-          {/* Left Column: Import / Upload Form */}
-          <div className="db-card" style={{ padding: 24 }}>
-            <h3
-              style={{
-                margin: "0 0 8px 0",
-                fontSize: "1.1rem",
-                fontWeight: 700,
-                color: "var(--text)",
-              }}
-            >
-              Import Corporate Inventory
-            </h3>
-            <p
-              style={{
-                margin: "0 0 20px 0",
-                fontSize: "0.78rem",
-                color: "var(--text-muted)",
-                lineHeight: 1.5,
-              }}
-            >
-              Upload the corporate `assets.json` or inventory export to
-              reconcile device ownership. The matching runs asynchronously via
-              background worker tasks.
-            </p>
-
-            <form onSubmit={handleUploadSubmit}>
+        <div className="amt-layout">
+          <CcureCard
+            className="amt-card"
+            title="Import Corporate Inventory"
+            subtitle="Upload the corporate `assets.json` or inventory export to reconcile device ownership. The matching runs asynchronously via background worker tasks."
+          >
+            <form className="amt-upload" onSubmit={handleUploadSubmit}>
               <div
-                style={{
-                  border: "2px dashed var(--border)",
-                  borderRadius: 8,
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  background: "rgba(255,255,255,0.01)",
-                  cursor: "pointer",
-                  transition: "border-color 0.2s, background-color 0.2s",
-                  marginBottom: 20,
-                }}
+                className="amt-drop"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -306,549 +373,192 @@ export default function AMTIntegration() {
                     acceptFile(e.dataTransfer.files[0]);
                   }
                 }}
-                onClick={() => document.getElementById("file-input").click()}
               >
+                {/* Visually hidden, not display:none, so the input stays in the
+                    tab order. The zone is its label: a click anywhere on it
+                    opens the file chooser, as the zone always did. */}
                 <input
-                  id="file-input"
+                  id={fileInputId}
                   type="file"
                   accept=".json"
+                  className="amt-drop__input"
                   onChange={handleFileChange}
-                  style={{ display: "none" }}
+                  aria-label="AMT inventory file (.json)"
+                  aria-describedby={fileStatusId}
                 />
-                <div style={{ fontSize: "2rem", marginBottom: 12 }}>📁</div>
-                <div
-                  style={{
-                    fontSize: "0.82rem",
-                    fontWeight: 600,
-                    color: "var(--text)",
-                    marginBottom: 4,
-                  }}
-                >
-                  {file ? file.name : "Drag & Drop assets.json here"}
-                </div>
-                <div
-                  style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                >
-                  {file
-                    ? `${(file.size / 1024).toFixed(1)} KB`
-                    : "or click to browse local files"}
-                </div>
+                <label htmlFor={fileInputId} className="amt-drop__zone">
+                  <span className="amt-drop__icon" aria-hidden="true">
+                    📁
+                  </span>
+                  <span id={fileStatusId} className="amt-drop__status">
+                    <span className="amt-drop__name">
+                      {file ? file.name : "Drag & Drop assets.json here"}
+                    </span>{" "}
+                    <span className="amt-drop__hint">
+                      {file
+                        ? `${(file.size / 1024).toFixed(1)} KB`
+                        : "or click to browse local files"}
+                    </span>
+                  </span>
+                </label>
               </div>
 
               {uploadError && (
-                <div
-                  className="db-alert db-alert--critical"
-                  style={{ marginBottom: 16, fontSize: "0.75rem" }}
-                >
-                  <span className="db-alert-icon">⚠</span>
-                  <div>{uploadError}</div>
-                </div>
+                <CcureAlert variant="danger" className="amt-alert">
+                  {uploadError}
+                </CcureAlert>
               )}
 
               {uploadSuccess && (
-                <div
-                  className="db-alert db-alert--success"
-                  style={{ marginBottom: 16, fontSize: "0.75rem" }}
-                >
-                  <span className="db-alert-icon">✔</span>
-                  <div>
-                    Inventory file successfully uploaded! Reconciliation is
-                    running in the background.
-                  </div>
-                </div>
+                <CcureAlert variant="success" className="amt-alert">
+                  Inventory file successfully uploaded! Reconciliation is
+                  running in the background.
+                </CcureAlert>
               )}
 
-              <button
+              <CcureButton
                 type="submit"
-                className="db-btn db-btn--primary"
-                style={{ width: "100%", padding: "10px", fontSize: "0.82rem" }}
+                variant="primary"
+                block
+                loading={uploading}
                 disabled={!file || uploading}
               >
                 {uploading
                   ? "Uploading & Syncing..."
                   : "Upload & Sync Inventory"}
-              </button>
+              </CcureButton>
             </form>
-          </div>
+          </CcureCard>
 
-          {/* Right Column: Integration Metrics & Coverage Ring */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {/* Top Row: Metrics Overview */}
-            <div className="db-card" style={{ padding: 24 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 20,
-                }}
-              >
-                <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: "1.1rem",
-                      fontWeight: 700,
-                      color: "var(--text)",
-                    }}
-                  >
-                    Reconciliation Status
-                  </h3>
-                  <div
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                      marginTop: 4,
-                    }}
-                  >
-                    {stats?.configured
-                      ? "Inventory linked successfully"
-                      : "No active inventory file linked"}
-                  </div>
-                </div>
-                {stats?.configured && (
-                  <span
-                    className="db-status db-status--complete"
-                    style={{
-                      background: "rgba(16,185,129,0.12)",
-                      color: "#10b981",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Linked & Active
-                  </span>
-                )}
-              </div>
-
+          <div className="amt-side">
+            <CcureCard
+              className="amt-card"
+              title="Reconciliation Status"
+              subtitle={
+                stats?.configured
+                  ? "Inventory linked successfully"
+                  : "No active inventory file linked"
+              }
+              actions={
+                stats?.configured ? (
+                  <CcureBadge variant="success">Linked &amp; Active</CcureBadge>
+                ) : null
+              }
+            >
               {!stats?.configured ? (
-                <div
-                  style={{
-                    padding: "40px 0",
-                    textAlign: "center",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>🔌</div>
-                  <h4
-                    style={{
-                      color: "var(--text)",
-                      marginBottom: 8,
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    CMDB Integration Inactive
-                  </h4>
-                  <p
-                    style={{
-                      maxWidth: 380,
-                      margin: "0 auto",
-                      fontSize: "0.75rem",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Please upload an assets.json file to map owner records,
-                    audit location parameters, and locate unmanaged devices on
-                    your networks.
-                  </p>
-                </div>
+                <CcureEmptyState
+                  icon="🔌"
+                  title="CMDB Integration Inactive"
+                  description="Please upload an assets.json file to map owner records, audit location parameters, and locate unmanaged devices on your networks."
+                />
               ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 24,
-                    alignItems: "center",
-                  }}
-                >
-                  {/* Coverage Gauge Ring */}
-                  <div
+                <div className="amt-metrics">
+                  <button
+                    type="button"
+                    className={`amt-ring amt-ring--${coverageBand(stats.coverage_percentage)}`}
+                    aria-pressed={activeCategory === "matched"}
                     onClick={() => handleCategoryClick("matched")}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      borderRight: "1px solid var(--border)",
-                      paddingRight: 24,
-                      cursor: "pointer",
-                    }}
                   >
-                    <div
-                      style={{ position: "relative", width: 140, height: 140 }}
-                    >
-                      <svg width="140" height="140">
+                    <span className="amt-ring__gauge">
+                      <svg
+                        className="amt-ring__svg"
+                        width="140"
+                        height="140"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
                         <circle
+                          className="amt-ring__track"
                           cx="70"
                           cy="70"
                           r="56"
-                          fill="transparent"
-                          stroke="var(--border)"
-                          strokeWidth="10"
                         />
                         <circle
+                          className="amt-ring__arc"
                           cx="70"
                           cy="70"
                           r="56"
-                          fill="transparent"
-                          stroke={coverageColor(stats.coverage_percentage)}
-                          strokeWidth="10"
                           strokeDasharray={`${2 * Math.PI * 56}`}
                           strokeDashoffset={`${2 * Math.PI * 56 * (1 - stats.coverage_percentage / 100)}`}
-                          strokeLinecap="round"
                           transform="rotate(-90 70 70)"
                         />
                       </svg>
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "50%",
-                          left: "50%",
-                          transform: "translate(-50%, -50%)",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "1.6rem",
-                            fontWeight: 800,
-                            color: coverageColor(stats.coverage_percentage),
-                          }}
-                        >
+                      <span className="amt-ring__center">
+                        <span className="amt-ring__value">
                           {stats.coverage_percentage}%
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.58rem",
-                            color: "var(--text-muted)",
-                            textTransform: "uppercase",
-                            fontWeight: 700,
-                            marginTop: 2,
-                          }}
-                        >
-                          Coverage
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                        marginTop: 12,
-                        textAlign: "center",
-                      }}
-                    >
+                        </span>{" "}
+                        <span className="amt-ring__label">Coverage</span>
+                      </span>
+                    </span>{" "}
+                    <span className="amt-ring__caption">
                       <strong>{stats.fully_audited}</strong> of{" "}
                       <strong>{stats.total_inventory}</strong> inventory assets
                       matched.
-                    </div>
-                  </div>
+                    </span>
+                  </button>
 
-                  {/* Metrics List */}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 14,
-                    }}
-                  >
-                    <div
-                      onClick={() => handleCategoryClick("scanned")}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderBottom: "1px solid var(--border)",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        background:
-                          activeCategory === "scanned"
-                            ? "rgba(59, 130, 246, 0.12)"
-                            : "transparent",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeCategory !== "scanned")
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeCategory !== "scanned")
-                          e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color:
-                            activeCategory === "scanned"
-                              ? "var(--text-primary)"
-                              : "var(--text-muted)",
-                          fontWeight: activeCategory === "scanned" ? 600 : 400,
-                        }}
-                      >
-                        Total Scanned Devices:
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color:
-                            activeCategory === "scanned"
-                              ? "var(--text-primary)"
-                              : "var(--text)",
-                        }}
-                      >
-                        {stats.total_scanned}
-                      </span>
-                    </div>
-                    <div
-                      onClick={() => handleCategoryClick("inventory")}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderBottom: "1px solid var(--border)",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        background:
-                          activeCategory === "inventory"
-                            ? "rgba(59, 130, 246, 0.12)"
-                            : "transparent",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeCategory !== "inventory")
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeCategory !== "inventory")
-                          e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color:
-                            activeCategory === "inventory"
-                              ? "var(--text-primary)"
-                              : "var(--text-muted)",
-                          fontWeight:
-                            activeCategory === "inventory" ? 600 : 400,
-                        }}
-                      >
-                        AMT Inventory Records:
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color:
-                            activeCategory === "inventory"
-                              ? "var(--text-primary)"
-                              : "var(--text)",
-                        }}
-                      >
-                        {stats.total_inventory}
-                      </span>
-                    </div>
-                    <div
-                      onClick={() => handleCategoryClick("matched")}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderBottom: "1px solid var(--border)",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        background:
-                          activeCategory === "matched"
-                            ? "rgba(59, 130, 246, 0.12)"
-                            : "transparent",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeCategory !== "matched")
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeCategory !== "matched")
-                          e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color:
-                            activeCategory === "matched"
-                              ? "var(--text-primary)"
-                              : "var(--text-muted)",
-                          fontWeight: activeCategory === "matched" ? 600 : 400,
-                        }}
-                      >
-                        Fully Audited (Scanned & Configured):
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color: "#10b981",
-                        }}
-                      >
-                        {stats.fully_audited}
-                      </span>
-                    </div>
-                    <div
-                      onClick={() => handleCategoryClick("shadow_it")}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderBottom: "1px solid var(--border)",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        background:
-                          activeCategory === "shadow_it"
-                            ? "rgba(59, 130, 246, 0.12)"
-                            : "transparent",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeCategory !== "shadow_it")
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeCategory !== "shadow_it")
-                          e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color:
-                            activeCategory === "shadow_it"
-                              ? "var(--text-primary)"
-                              : "var(--text-muted)",
-                          fontWeight:
-                            activeCategory === "shadow_it" ? 600 : 400,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        Shadow IT (Unmanaged Rogue):
-                        <span
-                          style={{ cursor: "help" }}
-                          title="Discovered during active scans, but not present in your official AMT inventory file."
-                        >
-                          ℹ
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color: "#f59e0b",
-                        }}
-                      >
-                        {stats.shadow_it}
-                      </span>
-                    </div>
-                    <div
-                      onClick={() => handleCategoryClick("coverage_gap")}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        background:
-                          activeCategory === "coverage_gap"
-                            ? "rgba(59, 130, 246, 0.12)"
-                            : "transparent",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (activeCategory !== "coverage_gap")
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (activeCategory !== "coverage_gap")
-                          e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color:
-                            activeCategory === "coverage_gap"
-                              ? "var(--text-primary)"
-                              : "var(--text-muted)",
-                          fontWeight:
-                            activeCategory === "coverage_gap" ? 600 : 400,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        Coverage Gap (Offline / Firewall):
-                        <span
-                          style={{ cursor: "help" }}
-                          title="Listed in your AMT inventory records, but never successfully detected during active network scans."
-                        >
-                          ℹ
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color: "#ef4444",
-                        }}
-                      >
-                        {stats.coverage_gap}
-                      </span>
-                    </div>
-                  </div>
+                  <ul className="amt-categories">
+                    {categories.map((c) => {
+                      const helpId = `${idBase}-${c.key}-help`;
+                      return (
+                        <li key={c.key} className="amt-categories__item">
+                          <button
+                            type="button"
+                            className="amt-category"
+                            aria-pressed={activeCategory === c.key}
+                            aria-describedby={c.help ? helpId : undefined}
+                            onClick={() => handleCategoryClick(c.key)}
+                          >
+                            <span className="amt-category__label">
+                              {c.label}:
+                              {c.help && (
+                                <span
+                                  className="amt-category__help"
+                                  title={c.help}
+                                  aria-hidden="true"
+                                >
+                                  ℹ
+                                </span>
+                              )}
+                            </span>{" "}
+                            {/* A toned count is a badge. The same amber as text
+                                on the card surface measured 3.85:1 in the light
+                                theme; on its own tinted ground it passes. */}
+                            {c.tone ? (
+                              <CcureBadge
+                                variant={c.tone}
+                                className="amt-category__badge"
+                              >
+                                {c.value}
+                              </CcureBadge>
+                            ) : (
+                              <span className="amt-category__value">
+                                {c.value}
+                              </span>
+                            )}
+                          </button>
+                          {c.help && (
+                            <span id={helpId} className="cc-sr-only">
+                              {c.help}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               )}
-            </div>
+            </CcureCard>
 
-            {/* Reconciliation Guidelines Box */}
-            <div
-              className="db-card"
-              style={{
-                padding: 20,
-                background: "rgba(59,130,246,0.02)",
-                border: "1px solid rgba(59,130,246,0.1)",
-              }}
+            <CcureCard
+              className="amt-card"
+              title={
+                <>
+                  <span aria-hidden="true">🛡</span> CMDB Best Practices
+                </>
+              }
             >
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  fontSize: "0.82rem",
-                  fontWeight: 700,
-                  color: "#60a5fa",
-                }}
-              >
-                🛡 CMDB Best Practices
-              </h4>
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 16,
-                  fontSize: "0.7rem",
-                  color: "var(--text-muted)",
-                  lineHeight: 1.6,
-                }}
-              >
+              <ul className="amt-guidance">
                 <li>
                   Ensure all asset MAC addresses in the uploaded file follow
                   standard formats.
@@ -863,452 +573,201 @@ export default function AMTIntegration() {
                   the provenance override protocol.
                 </li>
               </ul>
-            </div>
+            </CcureCard>
           </div>
         </div>
 
         {activeCategory && (
-          <div className="db-card" style={{ marginTop: 24, padding: 24 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 20,
-              }}
-            >
-              <div>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "1.2rem",
-                    fontWeight: 700,
-                    color: "var(--text)",
-                  }}
-                >
-                  {activeCategory === "scanned" &&
-                    `Total Scanned Devices (${totalCount})`}
-                  {activeCategory === "inventory" &&
-                    `AMT Inventory Records (${totalCount})`}
-                  {activeCategory === "matched" &&
-                    `Fully Audited Assets (${totalCount})`}
-                  {activeCategory === "shadow_it" &&
-                    `Shadow IT Devices (${totalCount})`}
-                  {activeCategory === "coverage_gap" &&
-                    `Coverage Gap Assets (${totalCount})`}
-                </h3>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--text-muted)",
-                    marginTop: 4,
-                  }}
-                >
-                  {activeCategory === "scanned" &&
-                    "Devices discovered during active network scanning."}
-                  {activeCategory === "inventory" &&
-                    "All records imported from the corporate inventory file."}
-                  {activeCategory === "matched" &&
-                    "Assets verified in both active scans and corporate inventory reference."}
-                  {activeCategory === "shadow_it" &&
-                    "Unmanaged rogue devices found in scans but missing from AMT inventory."}
-                  {activeCategory === "coverage_gap" &&
-                    "Official inventory devices that have not been detected in any active scans."}
-                </div>
-              </div>
-              <button
+          <CcureCard
+            className="amt-card"
+            title={`${categoryText?.title} (${totalCount})`}
+            subtitle={categoryText?.description}
+            actions={
+              <CcureButton
+                variant="ghost"
+                size="sm"
                 onClick={handleCsvExport}
-                className="db-btn db-btn--ghost"
                 disabled={exporting || drilldownLoading || totalCount === 0}
               >
-                📥 {exporting ? "Exporting CSV..." : "Export CSV"}
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginBottom: 20,
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                type="text"
+                <span aria-hidden="true">📥</span>{" "}
+                {exporting ? "Exporting CSV..." : "Export CSV"}
+              </CcureButton>
+            }
+          >
+            <div className="amt-filters">
+              <CcureInput
+                label="Search hostname, IP, MAC or serial"
                 placeholder="Search Hostname, IP, MAC, Serial..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
                   setPage(1);
                 }}
-                style={{
-                  flex: 1.5,
-                  minWidth: 200,
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-white)",
-                  color: "var(--text)",
-                  fontSize: "0.8rem",
-                }}
+                fieldClassName="amt-filters__field amt-filters__field--search"
               />
-              <input
-                type="text"
+              <CcureInput
+                label="Owner"
                 placeholder="Filter by Owner..."
                 value={ownerFilter}
                 onChange={(e) => {
                   setOwnerFilter(e.target.value);
                   setPage(1);
                 }}
-                style={{
-                  flex: 1,
-                  minWidth: 140,
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-white)",
-                  color: "var(--text)",
-                  fontSize: "0.8rem",
-                }}
+                fieldClassName="amt-filters__field"
               />
-              <input
-                type="text"
+              <CcureInput
+                label="Department"
                 placeholder="Filter by Department..."
                 value={deptFilter}
                 onChange={(e) => {
                   setDeptFilter(e.target.value);
                   setPage(1);
                 }}
-                style={{
-                  flex: 1,
-                  minWidth: 140,
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-white)",
-                  color: "var(--text)",
-                  fontSize: "0.8rem",
-                }}
+                fieldClassName="amt-filters__field"
               />
-              <input
-                type="text"
+              <CcureInput
+                label="Location"
                 placeholder="Filter by Location..."
                 value={locFilter}
                 onChange={(e) => {
                   setLocFilter(e.target.value);
                   setPage(1);
                 }}
-                style={{
-                  flex: 1,
-                  minWidth: 140,
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-white)",
-                  color: "var(--text)",
-                  fontSize: "0.8rem",
-                }}
+                fieldClassName="amt-filters__field"
               />
             </div>
 
             {drilldownLoading ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <div className="mono" style={{ fontSize: "0.8rem" }}>
-                  Loading asset details...
-                </div>
-              </div>
+              <CcureLoader
+                label="Loading asset details..."
+                className="amt-state"
+              />
             ) : drilldownError ? (
-              <div
-                className="db-alert db-alert--critical"
-                style={{ fontSize: "0.8rem" }}
-              >
-                <span className="db-alert-icon">⚠</span>
-                <div>{drilldownError}</div>
-              </div>
+              <CcureAlert variant="danger" className="amt-alert">
+                {drilldownError}
+              </CcureAlert>
             ) : drilldownData.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: "var(--text-muted)",
-                  fontSize: "0.8rem",
-                }}
-              >
-                No assets match the current filters.
-              </div>
+              <CcureEmptyState
+                title="No assets match the current filters."
+                className="amt-state"
+              />
             ) : (
               <>
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    className="data-table"
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: "0.8rem",
-                    }}
+                {/* Positioned: CcureTable does not contain its visually hidden
+                    caption (batch 16). */}
+                <div className="amt-table">
+                  {/* The caption carries the count, like the card heading, so
+                      it never reads as the category control's own label. */}
+                  <CcureTable
+                    caption={`${categoryText?.title} (${totalCount})`}
+                    columns={
+                      isAssetCategory ? ASSET_COLUMNS : INVENTORY_COLUMNS
+                    }
+                    density="compact"
                   >
-                    <thead>
-                      {categoryTypeIsAsset(activeCategory) ? (
-                        <tr>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Hostname
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            IP Address
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            MAC Address
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            First Seen
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Risk Score
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Owner
-                          </th>
+                    {drilldownData.map((item, idx) =>
+                      isAssetCategory ? (
+                        <tr key={item.id || idx}>
+                          <td>
+                            <a
+                              href={`/assets/${item.id}`}
+                              className="amt-link amt-link--strong"
+                            >
+                              {item.hostname || "—"}
+                            </a>
+                          </td>
+                          <td>
+                            <a href={`/assets/${item.id}`} className="amt-link">
+                              {item.ip_address || "—"}
+                            </a>
+                          </td>
+                          <td>
+                            <code className="amt-mono">
+                              {item.mac_address || "—"}
+                            </code>
+                          </td>
+                          <td>
+                            {item.first_seen_at
+                              ? new Date(
+                                  item.first_seen_at,
+                                ).toLocaleDateString()
+                              : "—"}
+                          </td>
+                          <td>
+                            <CcureBadge variant={riskVariant(item.risk_score)}>
+                              {item.risk_score} ({item.risk_level})
+                            </CcureBadge>
+                          </td>
+                          <td>{item.owner || "—"}</td>
                         </tr>
                       ) : (
-                        <tr>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Asset Tag
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Asset Name
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Serial
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Vendor
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Asset Type
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Owner/User
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Status
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Location
-                          </th>
-                          <th
-                            style={{ textAlign: "left", padding: "10px 12px" }}
-                          >
-                            Department
-                          </th>
-                        </tr>
-                      )}
-                    </thead>
-                    <tbody>
-                      {drilldownData.map((item, idx) =>
-                        categoryTypeIsAsset(activeCategory) ? (
-                          <tr key={item.id || idx}>
-                            <td style={{ padding: "10px 12px" }}>
-                              <a
-                                href={`/assets/${item.id}`}
-                                style={{
-                                  color: "var(--primary, #3b82f6)",
-                                  textDecoration: "none",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {item.hostname || "—"}
-                              </a>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <a
-                                href={`/assets/${item.id}`}
-                                style={{
-                                  color: "var(--primary, #3b82f6)",
-                                  textDecoration: "none",
-                                }}
-                              >
-                                {item.ip_address || "—"}
-                              </a>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <code>{item.mac_address || "—"}</code>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.first_seen_at
-                                ? new Date(
-                                    item.first_seen_at,
-                                  ).toLocaleDateString()
-                                : "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <span
-                                style={{
-                                  padding: "2px 6px",
-                                  borderRadius: 4,
-                                  fontSize: "0.72rem",
-                                  fontWeight: 600,
-                                  background:
-                                    item.risk_score >= 70
-                                      ? "rgba(239, 68, 68, 0.12)"
-                                      : item.risk_score >= 40
-                                        ? "rgba(245, 158, 11, 0.12)"
-                                        : "rgba(16, 185, 129, 0.12)",
-                                  color:
-                                    item.risk_score >= 70
-                                      ? "#ef4444"
-                                      : item.risk_score >= 40
-                                        ? "#f59e0b"
-                                        : "#10b981",
-                                }}
-                              >
-                                {item.risk_score} ({item.risk_level})
-                              </span>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.owner || "—"}
-                            </td>
-                          </tr>
-                        ) : (
-                          <tr key={item.id || idx}>
-                            <td
-                              style={{ padding: "10px 12px", fontWeight: 600 }}
+                        <tr key={item.id || idx}>
+                          <td className="amt-strong">
+                            {item.asset_tag || "—"}
+                          </td>
+                          <td>{item.asset_name || "—"}</td>
+                          <td>
+                            <code className="amt-mono">
+                              {item.serial || "—"}
+                            </code>
+                          </td>
+                          <td>{item.vendor || "—"}</td>
+                          <td>{item.asset_type || "—"}</td>
+                          <td>{item.asset_user || "—"}</td>
+                          <td>
+                            <CcureBadge
+                              variant={
+                                item.status?.toLowerCase().includes("active") ||
+                                item.status?.toLowerCase().includes("use")
+                                  ? "success"
+                                  : "neutral"
+                              }
                             >
-                              {item.asset_tag || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.asset_name || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <code>{item.serial || "—"}</code>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.vendor || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.asset_type || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.asset_user || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <span
-                                style={{
-                                  padding: "2px 6px",
-                                  borderRadius: 4,
-                                  fontSize: "0.72rem",
-                                  fontWeight: 600,
-                                  background:
-                                    item.status
-                                      ?.toLowerCase()
-                                      .includes("active") ||
-                                    item.status?.toLowerCase().includes("use")
-                                      ? "rgba(16, 185, 129, 0.12)"
-                                      : "rgba(255,255,255,0.05)",
-                                  color:
-                                    item.status
-                                      ?.toLowerCase()
-                                      .includes("active") ||
-                                    item.status?.toLowerCase().includes("use")
-                                      ? "#10b981"
-                                      : "var(--text-muted)",
-                                }}
-                              >
-                                {item.status || "—"}
-                              </span>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.location || "—"}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              {item.company_name || "—"}
-                            </td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
+                              {item.status || "—"}
+                            </CcureBadge>
+                          </td>
+                          <td>{item.location || "—"}</td>
+                          <td>{item.company_name || "—"}</td>
+                        </tr>
+                      ),
+                    )}
+                  </CcureTable>
                 </div>
 
                 {totalCount > limit && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginTop: 20,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
+                  <nav className="amt-pagination" aria-label="Drilldown pages">
+                    <span className="amt-pagination__summary">
                       Showing <strong>{(page - 1) * limit + 1}</strong> to{" "}
                       <strong>{Math.min(page * limit, totalCount)}</strong> of{" "}
                       <strong>{totalCount}</strong> entries
                     </span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
+                    <div className="amt-pagination__controls">
+                      <CcureButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={page === 1}
-                        className="db-btn db-btn--ghost"
-                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
                       >
-                        ◀ Previous
-                      </button>
-                      <button
+                        <span aria-hidden="true">◀</span> Previous
+                      </CcureButton>
+                      <CcureButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() =>
                           setPage((p) =>
                             Math.min(Math.ceil(totalCount / limit), p + 1),
                           )
                         }
                         disabled={page >= Math.ceil(totalCount / limit)}
-                        className="db-btn db-btn--ghost"
-                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
                       >
-                        Next ▶
-                      </button>
+                        Next <span aria-hidden="true">▶</span>
+                      </CcureButton>
                     </div>
-                  </div>
+                  </nav>
                 )}
               </>
             )}
-          </div>
+          </CcureCard>
         )}
       </div>
     </AppLayout>

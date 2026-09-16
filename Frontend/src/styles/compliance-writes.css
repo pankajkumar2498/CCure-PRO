@@ -1,0 +1,139 @@
+/* ============================================================================
+   Compliance workspace — Marketplace and the ordinary-write dialogs
+   ----------------------------------------------------------------------------
+   Batch 27. Marketplace drew itself from compliance.css (.marketplace-view,
+   .grid-3, .framework-card, .fw-*, .framework-installed-badge) and dashboard.css
+   buttons with inline opacity and cursor styles; the Create Policy Baseline,
+   Configure Rule Parameters and Request Exception Waiver dialogs used
+   `.compliance-form`, whose field rules and forced button sizing restyle every
+   control inside it, plus inline styles and a colour literal. Everything here
+   resolves through `--ccure-*` tokens in both themes. Cards, badges, buttons and
+   fields are design-system components; this file lays them out.
+
+   compliance.css, dashboard.css and scan.css are untouched: the attestation,
+   remediation, gap-analysis and log dialogs still use `.compliance-form` and
+   the rest of those rules. The shared dialog container is unchanged.
+   ============================================================================ */
+
+/* ── Marketplace ──────────────────────────────────────────────────────────── */
+.cww-marketplace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  min-width: 0;
+}
+
+.cww-title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+}
+
+.cww-marketplace__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--ccure-space-lg);
+}
+
+.cww-framework {
+  height: 100%;
+}
+
+.cww-framework__icon {
+  display: inline-block;
+  margin-bottom: var(--ccure-space-xs);
+  font-size: var(--ccure-text-xl);
+}
+
+.cww-framework__meta {
+  margin: 0;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cww-framework__reqs {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+}
+
+.cww-framework__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  margin-top: var(--ccure-space-md);
+}
+
+/* The reason an action is disabled, as text a reader reaches — the legacy
+   button carried it only in a tooltip. */
+.cww-framework__hint {
+  margin: var(--ccure-space-sm) 0 0;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Ordinary-write dialogs ───────────────────────────────────────────────── */
+.cww-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.cww-form__intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+}
+
+.cww-form__heading {
+  margin: 0;
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cww-form__context {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.cww-form__textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.cww-form__submit {
+  margin-top: var(--ccure-space-xs);
+}
+
+.cww-mono {
+  font-family: var(--ccure-font-mono);
+}
+
+.cww-code {
+  padding: 0 var(--ccure-space-3xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cww-marketplace__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cww-framework__actions {
+    justify-content: flex-start;
+  }
+}

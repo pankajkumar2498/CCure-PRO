@@ -726,6 +726,50 @@ class WebScanOrchestrator:
                         }
                     )
 
+            # 5. API surface import (Phase 5): OpenAPI/Swagger + GraphQL. The
+            #    imported operations are added as ordinary endpoints/forms so
+            #    the existing DETECT engines (sqlmap, XSS, injection, access
+            #    control) test API parameters and bodies with no changes; only
+            #    API-specific conditions are raised here.
+            if options.get("enable_api_scan", True):
+                try:
+                    from core.web.api_scan import ApiScanEngine
+
+                    api = ApiScanEngine(
+                        same_origin_only=True,
+                        discover=bool(options.get("api_discover", True)),
+                    )
+                    api_res = await api.run(
+                        target_url,
+                        options=options,
+                        auth_headers={
+                            k: v
+                            for k, v in (auth_headers or {}).items()
+                            if k.lower() != "cookie"
+                        },
+                        auth_cookies={
+                            c["name"]: c.get("value", "")
+                            for c in (auth_cookies or [])
+                            if c.get("name")
+                        },
+                    )
+                    all_endpoints.extend(api_res.get("endpoints", []))
+                    all_forms.extend(api_res.get("forms", []))
+                    sensitive_findings.extend(api_res.get("sensitive_findings", []))
+                    sensitive_findings.extend(api_res.get("findings", []))
+                    result["api_inventory"] = api_res.get("inventory", {})
+                    result["api_stats"] = api_res.get("stats", {})
+                    st = api_res.get("stats", {})
+                    if st.get("spec_source") or st.get("graphql"):
+                        self._log(
+                            f"[CRAWL] API import: spec={st.get('spec_source')}, "
+                            f"{st.get('operations', 0)} operation(s), "
+                            f"graphql={st.get('graphql')}, "
+                            f"{st.get('findings', 0)} API finding(s)"
+                        )
+                except Exception as exc:
+                    log.warning("[CRAWL] API import failed: %s", exc)
+
             # Deduplicate endpoints
             all_endpoints = self._deduplicate_endpoints(all_endpoints)
 

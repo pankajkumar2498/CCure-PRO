@@ -197,6 +197,22 @@ class WebScanAuthSchema(BaseModel):
 class WebScanOptionsSchema(BaseModel):
     enable_sqli: bool = True
     enable_xss: bool = True
+    # Phase 2 / 4 / 5 engines (default on; a field so a client can disable one).
+    enable_injection: bool = True
+    enable_access_control: bool = True
+    enable_api_scan: bool = True
+    # Phase 5 API import knobs.
+    api_spec_url: str | None = Field(
+        default=None, description="URL of an OpenAPI/Swagger spec to import."
+    )
+    graphql_url: str | None = Field(
+        default=None, description="GraphQL endpoint URL to probe for introspection."
+    )
+    api_discover: bool = Field(
+        default=True,
+        description="Auto-discover an OpenAPI spec and GraphQL endpoint at "
+        "well-known paths.",
+    )
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
     # The orchestrator implements quick/standard/deep depth profiles and

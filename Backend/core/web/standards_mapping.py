@@ -39,6 +39,7 @@ OWASP_MAP: dict[str, str] = {
     "tls_issue": "A02:2021 – Cryptographic Failures",
     "cors": "A05:2021 – Security Misconfiguration",
     "cve": "A06:2021 – Vulnerable and Outdated Components",
+    "vulnerable_js_library": "A06:2021 – Vulnerable and Outdated Components",
     "information_disclosure": "A01:2021 – Broken Access Control",
     "csrf": "A01:2021 – Broken Access Control",
     "open_redirect": "A01:2021 – Broken Access Control",
@@ -139,6 +140,7 @@ NIST_800_53_MAP: dict[str, list[str]] = {
     "tls_issue": ["NIST800-53-SC-8", "NIST800-53-SC-28"],
     "cors": ["NIST800-53-SC-7", "NIST800-53-CM-7"],
     "cve": ["NIST800-53-SI-2", "NIST800-53-RA-5"],
+    "vulnerable_js_library": ["NIST800-53-SI-2", "NIST800-53-RA-5"],
     "information_disclosure": ["NIST800-53-AC-3", "NIST800-53-SC-28"],
     "csrf": ["NIST800-53-SI-10", "NIST800-53-SC-8"],
 }

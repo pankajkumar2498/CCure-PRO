@@ -42,6 +42,7 @@ TOOL_PURPOSE = {
     "injection": "Active server-side injection testing (command, SSTI, XXE, LDAP, XPath)",
     "access_control": "Authorization testing (IDOR, horizontal/vertical privilege escalation)",
     "http_methods": "HTTP method/verb security testing (TRACE, method-based auth bypass)",
+    "js_deps": "Vulnerable JavaScript dependency detection (OSV npm intelligence)",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -1357,6 +1358,61 @@ class WebScanOrchestrator:
                 except Exception as exc:
                     log.warning("[DETECT] HTTP-method engine failed: %s", exc)
                     coverage.failed("http_methods", exc)
+
+            # 2f. Vulnerable JavaScript dependency detection (Phase 7)
+            #
+            # Identifies front-end libraries + versions from <script src> and
+            # banners, and matches them against the OSV npm feed CCureAudit
+            # already carries, enriching CVSS/CWE from the NVD catalogue. Invents
+            # no CVEs; bounded network use.
+            if options.get("enable_js_deps", True):
+                try:
+                    from core.web.js_deps import JsDependencyEngine
+
+                    jsd = JsDependencyEngine()
+                    if coverage.check(jsd, "js_deps"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 98,
+                                "message": "Checking JavaScript dependencies for known vulnerabilities…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _jsd_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        jsd_result = await jsd.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            auth_headers=auth_headers or None,
+                            auth_cookies={
+                                c["name"]: c.get("value", "")
+                                for c in (auth_cookies or [])
+                                if c.get("name")
+                            },
+                            cancel_cb=_jsd_cancelled,
+                        )
+                        jsd_findings = jsd_result.get("findings", [])
+                        all_findings.extend(jsd_findings)
+                        st = jsd_result.get("stats", {})
+                        coverage.ran(
+                            "js_deps",
+                            (
+                                f"{st.get('libraries', 0)} JS librar(y/ies) "
+                                f"identified from {st.get('scripts', 0)} script(s) "
+                                f"across {st.get('pages', 0)} page(s); "
+                                f"{len(jsd_findings)} vulnerable-dependency "
+                                f"finding(s) via OSV. {st.get('requests', 0)} "
+                                f"request(s)."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] JS-dependency engine failed: %s", exc)
+                    coverage.failed("js_deps", exc)
 
             # 3. Custom Security Header Checks
             _emit_web_progress(

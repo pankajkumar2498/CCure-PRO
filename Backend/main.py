@@ -162,7 +162,11 @@ async def lifespan(app: FastAPI):
 
     # 1. Ensure basic roles and default organization exist (Data Seeding)
     # This assumes Alembic migrations have already run.
-    from db.migrate_production_schema import seed_default_org, seed_rbac
+    from db.migrate_production_schema import (
+        DEFAULT_ORG_SLUG,
+        seed_default_org,
+        seed_rbac,
+    )
 
     try:
         with engine.begin() as conn:
@@ -176,7 +180,7 @@ async def lifespan(app: FastAPI):
     # 1.6. Ensure first admin exists
     from auth.email_utils import email_matches, normalize_email
     from auth.jwt_handler import hash_password
-    from db.base import SessionLocal, gen_user_id
+    from db.base import SessionLocal, gen_user_id, utcnow
     from db.models.rbac import Organization, Role
     from db.models.users import User
 
@@ -191,7 +195,7 @@ async def lifespan(app: FastAPI):
                 log.info(f"Seeding default admin user: {admin_email}")
                 org = (
                     db.query(Organization)
-                    .filter(Organization.slug == "default")
+                    .filter(Organization.slug == DEFAULT_ORG_SLUG)
                     .first()
                 )
                 role = db.query(Role).filter(Role.name == "superadmin").first()
@@ -205,6 +209,10 @@ async def lifespan(app: FastAPI):
                         role_id=role.id,
                         is_active=True,
                         is_verified=True,
+                        # There is no other admin yet to approve this one —
+                        # it is the bootstrap superadmin the approval gate
+                        # exists to be granted by.
+                        approved_at=utcnow(),
                     )
                     db.add(admin)
                     try:
@@ -213,9 +221,14 @@ async def lifespan(app: FastAPI):
                     except Exception as e:
                         db.rollback()
                         log.error(f"Failed to seed admin: {e}")
+                else:
+                    log.warning(
+                        "Could not seed admin: default org or superadmin role "
+                        "missing."
+                    )
             else:
-                log.warning(
-                    "Could not seed admin: default org or superadmin role missing."
+                log.debug(
+                    f"Default admin '{admin_email}' already exists; skipping seed."
                 )
         else:
             if db.query(User).count() == 0:

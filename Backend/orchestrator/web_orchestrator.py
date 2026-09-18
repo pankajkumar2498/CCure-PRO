@@ -40,6 +40,7 @@ TOOL_PURPOSE = {
     "sqlmap": "SQL injection testing on parameterised endpoints",
     "xss": "Active cross-site scripting testing (reflected, DOM and stored)",
     "injection": "Active server-side injection testing (command, SSTI, XXE, LDAP, XPath)",
+    "access_control": "Authorization testing (IDOR, horizontal/vertical privilege escalation)",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -1108,6 +1109,141 @@ class WebScanOrchestrator:
                     coverage.failed("injection", exc)
             else:
                 coverage.skipped("injection", "Disabled in scan options")
+
+            # 2d. Access-control engine (IDOR / privilege escalation)
+            #
+            # Multi-user and read-only by default. Runs only when the scan
+            # configures access_control users (isolated sessions, never mixed),
+            # and is evidence-based: a finding requires the owner's protected,
+            # resource-specific content to be seen by another identity.
+            ac_cfg = {}
+            try:
+                from core.web.auth.secrets import decrypt_auth_config
+
+                ac_cfg = (decrypt_auth_config(auth_config or {}) or {}).get(
+                    "access_control"
+                ) or {}
+            except Exception as exc:
+                log.debug("access_control config decrypt failed: %s", exc)
+            ac_users = ac_cfg.get("users") or []
+            if options.get("enable_access_control", True) and ac_users:
+                try:
+                    from core.web.access_control import AccessControlEngine
+                    from core.web.auth.session_manager import WebSessionManager
+
+                    ac_mgr = WebSessionManager(redis_client=_redis_or_none())
+                    # Owner = the main authenticated session (its crawl produced
+                    # the candidate resources). If the scan is anonymous, the
+                    # first non-privileged configured user becomes the owner.
+                    owner = None
+                    peers = []
+                    if auth_status.get("authenticated"):
+                        owner = {
+                            "label": ac_cfg.get("owner_label", "A"),
+                            "headers": {
+                                k: v
+                                for k, v in (auth_headers or {}).items()
+                                if k.lower() != "cookie"
+                            },
+                            "cookies": {
+                                c["name"]: c.get("value", "")
+                                for c in (auth_cookies or [])
+                                if c.get("name")
+                            },
+                        }
+                    pending = list(ac_users)
+                    if owner is None:
+                        for i, u in enumerate(pending):
+                            if not u.get("privileged"):
+                                s = await ac_mgr.authenticate(
+                                    u.get("auth") or {},
+                                    f"{web_scan_id}:{u.get('label')}",
+                                )
+                                if s.is_authenticated:
+                                    owner = {
+                                        "label": u.get("label", "A"),
+                                        "headers": dict(s.headers),
+                                        "cookies": s.get_cookies(),
+                                    }
+                                    pending.pop(i)
+                                    break
+                    for u in pending:
+                        s = await ac_mgr.authenticate(
+                            u.get("auth") or {}, f"{web_scan_id}:{u.get('label')}"
+                        )
+                        if s.is_authenticated:
+                            peers.append(
+                                {
+                                    "label": u.get("label"),
+                                    "headers": dict(s.headers),
+                                    "cookies": s.get_cookies(),
+                                    "privileged": bool(u.get("privileged")),
+                                }
+                            )
+                        else:
+                            log.warning(
+                                "access-control user %s did not authenticate: %s",
+                                u.get("label"),
+                                s.auth_error,
+                            )
+
+                    admin_paths = ac_cfg.get("admin_paths") or []
+                    if owner and (peers or admin_paths):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 95,
+                                "message": "Access-control testing (IDOR / privilege escalation)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+                        ac_engine = AccessControlEngine(
+                            rate_limit=effective_rate,
+                            max_candidates=WebScanConfig.ACCESS_CONTROL_MAX_CANDIDATES,
+                            timeout_s=WebScanConfig.ACCESS_CONTROL_TIMEOUT_S,
+                            same_origin_only=WebScanConfig.ACCESS_CONTROL_SAME_ORIGIN_ONLY,
+                            similarity_same=WebScanConfig.ACCESS_CONTROL_SIMILARITY,
+                            allow_write_testing=bool(ac_cfg.get("allow_write_testing")),
+                        )
+
+                        def _ac_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        ac_result = await ac_engine.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            owner=owner,
+                            peers=peers,
+                            admin_paths=admin_paths,
+                            cancel_cb=_ac_cancelled,
+                        )
+                        ac_findings = ac_result.get("findings", [])
+                        all_findings.extend(ac_findings)
+                        st = ac_result.get("stats", {})
+                        coverage.ran(
+                            "access_control",
+                            (
+                                f"{len(peers)} peer identit(y/ies) + anon vs "
+                                f"'{owner['label']}'; {st.get('candidates', 0)} "
+                                f"candidate resource(s), {st.get('requests', 0)} "
+                                f"requests, {st.get('duration_s', 0)}s; "
+                                f"{len(ac_findings)} finding(s) "
+                                f"(idor={st.get('idor', 0)}, "
+                                f"priv_esc={st.get('privilege_escalation', 0)}, "
+                                f"bac={st.get('broken_access_control', 0)}). "
+                                f"Evidence-based cross-identity comparison."
+                            ),
+                        )
+                    else:
+                        coverage.skipped(
+                            "access_control",
+                            "no additional identity authenticated for comparison",
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] Access-control engine failed: %s", exc)
+                    coverage.failed("access_control", exc)
 
             # 3. Custom Security Header Checks
             _emit_web_progress(

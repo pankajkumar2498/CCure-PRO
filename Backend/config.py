@@ -379,6 +379,22 @@ class WebScanConfig:
         "command_injection,ssti,xxe,ldap_injection,xpath_injection",
     )
 
+    # ── Access-control engine (IDOR / privilege escalation) ───────────────────
+    # Multi-user, evidence-based, read-only by default. Runs only when the scan
+    # configures access_control users. Bounded and same-origin.
+    ACCESS_CONTROL_MAX_CANDIDATES: int = int(
+        os.getenv("ACCESS_CONTROL_MAX_CANDIDATES", "30")
+    )
+    ACCESS_CONTROL_TIMEOUT_S: float = float(os.getenv("ACCESS_CONTROL_TIMEOUT_S", "15"))
+    ACCESS_CONTROL_SAME_ORIGIN_ONLY: bool = os.getenv(
+        "ACCESS_CONTROL_SAME_ORIGIN_ONLY", "true"
+    ).lower() in ("1", "true", "yes")
+    # Similarity at/above which two responses are "the same resource". High on
+    # purpose — an authorization bypass returns the victim's actual content.
+    ACCESS_CONTROL_SIMILARITY: float = float(
+        os.getenv("ACCESS_CONTROL_SIMILARITY", "0.90")
+    )
+
 
 class AdminConfig:
     """Default administrator account configuration."""

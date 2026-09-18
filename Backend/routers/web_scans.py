@@ -73,6 +73,42 @@ class WebScanScopeSchema(BaseModel):
     max_depth: int = Field(default=5, ge=1, le=20)
 
 
+class AccessControlUserSchema(BaseModel):
+    """One authorization context for Phase 4 access-control testing."""
+
+    label: str = Field(description="A short identity label, e.g. 'A', 'B', 'admin'.")
+    auth: dict = Field(
+        default_factory=dict,
+        description="This user's own auth config (same shape as the top-level "
+        "auth block). Its secrets are encrypted at rest like the main login.",
+    )
+    privileged: bool = Field(
+        default=False,
+        description="Marks an administrator/high-privilege identity, used as the "
+        "baseline for vertical privilege-escalation checks.",
+    )
+
+
+class AccessControlSchema(BaseModel):
+    """Phase 4 multi-user access-control (IDOR / privilege-escalation) config."""
+
+    users: list[AccessControlUserSchema] = Field(
+        default_factory=list,
+        description="Additional isolated identities (User B, an administrator) "
+        "tested against the resources the main session can reach.",
+    )
+    admin_paths: list[str] = Field(
+        default_factory=list,
+        description="Known administrator-only paths, tested for vertical "
+        "privilege escalation by lower-privilege identities.",
+    )
+    allow_write_testing: bool = Field(
+        default=False,
+        description="Permit safe state-changing method probes. Off by default: "
+        "testing is read-only unless the environment explicitly allows writes.",
+    )
+
+
 class WebScanAuthSchema(BaseModel):
     type: str = Field(
         default="none",
@@ -131,6 +167,11 @@ class WebScanAuthSchema(BaseModel):
         default=None,
         description="Multi-step login/workflow: an ordered list of "
         "{method,url,fields,extract,success_indicator} steps run on one session.",
+    )
+    access_control: AccessControlSchema | None = Field(
+        default=None,
+        description="Phase 4 access-control testing: additional isolated users "
+        "(B, admin) and admin paths for IDOR / privilege-escalation checks.",
     )
     # Token-based logins. The session manager supports these, but with no field
     # here Pydantic drops them from the request body, so an operator scanning a

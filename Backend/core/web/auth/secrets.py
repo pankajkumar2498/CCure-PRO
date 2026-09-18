@@ -97,6 +97,22 @@ def _transform(config: Dict[str, Any], fn) -> Dict[str, Any]:
                 }
             new_steps.append(step)
         result["login_steps"] = new_steps
+    # Phase 4 access-control testing carries additional users (User B, admin),
+    # each with their own auth config nested under access_control.users[].auth.
+    # Those are the same class of secret as the main login and must be
+    # protected the same way, recursively.
+    access = result.get("access_control")
+    if isinstance(access, dict) and isinstance(access.get("users"), list):
+        access = dict(access)
+        access["users"] = [
+            (
+                {**u, "auth": _transform(u["auth"], fn)}
+                if isinstance(u, dict) and isinstance(u.get("auth"), dict)
+                else u
+            )
+            for u in access["users"]
+        ]
+        result["access_control"] = access
     return result
 
 
@@ -136,4 +152,16 @@ def redact_auth_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
                 step["fields"] = {k: "********" for k in step["fields"]}
             red_steps.append(step)
         redacted["login_steps"] = red_steps
+    access = redacted.get("access_control")
+    if isinstance(access, dict) and isinstance(access.get("users"), list):
+        access = dict(access)
+        access["users"] = [
+            (
+                {**u, "auth": redact_auth_config(u["auth"])}
+                if isinstance(u, dict) and isinstance(u.get("auth"), dict)
+                else u
+            )
+            for u in access["users"]
+        ]
+        redacted["access_control"] = access
     return redacted

@@ -27,6 +27,8 @@ OWASP_MAP: dict[str, str] = {
     "misconfig": "A05:2021 – Security Misconfiguration",
     "exposed_panel": "A01:2021 – Broken Access Control",
     "idor": "A01:2021 – Broken Access Control",
+    "privilege_escalation": "A01:2021 – Broken Access Control",
+    "broken_access_control": "A01:2021 – Broken Access Control",
     "path_traversal": "A01:2021 – Broken Access Control",
     "file_inclusion": "A01:2021 – Broken Access Control",
     "tls_issue": "A02:2021 – Cryptographic Failures",
@@ -65,6 +67,9 @@ PCI_DSS_MAP: dict[str, list[str]] = {
     "information_disclosure": ["PCI-DSS-3.4.1"],
     "exposed_panel": ["PCI-DSS-1.3.1"],
     "broken_auth": ["PCI-DSS-8.3.1", "PCI-DSS-8.3.6"],
+    "idor": ["PCI-DSS-7.2.1", "PCI-DSS-6.2.4"],
+    "privilege_escalation": ["PCI-DSS-7.2.1", "PCI-DSS-7.2.2"],
+    "broken_access_control": ["PCI-DSS-7.2.1"],
 }
 
 # ── SOC 2 Trust Service Criteria Mapping ──────────────────────────────────────
@@ -118,6 +123,8 @@ NIST_800_53_MAP: dict[str, list[str]] = {
     "misconfig": ["NIST800-53-CM-6", "NIST800-53-CM-7"],
     "exposed_panel": ["NIST800-53-AC-17", "NIST800-53-AC-3"],
     "idor": ["NIST800-53-AC-3", "NIST800-53-AC-6"],
+    "privilege_escalation": ["NIST800-53-AC-6", "NIST800-53-AC-3"],
+    "broken_access_control": ["NIST800-53-AC-3", "NIST800-53-AC-2"],
     "path_traversal": ["NIST800-53-AC-3", "NIST800-53-SI-10"],
     "tls_issue": ["NIST800-53-SC-8", "NIST800-53-SC-28"],
     "cors": ["NIST800-53-SC-7", "NIST800-53-CM-7"],

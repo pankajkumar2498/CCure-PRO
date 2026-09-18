@@ -357,6 +357,28 @@ class WebScanConfig:
         "yes",
     )
 
+    # ── Active injection engine (command/SSTI/XXE/LDAP/XPath) ──────────────────
+    # HTTP-driven, evidence-based (differential timing / computed value / canary
+    # / parser error). Bounded and same-origin by default. The timeout must
+    # exceed the larger command-injection delay so a genuine sleep is observed
+    # rather than cut off.
+    INJECTION_MAX_TARGETS: int = int(os.getenv("INJECTION_MAX_TARGETS", "25"))
+    INJECTION_MAX_PARAMS_PER_TARGET: int = int(
+        os.getenv("INJECTION_MAX_PARAMS_PER_TARGET", "10")
+    )
+    INJECTION_TIMEOUT_S: float = float(os.getenv("INJECTION_TIMEOUT_S", "20"))
+    INJECTION_CMDI_DELAY_1: int = int(os.getenv("INJECTION_CMDI_DELAY_1", "5"))
+    INJECTION_CMDI_DELAY_2: int = int(os.getenv("INJECTION_CMDI_DELAY_2", "8"))
+    INJECTION_SAME_ORIGIN_ONLY: bool = os.getenv(
+        "INJECTION_SAME_ORIGIN_ONLY", "true"
+    ).lower() in ("1", "true", "yes")
+    # Comma-separated subset of:
+    # command_injection,ssti,xxe,ldap_injection,xpath_injection
+    INJECTION_CLASSES: str = os.getenv(
+        "INJECTION_CLASSES",
+        "command_injection,ssti,xxe,ldap_injection,xpath_injection",
+    )
+
 
 class AdminConfig:
     """Default administrator account configuration."""

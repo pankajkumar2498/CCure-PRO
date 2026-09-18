@@ -465,7 +465,10 @@ def test_quick_depth_is_opt_in_and_declares_what_it_traded(monkeypatch):
     cov = result["tool_coverage"]
     assert cov["scan_depth"] == "quick"
     assert "not tested for" in cov["scan_depth_caveat"]
-    assert "narrowed to tags" in cov["tools"][0]["detail"]
+    # Select nuclei by name: the coverage tool list is sorted, and other tools
+    # (e.g. "injection") now sort ahead of it, so an index assumption is wrong.
+    nuclei_tool = next(t for t in cov["tools"] if t["tool"] == "nuclei")
+    assert "narrowed to tags" in nuclei_tool["detail"]
 
 
 def test_deep_depth_includes_low_and_informational(monkeypatch):

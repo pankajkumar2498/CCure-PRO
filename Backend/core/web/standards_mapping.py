@@ -40,6 +40,10 @@ OWASP_MAP: dict[str, str] = {
     "rce": "A03:2021 – Injection",
     "lfi": "A01:2021 – Broken Access Control",
     "rfi": "A01:2021 – Broken Access Control",
+    # Phase 2 active-injection classes — all Injection (A03).
+    "ssti": "A03:2021 – Injection",
+    "ldap_injection": "A03:2021 – Injection",
+    "xpath_injection": "A03:2021 – Injection",
 }
 
 # ── PCI-DSS 4.0 Mapping ──────────────────────────────────────────────────────
@@ -49,6 +53,9 @@ PCI_DSS_MAP: dict[str, list[str]] = {
     "xss": ["PCI-DSS-6.2.4", "PCI-DSS-6.5.7"],
     "command_injection": ["PCI-DSS-6.2.4"],
     "xxe": ["PCI-DSS-6.2.4"],
+    "ssti": ["PCI-DSS-6.2.4"],
+    "ldap_injection": ["PCI-DSS-6.2.4"],
+    "xpath_injection": ["PCI-DSS-6.2.4"],
     "tls_issue": ["PCI-DSS-4.2.1", "PCI-DSS-4.2.2"],
     "default_creds": ["PCI-DSS-2.2.2", "PCI-DSS-8.2.2"],
     "misconfig": ["PCI-DSS-2.2.1"],
@@ -102,6 +109,9 @@ NIST_800_53_MAP: dict[str, list[str]] = {
     "xss": ["NIST800-53-SI-10", "NIST800-53-SC-28"],
     "command_injection": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
     "xxe": ["NIST800-53-SI-10"],
+    "ssti": ["NIST800-53-SI-10", "NIST800-53-SA-11"],
+    "ldap_injection": ["NIST800-53-SI-10"],
+    "xpath_injection": ["NIST800-53-SI-10"],
     "ssrf": ["NIST800-53-SC-7", "NIST800-53-AC-4"],
     "broken_auth": ["NIST800-53-IA-5", "NIST800-53-AC-7"],
     "default_creds": ["NIST800-53-IA-5", "NIST800-53-CM-6"],

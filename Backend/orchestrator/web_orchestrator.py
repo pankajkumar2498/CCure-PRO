@@ -39,6 +39,7 @@ TOOL_PURPOSE = {
     "nuclei": "Template-based vulnerability detection (the primary web check)",
     "sqlmap": "SQL injection testing on parameterised endpoints",
     "xss": "Active cross-site scripting testing (reflected, DOM and stored)",
+    "injection": "Active server-side injection testing (command, SSTI, XXE, LDAP, XPath)",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -986,6 +987,96 @@ class WebScanOrchestrator:
                     coverage.failed("xss", exc)
             else:
                 coverage.skipped("xss", "Disabled in scan options")
+
+            # 2c. Active injection engine (command / SSTI / XXE / LDAP / XPath)
+            #
+            # Extends injection coverage beyond sqlmap's SQLi. Server-side, so
+            # tested over HTTP (not a browser), on the same discovered surface
+            # and session. Evidence-based — differential timing, computed value,
+            # canary expansion or a parser-error signature — never reflection.
+            if options.get("enable_injection", True):
+                try:
+                    from core.web.injection import InjectionEngine
+
+                    classes = tuple(
+                        c.strip()
+                        for c in str(WebScanConfig.INJECTION_CLASSES).split(",")
+                        if c.strip()
+                    )
+                    inj = InjectionEngine(
+                        rate_limit=effective_rate,
+                        max_targets=WebScanConfig.INJECTION_MAX_TARGETS,
+                        max_params_per_target=WebScanConfig.INJECTION_MAX_PARAMS_PER_TARGET,
+                        timeout_s=WebScanConfig.INJECTION_TIMEOUT_S,
+                        cmdi_delay_1=WebScanConfig.INJECTION_CMDI_DELAY_1,
+                        cmdi_delay_2=WebScanConfig.INJECTION_CMDI_DELAY_2,
+                        same_origin_only=WebScanConfig.INJECTION_SAME_ORIGIN_ONLY,
+                        classes=classes or None,
+                    )
+                    if coverage.check(inj, "injection"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 93,
+                                "message": "Active injection testing (command/SSTI/XXE/LDAP/XPath)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _inj_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        def _inj_progress(msg: str) -> None:
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {"status": "running", "percentage": 94, "message": msg},
+                            )
+
+                        inj_result = await inj.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            forms=forms,
+                            auth_headers=auth_headers or None,
+                            auth_cookies=auth_cookies or None,
+                            options=options,
+                            waf_detected=waf_detected,
+                            progress_cb=_inj_progress,
+                            cancel_cb=_inj_cancelled,
+                        )
+                        inj_findings = inj_result.get("findings", [])
+                        all_findings.extend(inj_findings)
+                        st = inj_result.get("stats", {})
+                        per_class = ", ".join(
+                            f"{c}={st.get(c, 0)}"
+                            for c in (
+                                "command_injection",
+                                "ssti",
+                                "xxe",
+                                "ldap_injection",
+                                "xpath_injection",
+                            )
+                            if st.get(c)
+                        )
+                        coverage.ran(
+                            "injection",
+                            (
+                                f"{st.get('parameters_tested', 0)} parameter(s), "
+                                f"{st.get('requests', 0)} requests, "
+                                f"{st.get('duration_s', 0)}s; "
+                                f"{len(inj_findings)} finding(s)"
+                                + (f" ({per_class})" if per_class else "")
+                                + ". Detection is by timing/computed-value/canary/"
+                                "parser-error evidence, not reflection."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] Injection engine failed: %s", exc)
+                    coverage.failed("injection", exc)
+            else:
+                coverage.skipped("injection", "Disabled in scan options")
 
             # 3. Custom Security Header Checks
             _emit_web_progress(

@@ -80,6 +80,23 @@ def _transform(config: Dict[str, Any], fn) -> Dict[str, Any]:
             result[key] = {
                 k: fn(v) if isinstance(v, str) else v for k, v in mapping.items()
             }
+    # Multi-step logins carry their credentials inside each step's `fields`
+    # dict, under an application-specific name we cannot predict, so every
+    # string value there is protected. Encryption round-trips a `{{token}}`
+    # placeholder or a username unchanged, so this is safe for non-secret
+    # fields too.
+    steps = result.get("login_steps")
+    if isinstance(steps, list):
+        new_steps = []
+        for step in steps:
+            if isinstance(step, dict) and isinstance(step.get("fields"), dict):
+                step = dict(step)
+                step["fields"] = {
+                    k: fn(v) if isinstance(v, str) else v
+                    for k, v in step["fields"].items()
+                }
+            new_steps.append(step)
+        result["login_steps"] = new_steps
     return result
 
 
@@ -110,4 +127,13 @@ def redact_auth_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         mapping = redacted.get(key)
         if isinstance(mapping, dict):
             redacted[key] = {k: "********" for k in mapping}
+    steps = redacted.get("login_steps")
+    if isinstance(steps, list):
+        red_steps = []
+        for step in steps:
+            if isinstance(step, dict) and isinstance(step.get("fields"), dict):
+                step = dict(step)
+                step["fields"] = {k: "********" for k in step["fields"]}
+            red_steps.append(step)
+        redacted["login_steps"] = red_steps
     return redacted

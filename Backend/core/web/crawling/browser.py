@@ -89,6 +89,11 @@ class CrawlResult:
         self.out_of_scope: list[dict] = []
         #: URLs the application answered with its not-found page.
         self.soft_404s: list[str] = []
+        #: Session-loss / re-authentication events observed during the crawl,
+        #: so the report can say the authenticated session dropped and whether
+        #: it was recovered — otherwise a mid-crawl logout silently turns the
+        #: rest of the crawl anonymous.
+        self.auth_events: list[dict] = []
 
     def to_dict(self) -> dict:
         return {
@@ -147,6 +152,8 @@ class PlaywrightCrawler:
         scope_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
         progress_cb=None,
+        auth_config: dict | None = None,
+        reauth_cb=None,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -223,6 +230,13 @@ class PlaywrightCrawler:
                 # Apply auth headers
                 if auth_headers:
                     await context.set_extra_http_headers(auth_headers)
+
+                # Authenticated crawling: only watch for session loss when the
+                # crawl started authenticated and a re-auth callback exists.
+                # The callback is itself bounded (WebSessionManager.max_reauth),
+                # and once it can no longer recover the session we stop checking
+                # so the crawl does not stall re-detecting the same logout.
+                _auth_watch = bool((auth_cookies or auth_headers) and reauth_cb)
 
                 # Refuse to *navigate* off-scope in the first place.
                 #
@@ -375,6 +389,58 @@ class PlaywrightCrawler:
 
                         # Extract page content
                         content = await page.content()
+
+                        # Authenticated-crawl session-loss detection. If this
+                        # page is a login/401/403 while we hold a session, the
+                        # session dropped; re-authenticate (bounded) and re-crawl
+                        # this URL rather than record the login page as surface.
+                        if _auth_watch:
+                            from core.web.auth.session_manager import WebSession
+
+                            status_code = response.status if response else 0
+                            if WebSession.looks_unauthenticated(
+                                status_code, final_url, content, auth_config or {}
+                            ):
+                                fresh = None
+                                try:
+                                    fresh = await reauth_cb()
+                                except Exception as exc:
+                                    log.debug("re-auth callback error: %s", exc)
+                                if fresh:
+                                    try:
+                                        await context.clear_cookies()
+                                        await context.add_cookies(fresh)
+                                    except Exception as exc:
+                                        log.debug(
+                                            "re-auth cookie apply failed: %s", exc
+                                        )
+                                    result.auth_events.append(
+                                        {"url": final_url, "event": "reauthenticated"}
+                                    )
+                                    log.info(
+                                        "Session lost at %s — re-authenticated, "
+                                        "re-crawling",
+                                        final_url[:100],
+                                    )
+                                    visited.discard(final_url)
+                                    visited.discard(url)
+                                    queue.append((url, depth))
+                                    continue
+                                # Re-auth exhausted/failed: record once and stop
+                                # watching so the crawl finishes (anonymously).
+                                _auth_watch = False
+                                result.auth_events.append(
+                                    {
+                                        "url": final_url,
+                                        "event": "session_lost_unrecovered",
+                                    }
+                                )
+                                log.warning(
+                                    "Session lost at %s and could not be "
+                                    "re-established — remaining pages are "
+                                    "crawled unauthenticated",
+                                    final_url[:100],
+                                )
 
                         # A path the application does not have. Recording it would
                         # invent attack surface: every downstream tool would then

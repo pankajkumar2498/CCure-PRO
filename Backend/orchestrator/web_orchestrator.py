@@ -572,15 +572,43 @@ class WebScanOrchestrator:
             sensitive_findings: list[dict] = []
             crawl_stats: dict[str, Any] = {}
 
-            # 1. Authenticate if needed
+            # 1. Authenticate if needed. A single session manager is retained
+            #    for the phase so its bounded re-auth counter persists across
+            #    any session-loss events the crawl detects.
+            from core.web.auth.secrets import decrypt_auth_config
+            from core.web.auth.session_manager import WebSessionManager
+
+            auth_mgr = WebSessionManager(redis_client=_redis_or_none())
             auth_headers, auth_cookies, auth_status = await self._authenticate(
-                auth_config, web_scan_id, target_url
+                auth_config, web_scan_id, target_url, session_mgr=auth_mgr
             )
             result["auth_status"] = auth_status
             if auth_status.get("requested") and not auth_status.get("authenticated"):
                 sensitive_findings.append(
                     auth_failure_finding(target_url, auth_status.get("error", ""))
                 )
+
+            # A re-auth callback for authenticated crawling: if the session is
+            # lost mid-crawl the crawler calls this to recover it (bounded by
+            # max_reauth in the manager) and returns fresh cookies. Only the
+            # decrypted config lives in this closure — the crawler is handed a
+            # secret-free detection config (login_url + failure_indicator only).
+            reauth_cb = None
+            crawl_auth_cfg: dict = {}
+            if auth_status.get("authenticated"):
+                _usable_cfg = decrypt_auth_config(auth_config or {})
+                crawl_auth_cfg = {
+                    "login_url": _usable_cfg.get("login_url"),
+                    "failure_indicator": _usable_cfg.get("failure_indicator"),
+                }
+
+                async def _reauth():
+                    s = await auth_mgr.reauthenticate(_usable_cfg, web_scan_id)
+                    if s.is_authenticated:
+                        return s.get_cookies_for_playwright(target_url)
+                    return None
+
+                reauth_cb = _reauth
 
             # 2. Playwright Crawling
             try:
@@ -614,6 +642,8 @@ class WebScanOrchestrator:
                     auth_headers=auth_headers or None,
                     exclude_patterns=scan_scope.get("exclude_paths", []),
                     progress_cb=_crawl_progress,
+                    auth_config=crawl_auth_cfg,
+                    reauth_cb=reauth_cb,
                 )
                 all_endpoints.extend(crawl_result.endpoints)
                 all_endpoints.extend(crawl_result.js_endpoints)
@@ -622,6 +652,7 @@ class WebScanOrchestrator:
                     "pages_visited": crawl_result.pages_visited,
                     "soft_404s_discarded": len(crawl_result.soft_404s),
                     "off_scope_blocked": len(crawl_result.out_of_scope),
+                    "auth_events": list(crawl_result.auth_events),
                 }
                 # A target that redirects the browser to an arbitrary external
                 # host is an open redirect. The crawler has to detect this to
@@ -1228,7 +1259,7 @@ class WebScanOrchestrator:
     # ── Internal Helpers ──────────────────────────────────────────────────────
 
     async def _authenticate(
-        self, auth_config: dict, web_scan_id: str, target_url: str
+        self, auth_config: dict, web_scan_id: str, target_url: str, session_mgr=None
     ) -> tuple[dict, list, dict]:
         """
         Establish the session every later step runs under.
@@ -1258,10 +1289,13 @@ class WebScanOrchestrator:
             # place they are needed in the clear.
             usable_config = decrypt_auth_config(auth_config)
 
-            session_mgr = WebSessionManager(redis_client=_redis_or_none())
+            session_mgr = session_mgr or WebSessionManager(
+                redis_client=_redis_or_none()
+            )
             session = await session_mgr.authenticate(usable_config, web_scan_id)
             if session.is_authenticated:
                 status["authenticated"] = True
+                status["verified"] = session.verified
                 return (
                     session.get_auth_headers(),
                     session.get_cookies_for_playwright(target_url),

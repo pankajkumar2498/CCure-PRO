@@ -76,7 +76,10 @@ class WebScanScopeSchema(BaseModel):
 class WebScanAuthSchema(BaseModel):
     type: str = Field(
         default="none",
-        description="Auth type: none, form_login, bearer_token, cookie, custom_header",
+        description=(
+            "Auth type: none, form_login, bearer_token, cookie, custom_header, "
+            "multi_step"
+        ),
     )
     login_url: str | None = None
     username: str | None = None
@@ -87,6 +90,48 @@ class WebScanAuthSchema(BaseModel):
     token: str | None = None
     cookies: dict[str, str] | None = None
     headers: dict[str, str] | None = None
+    # ── Phase 3: CSRF / hidden-token logins, verification, re-auth ────────────
+    csrf_field: str | None = Field(
+        default=None,
+        description="Name of the anti-CSRF token field on the login page. "
+        "When omitted, all hidden fields are captured automatically.",
+    )
+    csrf_url: str | None = Field(
+        default=None,
+        description="Page to read the CSRF/hidden token from before logging in "
+        "(defaults to login_url).",
+    )
+    extract_hidden: bool = Field(
+        default=True,
+        description="Carry the login page's hidden form fields into the login.",
+    )
+    failure_indicator: str | None = Field(
+        default=None,
+        description="Text whose presence in a response means the session is "
+        "invalid / login failed.",
+    )
+    verify_url: str | None = Field(
+        default=None,
+        description="Authenticated-only URL fetched after login to confirm the "
+        "session works.",
+    )
+    verify_success_indicator: str | None = Field(
+        default=None,
+        description="Text expected on verify_url when authenticated "
+        "(defaults to success_indicator).",
+    )
+    max_reauth: int = Field(
+        default=2,
+        ge=0,
+        le=10,
+        description="Maximum re-authentication attempts if the session is lost "
+        "mid-scan.",
+    )
+    login_steps: list[dict] | None = Field(
+        default=None,
+        description="Multi-step login/workflow: an ordered list of "
+        "{method,url,fields,extract,success_indicator} steps run on one session.",
+    )
     # Token-based logins. The session manager supports these, but with no field
     # here Pydantic drops them from the request body, so an operator scanning a
     # JSON-API application had no way to describe its login and the scan ran

@@ -13,10 +13,139 @@ Handles:
 
 import json
 import logging
+import re
 import time
 from typing import Dict, List, Optional
+from urllib.parse import urljoin, urlparse
 
 log = logging.getLogger("ccure.web.auth")
+
+#: Hidden-field names conventionally used for anti-CSRF / anti-forgery tokens.
+#: Extracting these is what makes CSRF-protected form logins (DVWA's
+#: ``user_token``, Django's ``csrfmiddlewaretoken``, Rails'
+#: ``authenticity_token``, ASP.NET's ``__RequestVerificationToken``) work — the
+#: token is bound to the session cookie set when the login page is fetched, so
+#: it must be read from that page and submitted on the same session.
+_CSRF_FIELD_NAMES = {
+    "csrf_token",
+    "csrftoken",
+    "_csrf",
+    "_csrf_token",
+    "csrfmiddlewaretoken",
+    "authenticity_token",
+    "__requestverificationtoken",
+    "user_token",
+    "_token",
+    "xsrf",
+    "xsrf_token",
+    "anti_csrf",
+    "nonce",
+}
+
+_INPUT_RE = re.compile(r"<input\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_ATTR_RE = re.compile(
+    r"""(\w[\w:-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE
+)
+_META_CSRF_RE = re.compile(
+    r"""<meta\b[^>]*\bname\s*=\s*["']?(?:csrf-token|csrf_token|_csrf)["']?[^>]*"""
+    r"""\bcontent\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: Signals a response is (or has redirected to) a login/unauthenticated page.
+_LOGIN_MARKERS = (
+    "please log in",
+    "please login",
+    "sign in to continue",
+    "login failed",
+    "invalid credentials",
+    "authentication required",
+    "session expired",
+    "your session has expired",
+    "you must be logged in",
+)
+
+
+def _input_attrs(tag: str) -> dict:
+    attrs = {}
+    for m in _ATTR_RE.finditer(tag):
+        name = m.group(1).lower()
+        value = (
+            m.group(3)
+            if m.group(3) is not None
+            else (m.group(4) if m.group(4) is not None else (m.group(5) or ""))
+        )
+        attrs[name] = value
+    return attrs
+
+
+def extract_form_tokens(
+    html: str, csrf_field: str | None = None, extract_hidden: bool = True
+) -> dict[str, str]:
+    """
+    Pull anti-CSRF / hidden form fields out of a login page.
+
+    Returns a ``{field_name: value}`` mapping to merge into the login body.
+    ``csrf_field`` names the token field explicitly; otherwise every hidden
+    input is captured (``extract_hidden``) plus any field whose name matches a
+    conventional CSRF name, plus a ``<meta name="csrf-token">`` value under its
+    documented field name. Regex-based on purpose: no HTML parser dependency,
+    and a login page is simple enough that this is reliable.
+    """
+    fields: dict[str, str] = {}
+    if not html:
+        return fields
+    for tag in _INPUT_RE.findall(html):
+        attrs = _input_attrs(tag)
+        name = attrs.get("name")
+        if not name:
+            continue
+        itype = (attrs.get("type") or "text").lower()
+        value = attrs.get("value", "")
+        if csrf_field and name == csrf_field:
+            fields[name] = value
+        elif extract_hidden and itype == "hidden":
+            fields[name] = value
+        elif name.lower() in _CSRF_FIELD_NAMES:
+            fields[name] = value
+        elif extract_hidden and itype == "submit" and value:
+            # Many login handlers only process the form when the submit
+            # button's field is present (DVWA's `Login`, classic PHP
+            # `if(isset($_POST['Login']))`). Carrying it makes those logins
+            # work without hand-configured extra_fields.
+            fields[name] = value
+    meta = _META_CSRF_RE.search(html)
+    if meta and csrf_field and csrf_field not in fields:
+        fields[csrf_field] = meta.group(1)
+    return fields
+
+
+def looks_like_login_page(text: str, url: str, config: dict) -> bool:
+    """
+    Whether a response looks unauthenticated — a redirect to login, an explicit
+    failure indicator, or a recognisable login form / login marker.
+
+    Used both to reject a failed login and to detect session loss mid-crawl. A
+    configured ``failure_indicator`` is authoritative; the heuristics only fire
+    when nothing was configured, to avoid guessing on a well-configured scan.
+    """
+    text_low = (text or "").lower()
+    url_low = (url or "").lower()
+
+    failure = (config or {}).get("failure_indicator")
+    if failure and failure.lower() in text_low:
+        return True
+
+    login_url = (config or {}).get("login_url") or ""
+    login_path = urlparse(login_url).path.lower() if login_url else ""
+    if login_path and len(login_path) > 1 and login_path in url_low:
+        return True
+    if any(seg in url_low for seg in ("/login", "/signin", "/sign-in", "/auth/login")):
+        return True
+
+    if any(marker in text_low for marker in _LOGIN_MARKERS):
+        return True
+    return False
 
 
 class WebSessionManager:
@@ -42,6 +171,9 @@ class WebSessionManager:
 
     def __init__(self, redis_client=None):
         self._redis = redis_client
+        # Per-scan re-authentication counter, so a lost session can be
+        # re-established a bounded number of times and never in a loop.
+        self._reauth_used: dict[str, int] = {}
 
     async def authenticate(
         self,
@@ -66,24 +198,38 @@ class WebSessionManager:
         """
         auth_type = auth_config.get("type", "none")
 
-        if auth_type == "none":
+        # A configured `login_steps` list is a multi-step workflow whatever the
+        # declared type, so it takes precedence.
+        if auth_config.get("login_steps"):
+            session = await self._multi_step_login(auth_config, scan_id)
+        elif auth_type == "none":
             log.info("No authentication configured for scan %s", scan_id)
-            return WebSession(scan_id=scan_id)
+            session = WebSession(scan_id=scan_id)
+        elif auth_type == "bearer_token":
+            session = self._create_bearer_session(auth_config, scan_id)
+        elif auth_type == "cookie":
+            session = self._create_cookie_session(auth_config, scan_id)
+        elif auth_type == "custom_header":
+            session = self._create_header_session(auth_config, scan_id)
+        elif auth_type in ("form_login", "multi_step"):
+            session = (
+                await self._multi_step_login(auth_config, scan_id)
+                if auth_type == "multi_step"
+                else await self._form_login(auth_config, scan_id)
+            )
+        else:
+            log.warning("Unknown auth type '%s' for scan %s", auth_type, scan_id)
+            session = WebSession(scan_id=scan_id)
 
-        if auth_type == "bearer_token":
-            return self._create_bearer_session(auth_config, scan_id)
+        # Custom headers are additive to every auth type: an application may
+        # need a bearer token *and* a tenant/API-version header, or a cookie
+        # session *and* an anti-CSRF header echoed on each request.
+        extra_headers = auth_config.get("headers")
+        if isinstance(extra_headers, dict) and session.is_authenticated:
+            session.headers.update({k: v for k, v in extra_headers.items() if k})
+            self._save_session(session)
 
-        if auth_type == "cookie":
-            return self._create_cookie_session(auth_config, scan_id)
-
-        if auth_type == "custom_header":
-            return self._create_header_session(auth_config, scan_id)
-
-        if auth_type == "form_login":
-            return await self._form_login(auth_config, scan_id)
-
-        log.warning("Unknown auth type '%s' for scan %s", auth_type, scan_id)
-        return WebSession(scan_id=scan_id)
+        return session
 
     def _create_bearer_session(self, config: dict, scan_id: str) -> "WebSession":
         """Create session with static bearer token."""
@@ -168,8 +314,7 @@ class WebSessionManager:
                 scan_id=scan_id, auth_error="Incomplete login configuration"
             )
 
-        payload = {username_field: username, password_field: password}
-        payload.update(config.get("extra_fields") or {})
+        base_payload = {username_field: username, password_field: password}
 
         try:
             import httpx
@@ -179,6 +324,19 @@ class WebSessionManager:
                 follow_redirects=True,
                 timeout=30.0,
             ) as client:
+                # Try each body encoding and keep the one that actually logs in.
+                # A 200 is not success — an app re-renders the login page with a
+                # 200 on failure — so each attempt is judged by _login_succeeded,
+                # not by status. The anti-CSRF token is (re-)fetched on this same
+                # client before every attempt: it binds to the session cookie the
+                # fetch sets, and a failed login can rotate it. Without this a
+                # CSRF-protected login (DVWA, Django, Rails, ASP.NET) never
+                # succeeds and the scan silently runs anonymous.
+                csrf_field = config.get("csrf_field")
+                extract_hidden = config.get("extract_hidden", True)
+                csrf_url = config.get("csrf_url") or login_url
+                use_csrf = method != "GET" and (extract_hidden or csrf_field)
+
                 attempts = (
                     ["json", "form"]
                     if content_type == "auto"
@@ -186,8 +344,32 @@ class WebSessionManager:
                 )
 
                 resp = None
+                token = None
+                token_fields: dict[str, str] = {}
+                success = False
+                reason = "no login attempt was made"
                 last_error = ""
                 for encoding in attempts:
+                    if use_csrf:
+                        try:
+                            page = await client.get(csrf_url)
+                            token_fields = extract_form_tokens(
+                                page.text, csrf_field, extract_hidden
+                            )
+                            if csrf_field and csrf_field not in token_fields:
+                                log.warning(
+                                    "csrf_field '%s' not found on the login page "
+                                    "for scan %s",
+                                    csrf_field,
+                                    scan_id,
+                                )
+                        except Exception as exc:
+                            log.debug("CSRF pre-fetch failed: %s", exc)
+
+                    payload = dict(base_payload)
+                    payload.update(token_fields)
+                    payload.update(config.get("extra_fields") or {})
+
                     if method == "GET":
                         resp = await client.get(login_url, params=payload)
                     elif encoding == "json":
@@ -195,27 +377,36 @@ class WebSessionManager:
                     else:
                         resp = await client.post(login_url, data=payload)
 
-                    if resp.status_code < 400:
-                        break
-                    last_error = f"status {resp.status_code}"
-                    log.debug(
-                        "Login attempt (%s encoding) rejected with %d",
-                        encoding,
-                        resp.status_code,
+                    if resp.status_code >= 400:
+                        last_error = f"status {resp.status_code}"
+                        log.debug(
+                            "Login attempt (%s encoding) rejected with %d",
+                            encoding,
+                            resp.status_code,
+                        )
+                        continue
+
+                    token = self._extract_token(resp, config.get("token_path"))
+                    success, reason = self._login_succeeded(
+                        config,
+                        resp.text or "",
+                        str(resp.url),
+                        login_url,
+                        token,
+                        success_indicator,
                     )
+                    if success:
+                        break
 
                 if resp is None:
                     return WebSession(
                         scan_id=scan_id, auth_error="Login request was not sent"
                     )
 
+                # The cookie jar has aggregated cookies across the pre-fetch,
+                # the login and any redirects — that is the session.
                 cookies = self._collect_cookies(resp)
-                token = self._extract_token(resp, config.get("token_path"))
-
-                indicator_matched = bool(
-                    success_indicator
-                    and success_indicator.lower() in (resp.text or "").lower()
-                )
+                cookies.update({k: v for k, v in dict(client.cookies).items() if k})
 
                 if resp.status_code >= 400:
                     return WebSession(
@@ -227,20 +418,14 @@ class WebSessionManager:
                         ),
                     )
 
-                if not (cookies or token or indicator_matched):
-                    # Everything below this point would run as an anonymous
-                    # user. Failing here — loudly — is the only way that fact
-                    # reaches the report instead of being inferred from an
-                    # unexplained absence of findings.
+                if not success:
                     return WebSession(
                         scan_id=scan_id,
                         auth_error=(
-                            "Login returned "
-                            f"{resp.status_code} but issued no session cookie and "
-                            "no recognisable token, so the scan could not be "
-                            "authenticated. If this application signals login "
-                            "another way, set success_indicator or token_path in "
-                            "the authentication settings."
+                            f"Login did not succeed: {reason}. If this "
+                            f"application signals login another way, set "
+                            f"success_indicator, failure_indicator, token_path "
+                            f"or verify_url in the authentication settings."
                         ),
                     )
 
@@ -260,12 +445,26 @@ class WebSessionManager:
                     login_url=login_url,
                 )
 
+                # 3. Optional independent verification: fetch a known
+                #    authenticated URL and confirm it is not a login page.
+                if config.get("verify_url"):
+                    ok, vreason = await self._verify_on_client(client, config, headers)
+                    session.verified = ok
+                    if not ok:
+                        return WebSession(
+                            scan_id=scan_id,
+                            auth_error=f"Session verification failed: {vreason}",
+                        )
+
                 self._save_session(session)
                 log.info(
-                    "Login successful for scan %s (%d cookie(s), token=%s)",
+                    "Login successful for scan %s (%d cookie(s), token=%s, "
+                    "csrf_fields=%d, verified=%s)",
                     scan_id,
                     len(cookies),
                     "yes" if token else "no",
+                    len(token_fields),
+                    session.verified,
                 )
                 return session
 
@@ -275,6 +474,226 @@ class WebSessionManager:
         except Exception as exc:
             log.warning("Form login error for scan %s: %s", scan_id, exc)
             return WebSession(scan_id=scan_id, auth_error=str(exc))
+
+    @staticmethod
+    def _login_succeeded(
+        config, text, final_url, login_url, token, success_indicator
+    ) -> tuple[bool, str]:
+        """Decide login success from evidence, returning (ok, reason)."""
+        text_low = (text or "").lower()
+        if success_indicator:
+            if success_indicator.lower() in text_low:
+                return True, "success indicator present"
+            return False, "configured success indicator was not present"
+        failure = config.get("failure_indicator")
+        if failure:
+            if failure.lower() in text_low:
+                return False, "configured failure indicator was present"
+            return True, "configured failure indicator absent"
+        if token:
+            return True, "a session token was issued"
+        # No indicators configured: a login that redirected away from the login
+        # page and does not itself look like a login page is treated as success.
+        redirected_away = login_url and urlparse(final_url).path.rstrip(
+            "/"
+        ) != urlparse(login_url).path.rstrip("/")
+        if redirected_away and not looks_like_login_page(text, final_url, config):
+            return True, "redirected away from the login page"
+        if looks_like_login_page(text, final_url, config):
+            return False, "the response still looks like a login page"
+        # Fall back to cookie evidence only when nothing else is available.
+        return True, "login returned without an error"
+
+    async def _verify_on_client(self, client, config, headers) -> tuple[bool, str]:
+        """Fetch verify_url on an authenticated client and judge the result."""
+        verify_url = config.get("verify_url")
+        try:
+            resp = await client.get(verify_url, headers=headers or None)
+        except Exception as exc:
+            return False, f"could not reach verify_url ({exc})"
+        if resp.status_code in (401, 403):
+            return False, f"verify_url returned {resp.status_code}"
+        text = resp.text or ""
+        vind = config.get("verify_success_indicator") or config.get("success_indicator")
+        if vind:
+            return (vind.lower() in text.lower()), (
+                "verify indicator present"
+                if vind.lower() in text.lower()
+                else "verify indicator absent"
+            )
+        if looks_like_login_page(text, str(resp.url), config):
+            return False, "verify_url looks like a login page"
+        return True, "verify_url reachable and not a login page"
+
+    async def _multi_step_login(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        Execute a configurable multi-step login/workflow on one session.
+
+        ``config["login_steps"]`` is a list of steps run in order on a single
+        httpx client, so cookies and extracted values carry forward:
+
+            {
+              "method": "GET"|"POST",
+              "url": "https://app/login",          # absolute or relative
+              "content_type": "form"|"json",       # for POST
+              "fields": {"user": "admin", "csrf": "{{token}}"},
+              "extract": {"token": {"hidden": "user_token"}},  # or {"json": "a.b"}
+                                                    # or {"regex": "name=.(\\w+)."}
+              "success_indicator": "Dashboard"      # optional per-step check
+            }
+
+        ``{{name}}`` placeholders in a step's fields/url are filled from values
+        extracted by earlier steps, which is what expresses
+        login → dashboard → select → act without hardcoding any one target.
+        """
+        steps = config.get("login_steps") or []
+        if not steps:
+            return WebSession(
+                scan_id=scan_id, auth_error="multi_step login has no login_steps"
+            )
+        base = config.get("login_url") or (steps[0] or {}).get("url", "")
+        try:
+            import httpx
+
+            captured: dict[str, str] = {}
+
+            def _fill(value):
+                if isinstance(value, str):
+                    for k, v in captured.items():
+                        value = value.replace("{{" + k + "}}", v)
+                return value
+
+            async with httpx.AsyncClient(
+                verify=False, follow_redirects=True, timeout=30.0
+            ) as client:
+                last_url = base
+                for i, step in enumerate(steps):
+                    if not isinstance(step, dict):
+                        continue
+                    url = urljoin(base, _fill(step.get("url") or last_url))
+                    method = str(step.get("method", "GET")).upper()
+                    fields = {
+                        k: _fill(v) for k, v in (step.get("fields") or {}).items()
+                    }
+                    if method == "GET":
+                        resp = await client.get(url, params=fields or None)
+                    elif str(step.get("content_type", "form")).lower() == "json":
+                        resp = await client.post(url, json=fields)
+                    else:
+                        resp = await client.post(url, data=fields)
+                    last_url = str(resp.url)
+                    body = resp.text or ""
+
+                    if resp.status_code >= 400:
+                        return WebSession(
+                            scan_id=scan_id,
+                            auth_error=(
+                                f"multi-step login failed at step {i + 1} "
+                                f"({method} {url}): status {resp.status_code}"
+                            ),
+                        )
+                    ind = step.get("success_indicator")
+                    if ind and ind.lower() not in body.lower():
+                        return WebSession(
+                            scan_id=scan_id,
+                            auth_error=(
+                                f"multi-step login step {i + 1} did not show its "
+                                f"success indicator"
+                            ),
+                        )
+                    captured.update(self._extract_step_values(step, body, resp))
+
+                cookies = {k: v for k, v in dict(client.cookies).items() if k}
+                token = None
+                for name in ("token", "access_token", "jwt"):
+                    if name in captured:
+                        token = captured[name]
+                        break
+                headers = {}
+                if token:
+                    headers[config.get("token_header") or "Authorization"] = (
+                        f"{config.get('token_prefix', 'Bearer ')}{token}"
+                    )
+                if not (cookies or headers):
+                    return WebSession(
+                        scan_id=scan_id,
+                        auth_error="multi-step login issued no session",
+                    )
+                session = WebSession(
+                    scan_id=scan_id,
+                    headers=headers,
+                    cookies=cookies,
+                    auth_type="multi_step",
+                    login_url=base,
+                )
+                if config.get("verify_url"):
+                    ok, vreason = await self._verify_on_client(client, config, headers)
+                    session.verified = ok
+                    if not ok:
+                        return WebSession(
+                            scan_id=scan_id,
+                            auth_error=f"Session verification failed: {vreason}",
+                        )
+                self._save_session(session)
+                log.info(
+                    "Multi-step login successful for scan %s (%d step(s), "
+                    "%d cookie(s))",
+                    scan_id,
+                    len(steps),
+                    len(cookies),
+                )
+                return session
+        except Exception as exc:
+            log.warning("Multi-step login error for scan %s: %s", scan_id, exc)
+            return WebSession(scan_id=scan_id, auth_error=str(exc))
+
+    @staticmethod
+    def _extract_step_values(step: dict, body: str, resp) -> dict[str, str]:
+        """Capture named values from a step response for later steps."""
+        out: dict[str, str] = {}
+        for name, spec in (step.get("extract") or {}).items():
+            if not isinstance(spec, dict):
+                continue
+            try:
+                if "hidden" in spec:
+                    fields = extract_form_tokens(body, spec["hidden"], True)
+                    if spec["hidden"] in fields:
+                        out[name] = fields[spec["hidden"]]
+                elif "regex" in spec:
+                    m = re.search(spec["regex"], body)
+                    if m:
+                        out[name] = m.group(m.lastindex or 0)
+                elif "json" in spec:
+                    node = resp.json()
+                    for part in str(spec["json"]).split("."):
+                        node = node.get(part) if isinstance(node, dict) else None
+                    if isinstance(node, str):
+                        out[name] = node
+            except Exception:
+                continue
+        return out
+
+    async def reauthenticate(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        Re-establish a session that was lost mid-scan, bounded by
+        ``max_reauth`` (default 2). A separate counter per scan prevents an
+        endless re-auth loop against an application that keeps rejecting the
+        credentials.
+        """
+        cap = int(config.get("max_reauth", 2) or 0)
+        used = self._reauth_used.get(scan_id, 0)
+        if used >= cap:
+            log.warning(
+                "Re-authentication cap (%d) reached for scan %s — not retrying",
+                cap,
+                scan_id,
+            )
+            return WebSession(
+                scan_id=scan_id, auth_error="re-authentication limit reached"
+            )
+        self._reauth_used[scan_id] = used + 1
+        log.info("Re-authenticating scan %s (attempt %d/%d)", scan_id, used + 1, cap)
+        return await self.authenticate(config, scan_id)
 
     @staticmethod
     def _collect_cookies(resp) -> dict[str, str]:
@@ -398,10 +817,28 @@ class WebSession:
         self.login_url = login_url
         self.auth_error = auth_error
         self.created_at = time.time()
+        #: True only when a verify_url check confirmed the session; None when no
+        #: verification was configured. Never let None read as "verified".
+        self.verified = None
 
     @property
     def is_authenticated(self) -> bool:
         return bool(self.headers or self.cookies) and not self.auth_error
+
+    @staticmethod
+    def looks_unauthenticated(
+        status_code: int, url: str, text: str, config: dict
+    ) -> bool:
+        """
+        Whether a response seen *during an authenticated scan* indicates the
+        session was lost — a 401/403, a redirect to the login page, or a
+        configured failure indicator / login marker. This is the session-expiry
+        and auth-loss detector the crawler consults to decide whether to
+        re-authenticate.
+        """
+        if status_code in (401, 403):
+            return True
+        return looks_like_login_page(text or "", url or "", config or {})
 
     def get_auth_headers(self) -> dict[str, str]:
         """Get all auth headers including cookie header."""

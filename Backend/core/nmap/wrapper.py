@@ -33,6 +33,7 @@ AVAILABILITY:
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import threading
@@ -378,11 +379,19 @@ class NmapScanner:
     ):
         """
         Args:
-            sudo:            Run nmap with sudo (required for SYN scan, OS detection).
+            sudo:            Elevate nmap with sudo (required for SYN scan and OS
+                             detection when the process is not already root).
             timeout_sec:     Per-host scan timeout in seconds.
             cache_ttl_hours: Override default TTL from config.
         """
-        self.sudo = sudo
+        # A process that is already root has nothing to elevate to, and the
+        # containerised worker runs as root with no sudo binary installed —
+        # prepending it there makes every host come back as an error whose text
+        # points at sudo rather than at the scan. The callers ask for sudo
+        # unconditionally on POSIX, so the decision belongs here, where the
+        # privilege is known.
+        already_root = hasattr(os, "geteuid") and os.geteuid() == 0
+        self.sudo = sudo and not already_root
         self.timeout_sec = timeout_sec
         self.cache_ttl = (cache_ttl_hours or AppConfig.NMAP_CACHE_TTL_HOURS) * 3600
         self._redis = None

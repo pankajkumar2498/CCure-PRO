@@ -1,9 +1,21 @@
+# Every service logs through json-file with rotation. Docker's default is the
+# same driver with NO cap, so a chatty worker fills the disk one line at a
+# time and the first symptom is PostgreSQL refusing writes. 20 MB x 5 files
+# per container is ~100 MB worst case each; Portainer and `docker logs` read
+# the rotated files transparently.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   # ── Task Broker ──────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: ccure-redis
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     environment:
@@ -16,21 +28,68 @@ services:
 
   # ── Database ─────────────────────────────────────────────────────────────
   db:
-    image: postgres:15-alpine
+    # 18, matching the PostgreSQL this deployment's data came from. A dump taken
+    # by pg_dump 18 carries archive format 1.16-0, which a 15 server cannot
+    # read, so the version is a property of the data rather than a preference.
+    #
+    # The volume is `pgdata18` and not `pgdata` because a data directory
+    # initialised by 15 makes an 18 server refuse to start. Keeping the old name
+    # unused leaves the pre-migration cluster intact and rollback is a one-line
+    # change here.
+    image: postgres:18-alpine
     container_name: ccure-db
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
+    # Sized for this VM: 15 GB and 8 CPUs, shared with the API and a 20-thread
+    # scanner worker. The image's defaults (shared_buffers 128 MB, work_mem
+    # 4 MB) assume a container that might have half a gigabyte; vuln_intel
+    # alone is 7 GB. Measured 17 Sep 2026: every other container together
+    # holds ~3.2 GB, so 2 GB of buffers and a 6 GB cache estimate leave room.
+    #
+    # shm_size is not tuning. Parallel workers exchange data through POSIX
+    # shared memory under /dev/shm, which Docker caps at 64 MB; past that a
+    # parallel query fails with "could not resize shared memory segment … No
+    # space left on device" — an error that reads as a full disk.
+    shm_size: 1gb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_buffers=16MB
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-ccure_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ccure_admin_2026}
-      POSTGRES_DB: ${POSTGRES_DB:-ccure_test}
+      # The bootstrap superuser is deliberately NOT the application role.
+      # PostgreSQL will not let SUPERUSER be removed from whichever role initdb
+      # creates, so if that were `ccure_user` the application would permanently
+      # hold superuser and bypass the audit-retention privilege boundary. The
+      # application role is created NOSUPERUSER by docker-postgres-init.sql,
+      # which is handed its password here.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Database superuser password must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-ccure_db}
+      CCURE_APP_PASSWORD: ${POSTGRES_PASSWORD:?Application database password must be set}
+      VULN_DB_PASSWORD: ${VULN_DB_PASSWORD:-root}
       TZ: Asia/Kolkata
     ports:
       - "127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # 18+ mounts one volume at /var/lib/postgresql and puts the cluster in a
+      # version subdirectory below it; the old /var/lib/postgresql/data target
+      # makes the image refuse to start, reporting the mount as unused.
+      - pgdata18:/var/lib/postgresql
       - ./scripts/docker-postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-ccure_user} -d $${POSTGRES_DB:-ccure_test}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-ccure_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -42,7 +101,8 @@ services:
       dockerfile: Dockerfile
     image: ccure-audit-pro-backend:latest
     container_name: ccure-api
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     command: ["sh", "-c", "tr -d '\\r' < /app/start.sh > /tmp/start.sh && chmod +x /tmp/start.sh && /tmp/start.sh"]
     environment:
       - TZ=Asia/Kolkata
@@ -123,24 +183,48 @@ services:
       dockerfile: Dockerfile
     image: ccure-audit-pro-backend:latest
     container_name: ccure-worker
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     profiles: ["container-scanner"]
     # The worker MUST run as root to perform raw-socket scans (Scapy/Nmap)
     user: root
+    # Raw-socket scanning needs two things Docker's defaults do not provide, and
+    # without either one the scanner reports a clean network rather than failing.
+    #
+    #   network_mode: host — ARP is Layer 2 and does not cross the bridge's NAT
+    #   boundary. A bridge-networked worker resolves the 172.x bridge and finds
+    #   the physical LAN empty, which is why the Windows deployment ran this
+    #   worker outside Docker entirely. Host networking is the Linux equivalent:
+    #   the scanner sits on the real interface.
+    #
+    #   cap_add NET_ADMIN — the Dockerfile grants /usr/bin/nmap the file
+    #   capabilities cap_net_raw,cap_net_admin,cap_net_bind_service+eip. When a
+    #   file capability falls outside the container's bounding set, execve itself
+    #   fails with EPERM, so nmap cannot start at all — as root or otherwise.
+    #   NET_RAW is in Docker's default set; NET_ADMIN is not, and is named here
+    #   because the setcap line asks for it.
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     command: ["celery", "-A", "core.celery_app", "worker", "--loglevel=info", "--queues=scanner,default,compliance", "--concurrency=${SCANNER_WORKER_CONCURRENCY:-20}", "--prefetch-multiplier=1"]
     environment:
       - TZ=Asia/Kolkata
-      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@${DATABASE_HOST:-db}:5432/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST:-db}:5432/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - VULN_DB_HOST=${VULN_DB_HOST:-db}
+      # Host networking means no Compose DNS: `db` and `redis` do not resolve
+      # here. Both are reached through the ports they publish on loopback, so
+      # the port is POSTGRES_PORT_BINDING — the published one — and not 5432,
+      # which is the port inside the database container's own namespace.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:?Database user must be set}:${POSTGRES_PASSWORD:?Database password must be set}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/${POSTGRES_DB:?Database name must be set}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - TEST_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT_BINDING:-5433}/ccure_pytest_db?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=/etc/ssl/ccure/ccure-internal-ca.crt
+      - CELERY_BROKER_URL=redis://127.0.0.1:6379/0
+      - CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
+      - VULN_DB_HOST=127.0.0.1
       # TLS for the vuln_intel connection, which config.py assembles from
       # VULN_DB_* rather than from a hardcoded URL — the container and the
       # host worker need different hosts and different certificate paths.
       - PGSSLMODE=${PGSSLMODE:-verify-full}
       - PGSSLROOTCERT=/etc/ssl/ccure/ccure-internal-ca.crt
-      - VULN_DB_PORT=5432
+      - VULN_DB_PORT=${POSTGRES_PORT_BINDING:-5433}
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
@@ -154,7 +238,9 @@ services:
       - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
       - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
       - APP_ENV=production
-      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      # host.docker.internal does not exist under host networking, and it has no
+      # reason to: the host's own loopback is what that name pointed at.
+      - SMTP_HOST=${SMTP_HOST:-127.0.0.1}
       - SMTP_PORT=${SMTP_PORT:-1025}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
@@ -171,8 +257,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
       # Internal root CA, so libpq can verify the PostgreSQL server
@@ -225,15 +309,20 @@ services:
       dockerfile: Dockerfile
     image: ccure-audit-pro-backend:latest
     container_name: ccure-beat
-    # `no`, matching every other service here — not `unless-stopped`.
+    logging: *default-logging
+    # `unless-stopped`, matching every other service here.
     #
-    # This stack is deliberately manual-start. A scheduler that came back on its
-    # own after a host reboot would publish into a broker with no worker
-    # consuming it: the every-60s compliance task alone would queue hundreds of
-    # messages that all fire at once whenever someone next starts the host
-    # worker. Beat starts and stops with the rest of the stack, from
-    # scripts/start_host_scan_stack.ps1.
-    restart: "no"
+    # This was `no` while the scanner ran as a process on the Windows host: a
+    # scheduler that came back on its own after a reboot would have published
+    # into a broker with no worker consuming it, and the every-60s compliance
+    # task alone would queue hundreds of messages that all fired at once
+    # whenever someone next started that host worker.
+    #
+    # On Linux the worker is a service in this stack under the same policy, so
+    # the scheduler and its consumer come back together and that hazard is the
+    # one thing that cannot happen. What the old setting did instead was leave
+    # the whole deployment down after a reboot until someone logged in.
+    restart: unless-stopped
     # --schedule is not cosmetic. Beat's default is a `celerybeat-schedule`
     # shelve file in the working directory, and the working directory is /app,
     # which is the bind-mounted repository — so the scheduler's state file
@@ -302,7 +391,8 @@ services:
       dockerfile: Dockerfile
     image: ccure-audit-pro-backend:latest
     container_name: ccure-web-worker
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     profiles: ["container-scanner"]
     # Run as root for raw socket access and Playwright browser launch
     user: root
@@ -365,7 +455,8 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: ccure-frontend
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     ports:
       - "127.0.0.1:3200:80"
     environment:
@@ -411,7 +502,8 @@ services:
   gateway:
     image: nginx:stable-alpine
     container_name: ccure-gateway
-    restart: "no"
+    logging: *default-logging
+    restart: unless-stopped
     profiles: ["alt-gateway"]
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8082}:80"
@@ -451,6 +543,7 @@ services:
   clamav:
     image: clamav/clamav:stable
     container_name: ccure-clamav
+    logging: *default-logging
     restart: unless-stopped
     profiles: ["av"]
     volumes:
@@ -466,8 +559,36 @@ services:
       retries: 5
       start_period: 300s
 
+  # ── Portainer ────────────────────────────────────────────────────────────
+  # Container logs and state from a browser on the workstation. It holds the
+  # Docker socket, which is root on this VM, so it is published on loopback
+  # only and reached through the same restricted SSH tunnel key as PostgreSQL
+  # (`ssh -N ccure-vm` on the workstation, then https://127.0.0.1:9443). It
+  # was started by hand on 15 Sep 2026 and brought under this file two days
+  # later; `portainer_data` is that original volume, hence `external`, and
+  # holds the admin user and the self-signed certificate.
+  #
+  # First start requires an admin user within 5 minutes and the setup token
+  # from `docker logs portainer`; miss it and the instance locks until it is
+  # restarted. That is what "cannot access Portainer" was.
+  portainer:
+    image: portainer/portainer-ce:lts
+    container_name: portainer
+    logging: *default-logging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
 volumes:
-  pgdata:
+  # `pgdata` (the PostgreSQL 15 cluster this deployment started on) was kept
+  # here for rollback until 17 Sep 2026 and removed once the 18 migration had
+  # a verified full dump behind it.
+  pgdata18:
+  portainer_data:
+    external: true
   backend_venv:
   beat_state:
   clamav_db:

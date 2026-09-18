@@ -41,6 +41,7 @@ TOOL_PURPOSE = {
     "xss": "Active cross-site scripting testing (reflected, DOM and stored)",
     "injection": "Active server-side injection testing (command, SSTI, XXE, LDAP, XPath)",
     "access_control": "Authorization testing (IDOR, horizontal/vertical privilege escalation)",
+    "http_methods": "HTTP method/verb security testing (TRACE, method-based auth bypass)",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -1288,6 +1289,74 @@ class WebScanOrchestrator:
                 except Exception as exc:
                     log.warning("[DETECT] Access-control engine failed: %s", exc)
                     coverage.failed("access_control", exc)
+
+            # 2e. HTTP method / verb security testing (Phase 6)
+            #
+            # Read-only and safe by default (OPTIONS/HEAD/GET/TRACE only). Uses
+            # the main authenticated session, when present, to establish which
+            # endpoints require auth for GET so a HEAD/verb bypass can be proven.
+            if options.get("enable_http_methods", True):
+                try:
+                    from core.web.http_methods import HttpMethodEngine
+
+                    hm = HttpMethodEngine(
+                        rate_limit=effective_rate,
+                        same_origin_only=True,
+                        allow_write_testing=bool(options.get("allow_write_testing")),
+                    )
+                    if coverage.check(hm, "http_methods"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 97,
+                                "message": "HTTP method/verb security testing…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+                        hm_owner = None
+                        if auth_status.get("authenticated"):
+                            hm_owner = {
+                                "headers": {
+                                    k: v
+                                    for k, v in (auth_headers or {}).items()
+                                    if k.lower() != "cookie"
+                                },
+                                "cookies": {
+                                    c["name"]: c.get("value", "")
+                                    for c in (auth_cookies or [])
+                                    if c.get("name")
+                                },
+                            }
+
+                        def _hm_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        hm_result = await hm.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            owner=hm_owner,
+                            cancel_cb=_hm_cancelled,
+                        )
+                        hm_findings = hm_result.get("findings", [])
+                        all_findings.extend(hm_findings)
+                        st = hm_result.get("stats", {})
+                        coverage.ran(
+                            "http_methods",
+                            (
+                                f"{st.get('endpoints_tested', 0)} endpoint(s), "
+                                f"{st.get('requests', 0)} requests, "
+                                f"{st.get('duration_s', 0)}s; "
+                                f"{len(hm_findings)} finding(s) "
+                                f"(insecure_method={st.get('insecure_http_method', 0)}, "
+                                f"auth_bypass={st.get('http_method_auth_bypass', 0)}). "
+                                f"Read-only verbs unless write testing was enabled."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] HTTP-method engine failed: %s", exc)
+                    coverage.failed("http_methods", exc)
 
             # 3. Custom Security Header Checks
             _emit_web_progress(

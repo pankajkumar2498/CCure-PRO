@@ -355,6 +355,11 @@ class WebFinding(Base):
     # Example: ["PCI-DSS-6.5.1", "SOC2-CC6.1", "OWASP-A03"]
 
     cve_id = Column(String(30), nullable=True, index=True)
+    # The `web_findings` table has carried a cwe_id column since the table was
+    # created, but the model never mapped it, so findings could not record a
+    # weakness class. The active XSS engine needs CWE-79; wiring it in the model
+    # makes the existing column reachable (no migration — the column exists).
+    cwe_id = Column(String(50), nullable=True)
 
     # ── Status & Triage ───────────────────────────────────────────────────────
     status = Column(String(50), nullable=False, default="open")

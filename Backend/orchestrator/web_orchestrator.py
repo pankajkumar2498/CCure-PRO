@@ -38,6 +38,7 @@ log = logging.getLogger("ccure.web.orchestrator")
 TOOL_PURPOSE = {
     "nuclei": "Template-based vulnerability detection (the primary web check)",
     "sqlmap": "SQL injection testing on parameterised endpoints",
+    "xss": "Active cross-site scripting testing (reflected, DOM and stored)",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -746,7 +747,7 @@ class WebScanOrchestrator:
             all_findings: list[dict] = []
 
             # Build auth headers
-            auth_headers, _, auth_status = await self._authenticate(
+            auth_headers, auth_cookies, auth_status = await self._authenticate(
                 auth_config, web_scan_id, target_url
             )
 
@@ -909,6 +910,82 @@ class WebScanOrchestrator:
                     coverage.failed("sqlmap", exc)
             else:
                 coverage.skipped("sqlmap", "Disabled in scan options")
+
+            # 2b. Active XSS engine (reflected / DOM / stored)
+            #
+            # nuclei's templates miss reflected and DOM XSS a browser-driven
+            # active test catches (measured on Juice Shop). This runs on the
+            # same discovered surface and the same authenticated session, and
+            # reports only proven execution — a reflected-but-encoded value is
+            # inert and never raised.
+            if options.get("enable_xss", True):
+                try:
+                    from core.web.xss import XssEngine
+
+                    xss = XssEngine(
+                        rate_limit=effective_rate,
+                        max_targets=WebScanConfig.XSS_MAX_TARGETS,
+                        max_params_per_target=WebScanConfig.XSS_MAX_PARAMS_PER_TARGET,
+                        max_payloads_per_param=WebScanConfig.XSS_MAX_PAYLOADS_PER_PARAM,
+                        timeout_ms=WebScanConfig.XSS_TIMEOUT_MS,
+                        same_origin_only=WebScanConfig.XSS_SAME_ORIGIN_ONLY,
+                        test_reflected=True,
+                        test_dom=WebScanConfig.XSS_TEST_DOM,
+                        test_stored=WebScanConfig.XSS_TEST_STORED,
+                    )
+                    if coverage.check(xss, "xss"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 90,
+                                "message": "Active XSS testing (reflected/DOM/stored)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _xss_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        def _xss_progress(msg: str) -> None:
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {"status": "running", "percentage": 92, "message": msg},
+                            )
+
+                        xss_result = await xss.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            forms=forms,
+                            auth_headers=auth_headers or None,
+                            auth_cookies=auth_cookies or None,
+                            options=options,
+                            waf_detected=waf_detected,
+                            progress_cb=_xss_progress,
+                            cancel_cb=_xss_cancelled,
+                        )
+                        xss_findings = xss_result.get("findings", [])
+                        all_findings.extend(xss_findings)
+                        s = xss_result.get("stats", {})
+                        coverage.ran(
+                            "xss",
+                            (
+                                f"{s.get('parameters_tested', 0)} parameter(s) and "
+                                f"{s.get('dom', 0) + s.get('reflected', 0) + s.get('stored', 0)} "
+                                f"finding(s) across reflected/DOM/stored; "
+                                f"{s.get('payloads_sent', 0)} payloads, "
+                                f"{s.get('requests', 0)} requests, "
+                                f"{s.get('duration_s', 0)}s. Detection is by proof of "
+                                f"execution in a real browser."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] XSS engine failed: %s", exc)
+                    coverage.failed("xss", exc)
+            else:
+                coverage.skipped("xss", "Disabled in scan options")
 
             # 3. Custom Security Header Checks
             _emit_web_progress(
@@ -1315,6 +1392,30 @@ class WebScanOrchestrator:
         except Exception as exc:
             log.debug("CORS check failed: %s", exc)
         return findings
+
+    @staticmethod
+    def _scan_is_cancelled(web_scan_id: str) -> bool:
+        """
+        Best-effort cancellation check for long in-phase work (the XSS engine).
+
+        Reads the scan's status through a short-lived session so a user pressing
+        Cancel stops the active testing promptly, rather than only at the phase
+        boundary. Never raises — a failed check simply does not cancel.
+        """
+        if not web_scan_id:
+            return False
+        try:
+            from db.base import SessionLocal
+            from db.models.web_scans import WebScan
+
+            db = SessionLocal()
+            try:
+                row = db.query(WebScan.status).filter(WebScan.id == web_scan_id).first()
+                return bool(row and str(row[0]).lower() == "cancelled")
+            finally:
+                db.close()
+        except Exception:
+            return False
 
     @staticmethod
     def _calculate_web_risk_score(findings: list[dict]) -> float:

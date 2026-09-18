@@ -919,6 +919,7 @@ def _finding_detail(f: WebFinding) -> dict:
         "owasp_category": f.owasp_category,
         "compliance_tags": f.compliance_tags,
         "cve_id": f.cve_id,
+        "cwe_id": f.cwe_id,
         "status": f.status,
         "is_verified": f.is_verified,
         "created_at": _iso(f.created_at),

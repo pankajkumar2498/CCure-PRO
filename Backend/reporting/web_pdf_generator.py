@@ -487,6 +487,8 @@ def _build_web_scan_story(
 
             if f.get("owasp_category"):
                 detail_rows.append(("OWASP", f["owasp_category"]))
+            if f.get("cwe_id"):
+                detail_rows.append(("CWE", str(f["cwe_id"])))
             if f.get("cve_id"):
                 detail_rows.append(
                     ("CVE", make_pdf_cve_paragraph(f["cve_id"], styles["value"]))

@@ -330,6 +330,33 @@ class WebScanConfig:
     SQLMAP_RISK: int = int(os.getenv("SQLMAP_RISK", "2"))
     SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))  # 10 min per URL
 
+    # ── Active XSS engine ─────────────────────────────────────────────────────
+    # Browser-driven reflected/DOM/stored XSS testing (core/web/xss). Bounds are
+    # deliberately conservative so XSS testing cannot turn a small app into an
+    # hours-long scan: worst case is roughly
+    # MAX_TARGETS * MAX_PARAMS_PER_TARGET * MAX_PAYLOADS_PER_PARAM navigations,
+    # rate-limited by the scan's effective rate. Detection is proof-of-execution,
+    # so payloads are non-destructive and same-origin by default.
+    XSS_MAX_TARGETS: int = int(os.getenv("XSS_MAX_TARGETS", "25"))
+    XSS_MAX_PARAMS_PER_TARGET: int = int(os.getenv("XSS_MAX_PARAMS_PER_TARGET", "10"))
+    XSS_MAX_PAYLOADS_PER_PARAM: int = int(os.getenv("XSS_MAX_PAYLOADS_PER_PARAM", "8"))
+    XSS_TIMEOUT_MS: int = int(os.getenv("XSS_TIMEOUT_MS", "8000"))
+    XSS_SAME_ORIGIN_ONLY: bool = os.getenv("XSS_SAME_ORIGIN_ONLY", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    XSS_TEST_DOM: bool = os.getenv("XSS_TEST_DOM", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    XSS_TEST_STORED: bool = os.getenv("XSS_TEST_STORED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
 
 class AdminConfig:
     """Default administrator account configuration."""

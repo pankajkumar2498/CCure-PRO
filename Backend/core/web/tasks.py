@@ -248,6 +248,8 @@ def _persist_web_findings(
                 existing.cvss_score = f["cvss_score"]
             if f.get("is_verified"):
                 existing.is_verified = True
+            if f.get("cwe_id") and not existing.cwe_id:
+                existing.cwe_id = f["cwe_id"]
             # Severity only ever moves up: corroboration adds confidence, and a
             # second phase reporting the same issue at a lower rating is not
             # evidence the first was wrong.
@@ -286,6 +288,7 @@ def _persist_web_findings(
             owasp_category=f.get("owasp_category", ""),
             compliance_tags=f.get("compliance_tags", []),
             cve_id=f.get("cve_id"),
+            cwe_id=f.get("cwe_id"),
             status="open",
             is_verified=f.get("is_verified", False),
         )

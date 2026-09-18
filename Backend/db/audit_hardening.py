@@ -529,8 +529,8 @@ def log_audit_chain_state() -> None:
                     "a superuser; the application role cannot install it. "
                     "(head table: %s, insert trigger: %s)",
                     unchained,
-                    "present" if has_table else "missing",
-                    "present" if has_trigger else "missing",
+                    "present" if state["table"] else "missing",
+                    "present" if state["trigger"] else "missing",
                 )
     except Exception as exc:  # noqa: BLE001 - a diagnostic must never block boot
         log.warning(

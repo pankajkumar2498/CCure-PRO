@@ -296,6 +296,30 @@ def _section(title, styles):
     return Paragraph(f"&nbsp; {title}", styles["section"])
 
 
+def _format_tech_stack(tech_stack) -> str:
+    """
+    Render the technology list for the summary table.
+
+    ``tech_stack`` is a list of dicts as RECON stores it
+    (``{"name": ..., "category": ..., "version": ...}``), not a list of
+    strings — joining it directly raised ``TypeError: expected str instance,
+    dict found`` and took the whole report generation down with it, on every
+    scan where technology fingerprinting produced anything. A plain list of
+    strings is accepted too, so an older payload still renders.
+    """
+    if not tech_stack:
+        return ""
+    names: list[str] = []
+    for item in tech_stack:
+        if isinstance(item, dict):
+            label = str(item.get("name") or item.get("technology") or "").strip()
+        else:
+            label = str(item).strip()
+        if label and label not in names:
+            names.append(label)
+    return ", ".join(names)
+
+
 # ── Story Builder ─────────────────────────────────────────────────────────────
 
 
@@ -330,7 +354,7 @@ def _build_web_scan_story(
         ("Target Domain", target_domain),
         ("Status", (scan.get("status", "N/A")).upper()),
         ("WAF Detected", scan.get("waf_detected") or "None"),
-        ("Tech Stack", ", ".join(scan.get("tech_stack", [])) or "N/A"),
+        ("Tech Stack", _format_tech_stack(scan.get("tech_stack", [])) or "N/A"),
         ("Duration", duration_str),
         ("Started At", scan.get("started_at", "N/A")),
         ("Completed At", scan.get("completed_at", "N/A")),
@@ -592,7 +616,15 @@ class WebScanReportGenerator:
 
     def __init__(self, output_dir: str | None = None):
         if output_dir is None or output_dir == "reports":
-            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            # The runtime output directory is Backend/reports/ — the writable,
+            # bind-mounted volume where the network report generators also write
+            # (they are handed it explicitly by the scan orchestrator). This
+            # module lives in Backend/reporting/, so the target is its *parent's*
+            # reports/, not a reports/ beside the code: a single dirname() here
+            # yielded Backend/reporting/reports, which does not exist and is not
+            # creatable by the API container's user (Backend/ is bind-mounted
+            # read-mostly), so every web-scan report download failed with a 500.
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             output_dir = os.path.join(backend_dir, "reports")
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)

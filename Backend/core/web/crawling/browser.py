@@ -146,6 +146,7 @@ class PlaywrightCrawler:
         auth_headers: dict[str, str] | None = None,
         scope_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
+        progress_cb=None,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -156,6 +157,9 @@ class PlaywrightCrawler:
             auth_headers: Headers for authenticated crawling
             scope_patterns: URL patterns to stay within
             exclude_patterns: URL patterns to skip
+            progress_cb: optional callable(pages_visited, endpoints_found) invoked
+                periodically so a caller can surface live crawl progress. Best
+                effort — any exception it raises is swallowed.
 
         Returns:
             CrawlResult with discovered endpoints, forms, and JS endpoints
@@ -304,6 +308,18 @@ class PlaywrightCrawler:
 
                     visited.add(url)
                     result.pages_visited += 1
+
+                    # Surface live crawl progress every few pages. The crawl can
+                    # run for many minutes on a large or slow site; without this
+                    # the phase looks frozen between its start and end events.
+                    if progress_cb is not None and result.pages_visited % 3 == 0:
+                        try:
+                            progress_cb(
+                                result.pages_visited,
+                                len(result.endpoints) + len(result.js_endpoints),
+                            )
+                        except Exception:
+                            pass
 
                     blocked_before = len(blocked_navigations)
                     try:

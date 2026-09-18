@@ -318,6 +318,40 @@ def _redis_or_none():
         return None
 
 
+def _emit_web_progress(web_scan_id: str, phase: str, data: dict) -> None:
+    """
+    Publish an intra-phase progress event on the same Redis channel the web
+    scan's progress WebSocket subscribes to (``scan_progress:{id}``), in the
+    same envelope ``core/web/tasks.py`` uses.
+
+    This is what stops a working scan reading as stuck. Without it the pipeline
+    emits one event at each phase boundary, so the DETECT phase — which can run
+    for well over an hour — shows a single "Scanning for vulnerabilities"
+    message and a progress bar frozen at 75% for its whole duration. Best
+    effort: a publish failure must never disturb the scan.
+    """
+    if not web_scan_id:
+        return
+    try:
+        import json as _json
+
+        from core.redis_client import get_redis_client
+
+        get_redis_client().publish(
+            f"scan_progress:{web_scan_id}",
+            _json.dumps(
+                {
+                    "scan_id": web_scan_id,
+                    "scan_type": "web",
+                    "phase": phase,
+                    "progress": {"phase": phase, **data},
+                }
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — progress is advisory
+        log.debug("web progress publish failed: %s", exc)
+
+
 def auth_failure_finding(target_url: str, error: str) -> Dict[str, Any]:
     """
     A finding stating the scan ran without the credentials it was given.
@@ -556,11 +590,28 @@ class WebScanOrchestrator:
                     ),
                     max_urls=WebScanConfig.MAX_CRAWL_URLS,
                 )
+
+                def _crawl_progress(pages: int, endpoints: int) -> None:
+                    _emit_web_progress(
+                        web_scan_id,
+                        "crawl",
+                        {
+                            "status": "running",
+                            "percentage": 50,
+                            "message": (
+                                f"Crawling — {pages} page(s) visited, "
+                                f"{endpoints} endpoint(s) found…"
+                            ),
+                            "total_endpoints": endpoints,
+                        },
+                    )
+
                 crawl_result = await crawler.crawl(
                     start_url=target_url,
                     auth_cookies=auth_cookies or None,
                     auth_headers=auth_headers or None,
                     exclude_patterns=scan_scope.get("exclude_paths", []),
+                    progress_cb=_crawl_progress,
                 )
                 all_endpoints.extend(crawl_result.endpoints)
                 all_endpoints.extend(crawl_result.js_endpoints)
@@ -588,6 +639,23 @@ class WebScanOrchestrator:
 
                 ffuf = FfufWrapper()
                 if ffuf.is_available():
+                    # ffuf runs a whole wordlist as one subprocess and can take
+                    # several minutes on its own — the single longest unlit
+                    # stretch of the CRAWL phase. Announce it so the phase does
+                    # not read as frozen while content discovery is running.
+                    _emit_web_progress(
+                        web_scan_id,
+                        "crawl",
+                        {
+                            "status": "running",
+                            "percentage": 60,
+                            "message": (
+                                f"Crawl found {len(all_endpoints)} endpoint(s); "
+                                f"brute-forcing content paths with ffuf…"
+                            ),
+                            "total_endpoints": len(all_endpoints),
+                        },
+                    )
                     rate = (
                         WebScanConfig.STEALTH_RATE_LIMIT
                         if waf_detected
@@ -708,6 +776,18 @@ class WebScanOrchestrator:
 
                 nuclei = NucleiWrapper()
                 if coverage.check(nuclei, "nuclei"):
+                    _emit_web_progress(
+                        web_scan_id,
+                        "detect",
+                        {
+                            "status": "running",
+                            "percentage": 76,
+                            "message": (
+                                f"Running Nuclei templates against "
+                                f"{len(set(scan_targets))} target(s)…"
+                            ),
+                        },
+                    )
                     severity = options.get("nuclei_severity") or depth["severity"]
                     tags = (
                         tech_tags(options.get("tech_stack") or [])
@@ -759,7 +839,26 @@ class WebScanOrchestrator:
                             "error": 0,
                             "skipped": 0,
                         }
-                        for candidate in tested:
+                        total_tested = len(tested)
+                        for idx, candidate in enumerate(tested, start=1):
+                            # Each SQLMap run can take up to SQLMAP_TIMEOUT
+                            # (10 min) on its own, so emit before each one — a
+                            # silent injection sweep of twenty endpoints is the
+                            # longest unlit stretch in the whole pipeline.
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {
+                                    "status": "running",
+                                    "percentage": 80
+                                    + int(15 * (idx - 1) / max(total_tested, 1)),
+                                    "message": (
+                                        f"SQL injection testing endpoint "
+                                        f"{idx}/{total_tested}…"
+                                    ),
+                                    "total_findings": len(all_findings),
+                                },
+                            )
                             try:
                                 sqlmap_result = sqlmap.run(
                                     target=candidate["url"],
@@ -812,6 +911,16 @@ class WebScanOrchestrator:
                 coverage.skipped("sqlmap", "Disabled in scan options")
 
             # 3. Custom Security Header Checks
+            _emit_web_progress(
+                web_scan_id,
+                "detect",
+                {
+                    "status": "running",
+                    "percentage": 96,
+                    "message": "Checking security headers and CORS…",
+                    "total_findings": len(all_findings),
+                },
+            )
             header_findings = await self._check_security_headers(target_url)
             all_findings.extend(header_findings)
 

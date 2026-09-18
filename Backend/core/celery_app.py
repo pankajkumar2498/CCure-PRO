@@ -131,4 +131,13 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.reap_stalled_scans",
         "schedule": crontab(minute="*/2"),
     },
+    # Web-application scans live in their own table with a four-phase lifecycle
+    # and were not covered by the network reaper above — a hung crawl, a dead
+    # web-worker, or a phase failing inside its own except handler left a web
+    # scan 'running' forever, and the UI showed it live forever. Same cadence
+    # and same conservative contract as the network reaper.
+    "reap-stalled-web-scans-every-2-min": {
+        "task": "ccure.tasks.reap_stalled_web_scans",
+        "schedule": crontab(minute="*/2"),
+    },
 }

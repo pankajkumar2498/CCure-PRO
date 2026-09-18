@@ -282,6 +282,12 @@ class WebScanConfig:
 
     # ── Scan Limits ───────────────────────────────────────────────────────────
     WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))  # 4 hours
+    # A web scan queued but never picked up by the web-worker is settled after
+    # this many minutes. Its own deadline, separate from the network queue
+    # timeout, because a missing web-worker is a different operator problem.
+    WEB_SCAN_QUEUE_TIMEOUT_MINUTES: int = int(
+        os.getenv("WEB_SCAN_QUEUE_TIMEOUT_MINUTES", "15")
+    )
     SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "5"))  # req/sec
     STEALTH_RATE_LIMIT: int = int(
         os.getenv("WEB_STEALTH_RATE_LIMIT", "2")

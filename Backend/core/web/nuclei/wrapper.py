@@ -123,6 +123,10 @@ class NucleiWrapper(ToolWrapper):
         template_ids: list[str] | None = None,
         waf_detected: bool = False,
         targets: list[str] | None = None,
+        profile: str = "STANDARD",
+        concurrency: int | None = None,
+        run_timeout: int | None = None,
+        include_dangerous_tags: bool = False,
         **kwargs,
     ) -> dict:
         """
@@ -159,10 +163,18 @@ class NucleiWrapper(ToolWrapper):
             )
             with open(target_file, "w", encoding="utf-8") as fh:
                 fh.write("\n".join(target_list))
-            args = [self.binary, "-l", target_file, "-jsonl", "-silent", "-nc"]
+            args = [self.binary, "-l", target_file, "-jsonl", "-nc"]
             log.info("Nuclei scanning %d discovered target(s)", len(target_list))
         else:
-            args = [self.binary, "-u", target_list[0], "-jsonl", "-silent", "-nc"]
+            args = [self.binary, "-u", target_list[0], "-jsonl", "-nc"]
+
+        # Execution metrics. -stats-json prints periodic statistics (templates,
+        # requests, matched) to stderr, and dropping -silent lets the
+        # "Templates loaded for current scan: N" line through — together these
+        # give the template count / executed / skipped / findings the report
+        # records per profile. Results are still read from the -o file, so
+        # console verbosity does not affect parsing.
+        args.extend(["-stats", "-stats-json", "-stats-interval", "5"])
 
         # Severity filter.
         #
@@ -188,15 +200,27 @@ class NucleiWrapper(ToolWrapper):
             )
         args.extend(["-rate-limit", str(effective_rate)])
 
-        # Concurrency
-        args.extend(["-concurrency", str(WebScanConfig.NUCLEI_CONCURRENCY)])
+        # Concurrency — from the profile when the caller supplied one, else the
+        # deployment default.
+        effective_concurrency = concurrency or WebScanConfig.NUCLEI_CONCURRENCY
+        args.extend(["-concurrency", str(effective_concurrency)])
         args.extend(["-bulk-size", str(WebScanConfig.NUCLEI_BULK_SIZE)])
 
         # Template filters
         if tags:
             args.extend(["-tags", ",".join(tags)])
-        if exclude_tags:
-            args.extend(["-exclude-tags", ",".join(exclude_tags)])
+        # Safety exclusions. dos/fuzz/intrusive/brute-force are excluded on every
+        # profile by default (this scans production and OT); an explicit
+        # exclude_tags overrides, and include_dangerous_tags / the config flag
+        # is the only way to run them. resolve_exclude_tags([]) means "exclude
+        # nothing", which is why the None-vs-[] distinction matters.
+        from core.web.nuclei.profiles import resolve_exclude_tags
+
+        effective_exclude = resolve_exclude_tags(
+            override=exclude_tags, include_dangerous=include_dangerous_tags
+        )
+        if effective_exclude:
+            args.extend(["-exclude-tags", ",".join(effective_exclude)])
         if template_ids:
             args.extend(["-template-id", ",".join(template_ids)])
 
@@ -219,7 +243,13 @@ class NucleiWrapper(ToolWrapper):
         args.extend(["-o", output_file])
 
         try:
-            self._run_subprocess(args)
+            import time as _time
+
+            from core.web.nuclei.profiles import parse_run_metrics
+
+            t0 = _time.monotonic()
+            result = self._run_subprocess(args, timeout=run_timeout)
+            duration_s = round(_time.monotonic() - t0, 2)
 
             # Parse output
             with open(output_file, "r", encoding="utf-8", errors="replace") as f:
@@ -231,6 +261,10 @@ class NucleiWrapper(ToolWrapper):
             # Filter out None (failed to parse)
             findings = [f for f in findings if f is not None]
 
+            # Execution metrics from nuclei's own stderr (best-effort; honest
+            # about anything nuclei did not report).
+            metrics = parse_run_metrics(getattr(result, "stderr", "") or "")
+
             stats = {
                 "total_findings": len(findings),
                 "by_severity": self._count_by_severity(findings),
@@ -241,12 +275,24 @@ class NucleiWrapper(ToolWrapper):
                 # coverage instead of implying the whole application was.
                 "targets_scanned": len(target_list),
                 "oast": oast,
+                # Phase 10 profile + execution metrics.
+                "profile": (profile or "STANDARD").upper(),
+                "concurrency": effective_concurrency,
+                "exclude_tags": effective_exclude,
+                "duration_s": duration_s,
+                "templates_total": metrics["templates_total"],
+                "templates_executed": metrics["templates_executed"],
+                "templates_skipped": metrics["templates_skipped"],
+                "requests": metrics["requests"],
             }
 
             log.info(
-                "Nuclei scan complete: %d findings across %d target(s) (%s)",
+                "Nuclei scan complete: %d findings across %d target(s) in %.1fs "
+                "[%s] (%s)",
                 len(findings),
                 len(target_list),
+                duration_s,
+                stats["profile"],
                 ", ".join(f"{k}={v}" for k, v in stats["by_severity"].items() if v > 0),
             )
 

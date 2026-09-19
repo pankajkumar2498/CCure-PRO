@@ -227,6 +227,14 @@ class WebScanOptionsSchema(BaseModel):
         description="Template coverage: quick, standard, or deep",
     )
 
+    # Phase 10 nuclei profile. Optional; when set it overrides the scan_depth
+    # mapping (quick→FAST, standard→STANDARD, deep→DEEP). Kept as a distinct
+    # field because "profile" is the term operators use for the nuclei run.
+    nuclei_profile: str | None = Field(
+        default=None,
+        description="Nuclei scan profile: fast, standard, or deep.",
+    )
+
     @field_validator("scan_depth")
     @classmethod
     def _known_depth(cls, value: str) -> str:
@@ -238,6 +246,18 @@ class WebScanOptionsSchema(BaseModel):
                 f"scan_depth must be one of: {', '.join(sorted(SCAN_DEPTHS))}"
             )
         return normalized
+
+    @field_validator("nuclei_profile")
+    @classmethod
+    def _known_profile(cls, value):
+        if value is None or not str(value).strip():
+            return None
+        from core.web.nuclei.profiles import normalize_profile
+
+        canonical = normalize_profile(value)
+        if canonical is None:
+            raise ValueError("nuclei_profile must be one of: fast, standard, deep")
+        return canonical
 
 
 class StartWebScanRequest(BaseModel):
@@ -713,12 +733,18 @@ def download_web_scan_report(
     findings = db.query(WebFinding).filter(WebFinding.web_scan_id == scan_id).all()
     assets = db.query(WebAsset).filter(WebAsset.web_scan_id == scan_id).all()
 
+    _detect_cov = (scan.options or {}).get("tool_coverage", {}).get("detect", {})
     scan_dict = {
         **_scan_summary(scan),
         "scan_scope": scan.scan_scope,
         "waf_detected": scan.waf_detected,
         "tech_stack": scan.tech_stack or [],
         "subdomains": scan.subdomains or [],
+        # Phase 10: nuclei profile + execution metrics for the report.
+        "nuclei_profile": _detect_cov.get("nuclei_profile"),
+        "nuclei_profile_label": _detect_cov.get("nuclei_profile_label"),
+        "nuclei_metrics": _detect_cov.get("nuclei_metrics") or {},
+        "scan_depth": _detect_cov.get("scan_depth"),
     }
     findings_list = [_finding_detail(f) for f in findings]
     assets_list = [_asset_detail(a) for a in assets]

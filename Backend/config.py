@@ -344,6 +344,25 @@ class WebScanConfig:
     NUCLEI_BULK_SIZE: int = int(os.getenv("NUCLEI_BULK_SIZE", "25"))
     NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))  # 2 hours
 
+    # ── Nuclei scan profiles (Phase 10) ────────────────────────────────────────
+    # STANDARD reuses the values above so it does not regress. FAST trades
+    # coverage for speed (higher concurrency, shorter timeout); DEEP's timeout
+    # and concurrency are separately configurable because its whole point is a
+    # longer, broader run.
+    NUCLEI_CONCURRENCY_FAST: int = int(os.getenv("NUCLEI_CONCURRENCY_FAST", "75"))
+    NUCLEI_TIMEOUT_FAST: int = int(os.getenv("NUCLEI_TIMEOUT_FAST", "1800"))  # 30 min
+    NUCLEI_CONCURRENCY_DEEP: int = int(os.getenv("NUCLEI_CONCURRENCY_DEEP", "40"))
+    NUCLEI_TIMEOUT_DEEP: int = int(os.getenv("NUCLEI_TIMEOUT_DEEP", "14400"))  # 4 hours
+    # The safety exclusions applied to every profile by default. This scans
+    # production and OT hosts, so dos/fuzz/intrusive/brute-force templates are
+    # off unless an operator explicitly turns them on — DEEP does not.
+    NUCLEI_EXCLUDE_TAGS: str = os.getenv(
+        "NUCLEI_EXCLUDE_TAGS", "dos,fuzz,intrusive,brute-force"
+    )
+    NUCLEI_INCLUDE_DANGEROUS_TAGS: bool = (
+        os.getenv("NUCLEI_INCLUDE_DANGEROUS_TAGS", "False").lower() == "true"
+    )
+
     # ── SQLMap Specific ───────────────────────────────────────────────────────
     # Level 3, not 2. Verified against OWASP Juice Shop: the injectable search
     # parameter that level 3 finds (boolean-based blind on `q`) is missed

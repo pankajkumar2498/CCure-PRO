@@ -363,6 +363,41 @@ def _build_web_scan_story(
     story.append(_kv_table(scan_info, styles))
     story.append(Spacer(1, 4 * mm))
 
+    # ── 1b. Nuclei Scan Profile & Coverage ────────────────────────────────────
+    # Depth is a decision the operator made; stating it (and what the run
+    # actually executed) stops a short scan being read as a thorough one that
+    # found nothing.
+    profile = scan.get("nuclei_profile")
+    metrics = scan.get("nuclei_metrics") or {}
+    if profile or metrics:
+        story.append(_section("Scan Profile & Coverage", styles))
+
+        def _num(v):
+            return "N/A" if v is None else str(v)
+
+        prof_rows = [
+            ("Nuclei Profile", scan.get("nuclei_profile_label") or profile or "N/A"),
+        ]
+        if metrics.get("templates_total") is not None:
+            prof_rows.append(("Templates Loaded", _num(metrics.get("templates_total"))))
+            prof_rows.append(
+                ("Templates Executed", _num(metrics.get("templates_executed")))
+            )
+            prof_rows.append(
+                ("Templates Skipped", _num(metrics.get("templates_skipped")))
+            )
+        if metrics.get("findings") is not None:
+            prof_rows.append(("Nuclei Findings", _num(metrics.get("findings"))))
+        if metrics.get("duration_s") is not None:
+            prof_rows.append(("Nuclei Duration", f"{metrics.get('duration_s')} s"))
+        if metrics.get("concurrency") is not None:
+            prof_rows.append(("Concurrency", _num(metrics.get("concurrency"))))
+        excl = metrics.get("exclude_tags")
+        if excl:
+            prof_rows.append(("Excluded Tags (safety)", ", ".join(excl)))
+        story.append(_kv_table(prof_rows, styles))
+        story.append(Spacer(1, 4 * mm))
+
     # ── 2. Executive Summary ──────────────────────────────────────────────────
     story.append(_section("Executive Summary", styles))
 

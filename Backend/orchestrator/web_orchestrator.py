@@ -840,6 +840,17 @@ class WebScanOrchestrator:
 
             coverage = ToolCoverage()
             depth_name, depth = resolve_scan_depth(options)
+            # Phase 10 nuclei profile (FAST / STANDARD / DEEP). Follows an
+            # explicit options["nuclei_profile"], else the scan_depth above.
+            from core.web.nuclei.profiles import (
+                profile_controls,
+                profile_label,
+                resolve_profile,
+            )
+
+            nuclei_profile = resolve_profile(options, depth_name)
+            nuclei_controls = profile_controls(nuclei_profile)
+            nuclei_metrics: dict = {}
 
             # The attack surface the crawl found. Scanning only the root URL
             # leaves every discovered endpoint untested unless a template
@@ -864,7 +875,7 @@ class WebScanOrchestrator:
                             "status": "running",
                             "percentage": 76,
                             "message": (
-                                f"Running Nuclei templates against "
+                                f"Running Nuclei [{nuclei_profile} profile] against "
                                 f"{len(set(scan_targets))} target(s)…"
                             ),
                         },
@@ -883,15 +894,44 @@ class WebScanOrchestrator:
                         auth_headers=auth_headers or None,
                         rate_limit=effective_rate,
                         waf_detected=is_waf,
+                        profile=nuclei_profile,
+                        concurrency=nuclei_controls["concurrency"],
+                        run_timeout=nuclei_controls["timeout"],
                     )
                     all_findings.extend(nuclei_result.get("findings", []))
                     stats = nuclei_result.get("stats") or {}
                     scanned = stats.get("targets_scanned", 1)
                     oast = stats.get("oast") or {}
+                    # Carry the profile + execution metrics onto the coverage
+                    # record so the DB and report can state exactly what ran.
+                    nuclei_metrics = {
+                        "profile": stats.get("profile", nuclei_profile),
+                        "concurrency": stats.get("concurrency"),
+                        "duration_s": stats.get("duration_s"),
+                        "templates_total": stats.get("templates_total"),
+                        "templates_executed": stats.get("templates_executed"),
+                        "templates_skipped": stats.get("templates_skipped"),
+                        "findings": len(nuclei_result.get("findings", [])),
+                        "exclude_tags": stats.get("exclude_tags"),
+                    }
                     detail = (
-                        f"{depth['label']}; severity {', '.join(severity)}; "
+                        f"Profile {nuclei_profile} — {profile_label(nuclei_profile)}; "
+                        f"severity {', '.join(severity)}; "
                         f"{scanned} target(s) from the discovered surface"
                     )
+                    tt, te, tk = (
+                        stats.get("templates_total"),
+                        stats.get("templates_executed"),
+                        stats.get("templates_skipped"),
+                    )
+                    if tt is not None:
+                        detail += (
+                            f"; {tt} template(s) loaded, {te} executed, {tk} skipped"
+                        )
+                    if stats.get("duration_s") is not None:
+                        detail += f"; {stats['duration_s']}s"
+                    if stats.get("exclude_tags"):
+                        detail += f"; excluded tags: {', '.join(stats['exclude_tags'])}"
                     if tags:
                         detail += f"; templates narrowed to tags: {', '.join(tags)}"
                     detail += "; out-of-band testing " + (
@@ -1554,6 +1594,11 @@ class WebScanOrchestrator:
                 "scan_depth": depth_name,
                 "scan_depth_label": depth["label"],
                 "scan_depth_caveat": depth["caveat"],
+                # Phase 10: the nuclei profile and its execution metrics travel
+                # with the results into the DB and the report.
+                "nuclei_profile": nuclei_profile,
+                "nuclei_profile_label": profile_label(nuclei_profile),
+                "nuclei_metrics": nuclei_metrics,
                 "targets_scanned": len(set(scan_targets)),
             }
             result["success"] = True

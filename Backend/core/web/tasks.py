@@ -15,7 +15,6 @@ Phase results are persisted to PostgreSQL after each phase completes.
 
 import asyncio
 import logging
-from typing import Dict, List, Optional
 
 from core.celery_app import celery_app
 from db.base import (
@@ -62,6 +61,79 @@ def _check_cancelled(db, web_scan_id: str) -> bool:
     """Check if the web scan has been cancelled."""
     scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
     return scan and scan.status == "cancelled"
+
+
+def _settle_web_scan_failed(db, web_scan_id: str, phase: str, reason: str) -> None:
+    """
+    Settle a web scan terminal after a phase-task error (Phase 18).
+
+    Robust to an ORM that is itself the failure — the exact shape of the network
+    incident CLAUDE.md records, where the except handler shared its broken query
+    with the thing it was recovering from. It first tries the ORM (which also
+    stamps the phase sub-status), and if that raises it falls back to
+    force_terminal_web_scan_status, which is plain SQL against `web_scans` with
+    no mapper, so the scan still reaches a terminal state and records a reason
+    even when the ORM is what broke. force_terminal no-ops on an already-terminal
+    scan, so a real completed/cancelled result is never overwritten. A best-
+    effort terminal progress frame is published so the UI settles immediately
+    rather than waiting for the next poll.
+    """
+    reason = (reason or "")[:1000]
+    from core.scan_control import WEB_TERMINAL_STATUSES
+
+    settled = False
+    changed = False
+    try:
+        # Guard atomically on non-terminal status: only a scan that has not
+        # already reached a terminal state is settled, so a completion (or a
+        # cancellation) that won the race is never overwritten — the
+        # failure-vs-completion / cancellation-vs-completion races. The scan
+        # status is settled first, and the phase sub-status is stamped only when
+        # that settle actually took effect, so a completed scan is never made to
+        # show a failed phase.
+        changed = (
+            db.query(WebScan)
+            .filter(
+                WebScan.id == web_scan_id,
+                ~WebScan.status.in_(list(WEB_TERMINAL_STATUSES)),
+            )
+            .update(
+                {"status": "failed", "failure_reason": reason},
+                synchronize_session=False,
+            )
+            > 0
+        )
+        if changed:
+            _update_scan_phase_status(db, web_scan_id, phase, "failed")
+        db.commit()
+        settled = True
+    except Exception:
+        log.debug("ORM settle failed after %s error; using force_terminal", phase)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            from core.scan_control import force_terminal_web_scan_status
+
+            # force_terminal is itself a no-op on an already-terminal scan, so
+            # the no-overwrite guarantee holds on the fallback path too.
+            changed = force_terminal_web_scan_status(web_scan_id, "failed", reason)
+            settled = True
+        except Exception:
+            log.debug("force_terminal fallback failed for %s", web_scan_id)
+    # Only announce a terminal frame when this call actually settled the scan;
+    # emitting one for a scan that completed elsewhere would tell the UI a real
+    # result failed.
+    if settled and changed:
+        try:
+            _emit_progress(
+                web_scan_id,
+                "failed",
+                {"status": "failed", "message": reason, "error": reason},
+            )
+        except Exception:
+            pass
 
 
 def _emit_progress(web_scan_id: str, phase: str, data: dict) -> None:
@@ -493,22 +565,7 @@ def run_web_recon_task(
 
     except Exception as exc:
         log.exception("Web RECON task failed for %s", web_scan_id)
-        try:
-            _update_scan_phase_status(
-                db,
-                web_scan_id,
-                "recon",
-                "failed",
-            )
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
-                {
-                    "status": "failed",
-                    "failure_reason": str(exc)[:1000],
-                }
-            )
-            db.commit()
-        except Exception:
-            log.debug("Failed to update scan status after error")
+        _settle_web_scan_failed(db, web_scan_id, "recon", str(exc))
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -648,17 +705,7 @@ def run_web_crawl_task(
 
     except Exception as exc:
         log.exception("Web CRAWL task failed for %s", web_scan_id)
-        try:
-            _update_scan_phase_status(db, web_scan_id, "crawl", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
-                {
-                    "status": "failed",
-                    "failure_reason": str(exc)[:1000],
-                }
-            )
-            db.commit()
-        except Exception:
-            log.debug("Failed to update scan status after error")
+        _settle_web_scan_failed(db, web_scan_id, "crawl", str(exc))
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -800,17 +847,7 @@ def run_web_detect_task(
 
     except Exception as exc:
         log.exception("Web DETECT task failed for %s", web_scan_id)
-        try:
-            _update_scan_phase_status(db, web_scan_id, "detect", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
-                {
-                    "status": "failed",
-                    "failure_reason": str(exc)[:1000],
-                }
-            )
-            db.commit()
-        except Exception:
-            log.debug("Failed to update scan status after error")
+        _settle_web_scan_failed(db, web_scan_id, "detect", str(exc))
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
@@ -940,17 +977,7 @@ def run_web_audit_task(
 
     except Exception as exc:
         log.exception("Web AUDIT task failed for %s", web_scan_id)
-        try:
-            _update_scan_phase_status(db, web_scan_id, "audit", "failed")
-            db.query(WebScan).filter(WebScan.id == web_scan_id).update(
-                {
-                    "status": "failed",
-                    "failure_reason": str(exc)[:1000],
-                }
-            )
-            db.commit()
-        except Exception:
-            log.debug("Failed to update scan status after error")
+        _settle_web_scan_failed(db, web_scan_id, "audit", str(exc))
         return {"success": False, "error": str(exc)}
     finally:
         db.close()

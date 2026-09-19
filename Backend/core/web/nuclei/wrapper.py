@@ -444,6 +444,16 @@ class NucleiWrapper(ToolWrapper):
             elif "tech" in (info.get("tags") or []):
                 finding_type = "technology_detected"
 
+            # CWE from the template's own classification. This is nuclei's
+            # authoritative weakness class for the template that matched — a
+            # source-tool identifier, preserved rather than overwritten by the
+            # coarser finding_type default downstream. Published as a list
+            # (e.g. ["CWE-79"]); normalize_cwe takes the first well-formed
+            # entry and rejects anything malformed.
+            from core.web.standards_mapping import normalize_cwe
+
+            cwe_id = normalize_cwe(classification.get("cwe-id"))
+
             # CVSS extraction
             cvss_score = None
             cvss_vector = None
@@ -480,6 +490,7 @@ class NucleiWrapper(ToolWrapper):
                     "extracted-results", raw.get("matcher-name", "")
                 ),
                 "cve_id": cve_id,
+                "cwe_id": cwe_id,
                 "tags": info.get("tags", []),
                 "reference": info.get("reference", []),
                 "is_verified": severity_raw in ("high", "critical"),

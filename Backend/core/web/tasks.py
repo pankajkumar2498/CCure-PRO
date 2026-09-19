@@ -183,11 +183,21 @@ def _persist_web_findings(
     findings: list[dict],
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
-    from core.web.standards_mapping import map_compliance
+    from core.web.standards_mapping import map_compliance, resolve_cwe
 
     for f in findings:
         finding_type = f.get("finding_type", "unknown")
         matched_at = f.get("matched_at", f.get("request_url", ""))
+
+        # Resolve the CWE at the one point every finding passes through, so the
+        # weakness class is uniform however the row was produced. resolve_cwe
+        # keeps a well-formed CWE the engine already supplied (nuclei's own
+        # classification, NVD enrichment, the per-verb HTTP-method CWEs),
+        # normalises it, falls back to the centralized finding_type default,
+        # and drops a fabricated identifier rather than storing it. Unmapped
+        # types (nuclei "misconfig", raw "cve") stay None — a missing CWE is
+        # represented honestly, never guessed.
+        f["cwe_id"] = resolve_cwe(f)
 
         # Map compliance here, at the one point every finding passes through,
         # rather than only in AUDIT. AUDIT maps the findings handed to it, but

@@ -190,6 +190,11 @@ export default function FindingsExplorer() {
                       {selectedFinding.cve_id}
                     </CcureBadge>
                   )}
+                  {selectedFinding.cwe_id && (
+                    <CcureBadge variant="neutral" mono>
+                      {selectedFinding.cwe_id}
+                    </CcureBadge>
+                  )}
                   {selectedFinding.owasp_category && (
                     <CcureBadge variant="warning">
                       OWASP: {selectedFinding.owasp_category}

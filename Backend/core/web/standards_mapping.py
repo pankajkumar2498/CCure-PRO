@@ -10,9 +10,139 @@ Maps finding types to:
 """
 
 import logging
-from typing import Dict, List
+import re
+from typing import Dict, List, Optional
 
 log = logging.getLogger("ccure.web.compliance")
+
+# ── CWE (Common Weakness Enumeration) Mapping ────────────────────────────────
+#
+# One authoritative table from finding_type to a canonical CWE identifier, so
+# the weakness class a finding carries is decided in a single place rather than
+# hardcoded independently inside each detection engine (where it drifted: the
+# legacy nuclei/sqlmap/sslyze/ffuf paths and the orchestrator's own
+# header/CORS/redirect checks set no CWE at all, so SQL injection, TLS
+# weaknesses, CORS and missing security headers all reached the report with an
+# empty CWE).
+#
+# Rules this table is built to enforce (see resolve_cwe/normalize_cwe below):
+#   • a CWE an engine or source tool already supplied wins — it is more
+#     specific than a per-type default (insecure_http_method is CWE-693 for
+#     TRACE but CWE-650 for a dangerous verb; a nuclei template and an NVD
+#     record each name their own), so the map is a *fallback*, never an
+#     override;
+#   • only well-formed "CWE-<n>" identifiers survive — a fabricated or
+#     malformed value is dropped, never stored;
+#   • a finding_type with no single defensible CWE is deliberately absent, and
+#     absence yields None rather than a guessed identifier.
+#
+# Every entry is the primary weakness for that class. finding_types that are
+# intentionally unmapped, with the reason, are pinned by the Phase 8 tests:
+#   misconfig           — nuclei catch-all spanning many unrelated weaknesses
+#   cve                 — the CWE travels per-CVE from the vuln feed / template
+#   exposed_panel       — a reachable panel is not itself a weakness
+#   technology_detected — informational, not a weakness
+CWE_MAP: dict[str, str] = {
+    # Injection family
+    "sqli": "CWE-89",  # SQL Injection
+    "xss": "CWE-79",  # Cross-site Scripting
+    "command_injection": "CWE-78",  # OS Command Injection
+    "rce": "CWE-94",  # Code Injection
+    "ssti": "CWE-1336",  # Server-Side Template Injection
+    "xxe": "CWE-611",  # XML External Entity
+    "ldap_injection": "CWE-90",  # LDAP Injection
+    "xpath_injection": "CWE-643",  # XPath Injection
+    "header_injection": "CWE-113",  # HTTP Response Splitting
+    # Access control family
+    "idor": "CWE-639",  # Authorization Bypass Through User-Controlled Key
+    "broken_access_control": "CWE-284",  # Improper Access Control
+    "privilege_escalation": "CWE-269",  # Improper Privilege Management
+    "path_traversal": "CWE-22",  # Path Traversal
+    "lfi": "CWE-98",  # PHP Local File Inclusion
+    "rfi": "CWE-98",  # PHP Remote File Inclusion
+    "file_inclusion": "CWE-98",
+    "open_redirect": "CWE-601",  # URL Redirection to Untrusted Site
+    "csrf": "CWE-352",  # Cross-Site Request Forgery
+    "http_method_auth_bypass": "CWE-288",  # Auth Bypass Using Alternate Path
+    # Server-side request / misconfiguration
+    "ssrf": "CWE-918",  # Server-Side Request Forgery
+    "cors": "CWE-942",  # Permissive Cross-domain Policy
+    "insecure_http_method": "CWE-693",  # Protection Mechanism Failure (TRACE/XST)
+    # Cryptographic failures
+    "tls_issue": "CWE-326",  # Inadequate Encryption Strength (umbrella)
+    # Information exposure
+    "information_disclosure": "CWE-200",  # Exposure of Sensitive Information
+    "graphql_introspection": "CWE-200",
+    "excessive_data_exposure": "CWE-213",  # Exposure of Sensitive Information Due to Incompatible Policies
+    # Authentication
+    "broken_auth": "CWE-287",  # Improper Authentication
+    "default_creds": "CWE-1392",  # Use of Default Credentials
+    "api_missing_auth": "CWE-306",  # Missing Authentication for Critical Function
+    # Vulnerable components
+    "vulnerable_js_library": "CWE-1395",  # Dependency on Vulnerable Third-Party Component
+}
+
+#: finding_types that carry no single defensible CWE, and the reason. Pinned by
+#: a test so a new type is a deliberate decision (map it, or record it here),
+#: never a silent gap.
+CWE_UNMAPPED: dict[str, str] = {
+    "misconfig": "nuclei catch-all spanning many unrelated weaknesses",
+    "cve": "CWE travels per-CVE from the vuln feed / template classification",
+    "exposed_panel": "a reachable panel is not itself a weakness",
+    "technology_detected": "informational, not a weakness",
+    "unknown": "unclassified finding",
+}
+
+_CWE_RE = re.compile(r"^CWE-(\d+)$", re.IGNORECASE)
+
+
+def normalize_cwe(value) -> Optional[str]:
+    """
+    Canonicalise a CWE identifier to ``CWE-<n>`` or return None.
+
+    Accepts ``"CWE-79"``, ``"cwe-79"``, the bare ``"79"`` and a list/tuple
+    (the first well-formed entry wins — nuclei publishes ``cwe-id`` as a list).
+    Anything that is not a well-formed CWE number is rejected, which is how a
+    fabricated or malformed identifier is prevented from ever being stored.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        for v in value:
+            n = normalize_cwe(v)
+            if n:
+                return n
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return f"CWE-{int(s)}"
+    m = _CWE_RE.match(s)
+    if m:
+        return f"CWE-{int(m.group(1))}"
+    return None
+
+
+def cwe_for(finding_type: str) -> Optional[str]:
+    """Central default CWE for a finding_type, or None when none is defensible."""
+    return CWE_MAP.get((finding_type or "").strip().lower())
+
+
+def resolve_cwe(finding: dict) -> Optional[str]:
+    """
+    The CWE for a finding, most-specific first:
+
+      1. a well-formed CWE the engine or source tool already supplied
+         (preserves specificity and source-tool classification);
+      2. the centralized finding_type default;
+      3. None — a missing CWE is represented honestly, never fabricated.
+    """
+    supplied = normalize_cwe(finding.get("cwe_id"))
+    if supplied:
+        return supplied
+    return cwe_for(finding.get("finding_type", ""))
+
 
 # ── OWASP Top 10 2021 Mapping ────────────────────────────────────────────────
 
@@ -191,6 +321,7 @@ def map_compliance(finding_type: str) -> dict:
         "dpdp": dpdp,
         "gdpr": gdpr,
         "nist_800_53": nist53,
+        "cwe": cwe_for(finding_type),
         "tags": tags,
     }
 

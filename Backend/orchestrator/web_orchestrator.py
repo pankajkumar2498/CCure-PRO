@@ -1528,12 +1528,16 @@ class WebScanOrchestrator:
                 )
 
             # 2. Compliance Mapping
-            from core.web.standards_mapping import map_compliance
+            from core.web.standards_mapping import map_compliance, resolve_cwe
 
             for finding in all_findings:
                 compliance = map_compliance(finding.get("finding_type", ""))
                 finding["owasp_category"] = compliance.get("owasp", "")
                 finding["compliance_tags"] = compliance.get("tags", [])
+                # Same resolution as the persist path: keep an engine/tool CWE,
+                # else the centralized default, else None. Filling it here means
+                # the copy embedded in the report carries the CWE too.
+                finding["cwe_id"] = resolve_cwe(finding)
 
             # 3. Deduplication
             from core.web.correlation import deduplicate_findings
@@ -1771,6 +1775,12 @@ class WebScanOrchestrator:
                                 "cvss_score": meta["cvss_score"],
                                 "detected_by": "custom",
                                 "matched_at": target_url,
+                                # "misconfig" is a nuclei catch-all with no
+                                # single defensible CWE, but a *missing security
+                                # header* specifically is a protection-mechanism
+                                # failure. Set it explicitly so resolve_cwe
+                                # preserves it rather than leaving it blank.
+                                "cwe_id": "CWE-693",
                             }
                         )
         except Exception as exc:

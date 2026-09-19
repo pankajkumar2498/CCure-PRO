@@ -30,8 +30,19 @@ log = logging.getLogger("ccure.web.auth.secrets")
 #: text, which is what makes rows predating encryption keep working.
 _PREFIX = "enc:v1:"
 
-#: auth_config keys whose values are credentials.
-_SECRET_KEYS = ("password", "token")
+#: auth_config keys whose values are credentials. Beyond form/bearer, this
+#: covers the modern-token fields (jwt / api_key / oauth2 client secret and
+#: their `value` alias) and the TOTP shared secret used to drive an MFA screen —
+#: all long-lived credentials that must not sit in the clear in the scan row.
+_SECRET_KEYS = (
+    "password",
+    "token",
+    "jwt",
+    "key",
+    "value",
+    "client_secret",
+    "totp_secret",
+)
 
 #: auth_config keys holding a mapping whose *values* are credentials.
 _SECRET_MAP_KEYS = ("cookies", "headers")

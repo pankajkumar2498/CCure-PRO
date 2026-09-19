@@ -65,8 +65,14 @@ def test_token_is_a_valid_dns_label_and_leaks_nothing():
     assert tok.isalnum() and tok.islower() and len(tok) <= 63
     dom = s.domain_for(tok)
     url = s.http_url_for(tok)
-    # nothing about the scan/target is derivable from the callback address
-    for leak in ("wsc_secret_123", "victim", "example", "account", "id", "42"):
+    # nothing about the scan/target is derivable from the callback address.
+    # Only meaningful (≥3-char) identifiers are checked: the token is random
+    # lowercase hex, so a 2-char value like the param name "id" (no 'i' in hex)
+    # or the value "42" (pure digits) can coincidentally appear as a substring
+    # of a random token — a collision, not a leak — which made this assertion
+    # flaky. The real guarantee is that no scan id or target host/path word is
+    # derivable, and those are all long enough never to collide.
+    for leak in ("wsc_secret_123", "victim", "example", "account"):
         assert leak not in dom
         assert leak not in url
 

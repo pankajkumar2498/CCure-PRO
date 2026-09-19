@@ -11,14 +11,36 @@ Handles:
   - Redis-backed session state caching for multi-phase scans
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import re
+import struct
 import time
-from typing import Dict, List, Optional
+from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 log = logging.getLogger("ccure.web.auth")
+
+
+def _totp_now(secret: str, digits: int = 6, period: int = 30) -> str:
+    """
+    A current RFC 6238 TOTP code from a base32 shared secret, using only the
+    standard library (SHA-1, the near-universal default). This lets a scan drive
+    an MFA/OTP screen with the same shared secret an authenticator app holds,
+    rather than a code that expires in seconds and cannot be pre-supplied.
+    """
+    key = base64.b32decode(re.sub(r"\s", "", secret).upper() + "=" * (-len(secret) % 8))
+    counter = int(time.time()) // period
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = (struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF) % (
+        10**digits
+    )
+    return str(code).zfill(digits)
+
 
 #: Hidden-field names conventionally used for anti-CSRF / anti-forgery tokens.
 #: Extracting these is what makes CSRF-protected form logins (DVWA's
@@ -406,6 +428,22 @@ class WebSessionManager:
         configurable with sensible defaults; success is confirmed by a text
         indicator and/or the post-login URL, and a flow that captures no session
         records an auth_error rather than proceeding unauthenticated.
+
+        Real IdPs are rarely a single username+password+submit page, so the flow
+        handles three common extra screens, each best-effort and skipped when its
+        field is absent (so a plain one-page login still works unchanged):
+
+          • **Identifier-first** (Microsoft/Google/Okta): username, a *Next*
+            button, then password on a second screen. Driven by
+            ``idp_next_submit`` — when set, the password field is filled after
+            that click.
+          • **MFA / OTP**: a one-time-code screen after the password. Driven by
+            ``idp_mfa_field`` plus either a static ``mfa_code`` or a
+            ``totp_secret`` (RFC 6238 TOTP is generated with the standard
+            library — no new dependency).
+          • **Consent / authorize**: an OAuth consent screen with an
+            *Allow/Authorize/Continue* button before the callback. Driven by
+            ``idp_consent_submit``.
         """
         start_url = config.get("start_url") or config.get("login_url")
         if not start_url:
@@ -427,6 +465,10 @@ class WebSessionManager:
         submit_sel = config.get(
             "idp_submit", "button[type='submit'], input[type='submit'], button"
         )
+        next_sel = config.get("idp_next_submit")  # identifier-first "Next"
+        mfa_sel = config.get("idp_mfa_field")  # OTP/MFA code field
+        consent_sel = config.get("idp_consent_submit")  # consent/authorize button
+        mfa_code = self._resolve_mfa_code(config)
         success = config.get("success_indicator")
         success_url = config.get("success_url_contains")
         try:
@@ -452,9 +494,24 @@ class WebSessionManager:
                 # The IdP login form may be the current page after the redirect.
                 try:
                     await page.fill(u_sel, user, timeout=8000)
+                    # Identifier-first: click Next and wait for the password screen
+                    # before filling the password.
+                    if next_sel:
+                        await self._click_and_settle(page, next_sel)
+                        await self._wait_for_selector(page, p_sel)
                     await page.fill(p_sel, pw, timeout=8000)
-                    await page.click(submit_sel, timeout=8000)
-                    await page.wait_for_load_state("networkidle", timeout=20000)
+                    await self._click_and_settle(page, submit_sel)
+                    # MFA / OTP screen: fill the code and submit, best-effort.
+                    if (
+                        mfa_sel
+                        and mfa_code
+                        and await self._selector_ready(page, mfa_sel)
+                    ):
+                        await page.fill(mfa_sel, mfa_code, timeout=8000)
+                        await self._click_and_settle(page, submit_sel)
+                    # OAuth consent / authorize screen before the callback.
+                    if consent_sel and await self._selector_ready(page, consent_sel):
+                        await self._click_and_settle(page, consent_sel)
                 except Exception as exc:
                     log.debug("IdP form fill/submit issue: %s", exc)
                 try:
@@ -486,6 +543,54 @@ class WebSessionManager:
         )
         self._save_session(session)
         return session
+
+    # ── browser-redirect helpers (MFA / consent / identifier-first) ───────────
+    @staticmethod
+    async def _click_and_settle(page, selector: str) -> None:
+        """Click a selector and wait for the page to settle, tolerating a screen
+        that does not trigger a full navigation (SPA IdPs)."""
+        try:
+            await page.click(selector, timeout=8000)
+        except Exception as exc:
+            log.debug("click %s: %s", selector, exc)
+            return
+        try:
+            await page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            pass
+
+    @staticmethod
+    async def _wait_for_selector(page, selector: str) -> None:
+        try:
+            await page.wait_for_selector(selector, timeout=15000, state="visible")
+        except Exception:
+            pass
+
+    @staticmethod
+    async def _selector_ready(page, selector: str) -> bool:
+        """True when a selector is present and visible — lets an optional screen
+        (MFA, consent) be skipped when the IdP did not present it."""
+        try:
+            el = await page.wait_for_selector(selector, timeout=8000, state="visible")
+            return el is not None
+        except Exception:
+            return False
+
+    @staticmethod
+    def _resolve_mfa_code(config: dict) -> str:
+        """A static ``mfa_code`` wins; otherwise derive a current TOTP from
+        ``totp_secret`` (RFC 6238, stdlib only). Empty when neither is set."""
+        code = config.get("mfa_code")
+        if code:
+            return str(code)
+        secret = config.get("totp_secret")
+        if not secret:
+            return ""
+        try:
+            return _totp_now(secret)
+        except Exception as exc:
+            log.debug("TOTP generation failed: %s", exc)
+            return ""
 
     def _create_cookie_session(self, config: dict, scan_id: str) -> "WebSession":
         """Create session with static cookies."""

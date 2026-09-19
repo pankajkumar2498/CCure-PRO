@@ -750,6 +750,12 @@ class WebScanOrchestrator:
                 sensitive_findings.extend(
                     open_redirect_findings(crawl_result.out_of_scope, target_url)
                 )
+                # Static DOM source→sink findings from JS bundle analysis
+                # (Phase 22, Item 9). Low-severity review signals; the browser
+                # XSS engine remains the confirmation path.
+                sensitive_findings.extend(
+                    getattr(crawl_result, "js_findings", []) or []
+                )
             except ImportError:
                 log.warning("Playwright not available — skipping browser crawling")
             except Exception as exc:

@@ -79,6 +79,8 @@ class CrawlResult:
         self.endpoints: list[dict] = []
         self.forms: list[dict] = []
         self.js_endpoints: list[dict] = []
+        #: Static DOM source→sink findings from JS bundle analysis (Phase 22).
+        self.js_findings: list[dict] = []
         self.technologies: list[dict] = []
         self.cookies: list[dict] = []
         self.errors: list[str] = []
@@ -282,6 +284,7 @@ class PlaywrightCrawler:
                 # Crawler 2.0): an endpoint hardcoded in a bundle but never
                 # executed is still part of the attack surface.
                 bundle_routes: list[dict] = []
+                dom_flows: list[dict] = []
                 _js_scanned = {"n": 0}
                 _JS_SCAN_MAX = 40
                 _JS_BODY_MAX = 2_000_000
@@ -307,11 +310,14 @@ class PlaywrightCrawler:
                                 _js_scanned["n"] += 1
                                 body = await response.text()
                                 if body and len(body) <= _JS_BODY_MAX:
+                                    from core.web.js_dom import analyze_dom_flows
                                     from core.web.js_routes import route_endpoints
 
                                     bundle_routes.extend(
                                         route_endpoints(body, start_url)
                                     )
+                                    # Static DOM source→sink analysis (Item 9).
+                                    dom_flows.extend(analyze_dom_flows(body, url))
                         except Exception:
                             pass
                         if self._is_api_call(url):
@@ -637,6 +643,18 @@ class PlaywrightCrawler:
                         "Crawl: %d route(s) mined from %d JS bundle(s)",
                         len(bundle_routes),
                         _js_scanned["n"],
+                    )
+                # DOM source→sink findings from JS bundle analysis (Item 9).
+                if dom_flows:
+                    # Dedupe by (title) across bundles/pages.
+                    _seen_dom: set = set()
+                    for d in dom_flows:
+                        if d["title"] not in _seen_dom:
+                            _seen_dom.add(d["title"])
+                            result.js_findings.append(d)
+                    log.info(
+                        "Crawl: %d DOM source→sink flow(s) found in JS",
+                        len(result.js_findings),
                     )
 
                 await browser.close()

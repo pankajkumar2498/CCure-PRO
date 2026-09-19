@@ -46,6 +46,7 @@ CWE_MAP: dict[str, str] = {
     # Injection family
     "sqli": "CWE-89",  # SQL Injection
     "xss": "CWE-79",  # Cross-site Scripting
+    "dom_xss": "CWE-79",  # DOM-based Cross-site Scripting
     "command_injection": "CWE-78",  # OS Command Injection
     "rce": "CWE-94",  # Code Injection
     "ssti": "CWE-1336",  # Server-Side Template Injection
@@ -156,6 +157,12 @@ REMEDIATION_MAP: dict[str, str] = {
         "Use parameterised queries / prepared statements for all database "
         "access. Never build SQL by concatenating request data. Apply "
         "least-privilege to the database account the application uses."
+    ),
+    "dom_xss": (
+        "Do not pass untrusted client-side input (location.hash/search, "
+        "document.referrer, window.name, postMessage) into HTML/JS sinks "
+        "(innerHTML, document.write, eval). Use textContent and a sanitiser "
+        "such as DOMPurify."
     ),
     "xss": (
         "Contextually output-encode all user-controlled data (HTML, attribute, "
@@ -272,6 +279,7 @@ def resolve_remediation(finding: dict) -> Optional[str]:
 OWASP_MAP: dict[str, str] = {
     "sqli": "A03:2021 – Injection",
     "xss": "A03:2021 – Injection",
+    "dom_xss": "A03:2021 – Injection",
     "command_injection": "A03:2021 – Injection",
     "xxe": "A03:2021 – Injection",
     "ssrf": "A10:2021 – SSRF",

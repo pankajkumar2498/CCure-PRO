@@ -286,6 +286,14 @@ class WebScanConfig:
     FFUF_MAX_WORDS_SMALL: int = int(os.getenv("FFUF_MAX_WORDS_SMALL", "0"))
     FFUF_MAX_WORDS_STANDARD: int = int(os.getenv("FFUF_MAX_WORDS_STANDARD", "0"))
     FFUF_MAX_WORDS_DEEP: int = int(os.getenv("FFUF_MAX_WORDS_DEEP", "0"))
+    #: Request rate (req/s) for ffuf content discovery, Phase 21. Decoupled from
+    #: the conservative fuzzing ceiling WEB_SCAN_RATE_LIMIT (5): content
+    #: discovery is directory brute-forcing (plain GETs, like crawling), so at
+    #: 5 req/s the standard-tier wordlist dominated the CRAWL phase (Phase 20
+    #: measured ~479s). Raising the rate completes the SAME wordlist faster with
+    #: no reduction in coverage; a WAF still clamps it to WEB_STEALTH_RATE_LIMIT.
+    #: Set to 0 to fall back to WEB_SCAN_RATE_LIMIT for a fully-throttled deploy.
+    FFUF_RATE: int = int(os.getenv("FFUF_RATE", "30"))
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────

@@ -812,10 +812,15 @@ class WebScanOrchestrator:
                             "total_endpoints": len(all_endpoints),
                         },
                     )
+                    # Content discovery runs at the dedicated ffuf rate (Phase
+                    # 21) — plain GETs like crawling, not injection fuzzing — so
+                    # the same wordlist completes without dominating the phase.
+                    # A WAF still clamps it to the stealth rate. Falls back to
+                    # the fuzzing ceiling when FFUF_RATE is 0.
                     rate = (
                         WebScanConfig.STEALTH_RATE_LIMIT
                         if waf_detected
-                        else WebScanConfig.SCAN_RATE_LIMIT
+                        else (WebScanConfig.FFUF_RATE or WebScanConfig.SCAN_RATE_LIMIT)
                     )
                     ffuf_result = ffuf.run(
                         target=target_url,
@@ -828,6 +833,7 @@ class WebScanOrchestrator:
                     _fst = ffuf_result.get("stats", {})
                     crawl_stats["ffuf_tier"] = ffuf_tier
                     crawl_stats["ffuf_words"] = _fst.get("words")
+                    crawl_stats["ffuf_rate"] = rate
                     if ffuf_tier == "small":
                         crawl_stats["ffuf_caveat"] = (
                             f"Content discovery used the reduced high-value "

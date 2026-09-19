@@ -124,6 +124,10 @@ class CrawlResult:
         #: it was recovered — otherwise a mid-crawl logout silently turns the
         #: rest of the crawl anonymous.
         self.auth_events: list[dict] = []
+        #: Directed graph of DOM states and the interactions connecting them,
+        #: built from the autonomous interaction pass (Phase 23b). Empty unless
+        #: interaction is enabled. Serialised into scans.options for the report.
+        self.dom_graph: dict = {}
 
     def to_dict(self) -> dict:
         return {
@@ -137,6 +141,7 @@ class CrawlResult:
             "api_specs": self.api_specs,
             "out_of_scope": self.out_of_scope,
             "soft_404s": self.soft_404s,
+            "dom_graph": self.dom_graph,
         }
 
 
@@ -209,6 +214,12 @@ class PlaywrightCrawler:
         result = CrawlResult()
         parsed_start = urlparse(start_url)
         base_domain = parsed_start.netloc
+
+        # DOM state graph (Phase 23b): records the interaction transitions the
+        # autonomous pass discovers. One graph per crawl, attached to the result.
+        from core.web.dom_graph import DomStateGraph
+
+        dom_graph = DomStateGraph()
 
         # Scope enforcement
         allowed_domains = {base_domain}
@@ -641,7 +652,7 @@ class PlaywrightCrawler:
                             if interact and depth < self.max_depth:
                                 try:
                                     new_links = await self._interact_page(
-                                        page, final_url
+                                        page, final_url, dom_graph
                                     )
                                     for link in new_links:
                                         if link not in visited and self._is_in_scope(
@@ -756,6 +767,16 @@ class PlaywrightCrawler:
             )
         )
         result.technologies = self._dedupe_technologies(result.technologies)
+        if dom_graph.node_count:
+            result.dom_graph = dom_graph.to_dict()
+            _g = result.dom_graph["summary"]
+            log.info(
+                "Crawl: DOM state graph — %d states, %d transitions, "
+                "%d SPA-hidden states",
+                _g["states"],
+                _g["transitions"],
+                _g["spa_hidden_states"],
+            )
 
         log.info(
             "Crawl complete: %d pages visited, %d endpoints, %d forms, "
@@ -772,13 +793,30 @@ class PlaywrightCrawler:
 
     # ── Extraction Helpers ────────────────────────────────────────────────────
 
-    async def _interact_page(self, page, base_url: str) -> list[str]:
+    async def _dom_fingerprint(self, page) -> tuple[str, str]:
+        """Return (fingerprint, title) for the page's current DOM state, using
+        the structural probe. Best-effort — an empty fingerprint on failure so a
+        state still gets a URL-keyed node."""
+        from core.web.dom_graph import DOM_FINGERPRINT_JS, fingerprint_from_probe
+
+        try:
+            probe = await page.evaluate(DOM_FINGERPRINT_JS)
+            return fingerprint_from_probe(probe), (probe or {}).get("title", "")
+        except Exception:
+            return "", ""
+
+    async def _interact_page(self, page, base_url: str, dom_graph=None) -> list[str]:
         """
         Autonomously click safe, non-destructive controls to reach client-side
         routes/state a link crawl never sees (Phase 23, Crawler 2.0). Returns
         new same-page URLs (SPA routes reached via pushState/hash or client
         navigation). Opt-in; destructive-labelled and submit controls are never
         clicked, and the number of clicks per page is bounded.
+
+        When ``dom_graph`` is supplied it records each interaction as a state
+        transition (Phase 23b): the base state, the control clicked, and the
+        state it led to — including a state reached on the *same* URL, which is
+        the SPA coverage a URL list cannot show.
         """
         discovered: set = set()
         try:
@@ -787,6 +825,11 @@ class PlaywrightCrawler:
             )
         except Exception:
             return []
+        # Fingerprint the base state once so every transition shares one origin.
+        base_sig = None
+        if dom_graph is not None:
+            fp, title = await self._dom_fingerprint(page)
+            base_sig = dom_graph.add_state(base_url, fp, title)
         clicks = 0
         for el in elements:
             if clicks >= _INTERACT_MAX:
@@ -811,8 +854,19 @@ class PlaywrightCrawler:
                 continue
             clicks += 1
             after = page.url
+            # Record the transition: the state after the click may differ from
+            # the base even when the URL did not (an opened panel, a client
+            # route), which is exactly the hidden state worth recording.
+            state_changed = False
+            if dom_graph is not None and base_sig:
+                fp2, title2 = await self._dom_fingerprint(page)
+                to_sig = dom_graph.add_state(after, fp2, title2)
+                if to_sig != base_sig:
+                    dom_graph.add_transition(base_sig, to_sig, text, control=etype)
+                    state_changed = True
             if after != before and after not in discovered:
                 discovered.add(after)
+            if after != before or state_changed:
                 # Reset to the base page so the next click starts from a known
                 # state rather than compounding SPA transitions.
                 try:

@@ -22,7 +22,6 @@ This wrapper:
 
 import logging
 import os
-from typing import Dict, List, Optional
 
 from config import WebScanConfig
 from core.web.base_wrapper import ToolWrapper
@@ -243,17 +242,44 @@ class NucleiWrapper(ToolWrapper):
         args.extend(["-o", output_file])
 
         try:
+            import subprocess as _subprocess
             import time as _time
 
             from core.web.nuclei.profiles import parse_run_metrics
 
             t0 = _time.monotonic()
-            result = self._run_subprocess(args, timeout=run_timeout)
+            effective_timeout = run_timeout or self.timeout
+            timed_out = False
+            stderr = ""
+
+            # A timeout must not be a silent clean scan (Phase 19 PART C).
+            # nuclei writes its -o file incrementally, so when the process is
+            # killed at the time limit the findings it already confirmed are on
+            # disk. We catch the timeout, keep those partial findings, and mark
+            # the coverage partial rather than letting the exception discard the
+            # work and reach the orchestrator as a bare failure.
+            try:
+                result = self._run_subprocess(args, timeout=effective_timeout)
+                stderr = getattr(result, "stderr", "") or ""
+            except _subprocess.TimeoutExpired as exc:
+                timed_out = True
+                raw_err = getattr(exc, "stderr", None)
+                if isinstance(raw_err, bytes):
+                    raw_err = raw_err.decode("utf-8", "replace")
+                stderr = raw_err or ""
+                log.warning(
+                    "Nuclei hit its %ss time limit — preserving partial findings "
+                    "and reporting PARTIAL coverage",
+                    effective_timeout,
+                )
             duration_s = round(_time.monotonic() - t0, 2)
 
-            # Parse output
-            with open(output_file, "r", encoding="utf-8", errors="replace") as f:
-                raw_output = f.read()
+            # Parse output (partial after a timeout, complete otherwise).
+            try:
+                with open(output_file, "r", encoding="utf-8", errors="replace") as f:
+                    raw_output = f.read()
+            except FileNotFoundError:
+                raw_output = ""
 
             raw_findings = self._parse_jsonl(raw_output)
             findings = [self._normalize_finding(f) for f in raw_findings]
@@ -263,7 +289,29 @@ class NucleiWrapper(ToolWrapper):
 
             # Execution metrics from nuclei's own stderr (best-effort; honest
             # about anything nuclei did not report).
-            metrics = parse_run_metrics(getattr(result, "stderr", "") or "")
+            metrics = parse_run_metrics(stderr)
+            percent = metrics.get("percent")
+
+            # Coverage is complete only when nuclei finished. On a timeout the
+            # corpus was not fully run; ``percent`` (when nuclei reported it)
+            # states how far it got, and the caveat spells out that a short
+            # result is unassessed, not clean.
+            coverage_complete = not timed_out
+            coverage_caveat = ""
+            if timed_out:
+                pct = (
+                    f"{percent}% of the template corpus"
+                    if percent is not None
+                    else "an unknown fraction of the template corpus"
+                )
+                coverage_caveat = (
+                    f"Nuclei was stopped at its {effective_timeout}s time limit "
+                    f"after completing {pct}. Coverage is PARTIAL: the findings "
+                    f"recorded are real, but the target is not fully assessed, so "
+                    f"an empty or short result here must not be read as clean. "
+                    f"Re-run with a longer nuclei timeout for this profile, or a "
+                    f"narrower scope, to complete the corpus."
+                )
 
             stats = {
                 "total_findings": len(findings),
@@ -278,22 +326,32 @@ class NucleiWrapper(ToolWrapper):
                 # Phase 10 profile + execution metrics.
                 "profile": (profile or "STANDARD").upper(),
                 "concurrency": effective_concurrency,
+                "rate_limit": effective_rate,
                 "exclude_tags": effective_exclude,
                 "duration_s": duration_s,
                 "templates_total": metrics["templates_total"],
                 "templates_executed": metrics["templates_executed"],
                 "templates_skipped": metrics["templates_skipped"],
                 "requests": metrics["requests"],
+                "rps": metrics.get("rps"),
+                # Phase 19 PART C: timeout / partial-coverage state.
+                "timed_out": timed_out,
+                "coverage_complete": coverage_complete,
+                "percent_complete": percent,
+                "timeout_limit_s": effective_timeout if timed_out else None,
+                "coverage_caveat": coverage_caveat,
             }
 
             log.info(
-                "Nuclei scan complete: %d findings across %d target(s) in %.1fs "
-                "[%s] (%s)",
+                "Nuclei scan %s: %d findings across %d target(s) in %.1fs "
+                "[%s] (%s)%s",
+                "TIMED OUT (partial)" if timed_out else "complete",
                 len(findings),
                 len(target_list),
                 duration_s,
                 stats["profile"],
                 ", ".join(f"{k}={v}" for k, v in stats["by_severity"].items() if v > 0),
+                f" — {percent}% of corpus" if timed_out and percent else "",
             )
 
             return {"findings": findings, "stats": stats}
@@ -463,7 +521,6 @@ class NucleiWrapper(ToolWrapper):
 
             # Parse matcher info
             matched_at = raw.get("matched-at", raw.get("host", ""))
-            curl_command = raw.get("curl-command", "")
 
             # Determine finding type from nuclei classification
             classification = info.get("classification", {})

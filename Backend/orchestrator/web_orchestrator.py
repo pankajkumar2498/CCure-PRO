@@ -25,7 +25,7 @@ Design Decisions:
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from config import WebScanConfig
@@ -143,6 +143,12 @@ class ToolCoverage:
     STATUS_UNAVAILABLE = "unavailable"
     STATUS_FAILED = "failed"
     STATUS_SKIPPED = "skipped"
+    # The tool ran and produced real findings but did not complete its corpus —
+    # e.g. nuclei stopped at its time limit (Phase 19 PART C). Distinct from
+    # ``ran`` (which implies full coverage) and from ``failed`` (which implies
+    # nothing was collected): a partial run has genuine findings AND leaves the
+    # target not fully assessed, so it must not read as a clean scan.
+    STATUS_PARTIAL = "partial"
 
     def __init__(self) -> None:
         self.tools: Dict[str, Dict[str, Any]] = {}
@@ -157,6 +163,9 @@ class ToolCoverage:
 
     def ran(self, name: str, detail: str = "") -> None:
         self.record(name, self.STATUS_RAN, detail)
+
+    def partial(self, name: str, detail: str = "") -> None:
+        self.record(name, self.STATUS_PARTIAL, detail)
 
     def unavailable(self, name: str) -> None:
         self.record(
@@ -196,11 +205,26 @@ class ToolCoverage:
             and row["status"] in (self.STATUS_UNAVAILABLE, self.STATUS_FAILED)
         )
 
+    @property
+    def incomplete_essential(self) -> List[str]:
+        # An essential tool that ran but did not finish its corpus (e.g. nuclei
+        # timed out) leaves the target not fully assessed (Phase 19 PART C). It
+        # found real things, so it is not "missing", but the scan cannot claim
+        # full coverage — this keeps a timeout from reading as a clean scan.
+        return sorted(
+            name
+            for name, row in self.tools.items()
+            if name in ESSENTIAL_TOOLS and row["status"] == self.STATUS_PARTIAL
+        )
+
     def as_dict(self) -> Dict[str, Any]:
         return {
             "tools": [self.tools[name] for name in sorted(self.tools)],
             "tools_run": sorted(
                 n for n, r in self.tools.items() if r["status"] == self.STATUS_RAN
+            ),
+            "tools_partial": sorted(
+                n for n, r in self.tools.items() if r["status"] == self.STATUS_PARTIAL
             ),
             "tools_unavailable": sorted(
                 n
@@ -208,7 +232,12 @@ class ToolCoverage:
                 if r["status"] == self.STATUS_UNAVAILABLE
             ),
             "missing_essential": self.missing_essential,
-            "assessment_complete": not self.missing_essential,
+            "incomplete_essential": self.incomplete_essential,
+            # A scan is complete only when no essential tool is missing AND none
+            # finished partially. Either way a short result is not a clean one.
+            "assessment_complete": not (
+                self.missing_essential or self.incomplete_essential
+            ),
         }
 
 
@@ -996,7 +1025,10 @@ class WebScanOrchestrator:
                         severity=severity,
                         tags=tags,
                         auth_headers=auth_headers or None,
-                        rate_limit=effective_rate,
+                        # Nuclei runs at its PROFILE rate (Phase 19 PART B), not
+                        # the conservative shared probe rate — the wrapper still
+                        # clamps it to the stealth rate when a WAF is present.
+                        rate_limit=nuclei_controls["rate_limit"],
                         waf_detected=is_waf,
                         profile=nuclei_profile,
                         concurrency=nuclei_controls["concurrency"],
@@ -1008,17 +1040,24 @@ class WebScanOrchestrator:
                     stats = nuclei_result.get("stats") or {}
                     scanned = stats.get("targets_scanned", 1)
                     oast = stats.get("oast") or {}
+                    nuclei_timed_out = bool(stats.get("timed_out"))
                     # Carry the profile + execution metrics onto the coverage
                     # record so the DB and report can state exactly what ran.
                     nuclei_metrics = {
                         "profile": stats.get("profile", nuclei_profile),
                         "concurrency": stats.get("concurrency"),
+                        "rate_limit": stats.get("rate_limit"),
                         "duration_s": stats.get("duration_s"),
                         "templates_total": stats.get("templates_total"),
                         "templates_executed": stats.get("templates_executed"),
                         "templates_skipped": stats.get("templates_skipped"),
                         "findings": len(nuclei_result.get("findings", [])),
                         "exclude_tags": stats.get("exclude_tags"),
+                        # Phase 19 PART C: timeout / partial-coverage state.
+                        "timed_out": nuclei_timed_out,
+                        "coverage_complete": stats.get("coverage_complete", True),
+                        "percent_complete": stats.get("percent_complete"),
+                        "timeout_limit_s": stats.get("timeout_limit_s"),
                     }
                     detail = (
                         f"Profile {nuclei_profile} — {profile_label(nuclei_profile)}; "
@@ -1034,6 +1073,8 @@ class WebScanOrchestrator:
                         detail += (
                             f"; {tt} template(s) loaded, {te} executed, {tk} skipped"
                         )
+                    if stats.get("rate_limit") is not None:
+                        detail += f"; {stats['rate_limit']} req/s"
                     if stats.get("duration_s") is not None:
                         detail += f"; {stats['duration_s']}s"
                     if stats.get("exclude_tags"):
@@ -1045,7 +1086,18 @@ class WebScanOrchestrator:
                     )
                     if oast.get("caveat"):
                         detail += f". {oast['caveat']}"
-                    coverage.ran("nuclei", detail)
+                    # A timeout is recorded as PARTIAL coverage, not a completed
+                    # run — the findings are kept but the target is not fully
+                    # assessed, so it can never read as a clean scan (PART C).
+                    if nuclei_timed_out:
+                        detail += ". " + (
+                            stats.get("coverage_caveat")
+                            or "Nuclei did not finish its template corpus within "
+                            "the time limit; coverage is PARTIAL."
+                        )
+                        coverage.partial("nuclei", detail)
+                    else:
+                        coverage.ran("nuclei", detail)
             except Exception as exc:
                 log.warning("[DETECT] Nuclei scan failed: %s", exc)
                 coverage.failed("nuclei", exc)
@@ -2027,11 +2079,17 @@ class WebScanOrchestrator:
                         "severity": "medium",
                         "cvss_score": 5.0,
                     },
-                    "x-xss-protection": {
-                        "title": "Missing X-XSS-Protection Header",
-                        "severity": "low",
-                        "cvss_score": 2.0,
-                    },
+                    # X-XSS-Protection is deliberately NOT here (Phase 19, PART A).
+                    # The header is deprecated: Chrome/Edge removed the XSS auditor
+                    # it controlled in 2019, Firefox never implemented it, and OWASP
+                    # now recommends omitting it (or setting it to "0"), because the
+                    # auditor itself introduced information-disclosure side channels.
+                    # A modern, correctly-configured application therefore does NOT
+                    # send it, so flagging its absence is a false positive — exactly
+                    # the one Phase 14 validation found. Content-Security-Policy above
+                    # is the real, non-deprecated control against XSS, and its
+                    # absence is still flagged. Nothing legitimate is hidden: the
+                    # other four headers continue to fire on their own merits.
                 }
 
                 for header_name, meta in required_headers.items():

@@ -7,7 +7,6 @@ Loads settings from environment variables with sensible defaults.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -379,6 +378,22 @@ class WebScanConfig:
     NUCLEI_TIMEOUT_FAST: int = int(os.getenv("NUCLEI_TIMEOUT_FAST", "1800"))  # 30 min
     NUCLEI_CONCURRENCY_DEEP: int = int(os.getenv("NUCLEI_CONCURRENCY_DEEP", "40"))
     NUCLEI_TIMEOUT_DEEP: int = int(os.getenv("NUCLEI_TIMEOUT_DEEP", "14400"))  # 4 hours
+
+    # Per-profile nuclei request rate (req/s), Phase 19 PART B. The global
+    # WEB_SCAN_RATE_LIMIT (5 req/s) is a deliberately conservative fuzzing/probe
+    # ceiling; applied to nuclei it throttles a multi-thousand-template corpus so
+    # hard that runs hit their wall-clock budget without finishing — a timeout,
+    # not a clean result. Nuclei's own default is 150 req/s, and these are web
+    # application scans, so nuclei is given a profile-appropriate rate that is
+    # decoupled from the crawler/probe ceiling. The rate is TUNED per profile
+    # (not "just raise the timeout"): FAST is fastest, DEEP is gentler because it
+    # runs far more templates and would otherwise be the heaviest load. WAF
+    # detection still clamps any of these down to WEB_STEALTH_RATE_LIMIT, and the
+    # safety tag exclusions are untouched. Set to 0 to fall back to the global
+    # WEB_SCAN_RATE_LIMIT for a deployment that must keep nuclei fully throttled.
+    NUCLEI_RATE_FAST: int = int(os.getenv("NUCLEI_RATE_FAST", "150"))
+    NUCLEI_RATE_STANDARD: int = int(os.getenv("NUCLEI_RATE_STANDARD", "150"))
+    NUCLEI_RATE_DEEP: int = int(os.getenv("NUCLEI_RATE_DEEP", "100"))
     # The safety exclusions applied to every profile by default. This scans
     # production and OT hosts, so dos/fuzz/intrusive/brute-force templates are
     # off unless an operator explicitly turns them on — DEEP does not.

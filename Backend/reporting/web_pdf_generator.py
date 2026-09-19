@@ -22,7 +22,6 @@ Usage:
 
 import os
 from datetime import datetime
-from typing import List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -392,10 +391,51 @@ def _build_web_scan_story(
             prof_rows.append(("Nuclei Duration", f"{metrics.get('duration_s')} s"))
         if metrics.get("concurrency") is not None:
             prof_rows.append(("Concurrency", _num(metrics.get("concurrency"))))
+        if metrics.get("rate_limit") is not None:
+            prof_rows.append(("Rate Limit", f"{metrics.get('rate_limit')} req/s"))
         excl = metrics.get("exclude_tags")
         if excl:
             prof_rows.append(("Excluded Tags (safety)", ", ".join(excl)))
+        # Phase 19 PART C: a timeout is stated as PARTIAL coverage so a short
+        # result is never read as a completed, clean assessment.
+        timed_out = bool(metrics.get("timed_out"))
+        if metrics.get("coverage_complete") is not None:
+            prof_rows.append(
+                (
+                    "Nuclei Coverage",
+                    (
+                        "Complete"
+                        if metrics.get("coverage_complete")
+                        else "PARTIAL — timed out"
+                    ),
+                )
+            )
+        if timed_out and metrics.get("percent_complete") is not None:
+            prof_rows.append(
+                ("Corpus Completed", f"{metrics.get('percent_complete')}%")
+            )
+        if timed_out and metrics.get("timeout_limit_s") is not None:
+            prof_rows.append(
+                ("Nuclei Time Limit", f"{metrics.get('timeout_limit_s')} s")
+            )
         story.append(_kv_table(prof_rows, styles))
+        if timed_out:
+            pct = metrics.get("percent_complete")
+            pct_txt = f"{pct}% of" if pct is not None else "part of"
+            story.append(Spacer(1, 2 * mm))
+            story.append(
+                Paragraph(
+                    f'<font color="#EA580C"><b>Partial nuclei coverage:</b></font> '
+                    f"the template scan was stopped at its "
+                    f"{_num(metrics.get('timeout_limit_s'))}s time limit after "
+                    f"completing {pct_txt} the corpus. The findings above are real, "
+                    f"but this target is <b>not fully assessed</b> — an empty or "
+                    f"short result must not be treated as clean. Re-run with a "
+                    f"longer nuclei time limit for this profile, or a narrower "
+                    f"scope, to complete coverage.",
+                    styles["value"],
+                )
+            )
         story.append(Spacer(1, 4 * mm))
 
     # ── 2. Executive Summary ──────────────────────────────────────────────────

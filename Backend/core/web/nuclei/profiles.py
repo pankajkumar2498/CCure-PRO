@@ -115,22 +115,26 @@ def profile_controls(profile: str) -> dict:
     configurable, as the phase requires.
     """
     p = (profile or DEFAULT_PROFILE).upper()
+    bulk = int(getattr(WebScanConfig, "NUCLEI_BULK_SIZE", 25))
     if p == "FAST":
         return {
             "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY_FAST", 75)),
             "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT_FAST", 1800)),
-            "bulk_size": int(getattr(WebScanConfig, "NUCLEI_BULK_SIZE", 25)),
+            "bulk_size": bulk,
+            "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_FAST", 150)),
         }
     if p == "DEEP":
         return {
             "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY_DEEP", 40)),
             "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT_DEEP", 14400)),
-            "bulk_size": int(getattr(WebScanConfig, "NUCLEI_BULK_SIZE", 25)),
+            "bulk_size": bulk,
+            "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_DEEP", 100)),
         }
     return {
         "concurrency": int(getattr(WebScanConfig, "NUCLEI_CONCURRENCY", 25)),
         "timeout": int(getattr(WebScanConfig, "NUCLEI_TIMEOUT", 7200)),
-        "bulk_size": int(getattr(WebScanConfig, "NUCLEI_BULK_SIZE", 25)),
+        "bulk_size": bulk,
+        "rate_limit": int(getattr(WebScanConfig, "NUCLEI_RATE_STANDARD", 150)),
     }
 
 
@@ -147,18 +151,35 @@ _LOADED_RE = re.compile(r"[Tt]emplates?\s+loaded\s+for\s+current\s+scan:\s*(\d+)
 _EXCLUDED_RE = re.compile(r"[Tt]emplates?\s+excluded:\s*(\d+)")
 
 
+def _as_int(v):
+    """nuclei's -stats-json prints every value as a string ("percent":"45");
+    coerce to int, returning None for anything that is not a whole number."""
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_run_metrics(stderr: str) -> dict:
     """
     Best-effort execution metrics from nuclei's stderr.
 
-    Reads the "Templates loaded for current scan: N" line and, if present, the
-    last ``-stats-json`` object. Every field is honest about the unknown: a
-    figure nuclei did not report is None, never a fabricated count.
+    Reads the "Templates loaded for current scan: N" line and the last
+    ``-stats-json`` object. nuclei emits that object with **string** values
+    (``{"percent":"45","requests":"494","rps":"151","templates":"956",…}``), so
+    every field is coerced through ``_as_int``; a figure nuclei did not report is
+    None, never a fabricated count.
+
+    ``percent`` is the request-progress percentage from nuclei's own stats and
+    is what tells a timeout apart from a completed run (Phase 19 PART C): a last
+    stats line below 100 means the corpus was not finished. ``rps`` is the
+    measured request rate.
 
     Returns: templates_total, templates_executed, templates_skipped, requests,
-    matched.
+    requests_total, matched, percent, rps, errors.
     """
     total = executed = skipped = requests = matched = None
+    requests_total = percent = rps = errors = None
     if stderr:
         m = _LOADED_RE.search(stderr)
         if m:
@@ -177,14 +198,20 @@ def parse_run_metrics(stderr: str) -> dict:
                 if any(k in obj for k in ("templates", "matched", "requests")):
                     last = obj
         if last:
-            if isinstance(last.get("templates"), int):
-                executed = last["templates"]
-            if isinstance(last.get("requests"), int):
-                requests = last["requests"]
-            if isinstance(last.get("matched"), int):
-                matched = last["matched"]
-    # nuclei runs every template it loads, so when it did not report an
-    # executed count separately, executed == loaded.
+            # "templates" in the stats object is the number loaded for the scan;
+            # it agrees with the "Templates loaded" line and is the total corpus.
+            if total is None:
+                total = _as_int(last.get("templates"))
+            requests = _as_int(last.get("requests"))
+            requests_total = _as_int(last.get("total"))
+            matched = _as_int(last.get("matched"))
+            percent = _as_int(last.get("percent"))
+            rps = _as_int(last.get("rps"))
+            errors = _as_int(last.get("errors"))
+    # nuclei runs every template it loads. When it completed (percent is 100 or
+    # unknown), executed == loaded; when it was cut off mid-run the executed
+    # count is not directly reported, so it is left as the loaded total and the
+    # partial state is carried by ``percent`` instead of a fabricated figure.
     if executed is None and total is not None:
         executed = total
     if skipped is None and total is not None and executed is not None:
@@ -194,5 +221,9 @@ def parse_run_metrics(stderr: str) -> dict:
         "templates_executed": executed,
         "templates_skipped": skipped,
         "requests": requests,
+        "requests_total": requests_total,
         "matched": matched,
+        "percent": percent,
+        "rps": rps,
+        "errors": errors,
     }

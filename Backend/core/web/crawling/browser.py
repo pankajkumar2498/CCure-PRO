@@ -494,6 +494,9 @@ class PlaywrightCrawler:
                             }
                             if resp_headers:
                                 self._detect_tech_from_headers(resp_headers, result)
+                            self._fingerprint_page(
+                                final_url, resp_headers, content, result
+                            )
                             result.endpoints.append(endpoint)
 
                             links = await self._extract_links(page, final_url)
@@ -585,6 +588,7 @@ class PlaywrightCrawler:
                 str(f.get("method") or ""),
             )
         )
+        result.technologies = self._dedupe_technologies(result.technologies)
 
         log.info(
             "Crawl complete: %d pages visited, %d endpoints, %d forms, "
@@ -807,6 +811,43 @@ class PlaywrightCrawler:
         if not headers.get("strict-transport-security"):
             pass  # Will be flagged by audit phase
 
+    @staticmethod
+    def _fingerprint_page(url, headers: dict, content: str, result: "CrawlResult"):
+        """
+        Multi-source technology fingerprint for a page (Phase 16, Part B).
+
+        Runs the fetch-free fingerprinter over the response the crawl already
+        has (headers, Set-Cookie names, HTML/asset markers) and merges the
+        result — so a stack that only advertises itself in the DOM (Angular's
+        ng-version, __NEXT_DATA__, wp-content, …) is detected, not just what a
+        Server header happens to say. Best-effort; never raises.
+        """
+        try:
+            from core.web.fingerprint import TechFingerprinter
+
+            cookie_names = {}
+            raw_cookies = headers.get("set-cookie", "") or ""
+            for chunk in re.split(r"[\n,]", raw_cookies):
+                name = chunk.split("=", 1)[0].strip()
+                if name and " " not in name:
+                    cookie_names[name] = ""
+            techs = TechFingerprinter().fingerprint(
+                url, 200, headers=headers, cookies=cookie_names, html=content or ""
+            )
+            for t in techs:
+                result.technologies.append(
+                    {
+                        "name": t["name"],
+                        "category": t["category"],
+                        "version": t.get("version"),
+                        "confidence": t["confidence"],
+                        "evidence": t["evidence"],
+                        "source": "fingerprint",
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("fingerprint failed for %s: %s", str(url)[:80], exc)
+
     # ── Scope & Filtering ─────────────────────────────────────────────────────
 
     @staticmethod
@@ -942,6 +983,39 @@ class PlaywrightCrawler:
         api_indicators = ["/api/", "/v1/", "/v2/", "/v3/", "/graphql", "/rest/", "/ws/"]
         url_lower = url.lower()
         return any(indicator in url_lower for indicator in api_indicators)
+
+    @staticmethod
+    def _dedupe_technologies(techs: list) -> list:
+        """
+        One entry per technology across the whole crawl. A richer fingerprint
+        (carries a version / confidence / evidence) supersedes a bare
+        header-derived entry for the same technology, so the inventory reads
+        cleanly rather than listing "nginx/1.27.5" and "nginx" separately.
+        """
+        rank = {"high": 2, "medium": 1}
+        best: dict = {}
+        order: list = []
+        for t in techs or []:
+            raw = str(t.get("name") or "").strip()
+            if not raw:
+                continue
+            # Normalise a bare "nginx/1.27.5" header value to "nginx" so it
+            # merges with the fingerprint entry.
+            key = re.split(r"[/ ]", raw, 1)[0].lower()
+            if key not in best:
+                best[key] = dict(t)
+                order.append(key)
+                continue
+            cur = best[key]
+            cand_rich = 1 if (t.get("version") or t.get("confidence")) else 0
+            cur_rich = 1 if (cur.get("version") or cur.get("confidence")) else 0
+            if cand_rich > cur_rich or (
+                cand_rich == cur_rich
+                and rank.get(t.get("confidence"), 0)
+                > rank.get(cur.get("confidence"), 0)
+            ):
+                best[key] = dict(t)
+        return [best[k] for k in order]
 
     @staticmethod
     def _order_frontier(items: list) -> list:

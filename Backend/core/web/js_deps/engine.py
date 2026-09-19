@@ -150,6 +150,92 @@ def detect_from_content(content: str):
     return None
 
 
+# ── Bundled/minified detection (Phase 16) ────────────────────────────────────
+# Reliable, version-bearing signatures that survive webpack/Vite/Angular/React
+# minification because the library binds its own version to a well-known symbol.
+# These are HIGH-confidence: a version is claimed only when it is tied to the
+# library's own identifier, never from a generic `version="x"` that could belong
+# to anything. A bundle scanned with these can carry several libraries, so this
+# returns every distinct match rather than the first.
+_BUNDLE_MAX_BYTES = 3_000_000
+_BUNDLE_PATTERNS = {
+    # jQuery binds its version to jQuery.fn.jquery / jQuery.prototype.jquery.
+    "jquery": (
+        "jquery",
+        [
+            r"\.fn\.jquery\s*=\s*[\"']" + _VER,
+            r"\.prototype\.jquery\s*=\s*[\"']" + _VER,
+            r"jquery[\"']\s*:\s*[\"']" + _VER,  # package/version map
+        ],
+    ),
+    # AngularJS exposes angular.version = {full: "1.7.8", ...}.
+    "angularjs": ("angular", [r"full\s*:\s*[\"']" + _VER + r"[\"']\s*,\s*major"]),
+    # Vue 2 exposes Vue.version = "2.6.10".
+    "vue": ("vue", [r"\bVue\.version\s*=\s*[\"']" + _VER]),
+    # lodash binds lodash.VERSION = "4.17.20".
+    "lodash": ("lodash", [r"lodash[\"']?[^0-9]{0,20}VERSION\s*=\s*[\"']" + _VER]),
+    # moment.version = "2.24.0".
+    "moment": ("moment", [r"\bmoment\.version\s*=\s*[\"']" + _VER]),
+    "bootstrap": (
+        "bootstrap",
+        [r"Bootstrap v" + _VER, r"bootstrap[\"']?\s*:\s*[\"']" + _VER],
+    ),
+    "dompurify": ("dompurify", [r"DOMPurify\.version\s*=\s*[\"']" + _VER]),
+    "axios": ("axios", [r"\baxios[\"']?\s*:\s*[\"']" + _VER]),
+}
+_SOURCEMAP_RE = re.compile(r"//[#@]\s*sourceMappingURL=([^\s'\"]+)")
+_NODE_MODULE_RE = re.compile(r"node_modules/((?:@[\w.\-]+/)?[\w.\-]+)/")
+
+
+def detect_all_from_bundle(content: str):
+    """
+    Every ``(name, npm, version)`` found by a reliable version-bearing signature
+    anywhere in a (bounded) bundle body. High-confidence only.
+    """
+    body = (content or "")[:_BUNDLE_MAX_BYTES]
+    out = []
+    seen = set()
+    for name, (npm, pats) in _BUNDLE_PATTERNS.items():
+        for pat in pats:
+            m = re.search(pat, body)
+            if m:
+                key = (name, m.group(1))
+                if key not in seen:
+                    seen.add(key)
+                    out.append((name, npm, m.group(1)))
+                break
+    return out
+
+
+def sourcemap_libraries(content: str):
+    """
+    Library *names* referenced by a bundle's inline source map's node_modules
+    paths — presence only, no version. Weak evidence: recorded for inventory,
+    never used to claim a version or match a CVE (per the no-weak-version rule).
+    Only reads an inline base64 data-URI source map (no extra fetch).
+    """
+    names = set()
+    m = _SOURCEMAP_RE.search(content or "")
+    if not m:
+        return names
+    ref = m.group(1)
+    if not ref.startswith("data:"):
+        return names  # external maps are fetched by the caller, if at all
+    try:
+        import base64
+        import json
+
+        b64 = ref.split(",", 1)[1] if "," in ref else ""
+        raw = base64.b64decode(b64 + "===")
+        data = json.loads(raw)
+        for src in data.get("sources", []) or []:
+            for mm in _NODE_MODULE_RE.finditer(str(src)):
+                names.add(mm.group(1).lower())
+    except Exception:
+        pass
+    return names
+
+
 class JsDependencyEngine:
     def __init__(
         self,
@@ -246,22 +332,37 @@ class JsDependencyEngine:
 
             # Identify libraries. Prefer URL detection (no fetch).
             libs: dict[tuple, str] = {}  # (name, version) -> resource url
+            bundled_presence: set = set()
             for url in list(script_urls)[: self.max_scripts]:
                 if cancel_cb and cancel_cb():
                     break
                 det = detect_from_url(url)
-                if not det:
-                    # Fetch content for a banner only when the URL was unhelpful.
-                    try:
-                        jr = await client.get(url)
-                        self.stats["requests"] += 1
-                        det = detect_from_content(jr.text or "")
-                    except Exception:
-                        det = None
                 if det:
                     name, npm, ver = det
                     libs.setdefault((name, npm, ver), url)
+                else:
+                    # Fetch once, then try the banner AND a deep bundle scan —
+                    # the latter finds libraries webpack/Vite/Angular bundled and
+                    # minified past the first-4000-char banner window, and a
+                    # single bundle can carry several. Same library seen via URL,
+                    # banner and multiple chunks collapses to one (name, version)
+                    # key, so no duplicate findings.
+                    try:
+                        jr = await client.get(url)
+                        self.stats["requests"] += 1
+                        text = jr.text or ""
+                    except Exception:
+                        text = ""
+                    banner = detect_from_content(text)
+                    if banner:
+                        libs.setdefault(banner, url)
+                    for d in detect_all_from_bundle(text):
+                        libs.setdefault(d, url + " (bundle)")
+                    bundled_presence |= sourcemap_libraries(text)
                 self.stats["scripts"] += 1
+            # Presence-only signals (source maps): recorded for inventory, never
+            # turned into a version claim or a CVE (weak evidence).
+            self.stats["bundled_presence"] = sorted(bundled_presence)
             for body in inline_scripts:
                 det = detect_from_content(body)
                 if det:

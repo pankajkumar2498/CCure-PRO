@@ -70,6 +70,7 @@ CWE_MAP: dict[str, str] = {
     "insecure_http_method": "CWE-693",  # Protection Mechanism Failure (TRACE/XST)
     # Cryptographic failures
     "tls_issue": "CWE-326",  # Inadequate Encryption Strength (umbrella)
+    "insecure_cookie": "CWE-614",  # Sensitive Cookie Without Secure (umbrella)
     # Information exposure
     "information_disclosure": "CWE-200",  # Exposure of Sensitive Information
     "graphql_introspection": "CWE-200",
@@ -167,6 +168,7 @@ OWASP_MAP: dict[str, str] = {
     "path_traversal": "A01:2021 – Broken Access Control",
     "file_inclusion": "A01:2021 – Broken Access Control",
     "tls_issue": "A02:2021 – Cryptographic Failures",
+    "insecure_cookie": "A05:2021 – Security Misconfiguration",
     "cors": "A05:2021 – Security Misconfiguration",
     "cve": "A06:2021 – Vulnerable and Outdated Components",
     "vulnerable_js_library": "A06:2021 – Vulnerable and Outdated Components",

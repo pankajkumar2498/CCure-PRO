@@ -1691,6 +1691,12 @@ class WebScanOrchestrator:
             cors_findings = await self._check_cors(target_url)
             all_findings.extend(cors_findings)
 
+            # 4b. Cookie security (Phase 17): Secure / HttpOnly / SameSite on
+            #     sensitive (session/auth/token) cookies only — preference
+            #     cookies are not flagged, to avoid a false-positive flood.
+            cookie_findings = await self._check_cookies(target_url)
+            all_findings.extend(cookie_findings)
+
             # A scan whose primary detector never ran has not assessed this
             # target. Say so as a finding, so an empty result cannot be read
             # as a clean one.
@@ -2050,6 +2056,33 @@ class WebScanOrchestrator:
         except Exception as exc:
             log.debug("Security header check failed: %s", exc)
         return findings
+
+    async def _check_cookies(self, target_url: str) -> list[dict]:
+        """
+        Cookie security check (Phase 17). Fetches the target, reads its
+        Set-Cookie headers, and flags Secure/HttpOnly/SameSite weaknesses on
+        sensitive cookies only. Never raises; never stores a cookie value.
+        """
+        try:
+            import httpx
+            from urllib.parse import urlparse
+
+            from core.web.cookies import analyze_cookies
+
+            is_https = urlparse(target_url).scheme == "https"
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                resp = await client.get(target_url)
+                raw = (
+                    resp.headers.get_list("set-cookie")
+                    if hasattr(resp.headers, "get_list")
+                    else resp.headers.get("set-cookie", "")
+                )
+            return analyze_cookies(raw, is_https=is_https, matched_at=target_url)
+        except Exception as exc:
+            log.debug("Cookie security check failed: %s", exc)
+            return []
 
     async def _check_cors(self, target_url: str) -> list[dict]:
         """Check for CORS misconfiguration."""

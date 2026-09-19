@@ -140,6 +140,7 @@ _EMITTED_FINDING_TYPES = {
     # ffuf / sslyze / orchestrator
     "information_disclosure",
     "tls_issue",
+    "insecure_cookie",
     "cors",
     "open_redirect",
     # active engines (Phase 1–7)

@@ -278,10 +278,42 @@ class PlaywrightCrawler:
                 # Intercept network requests for API discovery (attached
                 # per-page below, so every concurrent worker's page contributes).
                 network_apis: list[dict] = []
+                # Bundle routes discovered by scanning JS *source* (Phase 22,
+                # Crawler 2.0): an endpoint hardcoded in a bundle but never
+                # executed is still part of the attack surface.
+                bundle_routes: list[dict] = []
+                _js_scanned = {"n": 0}
+                _JS_SCAN_MAX = 40
+                _JS_BODY_MAX = 2_000_000
 
                 async def _on_response(response):
                     try:
                         url = response.url
+                        # Scan JavaScript source for hardcoded routes/APIs.
+                        try:
+                            ctype = (
+                                response.headers.get("content-type", "") or ""
+                            ).lower()
+                            is_js = "javascript" in ctype or url.split("?")[0].endswith(
+                                ".js"
+                            )
+                            if (
+                                is_js
+                                and _js_scanned["n"] < _JS_SCAN_MAX
+                                and self._is_in_scope(
+                                    url, allowed_domains, exclude_compiled
+                                )
+                            ):
+                                _js_scanned["n"] += 1
+                                body = await response.text()
+                                if body and len(body) <= _JS_BODY_MAX:
+                                    from core.web.js_routes import route_endpoints
+
+                                    bundle_routes.extend(
+                                        route_endpoints(body, start_url)
+                                    )
+                        except Exception:
+                            pass
                         if self._is_api_call(url):
                             req = response.request
                             # Capture the REQUEST body + its content-type (Phase
@@ -598,6 +630,14 @@ class PlaywrightCrawler:
 
                 # Add network-intercepted API calls
                 result.js_endpoints.extend(network_apis)
+                # Add routes mined from JS bundle source (unexecuted included).
+                if bundle_routes:
+                    result.js_endpoints.extend(bundle_routes)
+                    log.info(
+                        "Crawl: %d route(s) mined from %d JS bundle(s)",
+                        len(bundle_routes),
+                        _js_scanned["n"],
+                    )
 
                 await browser.close()
 

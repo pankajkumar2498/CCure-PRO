@@ -1074,6 +1074,15 @@ def _finding_detail(f: WebFinding) -> dict:
         "request_url": f.request_url,
         "payload_used": f.payload_used,
         "response_code": f.response_code,
+        # Proof-based evidence (Phase 22, Item 10): the full HTTP request and
+        # response are persisted but were dropped here — a reader could not
+        # answer "which exact request caused this?". They are now exposed, plus
+        # a curl that reproduces the request.
+        "request_headers": f.request_headers,
+        "request_body": f.request_body,
+        "response_headers": f.response_headers,
+        "response_body": f.response_body,
+        "curl_command": _finding_curl(f),
         "owasp_category": f.owasp_category,
         "compliance_tags": f.compliance_tags,
         "cve_id": f.cve_id,
@@ -1083,6 +1092,35 @@ def _finding_detail(f: WebFinding) -> dict:
         "is_verified": f.is_verified,
         "created_at": _iso(f.created_at),
     }
+
+
+def _finding_curl(f: WebFinding) -> str | None:
+    """A curl command reproducing the finding's request (proof-based evidence).
+
+    Built from the persisted request fields; returns None when there is no
+    request URL to reproduce."""
+    url = f.request_url or f.matched_at
+    if not url:
+        return None
+
+    def _q(s: str) -> str:
+        return "'" + str(s).replace("'", "'\\''") + "'"
+
+    parts = ["curl", "-i", "-X", (f.request_method or "GET").upper()]
+    # request_headers is stored as text; emit it as a single -H when present and
+    # header-shaped, so the reproduction carries auth/content-type the scan used.
+    rh = (f.request_headers or "").strip()
+    if rh and ":" in rh and "\n" not in rh and len(rh) <= 300:
+        parts += ["-H", _q(rh)]
+    if f.request_body and (f.request_method or "").upper() in (
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+    ):
+        parts += ["--data-raw", _q(str(f.request_body)[:2000])]
+    parts.append(_q(url))
+    return " ".join(parts)
 
 
 def _asset_detail(a: WebAsset) -> dict:

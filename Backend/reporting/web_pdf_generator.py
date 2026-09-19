@@ -632,6 +632,37 @@ def _build_web_scan_story(
                     )
                 )
 
+            # Proof-based HTTP evidence (Phase 22, Item 10): the exact request
+            # and response, and a curl that reproduces the request — so a reader
+            # can answer "which exact request caused this?" and re-verify it.
+            if f.get("request_body"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Request Body:</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['request_body'])[:500])}</font>",
+                        styles["small"],
+                    )
+                )
+            if f.get("response_body"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Response Evidence:</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['response_body'])[:500])}</font>",
+                        styles["small"],
+                    )
+                )
+            if f.get("curl_command"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Reproduce (curl):</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['curl_command'])[:600])}</font>",
+                        styles["small"],
+                    )
+                )
+
             # Remediation (Phase 21) — the actionable fix carried on the finding.
             if f.get("remediation"):
                 finding_block.append(Spacer(1, 2 * mm))

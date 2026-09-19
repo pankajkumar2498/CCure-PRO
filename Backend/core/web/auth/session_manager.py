@@ -240,6 +240,11 @@ class WebSessionManager:
             session = self._create_api_key_session(auth_config, scan_id)
         elif auth_type == "oauth2":
             session = await self._oauth2_token_session(auth_config, scan_id)
+        elif auth_type in ("oauth2_authcode", "oidc", "saml"):
+            # Browser-driven redirect login: OAuth2 auth-code / OIDC / SAML
+            # SP-initiated are one mechanism (drive the IdP form, capture the
+            # returned app session).
+            session = await self._oauth2_authcode_browser(auth_config, scan_id)
         elif auth_type == "cookie":
             session = self._create_cookie_session(auth_config, scan_id)
         elif auth_type == "custom_header":
@@ -383,6 +388,101 @@ class WebSessionManager:
             scan_id=scan_id,
             headers={"Authorization": f"Bearer {token}"},
             auth_type="oauth2",
+        )
+        self._save_session(session)
+        return session
+
+    async def _oauth2_authcode_browser(
+        self, config: dict, scan_id: str
+    ) -> "WebSession":
+        """
+        Browser-driven redirect login (Phase 23): OAuth2 authorization_code /
+        OIDC / SAML SP-initiated.
+
+        From the scanner's point of view these are one mechanism: navigate the
+        app's login start, follow the redirect to the identity provider, fill
+        and submit the IdP login form, follow the callback back to the app, and
+        capture the resulting authenticated session cookies. Field selectors are
+        configurable with sensible defaults; success is confirmed by a text
+        indicator and/or the post-login URL, and a flow that captures no session
+        records an auth_error rather than proceeding unauthenticated.
+        """
+        start_url = config.get("start_url") or config.get("login_url")
+        if not start_url:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type=config.get("type", "oauth2_authcode"),
+                auth_error="Browser redirect login requires start_url (or login_url).",
+            )
+        user = config.get("username", "")
+        pw = config.get("password", "")
+        u_sel = config.get(
+            "idp_username_field",
+            "input[name='username'], input[type='email'], input[name='email'], #username",
+        )
+        p_sel = config.get(
+            "idp_password_field",
+            "input[name='password'], input[type='password'], #password",
+        )
+        submit_sel = config.get(
+            "idp_submit", "button[type='submit'], input[type='submit'], button"
+        )
+        success = config.get("success_indicator")
+        success_url = config.get("success_url_contains")
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type=config.get("type", "oauth2_authcode"),
+                auth_error="Playwright not installed — browser redirect login unavailable.",
+            )
+        content = ""
+        final_url = ""
+        cookies: dict[str, str] = {}
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                )
+                ctx = await browser.new_context(ignore_https_errors=True)
+                page = await ctx.new_page()
+                await page.goto(start_url, wait_until="domcontentloaded", timeout=30000)
+                # The IdP login form may be the current page after the redirect.
+                try:
+                    await page.fill(u_sel, user, timeout=8000)
+                    await page.fill(p_sel, pw, timeout=8000)
+                    await page.click(submit_sel, timeout=8000)
+                    await page.wait_for_load_state("networkidle", timeout=20000)
+                except Exception as exc:
+                    log.debug("IdP form fill/submit issue: %s", exc)
+                try:
+                    content = await page.content()
+                    final_url = page.url
+                    cookies = {c["name"]: c["value"] for c in await ctx.cookies()}
+                except Exception:
+                    pass
+                await browser.close()
+        except Exception as exc:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type=config.get("type", "oauth2_authcode"),
+                auth_error=f"Browser redirect login errored: {type(exc).__name__}.",
+            )
+        err = ""
+        if success and success not in (content or ""):
+            err = "Login success indicator not found after the redirect flow."
+        elif success_url and success_url not in (final_url or ""):
+            err = "Did not land on the expected post-login URL after the flow."
+        elif not cookies:
+            err = "No session cookies captured after the redirect login."
+        session = WebSession(
+            scan_id=scan_id,
+            cookies=cookies,
+            auth_type=config.get("type", "oauth2_authcode"),
+            login_url=start_url,
+            auth_error=err,
         )
         self._save_session(session)
         return session

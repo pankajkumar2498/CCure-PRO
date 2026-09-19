@@ -80,3 +80,25 @@ def test_api_key_missing_value_flagged():
     mgr = WebSessionManager()
     sess = mgr._create_api_key_session({"type": "api_key"}, "s6")
     assert sess.auth_error and not sess.is_authenticated
+
+
+# ── browser redirect login (OAuth2 auth-code / OIDC / SAML) ──────────────────
+def test_redirect_login_requires_start_url():
+    import asyncio
+
+    mgr = WebSessionManager()
+    sess = asyncio.run(mgr._oauth2_authcode_browser({"type": "oidc"}, "s7"))
+    assert not sess.is_authenticated
+    assert "start_url" in sess.auth_error
+
+
+def test_redirect_login_type_dispatches_to_browser_flow():
+    import asyncio
+
+    # No start_url → the browser flow's own error, proving oidc/saml route here
+    # rather than to the unknown-type fallback (which gives no auth_error text).
+    mgr = WebSessionManager()
+    for t in ("oauth2_authcode", "oidc", "saml"):
+        sess = asyncio.run(mgr.authenticate({"type": t}, "s-" + t))
+        assert sess.auth_type == t
+        assert "start_url" in sess.auth_error

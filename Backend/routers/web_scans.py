@@ -114,8 +114,24 @@ class WebScanAuthSchema(BaseModel):
         default="none",
         description=(
             "Auth type: none, form_login, bearer_token, cookie, custom_header, "
-            "multi_step, jwt, api_key, oauth2"
+            "multi_step, jwt, api_key, oauth2, oauth2_authcode, oidc, saml"
         ),
+    )
+    # ── Phase 23: browser-driven redirect login (OAuth2 auth-code / OIDC / SAML)
+    start_url: str | None = Field(
+        default=None, description="URL that initiates the redirect login flow."
+    )
+    idp_username_field: str | None = Field(
+        default=None, description="CSS selector for the IdP username/email field."
+    )
+    idp_password_field: str | None = Field(
+        default=None, description="CSS selector for the IdP password field."
+    )
+    idp_submit: str | None = Field(
+        default=None, description="CSS selector for the IdP submit button."
+    )
+    success_url_contains: str | None = Field(
+        default=None, description="Substring expected in the post-login URL."
     )
     login_url: str | None = None
     username: str | None = None

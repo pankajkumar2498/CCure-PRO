@@ -11,7 +11,7 @@ Maps finding types to:
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Optional
 
 log = logging.getLogger("ccure.web.compliance")
 
@@ -143,6 +143,128 @@ def resolve_cwe(finding: dict) -> Optional[str]:
     if supplied:
         return supplied
     return cwe_for(finding.get("finding_type", ""))
+
+
+# ── Remediation guidance (Phase 21) ──────────────────────────────────────────
+# Engine-supplied remediation always wins; this is a central default per
+# finding_type so a finding whose engine did not attach guidance (e.g. nuclei
+# misconfig, the security-header checks) still carries an actionable fix in the
+# DB, API, UI and report. Generic weakness-class guidance only — never a
+# fabricated CVE-specific claim.
+REMEDIATION_MAP: dict[str, str] = {
+    "sqli": (
+        "Use parameterised queries / prepared statements for all database "
+        "access. Never build SQL by concatenating request data. Apply "
+        "least-privilege to the database account the application uses."
+    ),
+    "xss": (
+        "Contextually output-encode all user-controlled data (HTML, attribute, "
+        "JS, URL contexts) and set a restrictive Content-Security-Policy. Prefer "
+        "framework auto-escaping and treat every request value as untrusted."
+    ),
+    "command_injection": (
+        "Never pass user input to a shell or OS command. Use argument-vector "
+        "APIs (no shell), allow-list expected values, drop shell metacharacters, "
+        "and run with least privilege."
+    ),
+    "ssti": (
+        "Do not build templates from user input. Pass user data as template "
+        "context variables, never concatenate it into template source. Use a "
+        "sandboxed engine configuration; treat SSTI as a path to RCE."
+    ),
+    "xxe": (
+        "Disable DTD processing and external-entity resolution in the XML "
+        "parser (resolve_entities=False / disallow-doctype-decl / secure "
+        "processing) and reject documents that declare a DOCTYPE."
+    ),
+    "ldap_injection": (
+        "Escape LDAP special characters per RFC 4515 or use a parameterised "
+        "LDAP API, allow-list expected input, and bind with least privilege."
+    ),
+    "xpath_injection": (
+        "Use precompiled/parameterised XPath with variable binding, escape or "
+        "allow-list input, and validate against an expected schema."
+    ),
+    "ssrf": (
+        "Allow-list the hosts/schemes the server may request, resolve and pin "
+        "addresses, block link-local and internal ranges, and disable unused "
+        "URL schemes."
+    ),
+    "idor": (
+        "Enforce per-object authorization on every request server-side: check "
+        "that the authenticated identity owns or may access the referenced "
+        "object. Do not rely on unguessable identifiers alone."
+    ),
+    "broken_access_control": (
+        "Enforce authorization checks server-side on every endpoint and object, "
+        "deny by default, and cover every HTTP method."
+    ),
+    "insecure_cookie": (
+        "Set Secure, HttpOnly and an appropriate SameSite attribute on session "
+        "and authentication cookies; use SameSite=None only together with Secure."
+    ),
+    "tls_issue": (
+        "Serve a valid, in-date certificate matching the hostname, disable "
+        "legacy protocols (SSLv3/TLS 1.0/1.1) and weak ciphers, and prefer "
+        "modern TLS 1.2+ suites with forward secrecy."
+    ),
+    "open_redirect": (
+        "Do not build redirects from unvalidated user input. Allow-list "
+        "permitted destinations or use server-side mapping keys."
+    ),
+    "cors": (
+        "Do not reflect arbitrary Origins or use a wildcard with credentials. "
+        "Allow-list trusted origins explicitly and scope allowed methods/headers."
+    ),
+    "misconfig": (
+        "Review the server/application configuration against a hardening "
+        "baseline: remove the exposed element or restrict access to it, and set "
+        "the missing security controls."
+    ),
+    "exposed_panel": (
+        "Restrict administrative and management interfaces to trusted networks "
+        "or require strong authentication; do not expose them to the internet."
+    ),
+    "default_creds": (
+        "Change all default credentials, enforce a strong password policy, and "
+        "disable or remove unused default accounts."
+    ),
+    "information_disclosure": (
+        "Remove sensitive files, source history and configuration from the web "
+        "root, and block access to them at the server or proxy."
+    ),
+    "graphql_introspection": (
+        "Disable GraphQL introspection in production, or restrict it to "
+        "authenticated privileged users, and apply query depth/complexity limits."
+    ),
+    "api_missing_auth": (
+        "Require authentication and authorization on every API endpoint; deny "
+        "by default and cover endpoints not linked from the UI."
+    ),
+    "insecure_http_method": (
+        "Disable HTTP methods the application does not need (PUT/DELETE/TRACE/"
+        "CONNECT) at the server or framework and restrict the rest by role."
+    ),
+}
+
+
+def remediation_for(finding_type: str) -> Optional[str]:
+    """Central default remediation for a finding_type, or None when none fits."""
+    return REMEDIATION_MAP.get((finding_type or "").strip().lower())
+
+
+def resolve_remediation(finding: dict) -> Optional[str]:
+    """
+    The remediation for a finding, most-specific first:
+
+      1. non-empty guidance the engine/source tool already supplied;
+      2. the centralized finding_type default;
+      3. None — represented honestly rather than invented.
+    """
+    supplied = finding.get("remediation")
+    if isinstance(supplied, str) and supplied.strip():
+        return supplied.strip()
+    return remediation_for(finding.get("finding_type", ""))
 
 
 # ── OWASP Top 10 2021 Mapping ────────────────────────────────────────────────

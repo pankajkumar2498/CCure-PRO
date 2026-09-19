@@ -256,11 +256,21 @@ def _persist_web_findings(
     findings: list[dict],
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
-    from core.web.standards_mapping import map_compliance, resolve_cwe
+    from core.web.standards_mapping import (
+        map_compliance,
+        resolve_cwe,
+        resolve_remediation,
+    )
 
     for f in findings:
         finding_type = f.get("finding_type", "unknown")
         matched_at = f.get("matched_at", f.get("request_url", ""))
+
+        # Resolve remediation at the same single choke point as the CWE, so
+        # every finding — however it was produced — carries actionable fix
+        # guidance in the DB, API, UI and report. Engine-supplied text wins;
+        # otherwise the central finding_type default fills it (Phase 21).
+        f["remediation"] = resolve_remediation(f)
 
         # Resolve the CWE at the one point every finding passes through, so the
         # weakness class is uniform however the row was produced. resolve_cwe
@@ -368,6 +378,7 @@ def _persist_web_findings(
             response_headers=f.get("response_headers_text"),
             response_body=f.get("response_evidence"),
             payload_used=f.get("payload_used"),
+            remediation=f.get("remediation"),
             owasp_category=f.get("owasp_category", ""),
             compliance_tags=f.get("compliance_tags", []),
             cve_id=f.get("cve_id"),

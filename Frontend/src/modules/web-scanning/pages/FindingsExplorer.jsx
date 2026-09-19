@@ -221,6 +221,13 @@ export default function FindingsExplorer() {
                   {selectedFinding.description || "No description provided."}
                 </p>
 
+                {selectedFinding.remediation && (
+                  <>
+                    <h3>Remediation</h3>
+                    <p>{selectedFinding.remediation}</p>
+                  </>
+                )}
+
                 {(selectedFinding.request_method ||
                   selectedFinding.request_url) && (
                   <>

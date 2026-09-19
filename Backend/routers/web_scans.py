@@ -1076,6 +1076,7 @@ def _finding_detail(f: WebFinding) -> dict:
         "compliance_tags": f.compliance_tags,
         "cve_id": f.cve_id,
         "cwe_id": f.cwe_id,
+        "remediation": f.remediation,
         "status": f.status,
         "is_verified": f.is_verified,
         "created_at": _iso(f.created_at),

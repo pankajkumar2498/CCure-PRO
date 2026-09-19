@@ -376,6 +376,12 @@ class WebFinding(Base):
         nullable=True,
     )
 
+    # Engine/central-supplied remediation guidance for this finding (Phase 21).
+    # Distinct from remediation_notes, which holds a human triager's own notes:
+    # this is the actionable fix the detection layer produced, persisted so the
+    # API, UI and PDF report can render it. Populated via resolve_remediation
+    # (engine text wins, else the central finding_type default).
+    remediation = Column(Text, nullable=True)
     remediation_notes = Column(Text, nullable=True)
     fixed_at = Column(TIMESTAMPTZ, nullable=True)
 

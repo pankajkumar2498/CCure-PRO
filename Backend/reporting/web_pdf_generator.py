@@ -600,6 +600,16 @@ def _build_web_scan_story(
                     )
                 )
 
+            # Remediation (Phase 21) — the actionable fix carried on the finding.
+            if f.get("remediation"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Remediation:</b> {_escape(str(f['remediation'])[:800])}",
+                        styles["small"],
+                    )
+                )
+
             finding_block.append(Spacer(1, 4 * mm))
             story.append(KeepTogether(finding_block))
 

@@ -731,6 +731,9 @@ class WebScanOrchestrator:
                     auth_config=crawl_auth_cfg,
                     reauth_cb=reauth_cb,
                     cancel_cb=_crawl_cancelled,
+                    # Autonomous SPA interaction (Phase 23) is opt-in — clicking
+                    # controls is an active behaviour on a production target.
+                    interact=bool(options.get("spa_interaction", False)),
                 )
                 all_endpoints.extend(crawl_result.endpoints)
                 all_endpoints.extend(crawl_result.js_endpoints)

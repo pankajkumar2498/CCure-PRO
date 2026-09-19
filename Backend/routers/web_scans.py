@@ -274,6 +274,14 @@ class WebScanOptionsSchema(BaseModel):
     postman: dict | None = Field(
         default=None, description="A Postman v2 collection (JSON) to import."
     )
+    # Phase 23, Crawler 2.0: opt-in autonomous SPA interaction — click safe,
+    # non-destructive controls to reach client-side routes a link crawl misses.
+    # Off by default: clicking is an active behaviour on a production target.
+    spa_interaction: bool = Field(
+        default=False,
+        description="Autonomously click non-destructive controls to discover "
+        "SPA routes/state (active behaviour; off by default).",
+    )
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
     # The orchestrator implements quick/standard/deep depth profiles and

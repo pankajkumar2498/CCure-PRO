@@ -35,6 +35,33 @@ _JS_ENDPOINT_PATTERNS = [
     re.compile(r"""(?:GET|POST|PUT|DELETE|PATCH)\s*['"`]\s*([/][^'"`\s]+)"""),
 ]
 
+# Autonomous SPA interaction (Phase 23): controls whose label suggests a
+# destructive or state-changing action are never clicked — this product scans
+# production, so an autonomous crawl must not delete, pay, or log itself out.
+_DESTRUCTIVE_WORDS = (
+    "delete",
+    "remove",
+    "destroy",
+    "drop",
+    "logout",
+    "log out",
+    "sign out",
+    "signout",
+    "pay",
+    "buy",
+    "purchase",
+    "checkout",
+    "confirm",
+    "submit order",
+    "unsubscribe",
+    "deactivate",
+    "close account",
+    "reset",
+    "wipe",
+)
+#: Max controls clicked per page during autonomous interaction.
+_INTERACT_MAX = 8
+
 # File extensions to skip during crawling
 _SKIP_EXTENSIONS = {
     ".jpg",
@@ -161,6 +188,7 @@ class PlaywrightCrawler:
         auth_config: dict | None = None,
         reauth_cb=None,
         cancel_cb=None,
+        interact: bool = False,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -285,7 +313,32 @@ class PlaywrightCrawler:
                 # executed is still part of the attack surface.
                 bundle_routes: list[dict] = []
                 dom_flows: list[dict] = []
+                websockets: list[dict] = []
                 _js_scanned = {"n": 0}
+
+                def _on_ws(ws) -> None:
+                    # WebSocket endpoints are real attack surface (Phase 23,
+                    # Crawler 2.0) — record the ws:// URL if it is in scope.
+                    try:
+                        wurl = getattr(ws, "url", "") or ""
+                        if wurl and self._is_in_scope(
+                            wurl.replace("ws://", "http://").replace(
+                                "wss://", "https://"
+                            ),
+                            allowed_domains,
+                            exclude_compiled,
+                        ):
+                            websockets.append(
+                                {
+                                    "url": wurl,
+                                    "method": "GET",
+                                    "is_api": True,
+                                    "source": "websocket",
+                                }
+                            )
+                    except Exception:
+                        pass
+
                 _JS_SCAN_MAX = 40
                 _JS_BODY_MAX = 2_000_000
 
@@ -427,6 +480,7 @@ class PlaywrightCrawler:
                         gen = state["reauth_gen"]
                         page = await context.new_page()
                         page.on("response", _on_response)
+                        page.on("websocket", _on_ws)
                         blocked_before = len(blocked_navigations)
                         try:
                             await _throttle()
@@ -578,6 +632,25 @@ class PlaywrightCrawler:
                             js_eps = self._extract_js_endpoints(content, final_url)
                             result.js_endpoints.extend(js_eps)
 
+                            # Autonomous SPA interaction (Phase 23, Crawler 2.0):
+                            # click safe, non-destructive controls to reach
+                            # client-side routes/state a link crawl never sees.
+                            # Opt-in — clicking is an active behaviour, and this
+                            # product scans production; destructive controls are
+                            # never clicked (see _interact_page).
+                            if interact and depth < self.max_depth:
+                                try:
+                                    new_links = await self._interact_page(
+                                        page, final_url
+                                    )
+                                    for link in new_links:
+                                        if link not in visited and self._is_in_scope(
+                                            link, allowed_domains, exclude_compiled
+                                        ):
+                                            out["links"].append((link, depth + 1))
+                                except Exception as exc:
+                                    log.debug("SPA interaction error: %s", exc)
+
                         except Exception as exc:
                             if len(blocked_navigations) > blocked_before:
                                 for blocked in blocked_navigations[blocked_before:]:
@@ -644,6 +717,12 @@ class PlaywrightCrawler:
                         len(bundle_routes),
                         _js_scanned["n"],
                     )
+                # WebSocket endpoints observed during the crawl (Item 5/2.0).
+                if websockets:
+                    result.js_endpoints.extend(websockets)
+                    log.info(
+                        "Crawl: %d WebSocket endpoint(s) observed", len(websockets)
+                    )
                 # DOM source→sink findings from JS bundle analysis (Item 9).
                 if dom_flows:
                     # Dedupe by (title) across bundles/pages.
@@ -692,6 +771,57 @@ class PlaywrightCrawler:
         return result
 
     # ── Extraction Helpers ────────────────────────────────────────────────────
+
+    async def _interact_page(self, page, base_url: str) -> list[str]:
+        """
+        Autonomously click safe, non-destructive controls to reach client-side
+        routes/state a link crawl never sees (Phase 23, Crawler 2.0). Returns
+        new same-page URLs (SPA routes reached via pushState/hash or client
+        navigation). Opt-in; destructive-labelled and submit controls are never
+        clicked, and the number of clicks per page is bounded.
+        """
+        discovered: set = set()
+        try:
+            elements = await page.query_selector_all(
+                "button, [role=button], [onclick], a[href^='#'], a[href^='javascript']"
+            )
+        except Exception:
+            return []
+        clicks = 0
+        for el in elements:
+            if clicks >= _INTERACT_MAX:
+                break
+            try:
+                text = ((await el.inner_text()) or "").strip().lower()[:80]
+            except Exception:
+                text = ""
+            if any(bad in text for bad in _DESTRUCTIVE_WORDS):
+                continue
+            try:
+                etype = ((await el.get_attribute("type")) or "").lower()
+            except Exception:
+                etype = ""
+            if etype == "submit":
+                continue  # a submit may POST a form — not a safe autonomous click
+            before = page.url
+            try:
+                await el.click(timeout=2000, no_wait_after=True)
+                await page.wait_for_timeout(300)
+            except Exception:
+                continue
+            clicks += 1
+            after = page.url
+            if after != before and after not in discovered:
+                discovered.add(after)
+                # Reset to the base page so the next click starts from a known
+                # state rather than compounding SPA transitions.
+                try:
+                    await page.goto(
+                        base_url, wait_until="domcontentloaded", timeout=self.timeout
+                    )
+                except Exception:
+                    break
+        return list(discovered)
 
     @staticmethod
     async def _extract_links(page, current_url: str) -> list[str]:

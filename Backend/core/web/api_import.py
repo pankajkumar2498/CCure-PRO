@@ -141,6 +141,86 @@ def parse_postman(
     return out
 
 
+def parse_wsdl(
+    wsdl: Any, origin: str = "", max_ops: int = _MAX_IMPORT
+) -> List[Dict[str, Any]]:
+    """
+    Endpoint records from a WSDL (SOAP) document.
+
+    Extracts the service endpoint (soap:address location) and the operation
+    names, and builds a minimal SOAP envelope per operation as a POST body so
+    the operation is inventoried and testable (sqlmap detects SOAP/XML params in
+    a --data body). Namespace-agnostic (matches local names), and XML is parsed
+    with DTD/entity resolution disabled and a DOCTYPE rejected — the WSDL is
+    attacker-influenced input, so no XXE surface is opened.
+    """
+    text = wsdl if isinstance(wsdl, str) else None
+    if isinstance(wsdl, (bytes, bytearray)):
+        text = wsdl.decode("utf-8", "replace")
+    if not text or "<" not in text:
+        return []
+    if "<!DOCTYPE" in text or "<!ENTITY" in text:
+        return []  # reject DTD/entity-bearing documents outright (no XXE)
+    try:
+        from lxml import etree
+
+        parser = etree.XMLParser(
+            resolve_entities=False,
+            no_network=True,
+            load_dtd=False,
+            dtd_validation=False,
+        )
+        root = etree.fromstring(text.encode("utf-8"), parser)
+    except Exception:
+        return []
+
+    def _local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+    # Service endpoint: any <*:address location="..."> (soap/soap12/http).
+    endpoint_url = ""
+    for el in root.iter():
+        if _local(el.tag) == "address" and el.get("location"):
+            endpoint_url = el.get("location")
+            break
+    if not endpoint_url or not endpoint_url.lower().startswith(("http://", "https://")):
+        return []
+    if not _same_origin(endpoint_url, origin):
+        return []
+
+    # Operations from portType (authoritative), else binding.
+    op_names: List[str] = []
+    seen_ops: set = set()
+    for el in root.iter():
+        if _local(el.tag) == "operation" and el.get("name"):
+            name = el.get("name")
+            if name not in seen_ops:
+                seen_ops.add(name)
+                op_names.append(name)
+        if len(op_names) >= max_ops:
+            break
+
+    out: List[Dict[str, Any]] = []
+    for name in op_names:
+        envelope = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<soapenv:Envelope "
+            'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+            f"<soapenv:Body><{name}/></soapenv:Body></soapenv:Envelope>"
+        )
+        ep = {
+            "url": endpoint_url,
+            "method": "POST",
+            "request_body": envelope,
+            "request_content_type": "text/xml; charset=utf-8",
+            "is_api": True,
+            "source": "wsdl",
+            "parameters": {"soap": [name]},
+        }
+        out.append(ep)
+    return out
+
+
 def _postman_url(url_field: Any) -> str:
     """A Postman url is a raw string or {raw, host[], path[], query[]}."""
     if isinstance(url_field, str):
@@ -191,4 +271,10 @@ def import_sources(
         if eps:
             endpoints += eps
             labels.append(f"postman({len(eps)})")
+    wsdl = options.get("wsdl")
+    if wsdl:
+        eps = parse_wsdl(wsdl, origin)
+        if eps:
+            endpoints += eps
+            labels.append(f"wsdl({len(eps)})")
     return endpoints, labels

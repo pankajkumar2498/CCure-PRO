@@ -123,3 +123,73 @@ def test_import_accepts_json_string():
     )
     eps = parse_har(har, ORIGIN)
     assert len(eps) == 1
+
+
+# ── SOAP / WSDL import ───────────────────────────────────────────────────────
+_WSDL = """<?xml version="1.0"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/">
+  <portType name="UserService">
+    <operation name="GetUser"/>
+    <operation name="DeleteUser"/>
+  </portType>
+  <binding name="b"><operation name="GetUser">
+    <soap:operation soapAction="urn:GetUser"/></operation></binding>
+  <service name="svc"><port name="p">
+    <soap:address location="http://app.test/soap/UserService"/>
+  </port></service>
+</definitions>"""
+
+
+def test_wsdl_extracts_endpoint_and_operations():
+    from core.web.api_import import parse_wsdl
+
+    eps = parse_wsdl(_WSDL, ORIGIN)
+    assert len(eps) == 2  # GetUser, DeleteUser
+    for e in eps:
+        assert e["url"] == "http://app.test/soap/UserService"
+        assert e["method"] == "POST"
+        assert (
+            "soap" in (e.get("request_content_type") or "").lower()
+            or "xml" in (e.get("request_content_type") or "").lower()
+        )
+        assert e["source"] == "wsdl"
+    ops = {e["parameters"]["soap"][0] for e in eps}
+    assert ops == {"GetUser", "DeleteUser"}
+    # the SOAP envelope names the operation in its body
+    getuser = next(e for e in eps if e["parameters"]["soap"] == ["GetUser"])
+    assert "<GetUser/>" in getuser["request_body"]
+
+
+def test_wsdl_rejects_doctype_xxe():
+    from core.web.api_import import parse_wsdl
+
+    malicious = (
+        '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]>'
+        "<definitions><service><port>"
+        '<address location="http://app.test/s"/></port></service></definitions>'
+    )
+    assert parse_wsdl(malicious, ORIGIN) == []  # DTD/entity → refused, no XXE
+
+
+def test_wsdl_cross_origin_endpoint_dropped():
+    from core.web.api_import import parse_wsdl
+
+    other = _WSDL.replace("http://app.test/soap", "http://evil.test/soap")
+    assert parse_wsdl(other, ORIGIN) == []
+
+
+def test_wsdl_soap_body_becomes_injection_target():
+    from core.web.api_import import parse_wsdl
+    from orchestrator.web_orchestrator import build_injection_targets
+
+    eps = parse_wsdl(_WSDL, ORIGIN)
+    targets = build_injection_targets(eps, [])
+    soap_t = [
+        t
+        for t in targets
+        if "soap" in (t.get("content_type") or "").lower()
+        or "xml" in (t.get("content_type") or "").lower()
+    ]
+    assert soap_t, "SOAP XML body did not become an injection target"
+    assert soap_t[0]["method"] == "POST" and soap_t[0]["data"].lstrip().startswith("<")

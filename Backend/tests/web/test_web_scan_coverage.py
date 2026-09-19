@@ -150,11 +150,26 @@ def test_a_tool_that_errors_on_probe_is_not_reported_as_missing():
 
 
 def test_a_non_essential_tool_does_not_invalidate_the_assessment():
+    # subfinder is recon-only; its absence narrows discovery but does not make
+    # the assessment incomplete. (Phase 15 made sqlmap essential — a missing
+    # SQLi engine must invalidate a "clean" verdict — so this now uses a
+    # genuinely non-essential tool to make the original point.)
     coverage = ToolCoverage()
-    coverage.check(_Tool(available=False), "sqlmap")
+    coverage.check(_Tool(available=False), "subfinder")
     coverage.ran("nuclei")
+    coverage.ran("sqlmap")
     assert coverage.as_dict()["assessment_complete"] is True
-    assert "sqlmap" not in ESSENTIAL_TOOLS
+    assert "subfinder" not in ESSENTIAL_TOOLS
+
+
+def test_missing_sqlmap_invalidates_the_assessment():
+    # Phase 15: an unavailable SQLi engine must not let a SQL-injectable app
+    # read as clean — the scan is incomplete.
+    coverage = ToolCoverage()
+    coverage.ran("nuclei")
+    coverage.check(_Tool(available=False), "sqlmap")
+    assert "sqlmap" in ESSENTIAL_TOOLS
+    assert coverage.as_dict()["assessment_complete"] is False
 
 
 def test_skipped_is_distinct_from_unavailable():

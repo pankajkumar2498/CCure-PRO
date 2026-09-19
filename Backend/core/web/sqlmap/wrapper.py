@@ -60,6 +60,7 @@ class SqlmapWrapper(ToolWrapper):
         auth_headers: dict[str, str] | None = None,
         level: int | None = None,
         risk: int | None = None,
+        run_timeout: int | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -116,8 +117,13 @@ class SqlmapWrapper(ToolWrapper):
 
         import subprocess
 
+        # A caller (the orchestrator) may pass a shorter budget so a sqlmap run
+        # cannot outlive the scan's global wall-clock deadline (Phase 12/15).
+        effective_timeout = (
+            min(self.timeout, run_timeout) if run_timeout else self.timeout
+        )
         try:
-            result = self._run_subprocess(args, timeout=self.timeout)
+            result = self._run_subprocess(args, timeout=effective_timeout)
             stdout = result.stdout or ""
 
             vulnerable, injection_points, dbms = self._parse_output(stdout)

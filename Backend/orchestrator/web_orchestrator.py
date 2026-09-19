@@ -53,7 +53,7 @@ TOOL_PURPOSE = {
 #: Tools without which the phase has not meaningfully assessed the target.
 #: A scan missing these has produced an empty result, not a clean one — the
 #: same distinction the credentialed audit draws about its package inventory.
-ESSENTIAL_TOOLS = {"nuclei"}
+ESSENTIAL_TOOLS = {"nuclei", "sqlmap"}
 
 #: How much of the template corpus a scan runs, and against what.
 #:
@@ -185,10 +185,15 @@ class ToolCoverage:
 
     @property
     def missing_essential(self) -> List[str]:
+        # An essential tool that is *unavailable* or *failed* makes the scan
+        # incomplete — a missing sqlmap must not let a SQL-injectable app read
+        # as clean (Phase 15). A tool the operator *deliberately disabled*
+        # (skipped) is a choice, not an incompleteness, so it is not flagged.
         return sorted(
             name
             for name, row in self.tools.items()
-            if name in ESSENTIAL_TOOLS and row["status"] != self.STATUS_RAN
+            if name in ESSENTIAL_TOOLS
+            and row["status"] in (self.STATUS_UNAVAILABLE, self.STATUS_FAILED)
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -1062,7 +1067,17 @@ class WebScanOrchestrator:
                             "skipped": 0,
                         }
                         total_tested = len(tested)
+                        outcomes["stopped"] = 0
                         for idx, candidate in enumerate(tested, start=1):
+                            # Stop launching new sqlmap runs once the scan is
+                            # cancelled or past its global deadline — each run is
+                            # up to 10 min, so without this a cancelled scan
+                            # keeps grinding through the whole target list
+                            # (Phase 15, task 7). Remaining targets are recorded,
+                            # not silently dropped.
+                            if self._scan_is_cancelled(web_scan_id):
+                                outcomes["stopped"] = total_tested - (idx - 1)
+                                break
                             # Each SQLMap run can take up to SQLMAP_TIMEOUT
                             # (10 min) on its own, so emit before each one — a
                             # silent injection sweep of twenty endpoints is the
@@ -1087,6 +1102,9 @@ class WebScanOrchestrator:
                                     method=candidate["method"],
                                     post_data=candidate.get("data"),
                                     auth_headers=auth_headers or None,
+                                    run_timeout=self._bounded_timeout(
+                                        web_scan_id, WebScanConfig.SQLMAP_TIMEOUT
+                                    ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
                                 outcomes[sqlmap_result.get("status", "error")] = (

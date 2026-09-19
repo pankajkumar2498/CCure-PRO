@@ -53,28 +53,39 @@ RUN --mount=type=cache,target=/root/.cache/ms-playwright \
 # ── Security Tools Stage ──────────────────────────────────────────────────
 FROM base AS tools
 
+# Tool versions are PINNED (Phase 15), not fetched as "latest", so a clean
+# rebuild is reproducible and version-controlled. Override at build time with
+# --build-arg NUCLEI_VERSION=vX.Y.Z if a controlled upgrade is intended. These
+# defaults are the versions verified working in the ccure-web-worker runtime.
+# The installs no longer swallow failures with `|| echo skipped`: a pinned
+# download that fails must abort the build rather than silently ship an image
+# missing a primary detector (the runtime gate below is the second line of
+# defence, not the first).
+ARG NUCLEI_VERSION=v3.11.1
+ARG SUBFINDER_VERSION=v2.6.7
+ARG FFUF_VERSION=v2.3.0
+
 # Nuclei — template-based vulnerability scanner (primary DAST engine)
-RUN NUCLEI_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | grep -oP '"tag_name": "\K[^"]+' || echo "v3.3.7") && \
-    wget -q "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" -O /tmp/nuclei.zip && \
+RUN wget -q "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" -O /tmp/nuclei.zip && \
     unzip -o /tmp/nuclei.zip -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/nuclei && \
-    rm -f /tmp/nuclei.zip || echo "Nuclei install skipped"
+    rm -f /tmp/nuclei.zip
 
 # Subfinder — passive subdomain enumeration
-RUN SUBFINDER_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/subfinder/releases/latest | grep -oP '"tag_name": "\K[^"]+' || echo "v2.6.7") && \
-    wget -q "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" -O /tmp/subfinder.zip && \
+RUN wget -q "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" -O /tmp/subfinder.zip && \
     unzip -o /tmp/subfinder.zip -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/subfinder && \
-    rm -f /tmp/subfinder.zip || echo "Subfinder install skipped"
+    rm -f /tmp/subfinder.zip
 
 # ffuf — directory/file bruteforcing
-RUN FFUF_VERSION=$(curl -s https://api.github.com/repos/ffuf/ffuf/releases/latest | grep -oP '"tag_name": "\K[^"]+' || echo "v2.1.0") && \
-    wget -q "https://github.com/ffuf/ffuf/releases/download/${FFUF_VERSION}/ffuf_${FFUF_VERSION#v}_linux_amd64.tar.gz" -O /tmp/ffuf.tar.gz && \
+RUN wget -q "https://github.com/ffuf/ffuf/releases/download/${FFUF_VERSION}/ffuf_${FFUF_VERSION#v}_linux_amd64.tar.gz" -O /tmp/ffuf.tar.gz && \
     tar xf /tmp/ffuf.tar.gz -C /usr/local/bin/ ffuf && \
     chmod +x /usr/local/bin/ffuf && \
-    rm -f /tmp/ffuf.tar.gz || echo "ffuf install skipped"
+    rm -f /tmp/ffuf.tar.gz
 
-# Download nuclei templates
+# Nuclei templates — provisioned once at build time into the image (NOT fetched
+# per scan). This is a build-time snapshot; the runtime gate below refuses to
+# ship without it, and the scanner does not re-download on every scan.
 RUN nuclei -update-templates 2>/dev/null || echo "Nuclei template update skipped"
 
 # Download common wordlist for ffuf
@@ -118,10 +129,11 @@ COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
 # not copied passes an earlier check and is still missing at run time. The
 # checks have to run against the final filesystem.
 #
-# nuclei fails the build. Playwright's browser is required for the crawl and is
-# also fatal: without it the crawler yields no endpoints and every later phase
-# scans only the root URL. The rest are reported so the build log states what
-# this image can and cannot check.
+# nuclei, ffuf, sqlmap, the Playwright browser and the nuclei templates are all
+# fatal (Phase 15): each is a primary detector (or the data it needs), and
+# shipping without one produces scans that look clean but tested nothing —
+# exactly the SQLi gap Phase 14 flagged. sqlmap in particular is now fatal
+# rather than a warning. subfinder and nmap are reported, not fatal.
 RUN set -e; \
     echo "=== Runtime tool verification ==="; \
     for tool in nuclei subfinder ffuf sqlmap nmap; do \
@@ -133,19 +145,26 @@ RUN set -e; \
     done; \
     missing=""; \
     command -v nuclei >/dev/null 2>&1 || missing="$missing nuclei"; \
-    command -v sqlmap >/dev/null 2>&1 || echo "  WARN: sqlmap absent — SQL injection testing will not run"; \
+    command -v ffuf >/dev/null 2>&1 || missing="$missing ffuf"; \
+    command -v sqlmap >/dev/null 2>&1 || missing="$missing sqlmap"; \
     if ls /opt/playwright/chromium-* >/dev/null 2>&1; then \
         echo "  OK       playwright chromium -> $(ls -d /opt/playwright/chromium-* | head -1)"; \
     else \
         missing="$missing playwright-chromium"; \
         echo "  MISSING  playwright chromium browser"; \
     fi; \
-    test -d /opt/nuclei-templates && \
-        echo "  OK       nuclei-templates ($(ls /opt/nuclei-templates | wc -l) entries)" || \
-        echo "  WARN: nuclei templates absent — they will be fetched on first run"; \
+    tmpl_count=$(find /opt/nuclei-templates -name '*.yaml' -o -name '*.yml' 2>/dev/null | head -501 | wc -l); \
+    if [ "$tmpl_count" -gt 0 ]; then \
+        echo "  OK       nuclei-templates ($tmpl_count+ template files)"; \
+    else \
+        missing="$missing nuclei-templates"; \
+        echo "  MISSING  nuclei-templates"; \
+    fi; \
     if [ -n "$missing" ]; then \
         echo "FATAL: required scanner component(s) missing:$missing" >&2; \
         echo "Refusing to ship a scanner image that cannot perform its primary checks." >&2; \
+        echo "SQL injection (sqlmap) is now a required component: a missing sqlmap" >&2; \
+        echo "would let a SQL-injectable application read as clean." >&2; \
         exit 1; \
     fi
 

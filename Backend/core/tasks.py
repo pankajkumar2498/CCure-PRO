@@ -5582,15 +5582,14 @@ def reap_stalled_web_scans() -> dict:
     queued_minutes = int(
         getattr(WebScanConfig, "WEB_SCAN_QUEUE_TIMEOUT_MINUTES", 15) or 0
     )
-    # Absolute backstop: never fire before the longest legitimate run, so this
-    # only catches pathological rows (e.g. 'running' since days ago).
-    overall_seconds = (
-        max(
-            int(getattr(WebScanConfig, "WEB_SCAN_TIMEOUT", 14400) or 0),
-            sum(phase_limits.values()) * 60,
-        )
-        + grace * 60
-    )
+    # Global wall-clock cap (Phase 12). The in-task enforcement
+    # (core/web/timeout.enforce_global_timeout) fires at exactly
+    # WEB_SCAN_TIMEOUT from execution start; this reaper is the backstop for a
+    # worker that has died and cannot self-enforce, so it waits a grace beyond
+    # the cap before stepping in. 0 disables the global cap — the per-phase
+    # deadlines above still apply.
+    _web_timeout = int(getattr(WebScanConfig, "WEB_SCAN_TIMEOUT", 14400) or 0)
+    overall_seconds = (_web_timeout + grace * 60) if _web_timeout > 0 else 0
 
     non_terminal = (
         "queued",
@@ -5679,10 +5678,12 @@ def reap_stalled_web_scans() -> dict:
         age = now - anchor
         over_phase = age >= timedelta(minutes=limit_minutes)
 
-        # Independent absolute backstop off the scan's own start.
+        # Independent global wall-clock backstop off the scan's own start.
         start_anchor = _aware(started_at) or _aware(created_at)
-        over_overall = start_anchor is not None and (now - start_anchor) >= timedelta(
-            seconds=overall_seconds
+        over_overall = (
+            overall_seconds > 0
+            and start_anchor is not None
+            and (now - start_anchor) >= timedelta(seconds=overall_seconds)
         )
 
         if not (over_phase or over_overall):
@@ -5695,6 +5696,14 @@ def reap_stalled_web_scans() -> dict:
                 f"{minutes} minutes (limit {limit_minutes}). Check that the "
                 f"web-worker (queues web_recon,web_crawl,web_dast,web_audit) "
                 f"is running."
+            )
+        elif over_overall and not over_phase:
+            total_min = int((now - start_anchor).total_seconds() // 60)
+            reason = (
+                f"Web scan exceeded the global time limit "
+                f"({overall_seconds // 60} min): running for {total_min} minutes "
+                f"since it started. Settled by the watchdog because the worker "
+                f"did not self-enforce the timeout (it may have died)."
             )
         else:
             reason = (

@@ -935,7 +935,9 @@ class WebScanOrchestrator:
                         waf_detected=is_waf,
                         profile=nuclei_profile,
                         concurrency=nuclei_controls["concurrency"],
-                        run_timeout=nuclei_controls["timeout"],
+                        run_timeout=self._bounded_timeout(
+                            web_scan_id, nuclei_controls["timeout"]
+                        ),
                     )
                     all_findings.extend(nuclei_result.get("findings", []))
                     stats = nuclei_result.get("stats") or {}
@@ -2020,11 +2022,14 @@ class WebScanOrchestrator:
     @staticmethod
     def _scan_is_cancelled(web_scan_id: str) -> bool:
         """
-        Best-effort cancellation check for long in-phase work (the XSS engine).
+        Best-effort "should this stop now?" check for long in-phase work.
 
-        Reads the scan's status through a short-lived session so a user pressing
-        Cancel stops the active testing promptly, rather than only at the phase
-        boundary. Never raises — a failed check simply does not cancel.
+        Returns True when the user cancelled the scan **or** the global
+        wall-clock timeout (WEB_SCAN_TIMEOUT, from execution start) has passed —
+        so every engine that honours this callback (crawler, XSS, injection,
+        access control, HTTP-method, JS-deps, OAST) aborts mid-phase rather than
+        only at the phase boundary. Reads through a short-lived session and
+        never raises — a failed check simply does not stop.
         """
         if not web_scan_id:
             return False
@@ -2034,12 +2039,58 @@ class WebScanOrchestrator:
 
             db = SessionLocal()
             try:
-                row = db.query(WebScan.status).filter(WebScan.id == web_scan_id).first()
-                return bool(row and str(row[0]).lower() == "cancelled")
+                row = (
+                    db.query(WebScan.status, WebScan.started_at)
+                    .filter(WebScan.id == web_scan_id)
+                    .first()
+                )
+                if not row:
+                    return False
+                if str(row[0]).lower() in ("cancelled", "cancelling"):
+                    return True
+                from core.web.timeout import is_timed_out
+
+                return is_timed_out(row[1])
             finally:
                 db.close()
         except Exception:
             return False
+
+    @staticmethod
+    def _global_remaining(web_scan_id: str):
+        """Seconds left before the global scan deadline, or None if no deadline."""
+        if not web_scan_id:
+            return None
+        try:
+            from core.web.timeout import remaining_seconds
+            from db.base import SessionLocal
+            from db.models.web_scans import WebScan
+
+            db = SessionLocal()
+            try:
+                row = (
+                    db.query(WebScan.started_at)
+                    .filter(WebScan.id == web_scan_id)
+                    .first()
+                )
+                return remaining_seconds(row[0]) if row else None
+            finally:
+                db.close()
+        except Exception:
+            return None
+
+    def _bounded_timeout(self, web_scan_id: str, base_timeout: int) -> int:
+        """
+        A subprocess timeout that cannot run past the global scan deadline.
+
+        Bounds a long tool (nuclei) so it terminates safely at the deadline
+        rather than overrunning the whole scan's budget. With no deadline set,
+        the tool's own timeout applies unchanged.
+        """
+        rem = self._global_remaining(web_scan_id)
+        if rem is None:
+            return base_timeout
+        return max(1, int(min(base_timeout, rem)))
 
     @staticmethod
     def _calculate_web_risk_score(findings: list[dict]) -> float:

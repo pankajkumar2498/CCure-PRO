@@ -25,6 +25,7 @@ from db.base import (
     utcnow,
 )
 from core.web.correlation import _finding_identity
+from core.web.timeout import enforce_global_timeout
 from db.models.web_scans import WebAsset, WebFinding, WebScan
 
 log = logging.getLogger("ccure.web.tasks")
@@ -379,6 +380,11 @@ def run_web_recon_task(
     try:
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
+        # Global wall-clock timeout (Phase 12): stop the phase chain
+        # at this boundary if the scan has exceeded WEB_SCAN_TIMEOUT.
+        _to = enforce_global_timeout(web_scan_id, phase="recon")
+        if _to:
+            return {"success": False, "error": _to["reason"], "timed_out": True}
 
         now = utcnow()
         _update_scan_phase_status(
@@ -536,6 +542,11 @@ def run_web_crawl_task(
     try:
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
+        # Global wall-clock timeout (Phase 12): stop the phase chain
+        # at this boundary if the scan has exceeded WEB_SCAN_TIMEOUT.
+        _to = enforce_global_timeout(web_scan_id, phase="crawl")
+        if _to:
+            return {"success": False, "error": _to["reason"], "timed_out": True}
 
         _update_scan_phase_status(
             db, web_scan_id, "crawl", "running", started_at=utcnow()
@@ -681,6 +692,11 @@ def run_web_detect_task(
     try:
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
+        # Global wall-clock timeout (Phase 12): stop the phase chain
+        # at this boundary if the scan has exceeded WEB_SCAN_TIMEOUT.
+        _to = enforce_global_timeout(web_scan_id, phase="detect")
+        if _to:
+            return {"success": False, "error": _to["reason"], "timed_out": True}
 
         _update_scan_phase_status(
             db, web_scan_id, "detect", "running", started_at=utcnow()
@@ -826,6 +842,11 @@ def run_web_audit_task(
     try:
         if _check_cancelled(db, web_scan_id):
             return {"success": False, "error": "Scan cancelled"}
+        # Global wall-clock timeout (Phase 12): stop the phase chain
+        # at this boundary if the scan has exceeded WEB_SCAN_TIMEOUT.
+        _to = enforce_global_timeout(web_scan_id, phase="audit")
+        if _to:
+            return {"success": False, "error": _to["reason"], "timed_out": True}
 
         _update_scan_phase_status(
             db, web_scan_id, "audit", "running", started_at=utcnow()

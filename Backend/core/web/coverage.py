@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 #: parameter locations the ledger understands.
-LOCATIONS = ("query", "form", "json", "path", "cookie", "header")
+LOCATIONS = ("query", "form", "json", "path", "cookie", "header", "soap")
 
 STATUS_TESTED = "tested"
 STATUS_SKIPPED = "skipped"
@@ -202,3 +202,40 @@ class CoverageLedger:
         for n in self._nodes.values():
             names.update(n["engines"].keys())
         return sorted(names)
+
+    # ── relational export ─────────────────────────────────────────────────────
+    def export_parameters(self, max_params: int = 20000) -> List[Dict[str, Any]]:
+        """
+        Full per-parameter coverage, for persistence as first-class relational
+        rows (WebParameter). Unlike ``summary`` — which is bounded counts and a
+        truncated untested sample for the report — this is every node with the
+        engines that tested it and, when untested, the reason it was skipped, so
+        the durable attack-surface table records the real surface at parameter
+        granularity.
+        """
+        out: List[Dict[str, Any]] = []
+        for node in self._nodes.values():
+            engines = node.get("engines", {})
+            tested_by = sorted(
+                eng for eng, e in engines.items() if e.get("status") == STATUS_TESTED
+            )
+            skipped_reason = ""
+            if not tested_by:
+                # Surface the first recorded skip reason, if any.
+                for e in engines.values():
+                    if e.get("status") == STATUS_SKIPPED and e.get("reason"):
+                        skipped_reason = e["reason"]
+                        break
+            out.append(
+                {
+                    "url": node["url"],
+                    "location": node["location"],
+                    "param": node["param"],
+                    "tested": bool(tested_by),
+                    "tested_by": tested_by,
+                    "skipped_reason": skipped_reason,
+                }
+            )
+            if len(out) >= max_params:
+                break
+        return out

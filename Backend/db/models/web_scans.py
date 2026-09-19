@@ -260,6 +260,9 @@ class WebAsset(Base):
     web_findings = relationship(
         "WebFinding", back_populates="web_asset", cascade="all, delete-orphan"
     )
+    web_parameters = relationship(
+        "WebParameter", back_populates="web_asset", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<WebAsset {self.id!r} {self.method} {self.url[:60]}>"
@@ -400,4 +403,100 @@ class WebFinding(Base):
         return (
             f"<WebFinding {self.id!r} type={self.finding_type!r} "
             f"severity={self.severity!r} status={self.status!r}>"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web Parameter  (attack-surface parameter as a first-class relational row)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebParameter(Base):
+    """
+    One tested-or-testable input of the attack surface — an (endpoint, location,
+    name) triple — carrying its own coverage.
+
+    Why a table, not just ``WebAsset.parameters`` (JSONB) and the coverage ledger
+    (``scans.options``)? Those answer "what does this one endpoint expose" and
+    "what did this one scan cover". They cannot answer, in SQL, the questions a
+    mature DAST is expected to: *every endpoint across every scan that exposes an
+    untested ``redirect`` parameter*, *which locations carry the most untested
+    surface*, *does this parameter join to a finding*. A JSONB blob is not
+    join-able or indexable at parameter granularity; a per-parameter row is.
+
+    Coverage is folded in (``tested`` / ``tested_by`` / ``skipped_reason``) rather
+    than kept in a parallel table: a parameter and its coverage are one fact, and
+    a second table would need the same identity and the same lifecycle. The row
+    is idempotent by (asset, location, name) so a parameter re-seen on a later
+    phase updates rather than duplicates.
+
+    ID: wpa_{asset_short}_{location}_{name_hash_8}
+    """
+
+    __tablename__ = "web_parameters"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_asset_id",
+            "location",
+            "name",
+            name="uq_web_parameters_asset_loc_name",
+        ),
+        CheckConstraint(
+            "location IN ('query','form','json','path','cookie','header','soap')",
+            name="ck_web_parameters_location",
+        ),
+        Index("ix_web_parameters_scan_id", "web_scan_id"),
+        Index("ix_web_parameters_asset_id", "web_asset_id"),
+        Index("ix_web_parameters_org_id", "org_id"),
+        Index("ix_web_parameters_name", "name"),
+        Index("ix_web_parameters_tested", "tested"),
+        Index("ix_web_parameters_tested_by_gin", "tested_by", postgresql_using="gin"),
+    )
+
+    # Indexes are declared explicitly in __table_args__ above (matching the
+    # migration); column-level index=True would create a second, differently
+    # named auto-index — schema drift and, for `tested`, a name collision.
+    id = Column(String(300), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    web_asset_id = Column(
+        String(250),
+        ForeignKey("web_assets.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    # Denormalised for cross-scan, tenant-scoped attack-surface queries without a
+    # three-table join back to the scan on every lookup.
+    org_id = Column(
+        String(50),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # ── Identity ──────────────────────────────────────────────────────────────
+    location = Column(String(20), nullable=False)  # query/form/json/path/…/soap
+    name = Column(String(255), nullable=False)
+    source = Column(String(50), nullable=False, default="crawler")
+
+    # ── Coverage (folded in — a parameter and its coverage are one fact) ──────
+    tested = Column(Boolean, nullable=False, default=False)
+    #: engines that tested this parameter, e.g. ["sqlmap", "xss"].
+    tested_by = Column(JSONB, nullable=False, default=list)
+    #: why an untested parameter was not reached (from the coverage ledger).
+    skipped_reason = Column(String(255), nullable=True)
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    web_scan = relationship("WebScan", backref="web_parameters")
+    web_asset = relationship("WebAsset", back_populates="web_parameters")
+    organization = relationship("Organization", backref="web_parameters")
+
+    def __repr__(self):
+        return (
+            f"<WebParameter {self.id!r} {self.location}:{self.name} "
+            f"tested={self.tested}>"
         )

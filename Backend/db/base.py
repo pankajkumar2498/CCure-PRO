@@ -245,6 +245,23 @@ def gen_web_finding_id(web_asset_id: str, finding_type: str, identity: str = "")
     return f"wfn_{asset_short}_{type_part}_{digest}"
 
 
+def gen_web_parameter_id(web_asset_id: str, location: str, name: str) -> str:
+    """
+    Generate a readable, deterministic WebParameter ID.
+    Example: wpa_was_wsc_defa_a1b2c3d4_query_3f9c2a71
+
+    Deterministic by (asset, location, name) so a parameter re-seen on a later
+    phase updates its row rather than duplicating it — the same idempotency the
+    asset and finding ids rely on.
+    """
+    asset_short = web_asset_id[:40] if len(web_asset_id) > 40 else web_asset_id
+    loc_part = _safe_id_part(location or "query", max_len=8)
+    digest = hashlib.sha1(  # nosec B324
+        f"{location}:{name}".encode("utf-8", "replace")
+    ).hexdigest()[:8]
+    return f"wpa_{asset_short}_{loc_part}_{digest}"
+
+
 def gen_network_link_id(org_slug: str, src_key: str, dst_key: str) -> str:
     """
     Generate a readable, unique NetworkLink ID.

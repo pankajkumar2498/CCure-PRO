@@ -1452,20 +1452,21 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 8 HTTP operations + 1 WebSocket. All
+Source: `Backend/routers/web_scans.py` — 9 HTTP operations + 1 WebSocket. All
 use `Depends(get_current_user)`; authorization is organization scoping inside
 each handler rather than a permission atom.
 
-| Method | Path                                         | Purpose                          |
-| ------ | -------------------------------------------- | -------------------------------- |
-| POST   | `/web-scans`                                 | Start a scan (201)               |
-| GET    | `/web-scans`                                 | List scans                       |
-| GET    | `/web-scans/{scan_id}`                       | Detail with per-phase progress   |
-| GET    | `/web-scans/{scan_id}/findings`              | Findings, filtered and paginated |
-| GET    | `/web-scans/{scan_id}/assets`                | Discovered endpoints             |
-| POST   | `/web-scans/{scan_id}/cancel`                | Cancel a running scan            |
-| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}` | Triage a finding                 |
-| GET    | `/web-scans/{scan_id}/report`                | Generate and download the PDF    |
+| Method | Path                                         | Purpose                                                |
+| ------ | -------------------------------------------- | ------------------------------------------------------ |
+| POST   | `/web-scans`                                 | Start a scan (201)                                     |
+| GET    | `/web-scans`                                 | List scans                                             |
+| GET    | `/web-scans/{scan_id}`                       | Detail with per-phase progress                         |
+| GET    | `/web-scans/{scan_id}/findings`              | Findings, filtered and paginated                       |
+| GET    | `/web-scans/{scan_id}/assets`                | Discovered endpoints                                   |
+| GET    | `/web-scans/{scan_id}/parameters`            | Attack surface at parameter granularity, with coverage |
+| POST   | `/web-scans/{scan_id}/cancel`                | Cancel a running scan                                  |
+| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}` | Triage a finding                                       |
+| GET    | `/web-scans/{scan_id}/report`                | Generate and download the PDF                          |
 
 **`POST /web-scans`** accepts an optional **`Idempotency-Key` header** (aliased
 from `idempotency_key`) so a retried submission does not start a second scan.
@@ -1480,6 +1481,12 @@ acknowledgement persisted as `web_scans.authorization_confirmed`.
 (1–200, default 50), `org_id`.
 
 **`GET /web-scans/{scan_id}/assets`** — `source`, `page`, `per_page`, `org_id`.
+
+**`GET /web-scans/{scan_id}/parameters`** — the attack surface as first-class
+`web_parameters` rows: `location`, `tested`, `name`, `page`, `per_page` (1–500,
+default 100), `org_id`. Returns each parameter's coverage (`tested`,
+`tested_by`, `skipped_reason`) and a `coverage` roll-up (surface / tested /
+untested / pct); untested rows are ordered first.
 
 **`PATCH /web-scans/{scan_id}/findings/{finding_id}`** — body
 `TriageFindingRequest`; marks false positive, accepted risk, confirmed, etc.

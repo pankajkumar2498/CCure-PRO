@@ -341,6 +341,24 @@ def build_injection_targets(
                     content_type="application/json",
                 )
 
+        # XML / SOAP request body (Phase 23, WSDL import): sqlmap detects and
+        # tests SOAP/XML parameters in a --data body, so a SOAP operation
+        # envelope becomes an injection target with its content-type.
+        _xml_body = ep.get("request_body")
+        _xml_ct = str(ep.get("request_content_type") or "").lower()
+        if (
+            _xml_body
+            and isinstance(_xml_body, str)
+            and _xml_body.lstrip().startswith("<")
+            and ("xml" in _xml_ct or "soap" in _xml_ct)
+        ):
+            _add(
+                url,
+                str(ep.get("method") or "POST").upper(),
+                _xml_body,
+                content_type=ep.get("request_content_type") or "text/xml",
+            )
+
         # Path identifiers (Phase 22): /api/users/123 → mark the id with sqlmap's
         # custom injection-point marker '*' so the path segment is tested, not
         # just query/body. Only identifier-looking segments are marked.
@@ -746,6 +764,15 @@ class WebScanOrchestrator:
                     "concurrency": crawl_conc,
                     "rate_limit": crawl_rate,
                 }
+                # DOM state graph (Phase 23b): the interaction transitions the
+                # autonomous pass discovered — states, edges and SPA-hidden
+                # states — so the report can prove interaction coverage. Only the
+                # compact summary is kept in stats; the full graph (bounded) is
+                # stored under its own key for the API/report.
+                _dg = getattr(crawl_result, "dom_graph", None)
+                if _dg:
+                    crawl_stats["dom_graph_summary"] = _dg.get("summary", {})
+                    crawl_stats["dom_graph"] = _dg
                 # A target that redirects the browser to an arbitrary external
                 # host is an open redirect. The crawler has to detect this to
                 # stay in scope; discarding what it learned would throw away a
@@ -1838,6 +1865,11 @@ class WebScanOrchestrator:
                 if e in coverage.as_dict().get("tools_run", [])
             ]
             coverage_ledger = ledger.summary(active_engines=_cov_active or None)
+            # Full per-parameter coverage for persistence as first-class
+            # relational rows (WebParameter). Not stored in options — the DETECT
+            # task consumes it to build the attack-surface table, then it is
+            # discarded; only the bounded summary above goes into the report.
+            result["coverage_parameters"] = ledger.export_parameters()
 
             result["findings"] = all_findings
             result["tool_coverage"] = {

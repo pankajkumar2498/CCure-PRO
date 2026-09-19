@@ -1228,6 +1228,34 @@ One discovered endpoint: URL + method + parameters.
 Full HTTP request and response are stored so a finding is reproducible;
 `WebScanConfig.MAX_RESPONSE_BODY_SIZE` (default 10 240 bytes) caps the evidence.
 
+### `web_parameters`
+
+The attack surface at parameter granularity — one first-class row per
+(endpoint, location, name), carrying its own coverage. Makes the surface
+queryable in SQL (every endpoint exposing an untested parameter of a given
+name), which the `web_assets.parameters` JSONB blob and the options-embedded
+coverage ledger cannot. Populated by the DETECT phase from the finalised ledger.
+
+| Column                      | Type          | Notes                                                                     |
+| --------------------------- | ------------- | ------------------------------------------------------------------------- |
+| `id`                        | `String(300)` | **PK**, `gen_web_parameter_id()` — deterministic per (asset, loc, name)   |
+| `web_scan_id`               | `String(100)` | FK `web_scans.id` CASCADE, indexed                                        |
+| `web_asset_id`              | `String(250)` | FK `web_assets.id` CASCADE, indexed                                       |
+| `org_id`                    | `String(50)`  | FK `organizations.id` CASCADE, indexed (cross-scan tenant queries)        |
+| `location`                  | `String(20)`  | `query`/`form`/`json`/`path`/`cookie`/`header`/`soap` (CHECK-constrained) |
+| `name`                      | `String(255)` | Parameter name, indexed                                                   |
+| `source`                    | `String(50)`  | default `crawler`                                                         |
+| `tested`                    | `Boolean`     | default `false`, indexed — coverage status                                |
+| `tested_by`                 | `JSONB`       | GIN-indexed — engines that tested it                                      |
+| `skipped_reason`            | `String(255)` | Why an untested parameter was not reached                                 |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` |                                                                           |
+
+**Constraint:** `uq_web_parameters_asset_loc_name` UNIQUE on
+`(web_asset_id, location, name)`; `ck_web_parameters_location` CHECK.
+**Indexes:** `ix_web_parameters_scan_id`, `ix_web_parameters_asset_id`,
+`ix_web_parameters_org_id`, `ix_web_parameters_name`, `ix_web_parameters_tested`,
+`ix_web_parameters_tested_by_gin` (GIN).
+
 ---
 
 ## 10. Compliance engine

@@ -21,11 +21,12 @@ from db.base import (
     SessionLocal,
     gen_web_asset_id,
     gen_web_finding_id,
+    gen_web_parameter_id,
     utcnow,
 )
 from core.web.correlation import _finding_identity
 from core.web.timeout import enforce_global_timeout
-from db.models.web_scans import WebAsset, WebFinding, WebScan
+from db.models.web_scans import WebAsset, WebFinding, WebParameter, WebScan
 
 log = logging.getLogger("ccure.web.tasks")
 
@@ -260,6 +261,81 @@ def _persist_web_assets(db, web_scan_id: str, endpoints: list[dict]) -> None:
         db.flush()
     except Exception as exc:
         log.warning("WebAsset persist partial failure: %s", exc)
+        db.rollback()
+
+
+def _persist_web_parameters(
+    db, web_scan_id: str, org_id: str, coverage_parameters: list[dict]
+) -> None:
+    """
+    Persist the attack surface at parameter granularity as first-class
+    WebParameter rows, carrying each parameter's coverage (tested / by which
+    engines / why skipped) from the finalised coverage ledger.
+
+    This is what makes the surface queryable in SQL — every endpoint exposing an
+    untested parameter of a given name, across scans — which the JSONB parameter
+    blob and the options-embedded ledger cannot answer. Idempotent by (asset,
+    location, name): a re-seen parameter updates its coverage rather than
+    duplicating. A parameter whose endpoint was never persisted as a WebAsset is
+    skipped (the FK would fail) rather than aborting the whole write.
+    """
+    from core.web.coverage import LOCATIONS
+
+    if not coverage_parameters:
+        return
+    # Map every base URL to a persisted asset id so a parameter joins to its
+    # endpoint. The ledger keys on the base URL (no query), so match on that.
+    assets = db.query(WebAsset.id, WebAsset.url).filter(
+        WebAsset.web_scan_id == web_scan_id
+    )
+    by_base: dict[str, str] = {}
+    for aid, aurl in assets:
+        base = (aurl or "").split("?")[0].split("#")[0]
+        by_base.setdefault(base, aid)
+
+    written = 0
+    for p in coverage_parameters:
+        name = (p.get("param") or "").strip()
+        location = (p.get("location") or "").strip()
+        if not name or location not in LOCATIONS:
+            continue
+        url = p.get("url") or ""
+        base = url.split("?")[0].split("#")[0]
+        asset_id = by_base.get(base)
+        if not asset_id:
+            continue  # no endpoint row to attach to (would violate the FK)
+        param_id = gen_web_parameter_id(asset_id, location, name)
+        tested = bool(p.get("tested"))
+        tested_by = p.get("tested_by") or []
+        skipped_reason = (p.get("skipped_reason") or "")[:255] or None
+        existing = db.query(WebParameter).filter(WebParameter.id == param_id).first()
+        if existing:
+            # Update coverage — a later phase may have tested a parameter that
+            # was untested when first seen.
+            existing.tested = tested
+            existing.tested_by = tested_by
+            existing.skipped_reason = skipped_reason
+            continue
+        db.add(
+            WebParameter(
+                id=param_id,
+                web_scan_id=web_scan_id,
+                web_asset_id=asset_id,
+                org_id=org_id,
+                location=location,
+                name=name[:255],
+                source="ledger",
+                tested=tested,
+                tested_by=tested_by,
+                skipped_reason=skipped_reason,
+            )
+        )
+        written += 1
+    try:
+        db.flush()
+        log.info("WebParameter: persisted %d attack-surface parameters", written)
+    except Exception as exc:
+        log.warning("WebParameter persist partial failure: %s", exc)
         db.rollback()
 
 
@@ -831,6 +907,18 @@ def run_web_detect_task(
             _persist_web_findings(
                 db, web_scan_id, scan.org_id, result.get("findings", [])
             )
+            # Persist the attack surface at parameter granularity, with coverage,
+            # from the finalised ledger (Phase 23b, attack-surface relational
+            # model). Best-effort — a failure here must not fail the scan.
+            try:
+                _persist_web_parameters(
+                    db,
+                    web_scan_id,
+                    scan.org_id,
+                    result.get("coverage_parameters", []),
+                )
+            except Exception as exc:
+                log.warning("WebParameter persistence skipped: %s", exc)
 
         _record_tool_coverage(db, web_scan_id, "detect", result.get("tool_coverage"))
         _update_scan_phase_status(

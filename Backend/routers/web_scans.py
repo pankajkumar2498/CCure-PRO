@@ -24,7 +24,7 @@ from auth.jwt_handler import decode_token
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
 from db.models import User
 from core.web.auth.secrets import encrypt_auth_config
-from db.models.web_scans import WebAsset, WebFinding, WebScan
+from db.models.web_scans import WebAsset, WebFinding, WebParameter, WebScan
 from fastapi import (
     APIRouter,
     Depends,
@@ -129,6 +129,27 @@ class WebScanAuthSchema(BaseModel):
     )
     idp_submit: str | None = Field(
         default=None, description="CSS selector for the IdP submit button."
+    )
+    # ── Phase 23b: redirect-login edge cases (identifier-first / MFA / consent)
+    idp_next_submit: str | None = Field(
+        default=None,
+        description="CSS selector for the 'Next' button in an identifier-first "
+        "flow (username, Next, then password on a second screen).",
+    )
+    idp_mfa_field: str | None = Field(
+        default=None, description="CSS selector for the MFA/OTP code field."
+    )
+    mfa_code: str | None = Field(
+        default=None, description="Static one-time code for the MFA screen."
+    )
+    totp_secret: str | None = Field(
+        default=None,
+        description="Base32 TOTP shared secret; a current code is generated for "
+        "the MFA screen when mfa_code is not supplied.",
+    )
+    idp_consent_submit: str | None = Field(
+        default=None,
+        description="CSS selector for the OAuth consent/authorize/allow button.",
     )
     success_url_contains: str | None = Field(
         default=None, description="Substring expected in the post-login URL."
@@ -289,6 +310,10 @@ class WebScanOptionsSchema(BaseModel):
     )
     postman: dict | None = Field(
         default=None, description="A Postman v2 collection (JSON) to import."
+    )
+    wsdl: str | None = Field(
+        default=None,
+        description="A WSDL (SOAP) document (XML) to import operations from.",
     )
     # Phase 23, Crawler 2.0: opt-in autonomous SPA interaction — click safe,
     # non-destructive controls to reach client-side routes a link crawl misses.
@@ -667,6 +692,91 @@ def get_web_scan_assets(
     return {
         "success": True,
         "data": [_asset_detail(a) for a in assets],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/{scan_id}/parameters")
+def get_web_scan_parameters(
+    scan_id: str,
+    location: str | None = Query(None, description="query/form/json/path/…/soap"),
+    tested: bool | None = Query(None, description="filter by coverage status"),
+    name: str | None = Query(None, description="parameter name (exact)"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    The attack surface at parameter granularity (Phase 23b relational model):
+    every (endpoint, location, name) with its coverage — tested, by which
+    engines, or why it was skipped. Filterable by location, coverage status and
+    name, which the JSONB parameter blob and the report's coverage summary
+    cannot answer relationally. Includes an ``untested`` roll-up so a caller can
+    see, in one call, how much surface remains unassessed.
+    """
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+
+    query = db.query(WebParameter).filter(WebParameter.web_scan_id == scan.id)
+    if location:
+        query = query.filter(WebParameter.location == location)
+    if tested is not None:
+        query = query.filter(WebParameter.tested == tested)
+    if name:
+        query = query.filter(WebParameter.name == name)
+
+    total = query.count()
+    tested_total = (
+        db.query(WebParameter)
+        .filter(
+            WebParameter.web_scan_id == scan.id,
+            WebParameter.tested.is_(True),
+        )
+        .count()
+    )
+    surface_total = (
+        db.query(WebParameter).filter(WebParameter.web_scan_id == scan.id).count()
+    )
+    rows = (
+        query.order_by(
+            WebParameter.tested.asc(),  # untested first — the interesting rows
+            WebParameter.location.asc(),
+            WebParameter.name.asc(),
+        )
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": p.id,
+                "web_asset_id": p.web_asset_id,
+                "location": p.location,
+                "name": p.name,
+                "source": p.source,
+                "tested": p.tested,
+                "tested_by": p.tested_by or [],
+                "skipped_reason": p.skipped_reason,
+            }
+            for p in rows
+        ],
+        "coverage": {
+            "surface_parameters": surface_total,
+            "tested_parameters": tested_total,
+            "untested_parameters": surface_total - tested_total,
+            "coverage_pct": (
+                round(100.0 * tested_total / surface_total, 1) if surface_total else 0.0
+            ),
+        },
         "pagination": {
             "page": page,
             "per_page": per_page,

@@ -48,6 +48,69 @@ _INTROSPECTION = {
     "types { name kind } } }"
 }
 
+# A fuller query that also returns the Query/Mutation fields and their argument
+# names, so operations can be enumerated into testable requests (Phase 22,
+# Item 8). Kept separate from the light check above so introspection *detection*
+# is unchanged.
+_INTROSPECTION_OPS = {
+    "query": (
+        "query OpEnum { __schema { "
+        "queryType { name fields { name args { name } "
+        "type { kind name ofType { kind name ofType { kind name } } } } } "
+        "mutationType { name fields { name args { name } "
+        "type { kind name ofType { kind name ofType { kind name } } } } } } }"
+    )
+}
+
+
+def _unwrap_kind(type_ref: dict) -> str:
+    """The underlying kind of a (possibly LIST/NON_NULL-wrapped) GraphQL type."""
+    t = type_ref or {}
+    for _ in range(4):
+        kind = t.get("kind")
+        if kind in ("SCALAR", "ENUM", "OBJECT", "INTERFACE", "UNION", "INPUT_OBJECT"):
+            return kind
+        t = t.get("ofType") or {}
+        if not t:
+            break
+    return "OBJECT"  # default to requiring a subselection (safe, valid)
+
+
+def graphql_operation_request(url: str, op: dict) -> dict:
+    """
+    Build a valid, minimal GraphQL operation request for one field, as a
+    discovered endpoint (POST /graphql, JSON body). Arguments are carried in
+    ``variables`` so their values are testable input; the selection set is
+    ``__typename`` for object-returning fields (valid on any object) and empty
+    for scalars — so the generated query is always syntactically valid.
+    """
+    import json as _json
+
+    name = op["name"]
+    args = op.get("args") or []
+    ret_kind = op.get("return_kind", "OBJECT")
+    selection = (
+        " { __typename }" if ret_kind in ("OBJECT", "INTERFACE", "UNION") else ""
+    )
+    if args:
+        var_defs = ", ".join(f"${a}: String" for a in args)
+        arg_use = ", ".join(f"{a}: ${a}" for a in args)
+        query = f"{op['operation']} op({var_defs}) {{ {name}({arg_use}){selection} }}"
+        variables = {a: "1" for a in args}
+    else:
+        query = f"{op['operation']} op {{ {name}{selection} }}"
+        variables = {}
+    body = _json.dumps({"query": query, "variables": variables})
+    return {
+        "url": url,
+        "method": "POST",
+        "is_api": True,
+        "source": "graphql_op",
+        "request_body": body,
+        "request_content_type": "application/json",
+        "graphql_operation": f"{op['operation']}:{name}",
+    }
+
 
 class ApiScanEngine:
     """Import an API surface and raise API-specific findings."""
@@ -444,12 +507,22 @@ class ApiScanEngine:
                         evidence=f"POST {url} __schema returned {len(types)} type(s).",
                     )
                 ]
+                # Enumerate operations into testable requests (Phase 22, Item 8):
+                # introspection detection alone leaves the Query/Mutation surface
+                # untested. Each operation becomes a POST /graphql request whose
+                # arguments travel in variables, so it enters the surface,
+                # coverage and injection paths like any discovered endpoint.
+                ops = await self._enumerate_graphql_ops(client, url)
+                op_endpoints = [graphql_operation_request(url, op) for op in ops]
                 inv = {
                     "endpoint": url,
                     "introspection": True,
                     "type_count": len(types),
                     "query_type": (schema.get("queryType") or {}).get("name"),
+                    "operation_count": len(ops),
+                    "operations": [f"{o['operation']}:{o['name']}" for o in ops][:200],
                 }
+                self.stats["operations"] = self.stats.get("operations", 0) + len(ops)
                 return {
                     "status": "introspection_enabled",
                     "findings": findings,
@@ -461,7 +534,8 @@ class ApiScanEngine:
                             "is_api": True,
                             "source": "graphql",
                         }
-                    ],
+                    ]
+                    + op_endpoints,
                 }
             # Endpoint exists but introspection disabled — not a finding.
             return {
@@ -473,6 +547,41 @@ class ApiScanEngine:
                 ],
             }
         return None
+
+    async def _enumerate_graphql_ops(self, client, url):
+        """
+        Enumerate Query/Mutation operations (name, args, return kind) from a
+        fuller introspection query. Returns a bounded list of operation dicts;
+        never raises. Meta-fields (``__*``) are skipped.
+        """
+        try:
+            r = await client.post(url, json=_INTROSPECTION_OPS)
+            data = r.json()
+        except Exception:
+            return []
+        schema = (data.get("data") or {}).get("__schema") or {}
+        ops = []
+        for type_key, op_kind in (("queryType", "query"), ("mutationType", "mutation")):
+            t = schema.get(type_key) or {}
+            for field in t.get("fields") or []:
+                name = field.get("name")
+                if not name or name.startswith("__"):
+                    continue
+                ops.append(
+                    {
+                        "operation": op_kind,
+                        "name": name,
+                        "args": [
+                            a.get("name")
+                            for a in (field.get("args") or [])
+                            if a.get("name")
+                        ],
+                        "return_kind": _unwrap_kind(field.get("type")),
+                    }
+                )
+                if len(ops) >= self.max_operations:
+                    return ops
+        return ops
 
     # ── finding ──────────────────────────────────────────────────────────────────
     def _finding(self, ftype, url, desc, cwe, severity, *, evidence):

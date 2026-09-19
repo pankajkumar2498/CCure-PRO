@@ -62,6 +62,7 @@ class SqlmapWrapper(ToolWrapper):
         level: int | None = None,
         risk: int | None = None,
         run_timeout: int | None = None,
+        raw_request: str | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -83,10 +84,12 @@ class SqlmapWrapper(ToolWrapper):
         # Safety check: only test requests that carry an injectable parameter.
         # A '*' in the target is sqlmap's custom injection-point marker (Phase
         # 22 path-parameter targets, e.g. /api/users/123*), which is a testable
-        # point even without a query string or body.
+        # point even without a query string or body. A raw_request carries its
+        # own parameters (headers/cookies/body), so it bypasses this gate.
         has_marker = "*" in target
         if (
-            method.upper() == "GET"
+            not raw_request
+            and method.upper() == "GET"
             and "?" not in target
             and not post_data
             and not has_marker
@@ -101,10 +104,7 @@ class SqlmapWrapper(ToolWrapper):
 
         output_dir = self._create_temp_dir(prefix="sqlmap_")
 
-        args = [
-            self.binary,
-            "-u",
-            target,
+        common = [
             "--batch",  # Non-interactive
             f"--level={level or WebScanConfig.SQLMAP_LEVEL}",
             f"--risk={risk or WebScanConfig.SQLMAP_RISK}",
@@ -114,18 +114,29 @@ class SqlmapWrapper(ToolWrapper):
             "--answers=crack=N,dict=N",  # Skip cracking
         ]
 
-        if method.upper() == "POST" and post_data:
-            args.extend(["--data", post_data])
-
-        # Merge auth headers with an explicit content-type (Phase 22) so a JSON
-        # body is sent and parsed as JSON — sqlmap then tests each JSON field.
-        header_lines: list[str] = []
-        if content_type:
-            header_lines.append(f"Content-Type: {content_type}")
-        if auth_headers:
-            header_lines.extend(f"{k}: {v}" for k, v in auth_headers.items())
-        if header_lines:
-            args.extend(["--headers", "\n".join(header_lines)])
+        # Item 4 (Phase 22): a reconstructed raw HTTP request — full method,
+        # path, headers, cookies and body from the authenticated crawl — is
+        # tested with sqlmap -r, so the request is exercised exactly as it was
+        # observed (session and body intact) rather than as a bare URL.
+        req_file = None
+        if raw_request:
+            req_file = self._create_temp_file(suffix=".req", prefix="sqlmap_req_")
+            with open(req_file, "w", encoding="utf-8") as fh:
+                fh.write(raw_request)
+            args = [self.binary, "-r", req_file] + common
+        else:
+            args = [self.binary, "-u", target] + common
+            if method.upper() == "POST" and post_data:
+                args.extend(["--data", post_data])
+            # Merge auth headers with an explicit content-type (Phase 22) so a
+            # JSON body is sent and parsed as JSON — sqlmap tests each field.
+            header_lines: list[str] = []
+            if content_type:
+                header_lines.append(f"Content-Type: {content_type}")
+            if auth_headers:
+                header_lines.extend(f"{k}: {v}" for k, v in auth_headers.items())
+            if header_lines:
+                args.extend(["--headers", "\n".join(header_lines)])
 
         # Per-request network timeout and retries.
         args.extend(["--timeout", "30"])
@@ -226,6 +237,8 @@ class SqlmapWrapper(ToolWrapper):
             }
         finally:
             self._cleanup_path(output_dir)
+            if req_file:
+                self._cleanup_path(req_file)
 
     @staticmethod
     def _parse_output(stdout: str) -> tuple[bool, list[str], str]:

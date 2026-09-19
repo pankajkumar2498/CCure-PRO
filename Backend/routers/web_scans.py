@@ -168,6 +168,30 @@ class WebScanAuthSchema(BaseModel):
         description="Multi-step login/workflow: an ordered list of "
         "{method,url,fields,extract,success_indicator} steps run on one session.",
     )
+    # Phase 13: a browser-driven authenticated workflow (login -> dashboard ->
+    # resource -> action) as validated configuration. The endpoints it reaches
+    # are handed to the DETECT engines. Either a bare list of actions or
+    # {actions:[...], timeout_ms:...}.
+    workflow: dict | list | None = Field(
+        default=None,
+        description="Authenticated multi-step workflow: an ordered list of "
+        "actions (open/click/type/select/submit/wait/extract/verify/"
+        "capture_token/capture_cookie/api_request) replayed in one browser "
+        "session; discovered authenticated endpoints feed the security engines.",
+    )
+
+    @field_validator("workflow")
+    @classmethod
+    def _valid_workflow(cls, value):
+        if value is None:
+            return None
+        from core.web.workflow.actions import validate_workflow
+
+        errs = validate_workflow(value)
+        if errs:
+            raise ValueError("; ".join(errs[:5]))
+        return value
+
     access_control: AccessControlSchema | None = Field(
         default=None,
         description="Phase 4 access-control testing: additional isolated users "

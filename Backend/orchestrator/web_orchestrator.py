@@ -690,6 +690,66 @@ class WebScanOrchestrator:
             except Exception as exc:
                 log.warning("[CRAWL] Playwright crawling failed: %s", exc)
 
+            # 2b. Authenticated multi-step workflow (Phase 13). Replays a
+            #     validated workflow (login -> dashboard -> resource -> action)
+            #     in a browser session and hands the authenticated endpoints and
+            #     forms it reaches to the DETECT engines. Secrets are decrypted
+            #     only here and never logged or returned; the workflow's own
+            #     errors are already sanitised/masked by the engine.
+            try:
+                from core.web.auth.secrets import decrypt_auth_config
+
+                _wf_cfg = decrypt_auth_config(auth_config or {}).get("workflow")
+                if _wf_cfg:
+                    from core.web.workflow import WorkflowEngine
+
+                    wf_engine = WorkflowEngine(
+                        allowed_domains={urlparse(target_url).netloc}
+                    )
+                    if wf_engine.is_available():
+                        _emit_web_progress(
+                            web_scan_id,
+                            "crawl",
+                            {
+                                "status": "running",
+                                "percentage": 58,
+                                "message": "Replaying authenticated workflow…",
+                            },
+                        )
+
+                        def _wf_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        wf_res = await wf_engine.run(
+                            _wf_cfg,
+                            base_url=target_url,
+                            auth_cookies=auth_cookies or None,
+                            auth_headers=(
+                                {
+                                    k: v
+                                    for k, v in (auth_headers or {}).items()
+                                    if k.lower() != "cookie"
+                                }
+                                or None
+                            ),
+                            cancel_cb=_wf_cancelled,
+                        )
+                        all_endpoints.extend(wf_res.get("endpoints", []))
+                        all_forms.extend(wf_res.get("forms", []))
+                        crawl_stats["workflow"] = {
+                            "ok": wf_res.get("ok"),
+                            "steps_run": wf_res.get("steps_run"),
+                            "endpoints": len(wf_res.get("endpoints", [])),
+                            "errors": wf_res.get("errors", []),
+                        }
+                        self._log(
+                            f"[CRAWL] Workflow: {wf_res.get('steps_run')} step(s), "
+                            f"{len(wf_res.get('endpoints', []))} authenticated "
+                            f"endpoint(s) discovered"
+                        )
+            except Exception as exc:
+                log.warning("[CRAWL] Workflow engine failed: %s", exc)
+
             # 3. ffuf Directory Bruteforcing
             try:
                 from core.web.ffuf.wrapper import FfufWrapper

@@ -97,6 +97,26 @@ def _transform(config: Dict[str, Any], fn) -> Dict[str, Any]:
                 }
             new_steps.append(step)
         result["login_steps"] = new_steps
+    # Phase 13 workflows carry user-entered values (a password typed into a
+    # field, a token) in each action's `value`. Protect every action value the
+    # same way as login_steps — encryption round-trips a placeholder or a
+    # non-secret unchanged, so this is safe for all of them.
+    wf = result.get("workflow")
+    _wf_actions = (
+        wf.get("actions")
+        if isinstance(wf, dict)
+        else (wf if isinstance(wf, list) else None)
+    )
+    if isinstance(_wf_actions, list):
+        new_actions = []
+        for a in _wf_actions:
+            if isinstance(a, dict) and isinstance(a.get("value"), str):
+                a = dict(a)
+                a["value"] = fn(a["value"])
+            new_actions.append(a)
+        result["workflow"] = (
+            {**wf, "actions": new_actions} if isinstance(wf, dict) else new_actions
+        )
     # Phase 4 access-control testing carries additional users (User B, admin),
     # each with their own auth config nested under access_control.users[].auth.
     # Those are the same class of secret as the main login and must be
@@ -152,6 +172,21 @@ def redact_auth_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
                 step["fields"] = {k: "********" for k in step["fields"]}
             red_steps.append(step)
         redacted["login_steps"] = red_steps
+    wf = redacted.get("workflow")
+    _wf_actions = (
+        wf.get("actions")
+        if isinstance(wf, dict)
+        else (wf if isinstance(wf, list) else None)
+    )
+    if isinstance(_wf_actions, list):
+        red_actions = []
+        for a in _wf_actions:
+            if isinstance(a, dict) and a.get("value") not in (None, ""):
+                a = {**a, "value": "********"}
+            red_actions.append(a)
+        redacted["workflow"] = (
+            {**wf, "actions": red_actions} if isinstance(wf, dict) else red_actions
+        )
     access = redacted.get("access_control")
     if isinstance(access, dict) and isinstance(access.get("users"), list):
         access = dict(access)

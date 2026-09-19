@@ -114,7 +114,7 @@ class WebScanAuthSchema(BaseModel):
         default="none",
         description=(
             "Auth type: none, form_login, bearer_token, cookie, custom_header, "
-            "multi_step"
+            "multi_step, jwt, api_key, oauth2"
         ),
     )
     login_url: str | None = None
@@ -126,6 +126,30 @@ class WebScanAuthSchema(BaseModel):
     token: str | None = None
     cookies: dict[str, str] | None = None
     headers: dict[str, str] | None = None
+    # ── Phase 23: modern token auth (jwt / api_key / oauth2) ──────────────────
+    jwt: str | None = Field(default=None, description="Static JWT for type=jwt.")
+    key: str | None = Field(default=None, description="API key value for type=api_key.")
+    value: str | None = Field(default=None, description="Alias for key/token value.")
+    header: str | None = Field(
+        default=None, description="Header name for jwt/api_key injection."
+    )
+    prefix: str | None = Field(
+        default=None, description="Value prefix, e.g. 'Bearer ' or 'ApiKey '."
+    )
+    token_url: str | None = Field(
+        default=None, description="OAuth2 token endpoint for type=oauth2."
+    )
+    grant_type: str | None = Field(
+        default=None, description="OAuth2 grant: client_credentials | password."
+    )
+    client_id: str | None = None
+    client_secret: str | None = None
+    scope: str | None = None
+    audience: str | None = None
+    token_field: str | None = Field(
+        default=None,
+        description="JSON field holding the access token (default access_token).",
+    )
     # ── Phase 3: CSRF / hidden-token logins, verification, re-auth ────────────
     csrf_field: str | None = Field(
         default=None,

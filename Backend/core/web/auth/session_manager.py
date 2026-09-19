@@ -79,6 +79,33 @@ def _input_attrs(tag: str) -> dict:
     return attrs
 
 
+def _inspect_jwt(token: str):
+    """
+    Validate a JWT's shape and read its ``exp`` claim without verifying the
+    signature (the scanner is the client, not the resource server).
+
+    Returns (shape_ok, exp_or_None). Best-effort: a token that parses but has no
+    exp returns (True, None).
+    """
+    import base64
+    import json as _json
+
+    if not token or token.count(".") != 2:
+        return False, None
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)  # pad base64url
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
+    except Exception:
+        return False, None
+    exp = payload.get("exp") if isinstance(payload, dict) else None
+    try:
+        exp = float(exp) if exp is not None else None
+    except (TypeError, ValueError):
+        exp = None
+    return True, exp
+
+
 def extract_form_tokens(
     html: str, csrf_field: str | None = None, extract_hidden: bool = True
 ) -> dict[str, str]:
@@ -207,6 +234,12 @@ class WebSessionManager:
             session = WebSession(scan_id=scan_id)
         elif auth_type == "bearer_token":
             session = self._create_bearer_session(auth_config, scan_id)
+        elif auth_type == "jwt":
+            session = self._create_jwt_session(auth_config, scan_id)
+        elif auth_type == "api_key":
+            session = self._create_api_key_session(auth_config, scan_id)
+        elif auth_type == "oauth2":
+            session = await self._oauth2_token_session(auth_config, scan_id)
         elif auth_type == "cookie":
             session = self._create_cookie_session(auth_config, scan_id)
         elif auth_type == "custom_header":
@@ -238,6 +271,118 @@ class WebSessionManager:
             scan_id=scan_id,
             headers={"Authorization": f"Bearer {token}"},
             auth_type="bearer_token",
+        )
+        self._save_session(session)
+        return session
+
+    def _create_jwt_session(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        Static JWT bearer session (Phase 23). Validates the JWT shape and reads
+        its ``exp`` claim (no signature verification — the scanner is the
+        client, not the resource server) so an expired token is flagged rather
+        than silently producing a whole scan of 401s that reads as "clean".
+        """
+        token = (config.get("token") or config.get("jwt") or "").strip()
+        header_name = config.get("header", "Authorization")
+        prefix = config.get("prefix", "Bearer ")
+        auth_error = ""
+        shape_ok, exp = _inspect_jwt(token)
+        if not shape_ok:
+            auth_error = "Configured JWT is not a well-formed token (expected 3 dot-separated parts)."
+        elif exp is not None and exp < time.time():
+            auth_error = (
+                f"Configured JWT expired at {int(exp)} (before the scan started); "
+                f"it will be rejected. Supply a current token."
+            )
+        session = WebSession(
+            scan_id=scan_id,
+            headers={header_name: f"{prefix}{token}"} if token else {},
+            auth_type="jwt",
+            auth_error=auth_error,
+        )
+        self._save_session(session)
+        return session
+
+    def _create_api_key_session(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        API-key header session (Phase 23). The key is sent in a configurable
+        header (default ``X-API-Key``); an optional ``prefix`` supports schemes
+        like ``ApiKey <key>``. Header-based only, which is the common case and
+        fits the header/cookie session model.
+        """
+        key = (
+            config.get("key") or config.get("value") or config.get("token") or ""
+        ).strip()
+        header_name = config.get("header", "X-API-Key")
+        prefix = config.get("prefix", "")
+        session = WebSession(
+            scan_id=scan_id,
+            headers={header_name: f"{prefix}{key}"} if key else {},
+            auth_type="api_key",
+            auth_error="" if key else "No API key value configured.",
+        )
+        self._save_session(session)
+        return session
+
+    async def _oauth2_token_session(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        OAuth 2.0 token-endpoint session (Phase 23).
+
+        Obtains an access token from the configured token endpoint using the
+        automatable grants — ``client_credentials`` and ``password`` — then uses
+        it as a bearer token. The browser-redirect grants (authorization_code /
+        OIDC / SAML) need IdP automation and are a separate follow-on; this
+        covers what most API scanning uses (Acunetix/Invicti list OAuth 2.0,
+        bearer and JWT as first-class API auth).
+        """
+        token_url = (config.get("token_url") or "").strip()
+        grant = (config.get("grant_type") or "client_credentials").strip()
+        if not token_url:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type="oauth2",
+                auth_error="oauth2 requires token_url.",
+            )
+        data = {"grant_type": grant}
+        for k in ("client_id", "client_secret", "scope", "audience"):
+            if config.get(k):
+                data[k] = config[k]
+        if grant == "password":
+            data["username"] = config.get("username", "")
+            data["password"] = config.get("password", "")
+        token_field = config.get("token_field", "access_token")
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(
+                verify=False, timeout=30.0, follow_redirects=True
+            ) as client:
+                resp = await client.post(token_url, data=data)
+                body = {}
+                try:
+                    body = resp.json()
+                except Exception:
+                    body = {}
+                token = body.get(token_field)
+                if resp.status_code >= 400 or not token:
+                    return WebSession(
+                        scan_id=scan_id,
+                        auth_type="oauth2",
+                        auth_error=(
+                            f"OAuth2 token request to {token_url} failed "
+                            f"(HTTP {resp.status_code}); no '{token_field}' returned."
+                        ),
+                    )
+        except Exception as exc:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type="oauth2",
+                auth_error=f"OAuth2 token request errored: {type(exc).__name__}.",
+            )
+        session = WebSession(
+            scan_id=scan_id,
+            headers={"Authorization": f"Bearer {token}"},
+            auth_type="oauth2",
         )
         self._save_session(session)
         return session

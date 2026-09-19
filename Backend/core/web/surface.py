@@ -54,25 +54,54 @@ def parse_json_object(body: Optional[str]) -> Optional[Dict[str, Any]]:
     return obj if isinstance(obj, dict) else None
 
 
+def is_graphql_body(obj: Any) -> bool:
+    """A GraphQL POST body: a ``query`` string alongside a ``variables`` object."""
+    return (
+        isinstance(obj, dict)
+        and isinstance(obj.get("query"), str)
+        and isinstance(obj.get("variables"), dict)
+    )
+
+
 def json_param_names(obj: Dict[str, Any]) -> List[str]:
     """
-    Top-level JSON keys whose value is a scalar — the injectable fields.
+    JSON keys whose value is a scalar — the injectable fields.
 
-    Nested objects/arrays are skipped here: injecting into a nested structure
-    needs a JSON-pointer model that a later increment can add. A key whose value
-    is a scalar is the common, high-value case (ids, search terms, filters).
+    For a GraphQL body the injectable inputs are the *variables*, not the
+    ``query``/``variables`` envelope, so this descends one level into
+    ``variables`` (Phase 22 GraphQL follow-on). For an ordinary body it returns
+    the top-level scalar keys; deeper nesting still needs a JSON-pointer model a
+    later increment can add.
     """
     if not isinstance(obj, dict):
         return []
+    if is_graphql_body(obj):
+        return [
+            k
+            for k, v in obj["variables"].items()
+            if isinstance(v, _SCALAR) and not isinstance(v, bool)
+        ]
     return [
         k for k, v in obj.items() if isinstance(v, _SCALAR) and not isinstance(v, bool)
     ]
 
 
 def inject_json(obj: Dict[str, Any], param: str, value: str) -> str:
-    """Return a JSON string copy of ``obj`` with ``param`` replaced by ``value``."""
+    """
+    Return a JSON string copy of ``obj`` with ``param`` set to ``value``.
+
+    A GraphQL variable (``param`` living inside the ``variables`` object) is set
+    there, so injection reaches the actual operation input rather than replacing
+    the envelope; otherwise the top-level key is set.
+    """
     clone = dict(obj)
-    clone[param] = value
+    variables = clone.get("variables")
+    if isinstance(variables, dict) and param in variables:
+        new_vars = dict(variables)
+        new_vars[param] = value
+        clone["variables"] = new_vars
+    else:
+        clone[param] = value
     return json.dumps(clone)
 
 

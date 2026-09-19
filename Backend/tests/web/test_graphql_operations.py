@@ -114,3 +114,50 @@ def test_enumerate_operations_from_introspection_schema():
     assert not any(o["name"].startswith("__") for o in ops)
     login = next(o for o in ops if o["name"] == "login")
     assert login["args"] == ["user", "pass"]
+
+
+# ── GraphQL variable injection (follow-on): variables are testable inputs ─────
+def test_json_param_names_descends_into_graphql_variables():
+    from core.web import surface
+
+    body = {
+        "query": "query op($id: String) { user(id: $id) { __typename } }",
+        "variables": {"id": "1", "limit": 10, "raw": True},
+    }
+    names = surface.json_param_names(body)
+    # the injectable inputs are the variables, not the query/variables envelope
+    assert set(names) == {"id", "limit"}  # bool 'raw' excluded
+    assert "query" not in names and "variables" not in names
+
+
+def test_inject_json_sets_graphql_variable_not_envelope():
+    import json as _json
+
+    from core.web import surface
+
+    body = {
+        "query": "query op($id: String){ user(id:$id){ __typename } }",
+        "variables": {"id": "1"},
+    }
+    out = _json.loads(surface.inject_json(body, "id", "PAYLOAD"))
+    assert out["variables"]["id"] == "PAYLOAD"
+    assert out["query"] == body["query"]  # envelope untouched
+
+
+def test_injection_engine_builds_graphql_variable_candidates():
+
+    from core.web.injection.engine import InjectionEngine
+
+    ie = InjectionEngine()
+    ie._origin_netloc = "t"
+    eps = [
+        {
+            "url": "http://t/graphql",
+            "method": "POST",
+            "request_content_type": "application/json",
+            "request_body": '{"query": "query op($id: String){ user(id:$id){ __typename } }", "variables": {"id": "1"}}',
+        }
+    ]
+    cands = ie._param_candidates("http://t/", eps, [])
+    json_c = [c for c in cands if c.get("kind") == "json"]
+    assert json_c and json_c[0]["param"] == "id"  # the variable, not "query"

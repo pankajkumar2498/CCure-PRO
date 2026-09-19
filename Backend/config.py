@@ -312,6 +312,32 @@ class WebScanConfig:
     OAST_SERVER: str = os.getenv("OAST_SERVER", "")
     OAST_TOKEN: str = os.getenv("OAST_TOKEN", "")
 
+    # CCure's *own* active OOB probes (core/web/oast) — blind SSRF, out-of-band
+    # command injection, blind XXE — are separate from nuclei's built-in
+    # interactsh handling above. They run only against a collaborator the
+    # operator controls (a self-hosted OAST server), never the public
+    # interact.sh, so they add no outbound-internet dependency and never send a
+    # target callback to a third party. With no self-hosted server configured
+    # they simply do not run, and the scan records the blind classes as
+    # actively unassessed rather than cleared.
+    OAST_ACTIVE_PROBES: bool = os.getenv("OAST_ACTIVE_PROBES", "True").lower() == "true"
+    # The collaborator's DNS zone (callbacks arrive as <token>.<domain>) and,
+    # where wildcard DNS is not available, an HTTP base for path-style callbacks
+    # (<http_url>/<token>). Either is enough to enable active probing; if unset,
+    # the domain is derived from OAST_SERVER's host.
+    OAST_DOMAIN: str = os.getenv("OAST_DOMAIN", "")
+    OAST_HTTP_URL: str = os.getenv("OAST_HTTP_URL", "")
+    # Bounds for the active probe pass. Poll timeout caps how long the scan
+    # waits for callbacks after sending payloads; the loop exits early once
+    # every payload has been seen, and honours scan cancellation throughout.
+    OAST_POLL_TIMEOUT_S: int = int(os.getenv("OAST_POLL_TIMEOUT_S", "30"))
+    OAST_POLL_INTERVAL_S: float = float(os.getenv("OAST_POLL_INTERVAL_S", "2"))
+    OAST_RATE_LIMIT: int = int(os.getenv("OAST_RATE_LIMIT", "5"))
+    OAST_MAX_TARGETS: int = int(os.getenv("OAST_MAX_TARGETS", "25"))
+    # Ports for a collaborator CCure runs itself (no-egress deployments).
+    OAST_RECEIVER_HTTP_PORT: int = int(os.getenv("OAST_RECEIVER_HTTP_PORT", "0"))
+    OAST_RECEIVER_DNS_PORT: int = int(os.getenv("OAST_RECEIVER_DNS_PORT", "0"))
+
     # ── Nuclei Specific ───────────────────────────────────────────────────────
     NUCLEI_SEVERITY: str = os.getenv("NUCLEI_SEVERITY", "medium,high,critical")
     NUCLEI_CONCURRENCY: int = int(os.getenv("NUCLEI_CONCURRENCY", "25"))

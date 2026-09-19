@@ -201,6 +201,10 @@ class WebScanOptionsSchema(BaseModel):
     enable_injection: bool = True
     enable_access_control: bool = True
     enable_api_scan: bool = True
+    # Phase 9 active OOB probing. Runs only when a self-hosted OAST collaborator
+    # is configured (OAST_SERVER / OAST_DOMAIN / OAST_HTTP_URL); this flag lets a
+    # client turn the pass off even when one is.
+    enable_oast: bool = True
     # Phase 5 API import knobs.
     api_spec_url: str | None = Field(
         default=None, description="URL of an OpenAPI/Swagger spec to import."

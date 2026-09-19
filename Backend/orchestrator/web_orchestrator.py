@@ -43,6 +43,7 @@ TOOL_PURPOSE = {
     "access_control": "Authorization testing (IDOR, horizontal/vertical privilege escalation)",
     "http_methods": "HTTP method/verb security testing (TRACE, method-based auth bypass)",
     "js_deps": "Vulnerable JavaScript dependency detection (OSV npm intelligence)",
+    "oast": "Out-of-band blind detection (blind SSRF, OOB command injection, blind XXE) via a self-hosted collaborator",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -1413,6 +1414,105 @@ class WebScanOrchestrator:
                 except Exception as exc:
                     log.warning("[DETECT] JS-dependency engine failed: %s", exc)
                     coverage.failed("js_deps", exc)
+
+            # 2g. Out-of-band (OAST) blind detection (Phase 9)
+            #
+            # Blind SSRF, out-of-band command injection and blind XXE leave no
+            # trace in the HTTP response — the only evidence is a callback the
+            # payload causes the target to make to a collaborator the scanner
+            # controls. This stage runs CCure's own active OOB probes, and only
+            # against a *self-hosted* collaborator (build_oast never selects the
+            # public interact.sh), so it adds no outbound-internet dependency and
+            # sends no target callback to a third party. With no collaborator
+            # configured it is skipped with a stated caveat, never silently
+            # treated as having cleared those classes.
+            if options.get("enable_oast", True):
+                try:
+                    from core.web.oast import OastEngine, build_oast
+
+                    built = build_oast(scan_id=web_scan_id)
+                    if built is None:
+                        coverage.skipped(
+                            "oast",
+                            "No self-hosted OAST collaborator is configured "
+                            "(OAST_SERVER / OAST_DOMAIN / OAST_HTTP_URL), so blind "
+                            "SSRF, out-of-band command injection and blind XXE were "
+                            "not actively probed. Set a self-hosted collaborator to "
+                            "assess them without depending on the public interact.sh.",
+                        )
+                    else:
+                        oast_session, oast_client = built
+                        oast = OastEngine(
+                            oast_session,
+                            oast_client,
+                            rate_limit=WebScanConfig.OAST_RATE_LIMIT,
+                            max_targets=WebScanConfig.OAST_MAX_TARGETS,
+                            poll_timeout_s=WebScanConfig.OAST_POLL_TIMEOUT_S,
+                            poll_interval_s=WebScanConfig.OAST_POLL_INTERVAL_S,
+                        )
+                        if coverage.check(oast, "oast"):
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {
+                                    "status": "running",
+                                    "percentage": 99,
+                                    "message": "Out-of-band (OAST) blind detection…",
+                                    "total_findings": len(all_findings),
+                                },
+                            )
+
+                            def _oast_cancelled() -> bool:
+                                return self._scan_is_cancelled(web_scan_id)
+
+                            def _oast_progress(msg: str) -> None:
+                                _emit_web_progress(
+                                    web_scan_id,
+                                    "detect",
+                                    {
+                                        "status": "running",
+                                        "percentage": 99,
+                                        "message": msg,
+                                    },
+                                )
+
+                            try:
+                                oast_result = await oast.scan(
+                                    target_url=target_url,
+                                    endpoints=endpoints,
+                                    forms=forms,
+                                    auth_headers=auth_headers or None,
+                                    auth_cookies=auth_cookies or None,
+                                    options=options,
+                                    progress_cb=_oast_progress,
+                                    cancel_cb=_oast_cancelled,
+                                )
+                                oast_findings = oast_result.get("findings", [])
+                                all_findings.extend(oast_findings)
+                                st = oast_result.get("stats", {})
+                                coverage.ran(
+                                    "oast",
+                                    (
+                                        f"{st.get('parameters_probed', 0)} parameter(s) "
+                                        f"probed, {st.get('payloads_sent', 0)} OOB "
+                                        f"payload(s) sent, {st.get('interactions', 0)} "
+                                        f"interaction(s) correlated in "
+                                        f"{st.get('duration_s', 0)}s; "
+                                        f"{len(oast_findings)} finding(s). Evidence is "
+                                        "a proven out-of-band callback, not inference."
+                                    ),
+                                )
+                            finally:
+                                # Cleanup: forget every token this scan minted.
+                                try:
+                                    oast_session.close()
+                                except Exception:
+                                    pass
+                except Exception as exc:
+                    log.warning("[DETECT] OAST engine failed: %s", exc)
+                    coverage.failed("oast", exc)
+            else:
+                coverage.skipped("oast", "Disabled in scan options")
 
             # 3. Custom Security Header Checks
             _emit_web_progress(

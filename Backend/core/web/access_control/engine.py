@@ -332,6 +332,51 @@ class AccessControlEngine:
                         )
             if len(cands) >= self.max_candidates:
                 break
+
+        # JSON request-body object identifiers (Phase 22, Item 7). A modern app
+        # references the object being accessed in a JSON body ({"docId": 100}),
+        # not only in the path/query — so an IDOR there was invisible. Each
+        # identifier-looking scalar field becomes a candidate the cross-identity
+        # test can swap and replay as a POST body.
+        from core.web.surface import is_json_request, parse_json_object
+
+        for e in endpoints or []:
+            if len(cands) >= self.max_candidates:
+                break
+            if not isinstance(e, dict) or not is_json_request(e):
+                continue
+            url = e.get("url", "")
+            if not url or (
+                self.same_origin_only and urlparse(url).netloc != self._origin
+            ):
+                continue
+            body_obj = parse_json_object(e.get("request_body"))
+            if not body_obj:
+                continue
+            for name, value in body_obj.items():
+                if isinstance(value, bool) or not isinstance(value, (str, int)):
+                    continue
+                kind = _is_identifier(str(value))
+                if kind and (
+                    name.lower() in _ID_PARAM_NAMES
+                    or kind != "numeric"
+                    or len(str(value)) >= 2
+                ):
+                    key = ("json", url, name)
+                    if key not in seen:
+                        seen.add(key)
+                        cands.append(
+                            {
+                                "url": url,
+                                "loc": "json",
+                                "seg_index": None,
+                                "id_value": str(value),
+                                "id_kind": kind,
+                                "param": name,
+                                "body_obj": body_obj,
+                                "method": str(e.get("method") or "POST").upper(),
+                            }
+                        )
         return cands[: self.max_candidates]
 
     def _swap(self, cand, new_id) -> str:
@@ -358,6 +403,31 @@ class AccessControlEngine:
             self.stats["requests"] += 1
             return 0, ""
 
+    async def _post_json(self, client, url, obj) -> tuple[int, str]:
+        await self._throttle()
+        try:
+            r = await client.post(url, json=obj)
+            self.stats["requests"] += 1
+            return r.status_code, r.text or ""
+        except Exception:
+            self.stats["requests"] += 1
+            return 0, ""
+
+    async def _fetch(self, client, cand, id_value=None) -> tuple[int, str]:
+        """
+        Fetch the candidate's resource for a given identity, optionally
+        overriding its identifier. Handles path/query (GET a swapped URL) and
+        JSON body (POST the body with the field swapped) uniformly, so the
+        cross-identity IDOR test works on JSON APIs as well as URL parameters.
+        """
+        if cand.get("loc") == "json":
+            body = dict(cand.get("body_obj") or {})
+            if id_value is not None:
+                body[cand["param"]] = id_value
+            return await self._post_json(client, cand["url"], body)
+        url = cand["url"] if id_value is None else self._swap(cand, id_value)
+        return await self._get(client, url)
+
     @staticmethod
     def _denied(status: int, text: str) -> bool:
         if status in _DENY_STATUS or status in (301, 302, 303, 307, 308):
@@ -378,17 +448,19 @@ class AccessControlEngine:
     async def _test_horizontal(self, clients, owner_label, peers, cand) -> List[dict]:
         out: List[dict] = []
         owner_c = clients[owner_label]
-        url = cand["url"]
 
-        o_status, o_body = await self._get(owner_c, url)
+        # Gate 1: the owner can see their own resource (path/query URL or JSON
+        # body — see _fetch).
+        o_status, o_body = await self._fetch(owner_c, cand)
         if not self._substantive(o_status, o_body):
             return out  # owner cannot see it → not an owned resource to protect
 
         # Gate 2: resource-specific? A bogus id must return *different* content,
         # otherwise the endpoint ignores the id (generic page) and any match is
         # meaningless.
-        bogus_url = self._swap(cand, _bogus(cand["id_value"], cand["id_kind"]))
-        b_status, b_body = await self._get(owner_c, bogus_url)
+        b_status, b_body = await self._fetch(
+            owner_c, cand, _bogus(cand["id_value"], cand["id_kind"])
+        )
         if (
             self._substantive(b_status, b_body)
             and self._similar(o_body, b_body) >= self.similarity_same
@@ -396,7 +468,7 @@ class AccessControlEngine:
             return out  # generic endpoint — same content for any id
 
         # Gate 3: protected? Anonymous must be denied, else it is simply public.
-        an_status, an_body = await self._get(clients["__anon__"], url)
+        an_status, an_body = await self._fetch(clients["__anon__"], cand)
         anon_denied = self._denied(an_status, an_body) or not self._substantive(
             an_status, an_body
         )
@@ -414,7 +486,7 @@ class AccessControlEngine:
         # resource-specific content? That is the authorization bypass.
         for peer in peers:
             pc = clients[peer["label"]]
-            p_status, p_body = await self._get(pc, url)
+            p_status, p_body = await self._fetch(pc, cand)
             if (
                 self._substantive(p_status, p_body)
                 and self._similar(p_body, o_body) >= self.similarity_same
@@ -569,7 +641,15 @@ class AccessControlEngine:
             "cwe_id": cwe,
             "matched_at": url,
             "request_url": url,
-            "request_method": "GET",
+            "request_method": cand.get("method", "GET"),
+            "request_body": (
+                __import__("json").dumps(cand["body_obj"])
+                if cand.get("loc") == "json" and cand.get("body_obj")
+                else None
+            ),
+            "request_content_type": (
+                "application/json" if cand.get("loc") == "json" else None
+            ),
             "payload_used": f"identifier '{ident}' accessed as '{source_attacker}'",
             "request_evidence": (
                 f"technique={technique}; source_user={source_attacker}; "

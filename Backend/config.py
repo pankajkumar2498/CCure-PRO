@@ -267,6 +267,26 @@ class WebScanConfig:
     SUBFINDER_BINARY: str = os.getenv("SUBFINDER_BINARY", "subfinder")
     FFUF_BINARY: str = os.getenv("FFUF_BINARY", "ffuf")
     FFUF_WORDLIST: str = os.getenv("FFUF_WORDLIST", "/opt/wordlists/common.txt")
+    # ── ffuf adaptive content discovery (Phase 11) ─────────────────────────────
+    # Discovery depth scales with how much the crawl already mapped, so a tiny
+    # app does not spend ~8 minutes brute-forcing a full wordlist at the scan
+    # rate limit. The small tier uses a curated high-value list shipped in the
+    # repo that still covers every sensitive-file check, so the reduction is in
+    # the long tail of unlikely paths, not in the findings that matter — and the
+    # tier chosen is recorded on the scan so coverage is never reduced silently.
+    FFUF_WORDLIST_SMALL: str = os.getenv(
+        "FFUF_WORDLIST_SMALL",
+        str(BACKEND_DIR / "data" / "wordlists" / "web_discovery_small.txt"),
+    )
+    #: Deep-tier wordlist; empty falls back to FFUF_WORDLIST.
+    FFUF_WORDLIST_DEEP: str = os.getenv("FFUF_WORDLIST_DEEP", "")
+    #: Crawl-endpoint thresholds that pick the tier (<=small, <=medium, else deep).
+    FFUF_SMALL_MAX_ENDPOINTS: int = int(os.getenv("FFUF_SMALL_MAX_ENDPOINTS", "5"))
+    FFUF_MEDIUM_MAX_ENDPOINTS: int = int(os.getenv("FFUF_MEDIUM_MAX_ENDPOINTS", "50"))
+    #: Per-tier word caps (0 = use the whole wordlist).
+    FFUF_MAX_WORDS_SMALL: int = int(os.getenv("FFUF_MAX_WORDS_SMALL", "0"))
+    FFUF_MAX_WORDS_STANDARD: int = int(os.getenv("FFUF_MAX_WORDS_STANDARD", "0"))
+    FFUF_MAX_WORDS_DEEP: int = int(os.getenv("FFUF_MAX_WORDS_DEEP", "0"))
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────
@@ -274,6 +294,12 @@ class WebScanConfig:
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
     MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
     CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "3"))
+    #: Navigation-start rate ceiling for the crawler (pages/sec), shared across
+    #: all concurrent workers so concurrency fills the pipeline up to this limit
+    #: rather than exceeding the target's tolerance. Separate from
+    #: SCAN_RATE_LIMIT (fuzzing/probes) because a page navigation is ordinary
+    #: browsing, not a burst of guesses.
+    CRAWL_RATE_LIMIT: int = int(os.getenv("CRAWL_RATE_LIMIT", "10"))
     #: Per-page budget for client-side rendering to settle after the document
     #: loads. Bounded on purpose: an application holding a websocket or polling
     #: open never reaches network idle, and waiting the full page timeout on

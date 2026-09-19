@@ -618,12 +618,29 @@ class WebScanOrchestrator:
             try:
                 from core.web.crawling.browser import PlaywrightCrawler
 
+                # Bounded concurrency (Phase 11). Honours a per-scan override,
+                # else the configured default. The rate limit is WAF-aware and
+                # shared across workers, so concurrency fills the pipeline up to
+                # the ceiling rather than exceeding the target's tolerance.
+                crawl_conc = int(
+                    options.get("crawl_concurrency") or WebScanConfig.CRAWL_CONCURRENCY
+                )
+                crawl_rate = (
+                    WebScanConfig.STEALTH_RATE_LIMIT
+                    if waf_detected
+                    else WebScanConfig.CRAWL_RATE_LIMIT
+                )
                 crawler = PlaywrightCrawler(
                     max_depth=scan_scope.get(
                         "max_depth", WebScanConfig.MAX_CRAWL_DEPTH
                     ),
                     max_urls=WebScanConfig.MAX_CRAWL_URLS,
+                    concurrency=crawl_conc,
+                    rate_limit=crawl_rate,
                 )
+
+                def _crawl_cancelled() -> bool:
+                    return self._scan_is_cancelled(web_scan_id)
 
                 def _crawl_progress(pages: int, endpoints: int) -> None:
                     _emit_web_progress(
@@ -648,6 +665,7 @@ class WebScanOrchestrator:
                     progress_cb=_crawl_progress,
                     auth_config=crawl_auth_cfg,
                     reauth_cb=reauth_cb,
+                    cancel_cb=_crawl_cancelled,
                 )
                 all_endpoints.extend(crawl_result.endpoints)
                 all_endpoints.extend(crawl_result.js_endpoints)
@@ -657,6 +675,8 @@ class WebScanOrchestrator:
                     "soft_404s_discarded": len(crawl_result.soft_404s),
                     "off_scope_blocked": len(crawl_result.out_of_scope),
                     "auth_events": list(crawl_result.auth_events),
+                    "concurrency": crawl_conc,
+                    "rate_limit": crawl_rate,
                 }
                 # A target that redirects the browser to an arbitrary external
                 # host is an open redirect. The crawler has to detect this to
@@ -676,10 +696,15 @@ class WebScanOrchestrator:
 
                 ffuf = FfufWrapper()
                 if ffuf.is_available():
-                    # ffuf runs a whole wordlist as one subprocess and can take
-                    # several minutes on its own — the single longest unlit
-                    # stretch of the CRAWL phase. Announce it so the phase does
-                    # not read as frozen while content discovery is running.
+                    # Adaptive content discovery (Phase 11). The tier scales with
+                    # how much the crawl already mapped: a tiny surface gets the
+                    # curated high-value list (still covering every sensitive-file
+                    # check) instead of an ~8-minute full brute force; a large
+                    # surface gets deep discovery. The tier and word count are
+                    # recorded so a reduced pass is never mistaken for a clean
+                    # one.
+                    ffuf_tier = ffuf.resolve_tier(len(all_endpoints))
+                    ffuf_wordlist, ffuf_max_words = ffuf.wordlist_for_tier(ffuf_tier)
                     _emit_web_progress(
                         web_scan_id,
                         "crawl",
@@ -688,7 +713,7 @@ class WebScanOrchestrator:
                             "percentage": 60,
                             "message": (
                                 f"Crawl found {len(all_endpoints)} endpoint(s); "
-                                f"brute-forcing content paths with ffuf…"
+                                f"content discovery with ffuf ({ffuf_tier} tier)…"
                             ),
                             "total_endpoints": len(all_endpoints),
                         },
@@ -702,7 +727,21 @@ class WebScanOrchestrator:
                         target=target_url,
                         rate_limit=rate,
                         auth_headers=auth_headers or None,
+                        wordlist=ffuf_wordlist,
+                        max_words=ffuf_max_words,
+                        tier=ffuf_tier,
                     )
+                    _fst = ffuf_result.get("stats", {})
+                    crawl_stats["ffuf_tier"] = ffuf_tier
+                    crawl_stats["ffuf_words"] = _fst.get("words")
+                    if ffuf_tier == "small":
+                        crawl_stats["ffuf_caveat"] = (
+                            f"Content discovery used the reduced high-value "
+                            f"wordlist ({_fst.get('words')} paths, covering every "
+                            f"sensitive-file check) because the crawl mapped only "
+                            f"{len(all_endpoints)} endpoint(s). The exhaustive "
+                            f"wordlist was not run; raise the scan depth to force it."
+                        )
                     # Convert discovered paths to endpoints
                     for path_info in ffuf_result.get("discovered_paths", []):
                         all_endpoints.append(

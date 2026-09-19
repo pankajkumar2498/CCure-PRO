@@ -13,11 +13,12 @@ This crawler handles:
   - Scope enforcement (stay within target domain/path)
 """
 
+import asyncio
 import hashlib
 import logging
 import re
+import time
 import uuid
-from collections import deque
 from typing import Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse
 
@@ -135,11 +136,14 @@ class PlaywrightCrawler:
         timeout: int | None = None,
         concurrency: int | None = None,
         settle_timeout: int | None = None,
+        rate_limit: int | None = None,
     ):
         self.max_depth = max_depth or WebScanConfig.MAX_CRAWL_DEPTH
         self.max_urls = max_urls or WebScanConfig.MAX_CRAWL_URLS
         self.timeout = timeout or WebScanConfig.PLAYWRIGHT_TIMEOUT
         self.concurrency = concurrency or WebScanConfig.CRAWL_CONCURRENCY
+        #: Shared navigation-start rate ceiling across all concurrent workers.
+        self.rate_limit = rate_limit or WebScanConfig.CRAWL_RATE_LIMIT
         #: How long to wait for a page to go quiet after the document loads,
         #: bounded so a page that never goes quiet cannot stall the crawl.
         self.settle_timeout = settle_timeout or WebScanConfig.CRAWL_SETTLE_TIMEOUT
@@ -154,6 +158,7 @@ class PlaywrightCrawler:
         progress_cb=None,
         auth_config: dict | None = None,
         reauth_cb=None,
+        cancel_cb=None,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -201,8 +206,6 @@ class PlaywrightCrawler:
             return result
 
         visited: set[str] = set()
-        queue: deque = deque()
-        queue.append((start_url, 0))  # (url, depth)
 
         try:
             async with async_playwright() as pw:
@@ -272,12 +275,10 @@ class PlaywrightCrawler:
 
                 await context.route("**/*", _scope_guard)
 
-                # Intercept network requests for API discovery
+                # Intercept network requests for API discovery (attached
+                # per-page below, so every concurrent worker's page contributes).
                 network_apis: list[dict] = []
 
-                page = await context.new_page()
-
-                # Listen for API calls
                 async def _on_response(response):
                     try:
                         url = response.url
@@ -296,221 +297,271 @@ class PlaywrightCrawler:
                     except Exception:
                         pass
 
-                page.on("response", _on_response)
-
                 # Learn what a missing page looks like before trusting any 200.
-                soft_404 = await self._soft_404_fingerprint(page, start_url)
+                fp_page = await context.new_page()
+                fp_page.on("response", _on_response)
+                soft_404 = await self._soft_404_fingerprint(fp_page, start_url)
+                try:
+                    await fp_page.close()
+                except Exception:
+                    pass
                 if soft_404:
                     log.info(
                         "Target answers unknown paths with 200 — soft-404 baseline "
                         "recorded; pages matching it will not be reported as endpoints"
                     )
 
-                while queue and len(visited) < self.max_urls:
-                    url, depth = queue.popleft()
+                # ── Bounded-concurrency crawl (Phase 11) ──────────────────────
+                # A level-synchronous BFS: each wave processes up to
+                # ``concurrency`` URLs at once, each in its own page (so at most
+                # ``concurrency`` pages exist at any moment — the browser cannot
+                # be exhausted), and every navigation passes a shared rate
+                # limiter. A URL is added to ``visited`` before it is awaited, so
+                # two workers never crawl the same URL. The frontier is ordered
+                # deterministically each wave, so the set of pages visited — and
+                # therefore the findings — does not depend on task scheduling.
+                sem = asyncio.Semaphore(max(1, int(self.concurrency)))
+                min_interval = 1.0 / max(1, int(self.rate_limit))
+                rl = {"last": 0.0}
+                rl_lock = asyncio.Lock()
+                reauth_lock = asyncio.Lock()
+                state = {"auth_watch": _auth_watch, "reauth_gen": 0}
 
-                    # Normalize URL
-                    url = self._normalize_url(url)
-                    if not url or url in visited:
-                        continue
-                    if depth > self.max_depth:
-                        continue
-                    if not self._is_in_scope(url, allowed_domains, exclude_compiled):
-                        continue
-                    if self._should_skip_url(url):
-                        continue
+                async def _throttle():
+                    async with rl_lock:
+                        now = time.monotonic()
+                        wait = min_interval - (now - rl["last"])
+                        if wait > 0:
+                            await asyncio.sleep(wait)
+                        rl["last"] = time.monotonic()
 
-                    visited.add(url)
-                    result.pages_visited += 1
-
-                    # Surface live crawl progress every few pages. The crawl can
-                    # run for many minutes on a large or slow site; without this
-                    # the phase looks frozen between its start and end events.
-                    if progress_cb is not None and result.pages_visited % 3 == 0:
-                        try:
-                            progress_cb(
-                                result.pages_visited,
-                                len(result.endpoints) + len(result.js_endpoints),
-                            )
-                        except Exception:
-                            pass
-
-                    blocked_before = len(blocked_navigations)
+                def _cancelled() -> bool:
                     try:
-                        # Wait for the document, then give the page a bounded
-                        # moment to settle.
-                        #
-                        # Waiting on "networkidle" for the full page timeout
-                        # stalls on any application that holds a connection open
-                        # — a websocket, a polling heartbeat, an analytics
-                        # beacon. Network idle simply never arrives, so every
-                        # page costs the entire timeout, and a few hundred URLs
-                        # turn a crawl into an overnight job. The settle wait
-                        # below gives client-rendered content time to appear and
-                        # then moves on regardless.
-                        response = await page.goto(
-                            url, wait_until="domcontentloaded", timeout=self.timeout
-                        )
-                        try:
-                            await page.wait_for_load_state(
-                                "networkidle", timeout=self.settle_timeout
-                            )
-                        except Exception:
-                            pass  # Busy page — crawl what has rendered so far.
+                        return bool(cancel_cb and cancel_cb())
+                    except Exception:
+                        return False
 
-                        # Where the browser actually ended up. Redirects mean the
-                        # requested URL and the loaded document need not share an
-                        # origin, a path, or anything else — and everything below
-                        # is about the document, so it must be keyed to this.
-                        final_url = self._normalize_url(page.url) or url
-                        visited.add(final_url)
-
-                        # Scope is re-checked *after* navigation. A target with an
-                        # open redirect will otherwise walk the crawler onto a
-                        # third-party site, which is both outside the authorisation
-                        # this scan has and the source of the fabricated endpoints
-                        # below.
-                        if not self._is_in_scope(
-                            final_url, allowed_domains, exclude_compiled
-                        ):
-                            log.warning(
-                                "Redirect left scope: %s -> %s — not crawled",
-                                url[:100],
-                                final_url[:100],
-                            )
-                            result.out_of_scope.append(
-                                {
-                                    "from": url,
-                                    "to": final_url,
-                                    "status": response.status if response else None,
-                                }
-                            )
-                            continue
-
-                        # Extract page content
-                        content = await page.content()
-
-                        # Authenticated-crawl session-loss detection. If this
-                        # page is a login/401/403 while we hold a session, the
-                        # session dropped; re-authenticate (bounded) and re-crawl
-                        # this URL rather than record the login page as surface.
-                        if _auth_watch:
-                            from core.web.auth.session_manager import WebSession
-
-                            status_code = response.status if response else 0
-                            if WebSession.looks_unauthenticated(
-                                status_code, final_url, content, auth_config or {}
-                            ):
-                                fresh = None
-                                try:
-                                    fresh = await reauth_cb()
-                                except Exception as exc:
-                                    log.debug("re-auth callback error: %s", exc)
-                                if fresh:
-                                    try:
-                                        await context.clear_cookies()
-                                        await context.add_cookies(fresh)
-                                    except Exception as exc:
-                                        log.debug(
-                                            "re-auth cookie apply failed: %s", exc
-                                        )
-                                    result.auth_events.append(
-                                        {"url": final_url, "event": "reauthenticated"}
-                                    )
-                                    log.info(
-                                        "Session lost at %s — re-authenticated, "
-                                        "re-crawling",
-                                        final_url[:100],
-                                    )
-                                    visited.discard(final_url)
-                                    visited.discard(url)
-                                    queue.append((url, depth))
-                                    continue
-                                # Re-auth exhausted/failed: record once and stop
-                                # watching so the crawl finishes (anonymously).
-                                _auth_watch = False
-                                result.auth_events.append(
-                                    {
-                                        "url": final_url,
-                                        "event": "session_lost_unrecovered",
-                                    }
+                async def _process(url: str, depth: int) -> dict:
+                    out: dict = {"links": [], "requeue": None}
+                    async with sem:
+                        if _cancelled():
+                            return out
+                        result.pages_visited += 1
+                        if progress_cb is not None and result.pages_visited % 3 == 0:
+                            try:
+                                progress_cb(
+                                    result.pages_visited,
+                                    len(result.endpoints) + len(result.js_endpoints),
                                 )
+                            except Exception:
+                                pass
+
+                        gen = state["reauth_gen"]
+                        page = await context.new_page()
+                        page.on("response", _on_response)
+                        blocked_before = len(blocked_navigations)
+                        try:
+                            await _throttle()
+                            response = await page.goto(
+                                url,
+                                wait_until="domcontentloaded",
+                                timeout=self.timeout,
+                            )
+                            try:
+                                await page.wait_for_load_state(
+                                    "networkidle", timeout=self.settle_timeout
+                                )
+                            except Exception:
+                                pass  # Busy page — crawl what has rendered so far.
+
+                            final_url = self._normalize_url(page.url) or url
+                            visited.add(final_url)
+
+                            if not self._is_in_scope(
+                                final_url, allowed_domains, exclude_compiled
+                            ):
                                 log.warning(
-                                    "Session lost at %s and could not be "
-                                    "re-established — remaining pages are "
-                                    "crawled unauthenticated",
+                                    "Redirect left scope: %s -> %s — not crawled",
+                                    url[:100],
                                     final_url[:100],
                                 )
-
-                        # A path the application does not have. Recording it would
-                        # invent attack surface: every downstream tool would then
-                        # test a URL that does not exist, and the report would
-                        # describe an application larger than the real one.
-                        if (
-                            soft_404
-                            and final_url != start_url
-                            and not self._has_route_fragment(final_url)
-                            and self._content_fingerprint(content) == soft_404
-                        ):
-                            result.soft_404s.append(final_url)
-                            continue
-
-                        # Record endpoint. A client-side route has no HTTP
-                        # response of its own — its status and headers belong to
-                        # the shell document — so those fields are left empty
-                        # rather than filled with the shell's, which would state
-                        # something about this route that was never observed.
-                        resp_headers = dict(response.headers) if response else {}
-                        endpoint = {
-                            "url": final_url,
-                            "method": "GET",
-                            "content_type": resp_headers.get("content-type", ""),
-                            "response_code": response.status if response else None,
-                            "response_size": len(content),
-                            "source": "crawler" if response else "crawler_spa_route",
-                            "parameters": {},
-                            "response_headers": resp_headers,
-                        }
-
-                        # Technology detection from headers
-                        if resp_headers:
-                            self._detect_tech_from_headers(resp_headers, result)
-
-                        result.endpoints.append(endpoint)
-
-                        # Relative links are resolved against the document that
-                        # contained them, never against the URL that was
-                        # requested to reach it.
-                        links = await self._extract_links(page, final_url)
-                        for link in links:
-                            if link not in visited:
-                                queue.append((link, depth + 1))
-
-                        # Extract forms
-                        forms = await self._extract_forms(page, final_url)
-                        result.forms.extend(forms)
-
-                        # Extract JS endpoints
-                        js_eps = self._extract_js_endpoints(content, final_url)
-                        result.js_endpoints.extend(js_eps)
-
-                    except Exception as exc:
-                        # A navigation the scope guard aborted is a recorded
-                        # outcome, not a crawl failure — reporting it as an error
-                        # would bury an open redirect in the noise of timeouts.
-                        if len(blocked_navigations) > blocked_before:
-                            for blocked in blocked_navigations[blocked_before:]:
-                                log.warning(
-                                    "Blocked off-scope navigation: %s -> %s",
-                                    url[:100],
-                                    blocked["url"][:100],
-                                )
                                 result.out_of_scope.append(
-                                    {"from": url, "to": blocked["url"], "blocked": True}
+                                    {
+                                        "from": url,
+                                        "to": final_url,
+                                        "status": (
+                                            response.status if response else None
+                                        ),
+                                    }
                                 )
-                        else:
-                            log.debug("Crawl error for %s: %s", url[:100], exc)
-                            result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
+                                return out
+
+                            content = await page.content()
+
+                            # Authenticated-crawl session-loss detection,
+                            # serialized so one logout triggers at most one
+                            # re-authentication across all concurrent workers.
+                            if state["auth_watch"]:
+                                from core.web.auth.session_manager import WebSession
+
+                                status_code = response.status if response else 0
+                                if WebSession.looks_unauthenticated(
+                                    status_code, final_url, content, auth_config or {}
+                                ):
+                                    async with reauth_lock:
+                                        if not state["auth_watch"]:
+                                            pass
+                                        elif state["reauth_gen"] != gen:
+                                            # Another worker re-authenticated
+                                            # after this page loaded — our view
+                                            # is stale; re-crawl rather than
+                                            # re-authenticate a second time.
+                                            visited.discard(final_url)
+                                            visited.discard(url)
+                                            out["requeue"] = (url, depth)
+                                            return out
+                                        else:
+                                            fresh = None
+                                            try:
+                                                fresh = await reauth_cb()
+                                            except Exception as exc:
+                                                log.debug(
+                                                    "re-auth callback error: %s", exc
+                                                )
+                                            if fresh:
+                                                try:
+                                                    await context.clear_cookies()
+                                                    await context.add_cookies(fresh)
+                                                except Exception as exc:
+                                                    log.debug(
+                                                        "re-auth cookie apply "
+                                                        "failed: %s",
+                                                        exc,
+                                                    )
+                                                state["reauth_gen"] += 1
+                                                result.auth_events.append(
+                                                    {
+                                                        "url": final_url,
+                                                        "event": "reauthenticated",
+                                                    }
+                                                )
+                                                log.info(
+                                                    "Session lost at %s — "
+                                                    "re-authenticated, re-crawling",
+                                                    final_url[:100],
+                                                )
+                                                visited.discard(final_url)
+                                                visited.discard(url)
+                                                out["requeue"] = (url, depth)
+                                                return out
+                                            state["auth_watch"] = False
+                                            result.auth_events.append(
+                                                {
+                                                    "url": final_url,
+                                                    "event": (
+                                                        "session_lost_unrecovered"
+                                                    ),
+                                                }
+                                            )
+                                            log.warning(
+                                                "Session lost at %s and could not "
+                                                "be re-established — remaining "
+                                                "pages are crawled unauthenticated",
+                                                final_url[:100],
+                                            )
+
+                            if (
+                                soft_404
+                                and final_url != start_url
+                                and not self._has_route_fragment(final_url)
+                                and self._content_fingerprint(content) == soft_404
+                            ):
+                                result.soft_404s.append(final_url)
+                                return out
+
+                            resp_headers = dict(response.headers) if response else {}
+                            endpoint = {
+                                "url": final_url,
+                                "method": "GET",
+                                "content_type": resp_headers.get("content-type", ""),
+                                "response_code": response.status if response else None,
+                                "response_size": len(content),
+                                "source": (
+                                    "crawler" if response else "crawler_spa_route"
+                                ),
+                                "parameters": {},
+                                "response_headers": resp_headers,
+                            }
+                            if resp_headers:
+                                self._detect_tech_from_headers(resp_headers, result)
+                            result.endpoints.append(endpoint)
+
+                            links = await self._extract_links(page, final_url)
+                            for link in links:
+                                if link not in visited:
+                                    out["links"].append((link, depth + 1))
+
+                            forms = await self._extract_forms(page, final_url)
+                            result.forms.extend(forms)
+
+                            js_eps = self._extract_js_endpoints(content, final_url)
+                            result.js_endpoints.extend(js_eps)
+
+                        except Exception as exc:
+                            if len(blocked_navigations) > blocked_before:
+                                for blocked in blocked_navigations[blocked_before:]:
+                                    log.warning(
+                                        "Blocked off-scope navigation: %s -> %s",
+                                        url[:100],
+                                        blocked["url"][:100],
+                                    )
+                                    result.out_of_scope.append(
+                                        {
+                                            "from": url,
+                                            "to": blocked["url"],
+                                            "blocked": True,
+                                        }
+                                    )
+                            else:
+                                log.debug("Crawl error for %s: %s", url[:100], exc)
+                                result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
+                        finally:
+                            try:
+                                await page.close()
+                            except Exception:
+                                pass
+                        return out
+
+                frontier: list = [(start_url, 0)]
+                while frontier and len(visited) < self.max_urls and not _cancelled():
+                    batch: list = []
+                    for u, d in frontier:
+                        if len(visited) >= self.max_urls:
+                            break
+                        nu = self._normalize_url(u)
+                        if not nu or nu in visited:
+                            continue
+                        if d > self.max_depth:
+                            continue
+                        if not self._is_in_scope(nu, allowed_domains, exclude_compiled):
+                            continue
+                        if self._should_skip_url(nu):
+                            continue
+                        visited.add(nu)
+                        batch.append((nu, d))
+                    if not batch:
+                        break
+                    outs = await asyncio.gather(
+                        *[_process(u, d) for u, d in batch],
+                        return_exceptions=True,
+                    )
+                    nxt: list = []
+                    for o in outs:
+                        if isinstance(o, dict):
+                            nxt.extend(o.get("links") or [])
+                            if o.get("requeue"):
+                                nxt.append(o["requeue"])
+                    frontier = self._order_frontier(nxt)
 
                 # Add network-intercepted API calls
                 result.js_endpoints.extend(network_apis)
@@ -524,6 +575,16 @@ class PlaywrightCrawler:
         # Deduplicate endpoints
         result.endpoints = self._deduplicate_endpoints(result.endpoints)
         result.js_endpoints = self._deduplicate_endpoints(result.js_endpoints)
+        # Deterministic output order — concurrency must not change which
+        # findings a report shows or the order downstream engines see them.
+        result.endpoints.sort(key=lambda e: (e.get("url") or ""))
+        result.js_endpoints.sort(key=lambda e: (e.get("url") or ""))
+        result.forms.sort(
+            key=lambda f: (
+                f.get("action") or f.get("url") or "",
+                str(f.get("method") or ""),
+            )
+        )
 
         log.info(
             "Crawl complete: %d pages visited, %d endpoints, %d forms, "
@@ -881,6 +942,23 @@ class PlaywrightCrawler:
         api_indicators = ["/api/", "/v1/", "/v2/", "/v3/", "/graphql", "/rest/", "/ws/"]
         url_lower = url.lower()
         return any(indicator in url_lower for indicator in api_indicators)
+
+    @staticmethod
+    def _order_frontier(items: list) -> list:
+        """
+        Deduplicate and deterministically order the next BFS wave.
+
+        Each ``(url, depth)`` is kept at its shallowest depth, then sorted by
+        (depth, url). Ordering the frontier is what makes the crawl
+        deterministic under concurrency: which URLs fall inside ``max_urls``,
+        and the order downstream engines receive them, no longer depend on the
+        order tasks happened to finish.
+        """
+        best: dict = {}
+        for url, depth in items:
+            if url not in best or depth < best[url]:
+                best[url] = depth
+        return sorted(best.items(), key=lambda kv: (kv[1], kv[0]))
 
     @staticmethod
     def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:

@@ -161,6 +161,7 @@ class XssEngine:
         """Run the enabled XSS variants and return findings + stats."""
         t0 = time.monotonic()
         findings: List[dict] = []
+        self._tested_params: List[dict] = []
         if not self.is_available():
             return {"findings": findings, "stats": self.stats, "available": False}
 
@@ -213,6 +214,17 @@ class XssEngine:
 
                 if self.test_reflected and not _cancelled():
                     _progress("XSS: testing reflected parameters…")
+                    # Coverage ledger (Phase 22): record the query/form params
+                    # this engine probes, at the one place the candidate set is
+                    # known, so the scan can prove what XSS actually covered.
+                    for c in self._reflected_candidates(target_url, endpoints, forms):
+                        self._tested_params.append(
+                            {
+                                "url": c.get("url", ""),
+                                "param": c.get("param", ""),
+                                "location": c.get("kind", "query"),
+                            }
+                        )
                     findings += await self._scan_reflected(
                         page, target_url, endpoints, forms, _cancelled
                     )
@@ -233,6 +245,7 @@ class XssEngine:
             log.warning("xss engine error: %s", exc)
 
         self.stats["duration_s"] = round(time.monotonic() - t0, 2)
+        self.stats["tested_params"] = self._tested_params
         return {"findings": findings, "stats": self.stats, "available": True}
 
     def _on_dialog(self, dialog) -> None:

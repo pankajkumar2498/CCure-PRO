@@ -769,6 +769,8 @@ def download_web_scan_report(
         "nuclei_profile_label": _detect_cov.get("nuclei_profile_label"),
         "nuclei_metrics": _detect_cov.get("nuclei_metrics") or {},
         "scan_depth": _detect_cov.get("scan_depth"),
+        # Phase 22: per-parameter coverage ledger for the report.
+        "coverage_ledger": _detect_cov.get("coverage_ledger") or {},
     }
     findings_list = [_finding_detail(f) for f in findings]
     assets_list = [_asset_detail(a) for a in assets]

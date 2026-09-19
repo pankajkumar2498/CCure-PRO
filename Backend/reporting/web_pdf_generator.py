@@ -438,6 +438,38 @@ def _build_web_scan_story(
             )
         story.append(Spacer(1, 4 * mm))
 
+    # ── 1c. Parameter Coverage (Phase 22) ─────────────────────────────────────
+    # What was tested at parameter granularity, so an empty result is never read
+    # as a clean one over an unassessed surface.
+    cov = scan.get("coverage_ledger") or {}
+    if cov and cov.get("total_parameters"):
+        story.append(_section("Parameter Coverage", styles))
+        cov_rows = [
+            ("Parameters Discovered", str(cov.get("total_parameters", 0))),
+            ("Parameters Tested", str(cov.get("tested_parameters", 0))),
+            ("Parameters Untested", str(cov.get("untested_parameters", 0))),
+            ("Coverage", f"{cov.get('coverage_pct', 0)}%"),
+        ]
+        for eng, n in (cov.get("per_engine_tested") or {}).items():
+            cov_rows.append((f"Tested by {eng}", str(n)))
+        story.append(_kv_table(cov_rows, styles))
+        if cov.get("untested_parameters"):
+            story.append(Spacer(1, 2 * mm))
+            sample = cov.get("untested") or []
+            names = ", ".join(
+                f"{u.get('param')}@{u.get('location')}" for u in sample[:15]
+            )
+            story.append(
+                Paragraph(
+                    f"<font color='#CA8A04'><b>Untested parameters "
+                    f"({cov.get('untested_parameters')}):</b></font> these were "
+                    f"discovered but not exercised by an active engine, so they "
+                    f"are <b>unassessed, not proven clean</b>. Examples: {_escape(names)}.",
+                    styles["small"],
+                )
+            )
+        story.append(Spacer(1, 4 * mm))
+
     # ── 2. Executive Summary ──────────────────────────────────────────────────
     story.append(_section("Executive Summary", styles))
 

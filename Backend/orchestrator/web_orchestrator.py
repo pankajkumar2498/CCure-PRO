@@ -996,6 +996,15 @@ class WebScanOrchestrator:
         try:
             all_findings: list[dict] = []
 
+            # Coverage ledger (Phase 22): enumerate the discovered parameter
+            # surface up front, then record which engine tested what, so the scan
+            # can prove per-parameter coverage — "tested-clean" vs "never-tested".
+            from core.web.coverage import CoverageLedger
+
+            ledger = CoverageLedger()
+            ledger.seed_from_surface(endpoints, forms)
+            sqlmap_run_urls: set = set()
+
             # Build auth headers
             auth_headers, auth_cookies, auth_status = await self._authenticate(
                 auth_config, web_scan_id, target_url
@@ -1197,6 +1206,11 @@ class WebScanOrchestrator:
                                     ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
+                                # Coverage: sqlmap tests every parameter in a
+                                # target, so record its endpoint as sqlmap-covered
+                                # unless the target itself was skipped.
+                                if sqlmap_result.get("status") != "skipped":
+                                    sqlmap_run_urls.add(candidate["url"])
                                 outcomes[sqlmap_result.get("status", "error")] = (
                                     outcomes.get(
                                         sqlmap_result.get("status", "error"), 0
@@ -1298,6 +1312,7 @@ class WebScanOrchestrator:
                         xss_findings = xss_result.get("findings", [])
                         all_findings.extend(xss_findings)
                         s = xss_result.get("stats", {})
+                        ledger.mark_tested_params("xss", s.get("tested_params", []))
                         coverage.ran(
                             "xss",
                             (
@@ -1377,6 +1392,9 @@ class WebScanOrchestrator:
                         inj_findings = inj_result.get("findings", [])
                         all_findings.extend(inj_findings)
                         st = inj_result.get("stats", {})
+                        ledger.mark_tested_params(
+                            "injection", st.get("tested_params", [])
+                        )
                         per_class = ", ".join(
                             f"{c}={st.get(c, 0)}"
                             for c in (
@@ -1800,9 +1818,25 @@ class WebScanOrchestrator:
                     target_url,
                 )
 
+            # Coverage ledger (Phase 22): fold sqlmap's endpoint-level coverage
+            # in, then compute the per-parameter coverage summary that lets the
+            # report distinguish "tested-clean" from "never-tested".
+            for _u in sqlmap_run_urls:
+                ledger.mark_endpoint(_u, "sqlmap")
+            _cov_active = [
+                e
+                for e in ("injection", "xss", "sqlmap")
+                if e in coverage.as_dict().get("tools_run", [])
+            ]
+            coverage_ledger = ledger.summary(active_engines=_cov_active or None)
+
             result["findings"] = all_findings
             result["tool_coverage"] = {
                 **coverage.as_dict(),
+                # Phase 22: per-parameter coverage — what was tested, by which
+                # engine, and how much of the discovered surface remains
+                # untested. This is the "coverage-driven" property.
+                "coverage_ledger": coverage_ledger,
                 # The depth policy travels with the results, so a short scan is
                 # a stated choice on the report rather than an unexplained
                 # difference in how much was found.

@@ -123,6 +123,7 @@ class InjectionEngine:
     ) -> Dict[str, Any]:
         t0 = time.monotonic()
         findings: List[dict] = []
+        self._tested_params: List[dict] = []
         if not self.is_available():
             return {"findings": findings, "stats": self.stats, "available": False}
 
@@ -164,6 +165,19 @@ class InjectionEngine:
                     if _cancelled():
                         break
                     self.stats["parameters_tested"] += 1
+                    # Coverage ledger (Phase 22): record which parameter, in
+                    # which location, this engine actually probed.
+                    self._tested_params.append(
+                        {
+                            "url": cand.get("url", ""),
+                            "param": cand.get("param", ""),
+                            "location": (
+                                "json"
+                                if cand.get("kind") == "json"
+                                else cand.get("kind", "query")
+                            ),
+                        }
+                    )
                     if i % 5 == 0:
                         _progress(f"Injection: parameter {i + 1}/{len(param_cands)}…")
                     findings += await self._probe_param(cand, _cancelled)
@@ -179,6 +193,7 @@ class InjectionEngine:
             log.warning("injection engine error: %s", exc)
 
         self.stats["duration_s"] = round(time.monotonic() - t0, 2)
+        self.stats["tested_params"] = self._tested_params
         return {"findings": findings, "stats": self.stats, "available": True}
 
     # ── candidate model (mirrors the XSS engine / build_injection_targets) ────

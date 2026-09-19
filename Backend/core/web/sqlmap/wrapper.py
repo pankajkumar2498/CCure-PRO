@@ -57,6 +57,7 @@ class SqlmapWrapper(ToolWrapper):
         target: str,
         method: str = "GET",
         post_data: str | None = None,
+        content_type: str | None = None,
         auth_headers: dict[str, str] | None = None,
         level: int | None = None,
         risk: int | None = None,
@@ -79,8 +80,17 @@ class SqlmapWrapper(ToolWrapper):
         """
         self.require_available()
 
-        # Safety check: only test URLs with parameters
-        if method.upper() == "GET" and "?" not in target and not post_data:
+        # Safety check: only test requests that carry an injectable parameter.
+        # A '*' in the target is sqlmap's custom injection-point marker (Phase
+        # 22 path-parameter targets, e.g. /api/users/123*), which is a testable
+        # point even without a query string or body.
+        has_marker = "*" in target
+        if (
+            method.upper() == "GET"
+            and "?" not in target
+            and not post_data
+            and not has_marker
+        ):
             log.info("Skipping SQLMap for %s — no dynamic parameters", target[:80])
             return {
                 "findings": [],
@@ -107,9 +117,15 @@ class SqlmapWrapper(ToolWrapper):
         if method.upper() == "POST" and post_data:
             args.extend(["--data", post_data])
 
+        # Merge auth headers with an explicit content-type (Phase 22) so a JSON
+        # body is sent and parsed as JSON — sqlmap then tests each JSON field.
+        header_lines: list[str] = []
+        if content_type:
+            header_lines.append(f"Content-Type: {content_type}")
         if auth_headers:
-            header_strs = [f"{k}: {v}" for k, v in auth_headers.items()]
-            args.extend(["--headers", "\n".join(header_strs)])
+            header_lines.extend(f"{k}: {v}" for k, v in auth_headers.items())
+        if header_lines:
+            args.extend(["--headers", "\n".join(header_lines)])
 
         # Per-request network timeout and retries.
         args.extend(["--timeout", "30"])

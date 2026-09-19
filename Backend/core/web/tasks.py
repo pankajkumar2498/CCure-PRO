@@ -222,6 +222,20 @@ def _persist_web_assets(db, web_scan_id: str, endpoints: list[dict]) -> None:
         if existing:
             continue
 
+        # Request-centric parameter model (Phase 22): describe every parameter
+        # location — query, JSON body, path id, form — so the durable inventory
+        # records *what is testable and where*, not just the URL and method.
+        # An engine-supplied model wins; otherwise it is derived here at the one
+        # point every asset passes through.
+        parameters = ep.get("parameters")
+        if not parameters:
+            try:
+                from core.web.surface import describe_parameters
+
+                parameters = describe_parameters(ep)
+            except Exception:
+                parameters = {}
+
         asset = WebAsset(
             id=asset_id,
             web_scan_id=web_scan_id,
@@ -229,7 +243,7 @@ def _persist_web_assets(db, web_scan_id: str, endpoints: list[dict]) -> None:
             method=ep.get("method", "GET"),
             content_type=ep.get("content_type", ""),
             response_code=ep.get("response_code"),
-            parameters=ep.get("parameters", {}),
+            parameters=parameters or {},
             auth_required=ep.get("auth_required", False),
             is_api=ep.get("is_api", False) or _is_api_url(url),
             is_form=ep.get("is_form", False),

@@ -220,6 +220,40 @@ class InjectionEngine:
             if isinstance(ep, dict) and ep.get("url"):
                 _add_query(ep["url"])
 
+        # JSON request-body parameters (Phase 22). A captured JSON API body is
+        # injected field-by-field, so command/SSTI/XXE/LDAP/XPath probes reach
+        # JSON APIs, not just query strings and HTML forms.
+        from core.web.surface import (
+            is_json_request,
+            json_param_names,
+            parse_json_object,
+        )
+
+        for ep in endpoints or []:
+            if not isinstance(ep, dict):
+                continue
+            url = ep.get("url", "")
+            if not url or not self._in_scope(url) or not is_json_request(ep):
+                continue
+            body_obj = parse_json_object(ep.get("request_body"))
+            if not body_obj:
+                continue
+            method = str(ep.get("method") or "POST").upper()
+            for name in json_param_names(body_obj)[: self.max_params_per_target]:
+                key = (method, url, "json:" + name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                cands.append(
+                    {
+                        "url": url,
+                        "method": method,
+                        "param": name,
+                        "json_obj": body_obj,
+                        "kind": "json",
+                    }
+                )
+
         for form in forms or []:
             if not isinstance(form, dict):
                 continue
@@ -278,6 +312,16 @@ class InjectionEngine:
                 ]
                 url = urlparse(cand["url"])._replace(query=urlencode(params)).geturl()
                 resp = await self._client.get(url)
+            elif cand["kind"] == "json":
+                # Inject into one JSON field, POST the body as application/json.
+                from core.web.surface import inject_json
+
+                body = inject_json(cand["json_obj"], cand["param"], value)
+                resp = await self._client.post(
+                    cand["url"],
+                    content=body.encode(),
+                    headers={"Content-Type": "application/json"},
+                )
             elif method == "POST":
                 data = {
                     n: (value if n == cand["param"] else "1") for n in cand["fields"]

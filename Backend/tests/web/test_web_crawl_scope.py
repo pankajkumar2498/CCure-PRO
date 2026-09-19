@@ -137,7 +137,16 @@ def test_fingerprint_differs_for_different_content():
 
 def test_query_string_endpoint_is_injectable():
     targets = build_injection_targets([{"url": "http://app/search?q=1"}], [])
-    assert targets == [{"url": "http://app/search?q=1", "method": "GET", "data": None}]
+    # A target now also carries content_type (Phase 22): None for a query-string
+    # target, "application/json" for a JSON-body target.
+    assert targets == [
+        {
+            "url": "http://app/search?q=1",
+            "method": "GET",
+            "data": None,
+            "content_type": None,
+        }
+    ]
 
 
 def test_endpoint_without_parameters_is_skipped():

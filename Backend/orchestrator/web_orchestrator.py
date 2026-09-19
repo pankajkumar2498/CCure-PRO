@@ -295,20 +295,31 @@ def build_injection_targets(
     which is indistinguishable from a target that has no flaw. Each target here
     carries the data that makes it testable, or it is not emitted.
     """
+    from core.web.surface import (
+        is_json_request,
+        parse_json_object,
+        path_id_segments,
+        swap_path_segment,
+    )
+
     targets: List[Dict[str, Any]] = []
     seen: set = set()
 
-    def _add(url: str, method: str, data: str | None) -> None:
+    def _add(
+        url: str, method: str, data: str | None, content_type: str | None = None
+    ) -> None:
         url = str(url or "").strip()
         # A fragment is resolved in the browser and never reaches the server,
         # so a client-side route has no server-side parameter to inject into.
         if not url.lower().startswith(("http://", "https://")) or "#" in url:
             return
-        key = f"{method}:{url}:{data or ''}"
+        key = f"{method}:{url}:{data or ''}:{content_type or ''}"
         if key in seen:
             return
         seen.add(key)
-        targets.append({"url": url, "method": method, "data": data})
+        targets.append(
+            {"url": url, "method": method, "data": data, "content_type": content_type}
+        )
 
     for ep in endpoints or []:
         if not isinstance(ep, dict):
@@ -316,6 +327,26 @@ def build_injection_targets(
         url = ep.get("url", "")
         if "?" in url and urlparse(url).query:
             _add(url, "GET", None)
+
+        # JSON request body (Phase 22): a captured JSON API body is where modern
+        # parameters live. sqlmap auto-detects JSON params from --data in batch
+        # mode, so the whole body is handed over with its content-type.
+        if is_json_request(ep):
+            body_obj = parse_json_object(ep.get("request_body"))
+            if body_obj:
+                _add(
+                    url,
+                    str(ep.get("method") or "POST").upper(),
+                    ep.get("request_body"),
+                    content_type="application/json",
+                )
+
+        # Path identifiers (Phase 22): /api/users/123 → mark the id with sqlmap's
+        # custom injection-point marker '*' so the path segment is tested, not
+        # just query/body. Only identifier-looking segments are marked.
+        for seg in path_id_segments(url):
+            marked = swap_path_segment(url, seg["index"], seg["value"] + "*")
+            _add(marked, str(ep.get("method") or "GET").upper(), None)
 
     for form in forms or []:
         if not isinstance(form, dict):
@@ -1159,6 +1190,7 @@ class WebScanOrchestrator:
                                     target=candidate["url"],
                                     method=candidate["method"],
                                     post_data=candidate.get("data"),
+                                    content_type=candidate.get("content_type"),
                                     auth_headers=auth_headers or None,
                                     run_timeout=self._bounded_timeout(
                                         web_scan_id, WebScanConfig.SQLMAP_TIMEOUT

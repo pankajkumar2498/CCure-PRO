@@ -283,17 +283,47 @@ class PlaywrightCrawler:
                     try:
                         url = response.url
                         if self._is_api_call(url):
-                            network_apis.append(
-                                {
-                                    "url": url,
-                                    "method": response.request.method,
-                                    "status": response.status,
-                                    "content_type": response.headers.get(
-                                        "content-type", ""
-                                    ),
-                                    "source": "network_intercept",
-                                }
-                            )
+                            req = response.request
+                            # Capture the REQUEST body + its content-type (Phase
+                            # 22): a JSON API body is where modern parameters
+                            # live, and without it sqlmap / the injection engine
+                            # never see those parameters. post_data is a string
+                            # property (None for GET); bounded so a large upload
+                            # cannot bloat the crawl result.
+                            req_body = None
+                            try:
+                                pd = req.post_data
+                                if pd and len(pd) <= 20000:
+                                    req_body = pd
+                            except Exception:
+                                req_body = None
+                            req_ctype = ""
+                            try:
+                                req_ctype = req.headers.get("content-type", "")
+                            except Exception:
+                                req_ctype = ""
+                            entry = {
+                                "url": url,
+                                "method": req.method,
+                                "status": response.status,
+                                "content_type": response.headers.get(
+                                    "content-type", ""
+                                ),
+                                "request_body": req_body,
+                                "request_content_type": req_ctype,
+                                "is_api": True,
+                                "source": "network_intercept",
+                            }
+                            # Value-free parameter model for the inventory.
+                            try:
+                                from core.web.surface import describe_parameters
+
+                                params = describe_parameters(entry)
+                                if params:
+                                    entry["parameters"] = params
+                            except Exception:
+                                pass
+                            network_apis.append(entry)
                     except Exception:
                         pass
 

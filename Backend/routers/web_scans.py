@@ -265,6 +265,15 @@ class WebScanOptionsSchema(BaseModel):
         description="Auto-discover an OpenAPI spec and GraphQL endpoint at "
         "well-known paths.",
     )
+    # Phase 23, Item 8: traffic-based API import. Inline JSON (or a parsed dict)
+    # for a HAR export or a Postman v2 collection; same-origin requests become
+    # scan targets alongside the spec/GraphQL surface.
+    har: dict | None = Field(
+        default=None, description="A HAR document (JSON) to import requests from."
+    )
+    postman: dict | None = Field(
+        default=None, description="A Postman v2 collection (JSON) to import."
+    )
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
     # The orchestrator implements quick/standard/deep depth profiles and

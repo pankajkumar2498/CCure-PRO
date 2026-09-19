@@ -192,6 +192,17 @@ class ApiScanEngine:
                 out["endpoints"] += gql.get("endpoints", [])
                 out["inventory"]["graphql"] = gql.get("inventory")
 
+            # Traffic-based import: HAR / Postman (Phase 23, Item 8). Same-origin
+            # captured/authored requests become scan targets alongside the spec.
+            from core.web.api_import import import_sources
+
+            imported, import_labels = import_sources(options, target_url)
+            if imported:
+                out["endpoints"] += imported[: self.max_operations]
+                out["inventory"]["imported"] = import_labels
+                self.stats["imported"] = len(imported)
+                self.stats["endpoints"] = self.stats.get("endpoints", 0) + len(imported)
+
         self.stats["findings"] = len(out["findings"])
         self.stats["duration_s"] = round(time.monotonic() - t0, 2)
         return {**out, "stats": self.stats, "available": True}

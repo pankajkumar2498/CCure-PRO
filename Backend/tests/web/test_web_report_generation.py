@@ -68,3 +68,56 @@ def test_default_output_dir_is_the_runtime_reports_volume():
     parent = os.path.basename(os.path.dirname(gen.output_dir))
     assert os.path.basename(gen.output_dir) == "reports"
     assert parent != "reporting"
+
+
+def test_report_renders_sitemap_policy_and_proof_evidence(tmp_path):
+    """Codex item 15: the report surfaces the site map, scan policy, scheduler
+    plan and per-finding proof evidence (confidence / tested-as / status)."""
+    import reportlab.rl_config
+
+    reportlab.rl_config.pageCompression = 0  # so text is greppable in the PDF
+    try:
+        scan = _scan()
+        scan.update(
+            {
+                "site_map": {
+                    "endpoints": 12,
+                    "forms": 3,
+                    "api_operations": {"rest": 5, "graphql": 1},
+                },
+                "scan_policy": {
+                    "name": "deep",
+                    "attack_cookies": True,
+                    "attack_headers": True,
+                    "attack_file_uploads": False,
+                    "max_params_per_page": 25,
+                    "sqlmap_level": 3,
+                },
+                "schedule": {
+                    "total_tasks": 40,
+                    "passive_tasks": 16,
+                    "active_tasks": 24,
+                },
+                "auth_status": "form_login",
+            }
+        )
+        findings = [
+            {
+                "severity": "high",
+                "finding_type": "sqli",
+                "title": "SQL Injection",
+                "description": "boom",
+                "matched_at": "http://target.invalid/x",
+                "confidence": "high",
+                "auth_context": "form_login",
+                "status": "confirmed",
+                "screenshot_path": "/e/xss_abc.png",
+            }
+        ]
+        gen = WebScanReportGenerator(output_dir=str(tmp_path))
+        path = gen.generate(scan, findings, [])
+        raw = open(path, "rb").read()
+        for token in (b"Site Map", b"Scan Policy", b"deep", b"form_login"):
+            assert token in raw, token
+    finally:
+        reportlab.rl_config.pageCompression = 1

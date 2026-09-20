@@ -347,6 +347,30 @@ class WebScanOptionsSchema(BaseModel):
     )
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
+    # ── Phase 23c: scan policy engine (Codex P2 item 11) ──────────────────────
+    scan_policy: str | None = Field(
+        default=None,
+        description="Named policy preset: safe, standard, deep, api, "
+        "authenticated. Explicit knobs below override the preset.",
+    )
+    max_params_per_page: int | None = Field(
+        default=None, ge=1, le=200, description="Cap parameters tested per page."
+    )
+    attack_cookies: bool | None = Field(
+        default=None, description="Test cookies as injection points (sqlmap L2)."
+    )
+    attack_headers: bool | None = Field(
+        default=None, description="Test HTTP headers as injection points (sqlmap L3)."
+    )
+    attack_file_uploads: bool | None = Field(
+        default=None, description="Test multipart/file-upload fields."
+    )
+    nuclei_timeout: int | None = Field(
+        default=None, ge=30, le=14400, description="Per-scan Nuclei time budget (s)."
+    )
+    sqlmap_timeout: int | None = Field(
+        default=None, ge=30, le=3600, description="Per-target sqlmap time budget (s)."
+    )
     # The orchestrator implements quick/standard/deep depth profiles and
     # defaults to standard. Without this field the request body could not carry
     # the choice, so the profiles were unreachable through the API.
@@ -1050,6 +1074,14 @@ def download_web_scan_report(
     assets = db.query(WebAsset).filter(WebAsset.web_scan_id == scan_id).all()
 
     _detect_cov = (scan.options or {}).get("tool_coverage", {}).get("detect", {})
+    # Site-map inventory for the report (Codex item 15): forms + API operations
+    # as counts, from the first-class tables.
+    _forms_count = db.query(WebForm).filter(WebForm.web_scan_id == scan.id).count()
+    _api_ops_by_kind: dict = {}
+    for (k,) in db.query(WebApiOperation.kind).filter(
+        WebApiOperation.web_scan_id == scan.id
+    ):
+        _api_ops_by_kind[k] = _api_ops_by_kind.get(k, 0) + 1
     scan_dict = {
         **_scan_summary(scan),
         "scan_scope": scan.scan_scope,
@@ -1063,6 +1095,19 @@ def download_web_scan_report(
         "scan_depth": _detect_cov.get("scan_depth"),
         # Phase 22: per-parameter coverage ledger for the report.
         "coverage_ledger": _detect_cov.get("coverage_ledger") or {},
+        # Phase 23c (Codex item 15): scan policy, scheduler plan, tool coverage
+        # and the site-map inventory, so the report states what was assessed,
+        # what was attacked, and what ran.
+        "scan_policy": _detect_cov.get("scan_policy") or {},
+        "schedule": _detect_cov.get("schedule") or {},
+        "tool_coverage_detail": _detect_cov,
+        "auth_status": _detect_cov.get("auth_status")
+        or (scan.auth_config or {}).get("type"),
+        "site_map": {
+            "endpoints": scan.total_endpoints or 0,
+            "forms": _forms_count,
+            "api_operations": _api_ops_by_kind,
+        },
     }
     findings_list = [_finding_detail(f) for f in findings]
     assets_list = [_asset_detail(a) for a in assets]

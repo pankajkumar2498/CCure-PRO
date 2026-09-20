@@ -470,6 +470,57 @@ def _build_web_scan_story(
             )
         story.append(Spacer(1, 4 * mm))
 
+    # ── 1d. Site Map & Scan Policy (Codex item 15) ─────────────────────────────
+    # State the attack surface discovered, what the policy permitted attacking,
+    # the scheduler's plan, and the identity the scan ran under — so a reader
+    # knows the scope of what was and was not assessed.
+    site = scan.get("site_map") or {}
+    pol = scan.get("scan_policy") or {}
+    sched = scan.get("schedule") or {}
+    if site or pol or sched:
+        story.append(_section("Site Map & Scan Policy", styles))
+        rows = []
+        if site:
+            api_ops = site.get("api_operations") or {}
+            rows += [
+                ("Endpoints", str(site.get("endpoints", 0))),
+                ("Forms", str(site.get("forms", 0))),
+                (
+                    "API Operations",
+                    ", ".join(f"{k}: {v}" for k, v in api_ops.items()) or "0",
+                ),
+            ]
+        if scan.get("auth_status"):
+            rows.append(("Authenticated As", str(scan.get("auth_status"))))
+        if pol:
+            rows += [
+                ("Scan Policy", str(pol.get("name", "standard"))),
+                (
+                    "Attacked",
+                    ", ".join(
+                        loc
+                        for loc, on in (
+                            ("cookies", pol.get("attack_cookies")),
+                            ("headers", pol.get("attack_headers")),
+                            ("file-uploads", pol.get("attack_file_uploads")),
+                        )
+                        if on
+                    )
+                    or "query/form/JSON/path only",
+                ),
+                ("Max Params/Page", str(pol.get("max_params_per_page", "—"))),
+            ]
+        if sched:
+            rows += [
+                ("Checks Scheduled", str(sched.get("total_tasks", 0))),
+                (
+                    "Passive / Active",
+                    f"{sched.get('passive_tasks', 0)} / {sched.get('active_tasks', 0)}",
+                ),
+            ]
+        story.append(_kv_table(rows, styles))
+        story.append(Spacer(1, 4 * mm))
+
     # ── 2. Executive Summary ──────────────────────────────────────────────────
     story.append(_section("Executive Summary", styles))
 
@@ -590,6 +641,10 @@ def _build_web_scan_story(
                 ("Detected By", f.get("detected_by", "N/A")),
                 ("Matched At", f.get("matched_at", "N/A")),
                 ("CVSS Score", str(f.get("cvss_score") or "N/A")),
+                # Lifecycle / retest status (Codex item 15): open, confirmed,
+                # fixed, reopened, accepted_risk — so a report shows what a
+                # re-scan established, not only the first sighting.
+                ("Status", str(f.get("status", "open"))),
             ]
 
             if f.get("owasp_category"):
@@ -606,6 +661,14 @@ def _build_web_scan_story(
                     detail_rows.append(("Compliance", ", ".join(tags[:5])))
             if f.get("is_verified"):
                 detail_rows.append(("Verified", "✓ Confirmed by multiple tools"))
+            # Proof-based evidence (Codex item 10/15): confidence, the identity
+            # tested under, and a screenshot path where execution was captured.
+            if f.get("confidence"):
+                detail_rows.append(("Confidence", str(f["confidence"]).upper()))
+            if f.get("auth_context"):
+                detail_rows.append(("Tested As", str(f["auth_context"])))
+            if f.get("screenshot_path"):
+                detail_rows.append(("Screenshot", _escape(str(f["screenshot_path"]))))
 
             finding_block.append(
                 _kv_table(detail_rows, styles, col_widths=[40 * mm, W - 40 * mm])

@@ -5,6 +5,7 @@ import NewWebScan from "./pages/NewWebScan";
 import ScanDetail from "./pages/ScanDetail";
 import FindingsExplorer from "./pages/FindingsExplorer";
 import AssetInventory from "./pages/AssetInventory";
+import AttackSurface from "./pages/AttackSurface";
 
 import PanelErrorBoundary from "../../components/common/PanelErrorBoundary";
 import "./styles/web-scanning.css";
@@ -19,6 +20,7 @@ export default function WebScanningRoutes() {
         <Route path=":id" element={<ScanDetail />} />
         <Route path=":id/findings" element={<FindingsExplorer />} />
         <Route path=":id/assets" element={<AssetInventory />} />
+        <Route path=":id/attack-surface" element={<AttackSurface />} />
         <Route
           path="*"
           element={<Navigate to="/web-scans/dashboard" replace />}

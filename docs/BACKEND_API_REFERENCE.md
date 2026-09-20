@@ -1452,23 +1452,24 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 11 HTTP operations + 1 WebSocket. All
+Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. All
 use `Depends(get_current_user)`; authorization is organization scoping inside
 each handler rather than a permission atom.
 
-| Method | Path                                         | Purpose                                                |
-| ------ | -------------------------------------------- | ------------------------------------------------------ |
-| POST   | `/web-scans`                                 | Start a scan (201)                                     |
-| GET    | `/web-scans`                                 | List scans                                             |
-| GET    | `/web-scans/{scan_id}`                       | Detail with per-phase progress                         |
-| GET    | `/web-scans/{scan_id}/findings`              | Findings, filtered and paginated                       |
-| GET    | `/web-scans/{scan_id}/assets`                | Discovered endpoints                                   |
-| GET    | `/web-scans/{scan_id}/parameters`            | Attack surface at parameter granularity, with coverage |
-| GET    | `/web-scans/{scan_id}/forms`                 | Discovered form inventory                              |
-| GET    | `/web-scans/{scan_id}/api-operations`        | REST/GraphQL/SOAP operation inventory                  |
-| POST   | `/web-scans/{scan_id}/cancel`                | Cancel a running scan                                  |
-| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}` | Triage a finding                                       |
-| GET    | `/web-scans/{scan_id}/report`                | Generate and download the PDF                          |
+| Method | Path                                                    | Purpose                                                |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------ |
+| POST   | `/web-scans`                                            | Start a scan (201)                                     |
+| GET    | `/web-scans`                                            | List scans                                             |
+| GET    | `/web-scans/{scan_id}`                                  | Detail with per-phase progress                         |
+| GET    | `/web-scans/{scan_id}/findings`                         | Findings, filtered and paginated                       |
+| GET    | `/web-scans/{scan_id}/findings/{finding_id}/screenshot` | Proof screenshot for a finding (PNG)                   |
+| GET    | `/web-scans/{scan_id}/assets`                           | Discovered endpoints                                   |
+| GET    | `/web-scans/{scan_id}/parameters`                       | Attack surface at parameter granularity, with coverage |
+| GET    | `/web-scans/{scan_id}/forms`                            | Discovered form inventory                              |
+| GET    | `/web-scans/{scan_id}/api-operations`                   | REST/GraphQL/SOAP operation inventory                  |
+| POST   | `/web-scans/{scan_id}/cancel`                           | Cancel a running scan                                  |
+| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}`            | Triage a finding                                       |
+| GET    | `/web-scans/{scan_id}/report`                           | Generate and download the PDF                          |
 
 **`POST /web-scans`** accepts an optional **`Idempotency-Key` header** (aliased
 from `idempotency_key`) so a retried submission does not start a second scan.

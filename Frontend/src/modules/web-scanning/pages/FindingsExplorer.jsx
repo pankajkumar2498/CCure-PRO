@@ -68,6 +68,30 @@ export default function FindingsExplorer() {
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFinding, setSelectedFinding] = useState(null);
+  // Proof screenshot (Codex item 10) — fetched as a blob (auth header) and
+  // shown as an object URL; revoked when the selection changes.
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
+
+  useEffect(() => {
+    let objUrl = null;
+    let active = true;
+    if (selectedFinding?.screenshot_path && selectedFinding?.id) {
+      webScansApi
+        .getFindingScreenshot(id, selectedFinding.id)
+        .then((res) => {
+          if (!active) return;
+          objUrl = window.URL.createObjectURL(res.data);
+          setScreenshotUrl(objUrl);
+        })
+        .catch((err) => console.error("Failed to load screenshot", err));
+    } else {
+      setScreenshotUrl(null);
+    }
+    return () => {
+      active = false;
+      if (objUrl) window.URL.revokeObjectURL(objUrl);
+    };
+  }, [id, selectedFinding]);
 
   useEffect(() => {
     async function fetchFindings() {
@@ -200,6 +224,26 @@ export default function FindingsExplorer() {
                       OWASP: {selectedFinding.owasp_category}
                     </CcureBadge>
                   )}
+                  {/* Proof-based evidence (Codex item 10): how sure the
+                      detection is, and the identity it was tested under. */}
+                  {selectedFinding.confidence && (
+                    <CcureBadge
+                      variant={
+                        selectedFinding.confidence === "high"
+                          ? "success"
+                          : selectedFinding.confidence === "low"
+                            ? "neutral"
+                            : "info"
+                      }
+                    >
+                      Confidence: {selectedFinding.confidence}
+                    </CcureBadge>
+                  )}
+                  {selectedFinding.auth_context && (
+                    <CcureBadge variant="neutral">
+                      Tested as: {selectedFinding.auth_context}
+                    </CcureBadge>
+                  )}
                 </div>
 
                 <CcureSelect
@@ -272,6 +316,24 @@ export default function FindingsExplorer() {
                     <pre className="wsp-evidence">
                       {selectedFinding.curl_command}
                     </pre>
+                  </>
+                )}
+
+                {/* Proof of execution — a screenshot captured at the moment the
+                    payload fired (e.g. a rendered XSS). Shown only when the
+                    scanner captured one and the image loaded. */}
+                {selectedFinding.screenshot_path && (
+                  <>
+                    <h3>Proof Screenshot</h3>
+                    {screenshotUrl ? (
+                      <img
+                        src={screenshotUrl}
+                        alt={`Proof of execution for ${selectedFinding.title}`}
+                        className="wsp-screenshot"
+                      />
+                    ) : (
+                      <p className="wsp-muted">Loading screenshot…</p>
+                    )}
                   </>
                 )}
               </CcureCard>

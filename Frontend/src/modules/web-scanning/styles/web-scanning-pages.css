@@ -545,3 +545,40 @@
   font-size: var(--ccure-text-sm);
   color: var(--ccure-text-secondary);
 }
+
+/* ── Coverage & Attack Surface summary (ScanDetail) ─────────────────────────── */
+.sd-summary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.sd-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--cc-border, #e5e7eb);
+}
+.sd-summary-row:last-child {
+  border-bottom: none;
+}
+.sd-summary-label {
+  margin: 0;
+  color: var(--cc-text-muted, #6b7280);
+  font-weight: 500;
+}
+.sd-summary-value {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Proof screenshot (FindingsExplorer) ────────────────────────────────────── */
+.wsp-screenshot {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--cc-border, #e5e7eb);
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}

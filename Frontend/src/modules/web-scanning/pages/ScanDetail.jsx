@@ -186,6 +186,40 @@ export default function ScanDetail() {
   const showCoverage =
     Boolean(coverage) && (unavailable.length > 0 || incomplete || narrowed);
 
+  // Coverage-driven / request-aware summary (Codex P0-P2): what the scan
+  // assessed and how it was steered, read from the persisted detect/crawl
+  // coverage. All optional — older scans have none and the card is hidden.
+  const detectCov = coverage?.detect || {};
+  const crawlCov = coverage?.crawl || {};
+  const ledger = detectCov.coverage_ledger || {};
+  const policy = detectCov.scan_policy || {};
+  const schedule = detectCov.schedule || {};
+  const domGraph = crawlCov.dom_graph_summary || {};
+  const attacked = ["cookies", "headers", "file_uploads"].filter(
+    (k) => policy[`attack_${k}`],
+  );
+  const surfaceRows = [];
+  if (ledger.total_parameters != null)
+    surfaceRows.push([
+      "Parameter coverage",
+      `${ledger.tested_parameters || 0}/${ledger.total_parameters} tested (${ledger.coverage_pct ?? 0}%)`,
+    ]);
+  if (policy.name)
+    surfaceRows.push([
+      "Scan policy",
+      `${policy.name}${attacked.length ? ` — attacks ${attacked.join(", ")}` : " — query/form/JSON/path only"}`,
+    ]);
+  if (schedule.total_tasks != null)
+    surfaceRows.push([
+      "Checks scheduled",
+      `${schedule.total_tasks} (${schedule.passive_tasks || 0} passive / ${schedule.active_tasks || 0} active)`,
+    ]);
+  if (domGraph.states != null)
+    surfaceRows.push([
+      "SPA states (DOM graph)",
+      `${domGraph.states} states, ${domGraph.transitions || 0} transitions, ${domGraph.spa_hidden_states || 0} hidden`,
+    ]);
+
   const stats = [
     {
       key: "endpoints",
@@ -384,6 +418,19 @@ export default function ScanDetail() {
           </CcureAlert>
         )}
 
+        {surfaceRows.length > 0 && (
+          <CcureCard title="Coverage & Attack Surface" headingLevel={2}>
+            <dl className="sd-summary">
+              {surfaceRows.map(([label, value]) => (
+                <div key={label} className="sd-summary-row">
+                  <dt className="sd-summary-label">{label}</dt>
+                  <dd className="sd-summary-value">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </CcureCard>
+        )}
+
         <div className="sd-stat-grid">
           {stats.map((s) => (
             /* CcureCard supplies the heading, and the heading is what names the
@@ -411,6 +458,16 @@ export default function ScanDetail() {
             <span className="sd-link-title">Asset Inventory →</span>
             <span className="sd-link-desc">
               Review discovered endpoints, APIs, forms, and technologies.
+            </span>
+          </Link>
+          <Link
+            to={`/web-scans/${scan.id}/attack-surface`}
+            className="sd-link-card"
+          >
+            <span className="sd-link-title">Attack Surface →</span>
+            <span className="sd-link-desc">
+              Parameters with per-engine coverage, forms, and REST/GraphQL/SOAP
+              API operations.
             </span>
           </Link>
         </div>

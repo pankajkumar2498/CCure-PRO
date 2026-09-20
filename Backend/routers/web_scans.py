@@ -1039,6 +1039,47 @@ def triage_finding(
     return {"success": True, "finding_id": finding_id, "status": body.status}
 
 
+@router.get("/{scan_id}/findings/{finding_id}/screenshot")
+def get_finding_screenshot(
+    scan_id: str,
+    finding_id: str,
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
+    rendered XSS. The finding must belong to the scan, and the stored path must
+    resolve inside the scan's own evidence directory — a screenshot_path is
+    written by the scanner, but this refuses to serve anything that escapes the
+    evidence root, so a crafted path cannot read an arbitrary server file.
+    """
+    import os
+
+    from fastapi.responses import FileResponse
+
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    finding = (
+        db.query(WebFinding)
+        .filter(WebFinding.id == finding_id, WebFinding.web_scan_id == scan.id)
+        .first()
+    )
+    if not finding or not finding.screenshot_path:
+        raise HTTPException(status_code=404, detail="No screenshot for this finding")
+
+    evidence_root = os.path.realpath(WebScanOrchestrator._evidence_dir(scan.id))
+    target = os.path.realpath(finding.screenshot_path)
+    # Path-traversal guard: the resolved file must live under this scan's
+    # evidence directory, and must actually exist.
+    if not (target == evidence_root or target.startswith(evidence_root + os.sep)):
+        raise HTTPException(status_code=404, detail="Screenshot not available")
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="Screenshot file missing")
+    return FileResponse(target, media_type="image/png")
+
+
 @router.get("/{scan_id}/report")
 @limiter.limit("10/minute")
 def download_web_scan_report(

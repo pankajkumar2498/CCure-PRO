@@ -106,10 +106,25 @@ export const webScansApi = {
     axiosInstance.get(`/web-scans/${id}/findings`, { params }),
   updateFindingStatus: (id, findingId, statusData) =>
     axiosInstance.patch(`/web-scans/${id}/findings/${findingId}`, statusData),
+  // Proof screenshot (Codex item 10). Fetched as a blob so the request carries
+  // the auth header an <img src> could not; the caller makes an object URL.
+  getFindingScreenshot: (id, findingId) =>
+    axiosInstance.get(`/web-scans/${id}/findings/${findingId}/screenshot`, {
+      responseType: "blob",
+    }),
 
   // Assets
   getAssets: (id, params) =>
     axiosInstance.get(`/web-scans/${id}/assets`, { params }),
+
+  // Attack surface (Codex items 1, 2): first-class parameters, forms and API
+  // operations discovered by the scan, with per-parameter coverage.
+  getParameters: (id, params) =>
+    axiosInstance.get(`/web-scans/${id}/parameters`, { params }),
+  getForms: (id, params) =>
+    axiosInstance.get(`/web-scans/${id}/forms`, { params }),
+  getApiOperations: (id, params) =>
+    axiosInstance.get(`/web-scans/${id}/api-operations`, { params }),
 };
 
 export const webDashboardApi = {

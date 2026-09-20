@@ -1225,6 +1225,28 @@ def get_web_scan_summary(
         .scalar()
         or 0
     )
+    w30d = now - timedelta(days=30)
+    scans_30d = (
+        db.query(func.count(WebScan.id))
+        .filter(
+            WebScan.org_id == org,
+            WebScan.created_at >= w30d,
+            WebScan.is_deleted == False,
+        )
+        .scalar()
+        or 0
+    )
+    # "Active" is any scan still in flight, not only the one a worker is running.
+    active_scans = (
+        db.query(func.count(WebScan.id))
+        .filter(
+            WebScan.org_id == org,
+            WebScan.status.in_(["queued", "pending", "running"]),
+            WebScan.is_deleted == False,
+        )
+        .scalar()
+        or 0
+    )
 
     # ── Finding severity counts (open only) ────────────────────────────────
     sev_rows = (
@@ -1293,8 +1315,10 @@ def get_web_scan_summary(
         "scans": {
             "total": total_scans,
             "running": running_scans,
+            "active": active_scans,
             "completed": completed_scans,
             "last_7d": scans_7d,
+            "last_30d": scans_30d,
         },
         "severity": {
             "critical": sev_map.get("critical", 0),

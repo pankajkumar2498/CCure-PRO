@@ -8,7 +8,7 @@
  * scoped entirely by the route `id`; each section fetches independently so one
  * empty inventory does not blank the others. It does not poll.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webScansApi } from "../api/webScansApi";
@@ -77,6 +77,45 @@ export default function AttackSurface() {
     };
   }, [id]);
 
+  // The coverage ledger records a parameter per (endpoint, location, name), so
+  // the same cookie/header appears once per endpoint. Aggregate by
+  // (location, name) for a readable inventory: a parameter is "tested" if any
+  // endpoint's copy was tested, the engines are the union, and the endpoint
+  // count is shown so the per-endpoint detail is not lost. The raw per-endpoint
+  // rows remain available on the /parameters API.
+  const aggregatedParams = useMemo(() => {
+    const byKey = new Map();
+    for (const p of params) {
+      const key = `${p.location}|${p.name}`;
+      let g = byKey.get(key);
+      if (!g) {
+        g = {
+          id: key,
+          location: p.location,
+          name: p.name,
+          source: p.source,
+          endpoints: 0,
+          tested: false,
+          tested_by: new Set(),
+        };
+        byKey.set(key, g);
+      }
+      g.endpoints += 1;
+      if (p.tested) {
+        g.tested = true;
+        (p.tested_by || []).forEach((e) => g.tested_by.add(e));
+      }
+    }
+    return Array.from(byKey.values())
+      .map((g) => ({ ...g, tested_by: Array.from(g.tested_by).sort() }))
+      .sort(
+        (a, b) =>
+          Number(a.tested) - Number(b.tested) ||
+          a.location.localeCompare(b.location) ||
+          a.name.localeCompare(b.name),
+      );
+  }, [params]);
+
   const paramColumns = [
     {
       key: "location",
@@ -109,6 +148,13 @@ export default function AttackSurface() {
             Untested
           </CcureBadge>
         ),
+    },
+    {
+      key: "endpoints",
+      header: "Endpoints",
+      align: "end",
+      nowrap: true,
+      cell: (p) => <span className="wsp-muted">{p.endpoints}</span>,
     },
     {
       key: "source",
@@ -255,21 +301,21 @@ export default function AttackSurface() {
             )}
 
             <CcureCard
-              title={`Parameters (${params.length})`}
+              title={`Parameters (${aggregatedParams.length})`}
               headingLevel={2}
               flush
               bodyFlush
             >
-              {params.length === 0 ? (
+              {aggregatedParams.length === 0 ? (
                 <CcureEmptyState
                   title="No parameters"
                   description="No parameters were recorded for this scan."
                 />
               ) : (
                 <CcureTable
-                  caption={`Discovered parameters — ${params.length}`}
+                  caption={`Discovered parameters — ${aggregatedParams.length} unique (${params.length} across endpoints)`}
                   columns={paramColumns}
-                  rows={params}
+                  rows={aggregatedParams}
                   rowKey={(p) => p.id}
                   density="comfortable"
                 />

@@ -73,9 +73,13 @@ export default function WebDashboard() {
           webDashboardApi.getOwaspScorecard(),
           webDashboardApi.getTrends(),
         ]);
+        // The API returns nested objects; read the documented shapes:
+        //   summary   → { scans:{…}, severity:{…}, endpoints:{…}, … }
+        //   scorecard → { scorecard: [{ code, name, total, … }] }
+        //   trends    → { data: [{ date, critical, high, … }] }
         setSummary(sumRes.data);
-        setScorecard(scoreRes.data);
-        setTrends(trendRes.data);
+        setScorecard(scoreRes.data?.scorecard || []);
+        setTrends(trendRes.data?.data || []);
       } catch (err) {
         console.error("Failed to load web dashboard data", err);
         setLoadFailed(true);
@@ -141,19 +145,19 @@ export default function WebDashboard() {
             <div className="wsp-metrics">
               <MetricCard
                 title="Active Web Scans"
-                value={summary?.active_scans || 0}
+                value={summary?.scans?.active || 0}
               />
               <MetricCard
                 title="Critical Vulnerabilities"
-                value={summary?.critical_vulnerabilities || 0}
+                value={summary?.severity?.critical || 0}
               />
               <MetricCard
                 title="Total Endpoints Discovered"
-                value={summary?.total_endpoints || 0}
+                value={summary?.endpoints?.total || 0}
               />
               <MetricCard
                 title="Scans Last 30 Days"
-                value={summary?.scans_last_30_days || 0}
+                value={summary?.scans?.last_30d || 0}
               />
             </div>
 
@@ -163,22 +167,29 @@ export default function WebDashboard() {
                   unavailable
                 ) : scorecard && scorecard.length > 0 ? (
                   <div className="wsp-rows">
-                    {scorecard.slice(0, 5).map((item) => (
-                      <div className="wsp-row" key={item.category}>
-                        <span>{item.category}</span>
-                        {item.count > 0 ? (
-                          <CcureSeverityBadge
-                            severity="high"
-                            score={`${item.count} findings`}
-                            showLabel={false}
-                          />
-                        ) : (
-                          <CcureBadge variant="success">
-                            0 findings — clear
-                          </CcureBadge>
-                        )}
-                      </div>
-                    ))}
+                    {/* Categories with findings first, so the five shown are the
+                        ones that matter rather than A01–A05 by number. */}
+                    {[...scorecard]
+                      .sort((a, b) => (b.total || 0) - (a.total || 0))
+                      .slice(0, 5)
+                      .map((item) => (
+                        <div className="wsp-row" key={item.code}>
+                          <span>
+                            {item.code} — {item.name}
+                          </span>
+                          {item.total > 0 ? (
+                            <CcureSeverityBadge
+                              severity="high"
+                              score={`${item.total} findings`}
+                              showLabel={false}
+                            />
+                          ) : (
+                            <CcureBadge variant="success">
+                              0 findings — clear
+                            </CcureBadge>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 ) : (
                   <p className="wsp-placeholder">

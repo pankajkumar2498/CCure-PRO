@@ -50,23 +50,35 @@ vi.mock("../../../components/layout/AppLayout", () => ({
   ),
 }));
 
+// The real API response shapes: summary is nested, and the scorecard and trends
+// are wrapped ({ scorecard: [...] } / { data: [...] }).
 const SUMMARY = {
-  active_scans: 3,
-  critical_vulnerabilities: 7,
-  total_endpoints: 412,
-  scans_last_30_days: 11,
+  scans: {
+    total: 20,
+    running: 3,
+    active: 3,
+    completed: 15,
+    last_7d: 8,
+    last_30d: 11,
+  },
+  severity: { critical: 7, high: 4, medium: 2, low: 1, info: 0, total: 14 },
+  endpoints: { total: 412, unique_domains: 5 },
 };
 
-const SCORECARD = [
-  { category: "A01 Broken Access Control", count: 4 },
-  { category: "A02 Cryptographic Failures", count: 0 },
-  { category: "A03 Injection", count: 2 },
-];
+const SCORECARD = {
+  scorecard: [
+    { code: "A01", name: "Broken Access Control", total: 4 },
+    { code: "A02", name: "Cryptographic Failures", total: 0 },
+    { code: "A03", name: "Injection", total: 2 },
+  ],
+};
 
-const TRENDS = [
-  { date: "2026-08-01", critical: 2, high: 5 },
-  { date: "2026-08-02", critical: 0, high: 0 },
-];
+const TRENDS = {
+  data: [
+    { date: "2026-08-01", critical: 2, high: 5 },
+    { date: "2026-08-02", critical: 0, high: 0 },
+  ],
+};
 
 const renderPage = async () => {
   const result = render(<WebDashboard />);
@@ -110,33 +122,32 @@ describe("WebDashboard — functional", () => {
   });
 
   it("renders at most five scorecard rows", async () => {
-    const many = Array.from({ length: 10 }, (_, i) => ({
-      category: `CAT-${i}`,
-      count: i,
-    }));
+    // Ten categories; the page shows the five with the most findings first.
+    const many = {
+      scorecard: Array.from({ length: 10 }, (_, i) => ({
+        code: `CAT-${i}`,
+        name: `n${i}`,
+        total: i,
+      })),
+    };
     webDashboardApi.getOwaspScorecard.mockResolvedValue({ data: many });
     await renderPage();
-    await screen.findByText("CAT-0");
-    expect(screen.queryByText("CAT-5")).not.toBeInTheDocument();
+    await screen.findByText(/CAT-9/); // highest total → shown
+    expect(screen.queryByText(/CAT-4/)).not.toBeInTheDocument(); // outside top 5
   });
 
   it("renders the scorecard categories and counts", async () => {
     await renderPage();
     expect(
-      await screen.findByText("A01 Broken Access Control"),
+      await screen.findByText(/Broken Access Control/),
     ).toBeInTheDocument();
     /* Anchored on the numbers within their own rows rather than on the exact
-       strings "4 findings" / "0 findings". The clean row now carries an
-       explicit "clear" word, which is what the accessibility group requires
-       this page to add, so an exact-string assertion would have contradicted
-       the migration it specifies. */
-    const rowOf = (cat) => screen.getByText(cat).closest("div");
-    expect(rowOf("A01 Broken Access Control").textContent).toMatch(
-      /4 findings/,
-    );
-    expect(rowOf("A02 Cryptographic Failures").textContent).toMatch(
-      /0 findings/,
-    );
+       strings "4 findings" / "0 findings". The clean row carries an explicit
+       "clear" word (an accessibility requirement), so an exact-string assertion
+       would contradict it. */
+    const rowOf = (cat) => screen.getByText(new RegExp(cat)).closest("div");
+    expect(rowOf("Broken Access Control").textContent).toMatch(/4 findings/);
+    expect(rowOf("Cryptographic Failures").textContent).toMatch(/0 findings/);
   });
 
   it("renders the trend rows", async () => {

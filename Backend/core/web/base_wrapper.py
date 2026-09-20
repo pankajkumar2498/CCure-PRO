@@ -148,6 +148,8 @@ class ToolWrapper(ABC):
                 [self.binary, "-version"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             self._binary_version = result.stdout.strip() or result.stderr.strip()
@@ -205,6 +207,12 @@ class ToolWrapper(ABC):
                 args,
                 capture_output=True,
                 text=True,
+                # A scanner's stdout echoes bytes from the *target's* responses,
+                # which are not guaranteed valid UTF-8 (a raw 0xd7 crashed a
+                # whole nuclei run under the default strict decode). Decode
+                # leniently so one non-UTF-8 byte never fails the tool.
+                encoding="utf-8",
+                errors="replace",
                 timeout=effective_timeout,
                 cwd=cwd,
                 env=env,

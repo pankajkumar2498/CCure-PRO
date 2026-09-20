@@ -184,6 +184,11 @@ class ApiScanEngine:
                 out["findings"] += await self._openapi_findings(
                     client, out["endpoints"], out["forms"], inv, headers, cookies
                 )
+                # Negative testing (Codex item 8): send schema-violating inputs
+                # and flag operations that accept them (weak input validation).
+                out["findings"] += await self._negative_findings(
+                    client, out["endpoints"], headers, cookies
+                )
             # GraphQL
             gql = await self._graphql(client, target_url, options)
             if gql:
@@ -313,6 +318,10 @@ class ApiScanEngine:
                 # Path-level parameters apply too.
                 params += [p for p in (item.get("parameters") or [])]
                 query_params, path_values, body_fields = [], {}, []
+                # Retain each query parameter's schema + required flag so negative
+                # testing (Codex item 8) can send a schema-violating value.
+                query_schemas: dict = {}
+                required_query: list = []
                 for p in params:
                     if not isinstance(p, dict):
                         continue
@@ -322,6 +331,14 @@ class ApiScanEngine:
                         continue
                     if loc == "query":
                         query_params.append(name)
+                        # OpenAPI 3 puts the schema under "schema"; 2.x inlines it.
+                        query_schemas[name] = p.get("schema") or {
+                            k: p[k]
+                            for k in ("type", "enum", "maxLength", "minimum", "maximum")
+                            if k in p
+                        }
+                        if p.get("required"):
+                            required_query.append(name)
                     elif loc == "path":
                         path_values[name] = "1"
                     elif loc in ("body", "formData"):
@@ -357,6 +374,9 @@ class ApiScanEngine:
                     "source": "openapi",
                     "auth_required": auth_required,
                     "parameters": {n: "1" for n in query_params},
+                    # Retained for negative testing (Codex item 8).
+                    "query_schemas": query_schemas,
+                    "required_query": required_query,
                 }
                 endpoints.append(ep)
                 # Body-bearing operations → a form so sqlmap/XSS test the fields.
@@ -420,6 +440,95 @@ class ApiScanEngine:
             return {}
 
     # ── OpenAPI-specific findings ──────────────────────────────────────────────
+    async def _negative_findings(self, client, endpoints, headers, cookies):
+        """
+        Negative testing (Codex item 8): for each GET operation that declares a
+        constrained query parameter (an enum, a numeric type, a maxLength) or a
+        required one, send a request that violates the schema and flag the
+        operation when it answers 2xx — the API accepted input its own spec says
+        is invalid, which is weak/absent input validation.
+
+        Bounded (a handful of probes per scan) and read-only: it sends GET
+        requests with a bad query value, never a state change.
+        """
+        from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+        from core.web.api_scan.fuzz import violating_value
+
+        findings: List[dict] = []
+        probes = 0
+        for ep in endpoints or []:
+            if probes >= 25:
+                break
+            if not isinstance(ep, dict) or ep.get("source") != "openapi":
+                continue
+            if str(ep.get("method") or "GET").upper() != "GET":
+                continue  # negative-test only safe, idempotent reads
+            schemas = ep.get("query_schemas") or {}
+            required = ep.get("required_query") or []
+            url = ep.get("url") or ""
+            parsed = urlparse(url)
+            base_q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+            # 1. Schema violation on a constrained parameter.
+            for name, schema in schemas.items():
+                if probes >= 25:
+                    break
+                bad = violating_value(schema)
+                if bad is None:
+                    continue
+                probes += 1
+                q = dict(base_q)
+                q[name] = bad
+                probe_url = urlunparse(parsed._replace(query=urlencode(q)))
+                status = await self._probe_status(client, probe_url, headers, cookies)
+                if status and 200 <= status < 300:
+                    findings.append(
+                        self._finding(
+                            "api_weak_input_validation",
+                            probe_url,
+                            f"The operation accepted a schema-violating value for "
+                            f"query parameter '{name}' (HTTP {status}). Its own API "
+                            f"specification constrains this parameter, so the input "
+                            f"should have been rejected — missing server-side input "
+                            f"validation.",
+                            "CWE-20",
+                            "low",
+                            evidence=f"GET with invalid '{name}' → {status}.",
+                        )
+                    )
+            # 2. Required-parameter omission.
+            for name in required:
+                if probes >= 25:
+                    break
+                if name not in base_q:
+                    continue
+                probes += 1
+                q = {k: v for k, v in base_q.items() if k != name}
+                probe_url = urlunparse(parsed._replace(query=urlencode(q)))
+                status = await self._probe_status(client, probe_url, headers, cookies)
+                if status and 200 <= status < 300:
+                    findings.append(
+                        self._finding(
+                            "api_weak_input_validation",
+                            probe_url,
+                            f"The operation answered 2xx with the required query "
+                            f"parameter '{name}' omitted (HTTP {status}). A required "
+                            f"parameter should be enforced server-side.",
+                            "CWE-20",
+                            "low",
+                            evidence=f"GET without required '{name}' → {status}.",
+                        )
+                    )
+        return findings
+
+    async def _probe_status(self, client, url, headers, cookies):
+        try:
+            r = await client.get(url, headers=headers or None, cookies=cookies or None)
+            return r.status_code
+        except Exception as exc:
+            log.debug("negative-test probe failed %s: %s", url[:80], exc)
+            return None
+
     async def _openapi_findings(self, client, endpoints, forms, inv, headers, cookies):
         findings = []
         # No security scheme declared at all → whole API unauthenticated (info).
@@ -600,6 +709,7 @@ class ApiScanEngine:
             "graphql_introspection": "GraphQL introspection enabled",
             "api_missing_auth": "Missing/insufficient API authentication",
             "excessive_data_exposure": "Excessive data exposure",
+            "api_weak_input_validation": "Weak API input validation",
         }
         return {
             "finding_type": ftype,
@@ -619,6 +729,12 @@ class ApiScanEngine:
 
 
 _REMEDIATION = {
+    "api_weak_input_validation": (
+        "Validate every request parameter server-side against its declared "
+        "schema — type, enum, length and range — and reject non-conforming or "
+        "missing-required input with 4xx. Do not rely on client-side or "
+        "specification-only validation."
+    ),
     "graphql_introspection": (
         "Disable GraphQL introspection in production (e.g. disable it in the "
         "server config / Apollo), and enforce authentication and query "

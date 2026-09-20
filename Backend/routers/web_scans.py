@@ -121,8 +121,23 @@ class WebScanAuthSchema(BaseModel):
         default="none",
         description=(
             "Auth type: none, form_login, bearer_token, cookie, custom_header, "
-            "multi_step, jwt, api_key, oauth2, oauth2_authcode, oidc, saml"
+            "multi_step, jwt, api_key, oauth2, oauth2_authcode, oidc, saml, "
+            "recorded"
         ),
+    )
+    # ── Phase 23c: recorded login sequence (Codex item 6) ─────────────────────
+    recorded_steps: list[dict] | None = Field(
+        default=None,
+        description="Ordered browser actions to replay a recorded login: "
+        "[{action: goto|fill|click|select|press|wait|wait_for, selector?, "
+        "value?, url?, timeout?}]. The recording is produced in a browser and "
+        "replayed headless to capture the authenticated session.",
+    )
+    capture_local_storage: list[str] | None = Field(
+        default=None,
+        description="localStorage keys to read after a recorded login; a "
+        "token-like value is presented as a Bearer header so token-auth SPAs "
+        "are scanned as logged in.",
     )
     # ── Phase 23: browser-driven redirect login (OAuth2 auth-code / OIDC / SAML)
     start_url: str | None = Field(
@@ -1359,7 +1374,11 @@ def _finding_detail(f: WebFinding) -> dict:
         "request_body": f.request_body,
         "response_headers": f.response_headers,
         "response_body": f.response_body,
-        "curl_command": _finding_curl(f),
+        "curl_command": f.curl_command or _finding_curl(f),
+        # Proof-based evidence completeness (Codex item 10).
+        "confidence": f.confidence,
+        "auth_context": f.auth_context,
+        "screenshot_path": f.screenshot_path,
         "owasp_category": f.owasp_category,
         "compliance_tags": f.compliance_tags,
         "cve_id": f.cve_id,

@@ -89,6 +89,7 @@ class XssEngine:
         test_reflected: bool = True,
         test_dom: bool = True,
         test_stored: bool = True,
+        evidence_dir: str | None = None,
     ) -> None:
         self.rate_limit = max(1, int(rate_limit or 1))
         self.max_targets = max_targets
@@ -96,6 +97,9 @@ class XssEngine:
         self.max_payloads_per_param = max_payloads_per_param
         self.timeout_ms = timeout_ms
         self.same_origin_only = same_origin_only
+        # Where to save proof screenshots of confirmed XSS (Codex item 10).
+        # None disables capture; findings still carry all other evidence.
+        self.evidence_dir = evidence_dir
         self.test_reflected = test_reflected
         self.test_dom = test_dom
         self.test_stored = test_stored
@@ -373,8 +377,26 @@ class XssEngine:
                 log.debug("xss reflected delivery failed: %s", exc)
                 continue
             if token in self._fired:
-                return self._make_finding("reflected", cand, ctx_label, payload, token)
+                hit = self._make_finding("reflected", cand, ctx_label, payload, token)
+                await self._capture_screenshot(page, hit, token)
+                return hit
         return None
+
+    async def _capture_screenshot(self, page, finding: dict, token: str) -> None:
+        """Save a screenshot proving the payload executed, and attach its path to
+        the finding (Codex item 10). Best-effort — a capture failure never loses
+        the finding, and it is a no-op when no evidence_dir is configured."""
+        if not self.evidence_dir or not finding:
+            return
+        try:
+            import os
+
+            os.makedirs(self.evidence_dir, exist_ok=True)
+            path = os.path.join(self.evidence_dir, f"xss_{token}.png")
+            await page.screenshot(path=path, full_page=False, timeout=5000)
+            finding["screenshot_path"] = path
+        except Exception as exc:
+            log.debug("xss screenshot capture failed: %s", exc)
 
     async def _deliver_query(self, page, cand, payload):
         params = [(n, payload if n == cand["param"] else v) for n, v in cand["params"]]
@@ -454,7 +476,9 @@ class XssEngine:
                 self.stats["requests"] += 1
                 if token in self._fired:
                     cand = {"url": base, "method": "GET", "param": "#fragment"}
-                    return self._make_finding("dom", cand, ctx_label, payload, token)
+                    hit = self._make_finding("dom", cand, ctx_label, payload, token)
+                    await self._capture_screenshot(page, hit, token)
+                    return hit
             except Exception as exc:
                 log.debug("xss dom delivery (load) failed: %s", exc)
 
@@ -473,7 +497,9 @@ class XssEngine:
                 self.stats["requests"] += 1
                 if token in self._fired:
                     cand = {"url": base, "method": "GET", "param": "#fragment"}
-                    return self._make_finding("dom", cand, ctx_label, payload, token)
+                    hit = self._make_finding("dom", cand, ctx_label, payload, token)
+                    await self._capture_screenshot(page, hit, token)
+                    return hit
             except Exception as exc:
                 log.debug("xss dom delivery (hashchange) failed: %s", exc)
         return None

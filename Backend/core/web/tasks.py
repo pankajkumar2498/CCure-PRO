@@ -496,11 +496,69 @@ def _persist_web_api_operations(
         db.rollback()
 
 
+#: Detectors whose findings are proven (a payload executed / matched a live
+#: response) rather than inferred — high confidence by default.
+_HIGH_CONFIDENCE_TOOLS = {"sqlmap", "nuclei", "playwright", "ccure-oast", "ccure-api"}
+
+
+def _auth_context_label(auth_config: dict | None) -> str:
+    """A short label for the identity a scan tested under, for finding evidence
+    (Codex item 10): the auth type, or 'anonymous' when unauthenticated."""
+    if not isinstance(auth_config, dict):
+        return "anonymous"
+    t = str(auth_config.get("type") or "none").lower()
+    return "anonymous" if t in ("", "none") else t
+
+
+def _resolve_proof_evidence(f: dict, auth_context: str | None) -> dict:
+    """
+    Complete a finding's proof-based evidence (Codex item 10): confidence, a
+    ready-to-run curl reproducing the request, and the identity it was tested
+    under. Engine-supplied values always win; otherwise they are derived from
+    what the finding already carries. Returns the four resolved fields.
+    """
+    # Confidence: engine value wins; else verified/authoritative tool → high,
+    # a version-inferred or heuristic finding → medium.
+    confidence = (f.get("confidence") or "").lower() or None
+    if not confidence:
+        tool = str(f.get("detected_by") or "").split(",")[0].strip().lower()
+        if f.get("is_verified") or tool in _HIGH_CONFIDENCE_TOOLS:
+            confidence = "high"
+        else:
+            confidence = "medium"
+
+    # curl: engine value wins; else reconstruct from the request evidence.
+    curl_command = f.get("curl") or f.get("curl_command")
+    if not curl_command and f.get("request_url"):
+        try:
+            from core.web.request_model import WebRequest
+
+            hdrs = f.get("request_headers") or {}
+            wr = WebRequest(
+                method=str(f.get("request_method") or "GET").upper(),
+                url=f.get("request_url") or "",
+                headers=hdrs if isinstance(hdrs, dict) else {},
+                body=f.get("request_body"),
+                content_type=f.get("request_content_type"),
+            )
+            curl_command = wr.to_curl()
+        except Exception:
+            curl_command = None
+
+    return {
+        "confidence": confidence,
+        "curl_command": (curl_command or None),
+        "auth_context": f.get("auth_context") or auth_context or None,
+        "screenshot_path": f.get("screenshot_path") or f.get("screenshot") or None,
+    }
+
+
 def _persist_web_findings(
     db,
     web_scan_id: str,
     org_id: str,
     findings: list[dict],
+    auth_context: str | None = None,
 ) -> None:
     """Persist vulnerability findings as WebFinding records."""
     from core.web.standards_mapping import (
@@ -601,6 +659,17 @@ def _persist_web_findings(
                     | set(str(f["detected_by"]).split(","))
                 )
                 existing.detected_by = ",".join(t for t in tools if t)
+            # Refresh proof-based evidence when this pass carries stronger proof
+            # (a screenshot, a curl, a confidence) the first sighting lacked.
+            _proof = _resolve_proof_evidence(f, auth_context)
+            if _proof["screenshot_path"] and not existing.screenshot_path:
+                existing.screenshot_path = _proof["screenshot_path"]
+            if _proof["curl_command"] and not existing.curl_command:
+                existing.curl_command = _proof["curl_command"]
+            if _proof["confidence"] and not existing.confidence:
+                existing.confidence = _proof["confidence"]
+            if _proof["auth_context"] and not existing.auth_context:
+                existing.auth_context = _proof["auth_context"]
             continue
 
         finding = WebFinding(
@@ -632,6 +701,7 @@ def _persist_web_findings(
             cwe_id=f.get("cwe_id"),
             status="open",
             is_verified=f.get("is_verified", False),
+            **{k: v for k, v in _resolve_proof_evidence(f, auth_context).items()},
         )
         db.add(finding)
 
@@ -920,6 +990,7 @@ def run_web_crawl_task(
                 web_scan_id,
                 scan.org_id,
                 result["sensitive_findings"],
+                auth_context=_auth_context_label(auth_config),
             )
         # Persist the first-class site-map entities (Codex item 1): forms and
         # API operations. Best-effort — a failure must not fail the scan.
@@ -1074,7 +1145,11 @@ def run_web_detect_task(
         scan = db.query(WebScan).filter(WebScan.id == web_scan_id).first()
         if scan:
             _persist_web_findings(
-                db, web_scan_id, scan.org_id, result.get("findings", [])
+                db,
+                web_scan_id,
+                scan.org_id,
+                result.get("findings", []),
+                auth_context=_auth_context_label(auth_config),
             )
             # Persist the attack surface at parameter granularity, with coverage,
             # from the finalised ledger (Phase 23b, attack-surface relational

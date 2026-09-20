@@ -1328,6 +1328,9 @@ class WebScanOrchestrator:
                         test_reflected=True,
                         test_dom=WebScanConfig.XSS_TEST_DOM,
                         test_stored=WebScanConfig.XSS_TEST_STORED,
+                        # Proof screenshots of confirmed XSS (Codex item 10) land in
+                        # a per-scan evidence dir the report can reference.
+                        evidence_dir=self._evidence_dir(web_scan_id),
                     )
                     if coverage.check(xss, "xss"):
                         _emit_web_progress(
@@ -2317,6 +2320,18 @@ class WebScanOrchestrator:
         except Exception as exc:
             log.debug("CORS check failed: %s", exc)
         return findings
+
+    @staticmethod
+    def _evidence_dir(web_scan_id: str) -> str:
+        """Per-scan directory for proof artefacts (screenshots). Configurable via
+        WEB_EVIDENCE_DIR; defaults beside the generated reports. Best-effort — a
+        directory that cannot be created just disables screenshot capture."""
+        import os
+
+        base = os.environ.get("WEB_EVIDENCE_DIR") or os.path.join(
+            os.getcwd(), "reports", "web_evidence"
+        )
+        return os.path.join(base, str(web_scan_id))
 
     @staticmethod
     def _scan_is_cancelled(web_scan_id: str) -> bool:

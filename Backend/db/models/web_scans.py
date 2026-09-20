@@ -350,6 +350,18 @@ class WebFinding(Base):
     response_body = Column(Text, nullable=True)  # truncated to 10KB
     payload_used = Column(Text, nullable=True)  # injection payload
 
+    # ── Proof-based evidence (Codex item 10) ──────────────────────────────────
+    # A finding is only as credible as what it lets a reviewer reproduce and
+    # judge. These complete the evidence the API and PDF report render.
+    #: high / medium / low — how sure the detection is (verified proof vs inferred).
+    confidence = Column(String(20), nullable=True)
+    #: a ready-to-run curl reproducing the exact request that produced the finding.
+    curl_command = Column(Text, nullable=True)
+    #: the authenticated identity the request was tested under (label / "anonymous").
+    auth_context = Column(String(120), nullable=True)
+    #: path to a screenshot proving execution (e.g. a rendered XSS), where captured.
+    screenshot_path = Column(String(512), nullable=True)
+
     # ── Compliance Mapping ────────────────────────────────────────────────────
     owasp_category = Column(String(100), nullable=True)
     # Example: "A03:2021 – Injection"

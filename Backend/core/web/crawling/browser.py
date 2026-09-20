@@ -325,6 +325,9 @@ class PlaywrightCrawler:
                 bundle_routes: list[dict] = []
                 dom_flows: list[dict] = []
                 websockets: list[dict] = []
+                # External source maps to fetch after the crawl (Codex item 9):
+                # {map_url: bundle_url}. Inline data: maps are handled in-band.
+                sourcemap_urls: dict = {}
                 _js_scanned = {"n": 0}
 
                 def _on_ws(ws) -> None:
@@ -375,13 +378,46 @@ class PlaywrightCrawler:
                                 body = await response.text()
                                 if body and len(body) <= _JS_BODY_MAX:
                                     from core.web.js_dom import analyze_dom_flows
-                                    from core.web.js_routes import route_endpoints
+                                    from core.web.js_routes import (
+                                        inline_sourcemap,
+                                        resolve_sourcemap_url,
+                                        route_endpoints,
+                                        routes_from_sourcemap,
+                                        sourcemap_ref,
+                                    )
 
                                     bundle_routes.extend(
                                         route_endpoints(body, start_url)
                                     )
                                     # Static DOM source→sink analysis (Item 9).
                                     dom_flows.extend(analyze_dom_flows(body, url))
+                                    # Source maps (Item 9): an inline map is mined
+                                    # in-band; an external .map is queued to fetch
+                                    # after the crawl (same session/origin).
+                                    ref = sourcemap_ref(body)
+                                    if ref:
+                                        inline = inline_sourcemap(ref)
+                                        if inline:
+                                            for r in routes_from_sourcemap(
+                                                inline, start_url
+                                            ):
+                                                bundle_routes.append(
+                                                    {
+                                                        "url": r,
+                                                        "method": "GET",
+                                                        "source": "js_sourcemap",
+                                                        "content_type": "",
+                                                        "response_code": None,
+                                                    }
+                                                )
+                                        else:
+                                            map_url = resolve_sourcemap_url(ref, url)
+                                            if map_url and self._is_in_scope(
+                                                map_url,
+                                                allowed_domains,
+                                                exclude_compiled,
+                                            ):
+                                                sourcemap_urls[map_url] = url
                         except Exception:
                             pass
                         if self._is_api_call(url):
@@ -743,6 +779,41 @@ class PlaywrightCrawler:
 
                 # Add network-intercepted API calls
                 result.js_endpoints.extend(network_apis)
+                # Fetch and mine external JS source maps (Codex item 9): the
+                # original, pre-minification source reveals routes/endpoints a
+                # minified bundle hid. Fetched over the browser session (same
+                # cookies/origin), bounded, best-effort.
+                if sourcemap_urls:
+                    from core.web.js_routes import routes_from_sourcemap
+
+                    _sm_routes = 0
+                    for map_url in list(sourcemap_urls)[:20]:
+                        try:
+                            resp = await context.request.get(map_url, timeout=15000)
+                            if not resp.ok:
+                                continue
+                            text = await resp.text()
+                            if not text or len(text) > _JS_BODY_MAX * 4:
+                                continue
+                            for r in routes_from_sourcemap(text, start_url):
+                                bundle_routes.append(
+                                    {
+                                        "url": r,
+                                        "method": "GET",
+                                        "source": "js_sourcemap",
+                                        "content_type": "",
+                                        "response_code": None,
+                                    }
+                                )
+                                _sm_routes += 1
+                        except Exception as exc:
+                            log.debug("source-map fetch failed %s: %s", map_url, exc)
+                    if _sm_routes:
+                        log.info(
+                            "Crawl: %d route(s) mined from %d external source map(s)",
+                            _sm_routes,
+                            len(sourcemap_urls),
+                        )
                 # Add routes mined from JS bundle source (unexecuted included).
                 if bundle_routes:
                     result.js_endpoints.extend(bundle_routes)

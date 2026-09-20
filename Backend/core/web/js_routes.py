@@ -17,9 +17,15 @@ turning every string constant into a phantom endpoint.
 
 from __future__ import annotations
 
+import base64
+import json
 import re
-from typing import List
+from typing import List, Optional
 from urllib.parse import urljoin, urlparse
+
+#: A source-map reference comment at the tail of a bundle:
+#: ``//# sourceMappingURL=app.js.map`` or an inline ``data:`` URI.
+_SOURCEMAP_RE = re.compile(r"""[#@]\s*sourceMappingURL\s*=\s*(\S+)""", re.IGNORECASE)
 
 # Ordered from most to least specific. Group 1 is always the URL/path.
 _PATTERNS = [
@@ -119,3 +125,75 @@ def route_endpoints(js_text: str, base_url: str) -> List[dict]:
         }
         for u in extract_js_routes(js_text, base_url)
     ]
+
+
+# ── source maps (Codex item 9) ──────────────────────────────────────────────────
+def sourcemap_ref(js_text: str) -> Optional[str]:
+    """The last ``sourceMappingURL`` reference in a bundle, if any (a bundle may
+    carry several concatenated; the effective one is the last)."""
+    if not js_text:
+        return None
+    refs = _SOURCEMAP_RE.findall(js_text)
+    return refs[-1].strip() if refs else None
+
+
+def resolve_sourcemap_url(ref: str, bundle_url: str) -> Optional[str]:
+    """Resolve a sourceMappingURL reference to an absolute URL, or None for an
+    inline ``data:`` map (which is decoded by ``inline_sourcemap`` instead)."""
+    if not ref or ref.startswith("data:"):
+        return None
+    return urljoin(bundle_url, ref)
+
+
+def inline_sourcemap(ref: str) -> Optional[str]:
+    """Decode an inline ``data:`` source-map reference to its JSON text."""
+    if not ref or not ref.startswith("data:"):
+        return None
+    try:
+        header, _, payload = ref.partition(",")
+        if ";base64" in header:
+            return base64.b64decode(payload).decode("utf-8", "replace")
+        from urllib.parse import unquote
+
+        return unquote(payload)
+    except Exception:
+        return None
+
+
+def parse_sourcemap(map_text: str) -> dict:
+    """Parse a source map, returning ``{"sources": [...], "sourcesContent": [...]}``.
+    Only ``safe_load``-equivalent JSON parsing; no code is executed."""
+    try:
+        data = json.loads(map_text) if isinstance(map_text, str) else map_text
+    except Exception:
+        return {"sources": [], "sourcesContent": []}
+    if not isinstance(data, dict):
+        return {"sources": [], "sourcesContent": []}
+    src = data.get("sources")
+    content = data.get("sourcesContent")
+    return {
+        "sources": (
+            [s for s in src if isinstance(s, str)] if isinstance(src, list) else []
+        ),
+        "sourcesContent": (
+            [c for c in content if isinstance(c, str)]
+            if isinstance(content, list)
+            else []
+        ),
+    }
+
+
+def routes_from_sourcemap(map_text: str, base_url: str) -> List[str]:
+    """
+    Mine routes/endpoints from a source map's original (pre-minification)
+    sources. ``sourcesContent`` is the original code the app was written in —
+    far cleaner to extract from than a minified bundle — so a route that
+    survived minification as an opaque string is recovered here in its original
+    form. Falls back to nothing when the map carries no embedded content.
+    """
+    parsed = parse_sourcemap(map_text)
+    found: dict = {}
+    for content in parsed.get("sourcesContent") or []:
+        for url in extract_js_routes(content, base_url):
+            found.setdefault(url.split("?")[0], url)
+    return list(found.values())

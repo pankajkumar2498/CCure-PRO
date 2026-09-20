@@ -66,3 +66,56 @@ def test_route_endpoints_shape_and_source():
 def test_empty_and_garbage_are_safe():
     assert extract_js_routes("", BASE) == []
     assert extract_js_routes("var x = 1; function f(){return 2;}", BASE) == []
+
+
+# ── Phase 23c: source-map support (Codex item 9) ──────────────────────────────
+def test_sourcemap_ref_reads_last_reference():
+    from core.web.js_routes import sourcemap_ref
+
+    js = "console.log(1)\n//# sourceMappingURL=app.js.map\n"
+    assert sourcemap_ref(js) == "app.js.map"
+    assert sourcemap_ref("no map here") is None
+
+
+def test_resolve_and_inline_sourcemap():
+    import base64
+
+    from core.web.js_routes import (
+        inline_sourcemap,
+        resolve_sourcemap_url,
+        sourcemap_ref,
+    )
+
+    assert (
+        resolve_sourcemap_url("app.js.map", "https://a.test/static/app.js")
+        == "https://a.test/static/app.js.map"
+    )
+    assert (
+        resolve_sourcemap_url("data:application/json;base64,xxx", "https://a") is None
+    )
+    payload = base64.b64encode(b'{"sources":[]}').decode()
+    ref = f"data:application/json;base64,{payload}"
+    assert inline_sourcemap(ref) == '{"sources":[]}'
+
+
+def test_routes_from_sourcemap_mines_original_source():
+    from core.web.js_routes import routes_from_sourcemap
+
+    smap = {
+        "version": 3,
+        "sources": ["src/api.js"],
+        "sourcesContent": [
+            "export const load = () => fetch('/api/admin/secret-report');"
+        ],
+    }
+    import json
+
+    routes = routes_from_sourcemap(json.dumps(smap), "https://a.test/app")
+    assert "https://a.test/api/admin/secret-report" in routes
+
+
+def test_parse_sourcemap_is_robust_to_garbage():
+    from core.web.js_routes import parse_sourcemap
+
+    assert parse_sourcemap("not json") == {"sources": [], "sourcesContent": []}
+    assert parse_sourcemap('{"sources": "x"}')["sources"] == []

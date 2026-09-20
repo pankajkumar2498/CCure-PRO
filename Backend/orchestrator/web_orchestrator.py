@@ -1231,12 +1231,29 @@ class WebScanOrchestrator:
                                 },
                             )
                             try:
+                                # Item 4: hand sqlmap the normalized request model
+                                # as a raw HTTP request — method, path, session
+                                # cookies, auth headers and body as one object —
+                                # so it tests the request exactly as the
+                                # authenticated crawl observed it, cookies and all,
+                                # rather than a bare URL that lost its session.
+                                from core.web.request_model import WebRequest
+
+                                _wr = WebRequest(
+                                    method=candidate["method"],
+                                    url=candidate["url"],
+                                    headers=dict(auth_headers or {}),
+                                    cookies=dict(auth_cookies or {}),
+                                    body=candidate.get("data"),
+                                    content_type=candidate.get("content_type"),
+                                )
                                 sqlmap_result = sqlmap.run(
                                     target=candidate["url"],
                                     method=candidate["method"],
                                     post_data=candidate.get("data"),
                                     content_type=candidate.get("content_type"),
                                     auth_headers=auth_headers or None,
+                                    raw_request=_wr.to_raw_http(),
                                     run_timeout=self._bounded_timeout(
                                         web_scan_id, WebScanConfig.SQLMAP_TIMEOUT
                                     ),

@@ -124,6 +124,14 @@ class SqlmapWrapper(ToolWrapper):
             with open(req_file, "w", encoding="utf-8") as fh:
                 fh.write(raw_request)
             args = [self.binary, "-r", req_file] + common
+            # A raw HTTP request carries no scheme, so sqlmap -r defaults to
+            # http. Without this an https target is silently tested over http —
+            # wrong port, and a clean result that means nothing. Force TLS when
+            # the request was observed over https.
+            if str(target or "").lower().startswith("https://") or (
+                "https://" in (raw_request.splitlines()[0] if raw_request else "")
+            ):
+                args.append("--force-ssl")
         else:
             args = [self.binary, "-u", target] + common
             if method.upper() == "POST" and post_data:

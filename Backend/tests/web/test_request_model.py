@@ -136,3 +136,31 @@ def test_sqlmap_uses_raw_request_file(monkeypatch):
     assert "-u" not in captured["args"]
     assert "Cookie: sid=abc" in captured["req"]  # session preserved into sqlmap
     assert '{"q": "1"}' in captured["req"]  # body preserved
+
+
+def test_sqlmap_forces_ssl_for_https_raw_request(monkeypatch):
+    """A raw request carries no scheme; sqlmap -r defaults to http, so an https
+    target must add --force-ssl or it is silently tested over http (Codex item 4)."""
+    from core.web.sqlmap.wrapper import SqlmapWrapper
+
+    captured = {}
+
+    class _R:
+        stdout = ""
+        stderr = ""
+        returncode = 0
+
+    def _fake(self, args, timeout=None, **k):
+        captured["args"] = args
+        return _R()
+
+    monkeypatch.setattr(SqlmapWrapper, "require_available", lambda self: None)
+    monkeypatch.setattr(SqlmapWrapper, "_run_subprocess", _fake)
+
+    https = WebRequest(method="GET", url="https://t/api?id=1")
+    SqlmapWrapper().run(target=https.url, raw_request=https.to_raw_http())
+    assert "--force-ssl" in captured["args"]
+
+    http = WebRequest(method="GET", url="http://t/api?id=1")
+    SqlmapWrapper().run(target=http.url, raw_request=http.to_raw_http())
+    assert "--force-ssl" not in captured["args"]

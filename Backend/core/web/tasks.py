@@ -1005,6 +1005,12 @@ def run_web_crawl_task(
             except Exception as exc:
                 log.warning("Site-map entity persistence skipped: %s", exc)
 
+        # Persist the crawl stats — including the DOM state graph summary
+        # (Crawler 2.0) and its full graph — so the report/API can show what the
+        # interaction pass discovered. Without this the graph is built and logged
+        # but never stored.
+        _record_tool_coverage(db, web_scan_id, "crawl", result.get("crawl_stats"))
+
         _update_scan_phase_status(
             db, web_scan_id, "crawl", "complete", completed_at=utcnow()
         )

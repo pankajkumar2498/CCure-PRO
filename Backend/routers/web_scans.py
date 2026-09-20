@@ -1074,6 +1074,7 @@ def download_web_scan_report(
     assets = db.query(WebAsset).filter(WebAsset.web_scan_id == scan_id).all()
 
     _detect_cov = (scan.options or {}).get("tool_coverage", {}).get("detect", {})
+    _crawl_cov = (scan.options or {}).get("tool_coverage", {}).get("crawl", {})
     # Site-map inventory for the report (Codex item 15): forms + API operations
     # as counts, from the first-class tables.
     _forms_count = db.query(WebForm).filter(WebForm.web_scan_id == scan.id).count()
@@ -1107,6 +1108,8 @@ def download_web_scan_report(
             "endpoints": scan.total_endpoints or 0,
             "forms": _forms_count,
             "api_operations": _api_ops_by_kind,
+            # DOM state graph summary (Crawler 2.0), if the interaction pass ran.
+            "dom_graph": _crawl_cov.get("dom_graph_summary") or {},
         },
     }
     findings_list = [_finding_detail(f) for f in findings]

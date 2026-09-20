@@ -490,6 +490,16 @@ def _build_web_scan_story(
                     ", ".join(f"{k}: {v}" for k, v in api_ops.items()) or "0",
                 ),
             ]
+            dg = site.get("dom_graph") or {}
+            if dg.get("states"):
+                rows.append(
+                    (
+                        "SPA States (DOM graph)",
+                        f"{dg.get('states', 0)} states, "
+                        f"{dg.get('transitions', 0)} transitions, "
+                        f"{dg.get('spa_hidden_states', 0)} hidden",
+                    )
+                )
         if scan.get("auth_status"):
             rows.append(("Authenticated As", str(scan.get("auth_status"))))
         if pol:

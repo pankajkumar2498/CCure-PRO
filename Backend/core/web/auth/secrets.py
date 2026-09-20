@@ -108,6 +108,18 @@ def _transform(config: Dict[str, Any], fn) -> Dict[str, Any]:
                 }
             new_steps.append(step)
         result["login_steps"] = new_steps
+    # Recorded logins (Codex item 6) carry a typed password in a step's `value`
+    # (a `fill` action). Protect every step value the same way — a non-secret
+    # value or a placeholder round-trips unchanged.
+    rec = result.get("recorded_steps")
+    if isinstance(rec, list):
+        new_rec = []
+        for step in rec:
+            if isinstance(step, dict) and isinstance(step.get("value"), str):
+                step = dict(step)
+                step["value"] = fn(step["value"])
+            new_rec.append(step)
+        result["recorded_steps"] = new_rec
     # Phase 13 workflows carry user-entered values (a password typed into a
     # field, a token) in each action's `value`. Protect every action value the
     # same way as login_steps — encryption round-trips a placeholder or a
@@ -183,6 +195,14 @@ def redact_auth_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
                 step["fields"] = {k: "********" for k in step["fields"]}
             red_steps.append(step)
         redacted["login_steps"] = red_steps
+    rec = redacted.get("recorded_steps")
+    if isinstance(rec, list):
+        red_rec = []
+        for step in rec:
+            if isinstance(step, dict) and step.get("value") not in (None, ""):
+                step = {**step, "value": "********"}
+            red_rec.append(step)
+        redacted["recorded_steps"] = red_rec
     wf = redacted.get("workflow")
     _wf_actions = (
         wf.get("actions")

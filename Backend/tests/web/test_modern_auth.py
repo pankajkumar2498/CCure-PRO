@@ -172,3 +172,93 @@ def test_modern_token_secrets_now_encrypted():
     for k in ("jwt", "key", "value", "client_secret"):
         assert enc[k].startswith("enc:v1:"), k
     assert decrypt_auth_config(enc) == cfg
+
+
+# ── Phase 23c: recorded login sequence (Codex item 6) ─────────────────────────
+def test_recorded_steps_values_encrypted_at_rest():
+    from core.web.auth.secrets import (
+        decrypt_auth_config,
+        encrypt_auth_config,
+        redact_auth_config,
+    )
+
+    cfg = {
+        "type": "recorded",
+        "recorded_steps": [
+            {"action": "goto", "url": "https://app.test/login"},
+            {"action": "fill", "selector": "#user", "value": "alice"},
+            {"action": "fill", "selector": "#pass", "value": "s3cr3t"},
+            {"action": "click", "selector": "#submit"},
+        ],
+    }
+    enc = encrypt_auth_config(cfg)
+    # every step value is protected (a password typed into a field)
+    vals = [s.get("value") for s in enc["recorded_steps"] if "value" in s]
+    assert all(v.startswith("enc:v1:") for v in vals)
+    dec = decrypt_auth_config(enc)
+    assert [s.get("value") for s in dec["recorded_steps"] if "value" in s] == [
+        "alice",
+        "s3cr3t",
+    ]
+    # non-value fields untouched
+    assert dec["recorded_steps"][0]["url"] == "https://app.test/login"
+    red = redact_auth_config(enc)
+    assert all(
+        s.get("value") == "********" for s in red["recorded_steps"] if "value" in s
+    )
+
+
+def test_recorded_login_empty_steps_errors():
+    import asyncio
+
+    mgr = WebSessionManager()
+    sess = asyncio.run(
+        mgr._recorded_login({"type": "recorded", "recorded_steps": []}, "s1")
+    )
+    assert sess.auth_type == "recorded"
+    assert sess.auth_error and "recorded_steps" in sess.auth_error
+
+
+def test_play_step_dispatches_actions():
+    """The step player calls the right Playwright method per action."""
+    import asyncio
+
+    calls = []
+
+    class _Page:
+        async def goto(self, url, **k):
+            calls.append(("goto", url))
+
+        async def fill(self, sel, val, **k):
+            calls.append(("fill", sel, val))
+
+        async def click(self, sel, **k):
+            calls.append(("click", sel))
+
+        async def wait_for_load_state(self, *a, **k):
+            pass
+
+        async def select_option(self, sel, val, **k):
+            calls.append(("select", sel, val))
+
+        async def press(self, sel, val, **k):
+            calls.append(("press", sel, val))
+
+        async def wait_for_timeout(self, ms):
+            calls.append(("wait", ms))
+
+        async def wait_for_selector(self, sel, **k):
+            calls.append(("wait_for", sel))
+
+    page = _Page()
+    steps = [
+        {"action": "goto", "url": "https://a/login"},
+        {"action": "fill", "selector": "#u", "value": "x"},
+        {"action": "click", "selector": "#go"},
+        {"action": "press", "selector": "#u", "value": "Enter"},
+        {"action": "wait", "timeout": 100},
+    ]
+    for s in steps:
+        asyncio.run(WebSessionManager._play_step(page, s))
+    kinds = [c[0] for c in calls]
+    assert kinds == ["goto", "fill", "click", "press", "wait"]

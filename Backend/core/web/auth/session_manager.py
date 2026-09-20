@@ -267,6 +267,9 @@ class WebSessionManager:
             # SP-initiated are one mechanism (drive the IdP form, capture the
             # returned app session).
             session = await self._oauth2_authcode_browser(auth_config, scan_id)
+        elif auth_type == "recorded":
+            # Replay a recorded browser login sequence and capture the session.
+            session = await self._recorded_login(auth_config, scan_id)
         elif auth_type == "cookie":
             session = self._create_cookie_session(auth_config, scan_id)
         elif auth_type == "custom_header":
@@ -543,6 +546,144 @@ class WebSessionManager:
         )
         self._save_session(session)
         return session
+
+    async def _recorded_login(self, config: dict, scan_id: str) -> "WebSession":
+        """
+        Replay a recorded login sequence in a browser and capture the resulting
+        session (Codex item 6 — login recorder).
+
+        A recorded login is the industry-standard way to authenticate an app whose
+        login a scanner cannot script from a form alone — a SPA login, a wizard, a
+        widget. The *recording* is produced in a browser (devtools/extension) and
+        stored as an ordered list of DOM actions; this is the backend that
+        *replays* it and captures the authenticated cookies (and, optionally,
+        bearer tokens the app left in localStorage), exactly as ZAP's "recorded"
+        auth and Burp's recorded login sequence do.
+
+        ``recorded_steps`` is a list of ``{action, ...}``:
+          goto {url}                     navigate
+          fill {selector, value}         type into a field
+          click {selector}               click a control (waits for settle)
+          select {selector, value}       choose an <option>
+          press {selector, value}        press a key (e.g. "Enter")
+          wait {timeout}                 pause N ms
+          wait_for {selector}            wait for an element to appear
+        Success is confirmed by ``success_url_contains`` / ``success_indicator``;
+        a run that captures no session records an auth_error rather than
+        proceeding unauthenticated.
+        """
+        steps = config.get("recorded_steps") or []
+        if not steps:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type="recorded",
+                auth_error="Recorded login requires a non-empty recorded_steps list.",
+            )
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type="recorded",
+                auth_error="Playwright not installed — recorded login unavailable.",
+            )
+        success = config.get("success_indicator")
+        success_url = config.get("success_url_contains")
+        ls_keys = config.get("capture_local_storage") or []
+        content = ""
+        final_url = ""
+        cookies: dict[str, str] = {}
+        tokens: dict[str, str] = {}
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                )
+                ctx = await browser.new_context(ignore_https_errors=True)
+                page = await ctx.new_page()
+                for step in steps:
+                    if not isinstance(step, dict):
+                        continue
+                    try:
+                        await self._play_step(page, step)
+                    except Exception as exc:
+                        log.debug(
+                            "recorded step %s failed: %s", step.get("action"), exc
+                        )
+                try:
+                    content = await page.content()
+                    final_url = page.url
+                    cookies = {c["name"]: c["value"] for c in await ctx.cookies()}
+                    for k in ls_keys:
+                        try:
+                            val = await page.evaluate(
+                                "(k) => window.localStorage.getItem(k)", k
+                            )
+                            if val:
+                                tokens[k] = val
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                await browser.close()
+        except Exception as exc:
+            return WebSession(
+                scan_id=scan_id,
+                auth_type="recorded",
+                auth_error=f"Recorded login errored: {type(exc).__name__}.",
+            )
+        err = ""
+        if success and success not in (content or ""):
+            err = "Login success indicator not found after the recorded sequence."
+        elif success_url and success_url not in (final_url or ""):
+            err = "Did not land on the expected post-login URL after the sequence."
+        elif not cookies and not tokens:
+            err = "No session captured after the recorded login."
+        headers: dict[str, str] = {}
+        # A captured localStorage bearer token is presented as Authorization so an
+        # SPA that authenticates by token (not cookie) is still scanned as logged in.
+        for k, v in tokens.items():
+            if "token" in k.lower() or "jwt" in k.lower() or "auth" in k.lower():
+                headers["Authorization"] = (
+                    v if v.lower().startswith("bearer ") else f"Bearer {v}"
+                )
+                break
+        session = WebSession(
+            scan_id=scan_id,
+            cookies=cookies,
+            headers=headers,
+            auth_type="recorded",
+            auth_error=err,
+        )
+        self._save_session(session)
+        return session
+
+    @staticmethod
+    async def _play_step(page, step: dict) -> None:
+        """Execute one recorded-login DOM action."""
+        action = str(step.get("action") or "").lower()
+        sel = step.get("selector")
+        val = step.get("value")
+        timeout = int(step.get("timeout") or 8000)
+        if action == "goto" and step.get("url"):
+            await page.goto(step["url"], wait_until="domcontentloaded", timeout=30000)
+        elif action == "fill" and sel is not None:
+            await page.fill(sel, str(val or ""), timeout=timeout)
+        elif action == "click" and sel is not None:
+            await page.click(sel, timeout=timeout)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=20000)
+            except Exception:
+                pass
+        elif action == "select" and sel is not None:
+            await page.select_option(sel, str(val or ""), timeout=timeout)
+        elif action == "press" and sel is not None:
+            await page.press(sel, str(val or "Enter"), timeout=timeout)
+        elif action == "wait":
+            await page.wait_for_timeout(timeout)
+        elif action == "wait_for" and sel is not None:
+            await page.wait_for_selector(sel, timeout=timeout, state="visible")
 
     # ── browser-redirect helpers (MFA / consent / identifier-first) ───────────
     @staticmethod

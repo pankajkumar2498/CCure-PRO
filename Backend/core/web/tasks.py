@@ -19,14 +19,23 @@ import logging
 from core.celery_app import celery_app
 from db.base import (
     SessionLocal,
+    gen_web_api_operation_id,
     gen_web_asset_id,
     gen_web_finding_id,
+    gen_web_form_id,
     gen_web_parameter_id,
     utcnow,
 )
 from core.web.correlation import _finding_identity
 from core.web.timeout import enforce_global_timeout
-from db.models.web_scans import WebAsset, WebFinding, WebParameter, WebScan
+from db.models.web_scans import (
+    WebApiOperation,
+    WebAsset,
+    WebFinding,
+    WebForm,
+    WebParameter,
+    WebScan,
+)
 
 log = logging.getLogger("ccure.web.tasks")
 
@@ -336,6 +345,154 @@ def _persist_web_parameters(
         log.info("WebParameter: persisted %d attack-surface parameters", written)
     except Exception as exc:
         log.warning("WebParameter persist partial failure: %s", exc)
+        db.rollback()
+
+
+def _persist_web_forms(db, web_scan_id: str, org_id: str, forms: list[dict]) -> None:
+    """Persist discovered HTML forms as first-class WebForm rows (Codex item 1).
+    Idempotent by (scan, action_url, method)."""
+    if not forms:
+        return
+    written = 0
+    for form in forms:
+        if not isinstance(form, dict):
+            continue
+        action = form.get("url") or form.get("action") or ""
+        if not action:
+            continue
+        method = str(form.get("method") or "GET").upper()
+        form_id = gen_web_form_id(web_scan_id, action, method)
+        if db.query(WebForm).filter(WebForm.id == form_id).first():
+            continue
+        inputs = form.get("inputs") or []
+        db.add(
+            WebForm(
+                id=form_id,
+                web_scan_id=web_scan_id,
+                org_id=org_id,
+                action_url=action,
+                method=method,
+                page_url=form.get("page_url"),
+                inputs=inputs,
+                input_count=len(inputs),
+                has_file_upload=bool(form.get("has_file_upload")),
+                has_password=bool(form.get("has_password")),
+                source=form.get("source", "crawler"),
+            )
+        )
+        written += 1
+    try:
+        db.flush()
+        log.info("WebForm: persisted %d forms", written)
+    except Exception as exc:
+        log.warning("WebForm persist partial failure: %s", exc)
+        db.rollback()
+
+
+def _api_operation_of(ep: dict) -> dict | None:
+    """Classify an endpoint as a REST/GraphQL/SOAP operation, or None if it is
+    not an API operation. Returns the fields for a WebApiOperation row."""
+    from urllib.parse import urlparse
+
+    if not isinstance(ep, dict) or not ep.get("url"):
+        return None
+    params = ep.get("parameters") or {}
+    source = str(ep.get("source") or "")
+    method = str(ep.get("method") or "POST").upper()
+    url = ep["url"]
+    body = ep.get("request_body")
+    if source == "wsdl" or "soap" in params:
+        op = (params.get("soap") or [None])[0]
+        return {
+            "kind": "soap",
+            "identity": f"soap:{op or url}",
+            "operation_name": op,
+            "url": url,
+            "method": "POST",
+            "spec_source": "wsdl",
+            "parameters": params,
+        }
+    is_gql = (
+        source == "graphql"
+        or "graphql" in params
+        or url.rstrip("/").endswith("/graphql")
+    )
+    if not is_gql and isinstance(body, str) and body.strip().startswith("{"):
+        # A GraphQL request is defined by a top-level "query" string; "variables"
+        # is optional (is_graphql_body requires both, which is too strict for an
+        # operation with no arguments), so classify on "query" directly.
+        try:
+            from core.web.surface import parse_json_object
+
+            obj = parse_json_object(body) or {}
+            is_gql = isinstance(obj.get("query"), str)
+        except Exception:
+            is_gql = False
+    if is_gql:
+        op = (params.get("graphql") or [None])[0]
+        return {
+            "kind": "graphql",
+            "identity": f"graphql:{op or url}",
+            "operation_name": op,
+            "url": url,
+            "method": method,
+            "spec_source": "graphql",
+            "parameters": params,
+        }
+    if ep.get("is_api") or _is_api_url(url):
+        path = urlparse(url).path or "/"
+        return {
+            "kind": "rest",
+            "identity": f"{method} {path}",
+            "operation_name": None,
+            "url": url,
+            "method": method,
+            "spec_source": source or None,
+            "parameters": params,
+        }
+    return None
+
+
+def _persist_web_api_operations(
+    db, web_scan_id: str, org_id: str, endpoints: list[dict]
+) -> None:
+    """Persist REST/GraphQL/SOAP operations as first-class WebApiOperation rows
+    (Codex item 1). Idempotent by (scan, kind, identity)."""
+    if not endpoints:
+        return
+    written = 0
+    seen: set = set()
+    for ep in endpoints:
+        op = _api_operation_of(ep)
+        if not op:
+            continue
+        op_id = gen_web_api_operation_id(web_scan_id, op["kind"], op["identity"])
+        if (
+            op_id in seen
+            or db.query(WebApiOperation).filter(WebApiOperation.id == op_id).first()
+        ):
+            continue
+        seen.add(op_id)
+        db.add(
+            WebApiOperation(
+                id=op_id,
+                web_scan_id=web_scan_id,
+                org_id=org_id,
+                kind=op["kind"],
+                identity=op["identity"][:512],
+                url=op["url"],
+                method=op["method"],
+                operation_name=(op["operation_name"] or None),
+                spec_source=op["spec_source"],
+                parameters=op["parameters"] or {},
+            )
+        )
+        written += 1
+    try:
+        db.flush()
+        log.info("WebApiOperation: persisted %d API operations", written)
+    except Exception as exc:
+        log.warning("WebApiOperation persist partial failure: %s", exc)
         db.rollback()
 
 
@@ -764,6 +921,18 @@ def run_web_crawl_task(
                 scan.org_id,
                 result["sensitive_findings"],
             )
+        # Persist the first-class site-map entities (Codex item 1): forms and
+        # API operations. Best-effort — a failure must not fail the scan.
+        if scan:
+            try:
+                _persist_web_forms(
+                    db, web_scan_id, scan.org_id, result.get("forms", [])
+                )
+                _persist_web_api_operations(
+                    db, web_scan_id, scan.org_id, result.get("endpoints", [])
+                )
+            except Exception as exc:
+                log.warning("Site-map entity persistence skipped: %s", exc)
 
         _update_scan_phase_status(
             db, web_scan_id, "crawl", "complete", completed_at=utcnow()

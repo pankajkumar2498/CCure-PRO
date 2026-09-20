@@ -34,6 +34,82 @@ _ID_SEGMENT = re.compile(r"^(?:\d+|[0-9a-fA-F]{8,}|[0-9a-fA-F-]{16,})$")
 #: JSON value types worth injecting into — scalars a parameter would carry.
 _SCALAR = (str, int, float)
 
+#: Request headers worth testing as injection points. Standard hop-by-hop and
+#: fetch-metadata headers are excluded — testing them is noise and, for some,
+#: actively breaks the request. This is the conventional injectable set (what
+#: sqlmap's --level 3 and Burp's header insertion points target) plus any
+#: custom application header (``X-*``), which is decided at capture time.
+_TESTABLE_HEADERS = frozenset(
+    h.lower()
+    for h in (
+        "User-Agent",
+        "Referer",
+        "X-Forwarded-For",
+        "X-Forwarded-Host",
+        "X-Real-IP",
+        "X-Api-Version",
+        "Authorization",
+        "Accept-Language",
+    )
+)
+
+#: Headers never worth treating as an injection parameter (transport / caching /
+#: negotiation), even when custom-looking.
+_HEADER_DENYLIST = frozenset(
+    h.lower()
+    for h in (
+        "host",
+        "content-type",
+        "content-length",
+        "accept",
+        "accept-encoding",
+        "connection",
+        "cookie",
+        "origin",
+        "cache-control",
+        "pragma",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-dest",
+        "sec-ch-ua",
+        "upgrade-insecure-requests",
+    )
+)
+
+
+def is_multipart(endpoint: Dict[str, Any]) -> bool:
+    """Whether an endpoint's request body is multipart/form-data — the encoding
+    a file upload uses, which the injection layer must send differently."""
+    ct = str(
+        endpoint.get("request_content_type") or endpoint.get("content_type") or ""
+    ).lower()
+    if "multipart/form-data" in ct:
+        return True
+    return bool(endpoint.get("has_file_upload"))
+
+
+def testable_header_names(headers: Any) -> List[str]:
+    """Header names worth testing, from a captured header mapping or name list.
+    Keeps the conventional injectable set plus custom ``X-*`` application headers,
+    and drops transport/negotiation headers. Names only — never values."""
+    names: List[str] = []
+    seen: set = set()
+    if isinstance(headers, dict):
+        candidates = list(headers.keys())
+    elif isinstance(headers, (list, tuple)):
+        candidates = [h for h in headers if isinstance(h, str)]
+    else:
+        return names
+    for raw in candidates:
+        h = str(raw).strip()
+        low = h.lower()
+        if not h or low in _HEADER_DENYLIST or low in seen:
+            continue
+        if low in _TESTABLE_HEADERS or low.startswith("x-"):
+            seen.add(low)
+            names.append(h)
+    return names
+
 
 def parse_json_object(body: Optional[str]) -> Optional[Dict[str, Any]]:
     """
@@ -165,7 +241,21 @@ def describe_parameters(endpoint: Dict[str, Any]) -> Dict[str, Any]:
         model["path"] = [str(i["index"]) for i in ids]
     form_inputs = endpoint.get("inputs") or []
     if form_inputs:
-        model["form"] = [
+        names = [
             i.get("name") for i in form_inputs if isinstance(i, dict) and i.get("name")
         ]
+        # A multipart form's fields live in a multipart/form-data body and must be
+        # sent as such by the injection layer — record them under their own
+        # location rather than folding them into url-encoded form params.
+        model["multipart" if is_multipart(endpoint) else "form"] = names
+    # Cookies and headers are attacker-reachable input too (session-fixation,
+    # header injection, cookie-based SQLi). Names only, value-free.
+    cookies = endpoint.get("request_cookies")
+    if isinstance(cookies, dict) and cookies:
+        model["cookie"] = list(cookies.keys())
+    elif isinstance(cookies, (list, tuple)) and cookies:
+        model["cookie"] = [str(c) for c in cookies if c]
+    hdrs = testable_header_names(endpoint.get("request_headers"))
+    if hdrs:
+        model["header"] = hdrs
     return model

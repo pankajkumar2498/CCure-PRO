@@ -400,10 +400,29 @@ class PlaywrightCrawler:
                             except Exception:
                                 req_body = None
                             req_ctype = ""
+                            req_headers: dict = {}
                             try:
-                                req_ctype = req.headers.get("content-type", "")
+                                req_headers = dict(req.headers)
+                                req_ctype = req_headers.get("content-type", "")
                             except Exception:
                                 req_ctype = ""
+                            # Header and cookie NAMES are attacker-reachable input
+                            # too (header/cookie injection, cookie-based SQLi), so
+                            # capture them value-free for the parameter inventory.
+                            testable_headers: list = []
+                            cookie_names: list = []
+                            try:
+                                from core.web.surface import testable_header_names
+
+                                testable_headers = testable_header_names(req_headers)
+                                cookie_hdr = req_headers.get("cookie", "")
+                                cookie_names = [
+                                    c.split("=", 1)[0].strip()
+                                    for c in cookie_hdr.split(";")
+                                    if "=" in c
+                                ]
+                            except Exception:
+                                pass
                             entry = {
                                 "url": url,
                                 "method": req.method,
@@ -416,6 +435,10 @@ class PlaywrightCrawler:
                                 "is_api": True,
                                 "source": "network_intercept",
                             }
+                            if testable_headers:
+                                entry["request_headers"] = testable_headers
+                            if cookie_names:
+                                entry["request_cookies"] = cookie_names
                             # Value-free parameter model for the inventory.
                             try:
                                 from core.web.surface import describe_parameters

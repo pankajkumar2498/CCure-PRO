@@ -262,6 +262,27 @@ def gen_web_parameter_id(web_asset_id: str, location: str, name: str) -> str:
     return f"wpa_{asset_short}_{loc_part}_{digest}"
 
 
+def gen_web_form_id(web_scan_id: str, action_url: str, method: str) -> str:
+    """Deterministic WebForm id per (scan, action, method).
+    Example: wfo_wsc_defa_a1b2c3d4"""
+    scan_short = web_scan_id[:30] if len(web_scan_id) > 30 else web_scan_id
+    digest = hashlib.sha1(  # nosec B324
+        f"{method}:{action_url}".encode("utf-8", "replace")
+    ).hexdigest()[:8]
+    return f"wfo_{scan_short}_{digest}"
+
+
+def gen_web_api_operation_id(web_scan_id: str, kind: str, identity: str) -> str:
+    """Deterministic WebApiOperation id per (scan, kind, operation identity).
+    Example: wao_wsc_defa_rest_a1b2c3d4"""
+    scan_short = web_scan_id[:30] if len(web_scan_id) > 30 else web_scan_id
+    kind_part = _safe_id_part(kind or "rest", max_len=8)
+    digest = hashlib.sha1(  # nosec B324
+        f"{kind}:{identity}".encode("utf-8", "replace")
+    ).hexdigest()[:8]
+    return f"wao_{scan_short}_{kind_part}_{digest}"
+
+
 def gen_network_link_id(org_slug: str, src_key: str, dst_key: str) -> str:
     """
     Generate a readable, unique NetworkLink ID.

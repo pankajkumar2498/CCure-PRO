@@ -442,7 +442,8 @@ class WebParameter(Base):
             name="uq_web_parameters_asset_loc_name",
         ),
         CheckConstraint(
-            "location IN ('query','form','json','path','cookie','header','soap')",
+            "location IN "
+            "('query','form','json','path','cookie','header','soap','multipart')",
             name="ck_web_parameters_location",
         ),
         Index("ix_web_parameters_scan_id", "web_scan_id"),
@@ -500,3 +501,128 @@ class WebParameter(Base):
             f"<WebParameter {self.id!r} {self.location}:{self.name} "
             f"tested={self.tested}>"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web Form  (an HTML form as a first-class site-map entity)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebForm(Base):
+    """
+    A discovered HTML form — a first-class site-map entity (Codex item 1).
+
+    Forms were captured by the crawler and folded into a WebAsset flagged
+    ``is_form`` with the inputs in JSONB. That records *that* a form exists, not
+    its structure as a queryable thing — which fields, which are file uploads,
+    which carry a password, what it submits to. A form is the richest single
+    source of write-side attack surface, so it earns its own row.
+
+    ID: wfo_{scan_short}_{action_hash}
+    """
+
+    __tablename__ = "web_forms"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_scan_id",
+            "action_url",
+            "method",
+            name="uq_web_forms_scan_action_method",
+        ),
+        Index("ix_web_forms_scan_id", "web_scan_id"),
+        Index("ix_web_forms_org_id", "org_id"),
+        Index("ix_web_forms_file_upload", "has_file_upload"),
+    )
+
+    id = Column(String(250), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    org_id = Column(
+        String(50), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
+    action_url = Column(Text, nullable=False)  # where the form submits
+    method = Column(String(10), nullable=False, default="GET")
+    page_url = Column(Text, nullable=True)  # the page the form was found on
+    #: [{"name": "user", "type": "text"}, {"name": "avatar", "type": "file"}, …]
+    inputs = Column(JSONB, nullable=False, default=list)
+    input_count = Column(Integer, nullable=False, default=0)
+    has_file_upload = Column(Boolean, nullable=False, default=False)
+    has_password = Column(Boolean, nullable=False, default=False)
+    source = Column(String(50), nullable=False, default="crawler")
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    web_scan = relationship("WebScan", backref="web_forms")
+    organization = relationship("Organization", backref="web_forms")
+
+    def __repr__(self):
+        return f"<WebForm {self.id!r} {self.method} {self.action_url[:50]}>"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web API Operation  (a REST/GraphQL/SOAP operation as a first-class entity)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebApiOperation(Base):
+    """
+    A discovered API operation — REST path+method, GraphQL query/mutation, or
+    SOAP operation — as a first-class site-map entity (Codex item 1).
+
+    API operations flowed through the pipeline as WebAssets flagged ``is_api``
+    with a ``source`` and their parameters in JSONB. That is enough to *test*
+    them, but not enough to present an API inventory — the thing Acunetix/Invicti
+    put front and centre: which operations exist, of what kind, from which spec,
+    and whether the spec declared them secured. This row is that inventory.
+
+    ID: wao_{scan_short}_{kind}_{identity_hash}
+    """
+
+    __tablename__ = "web_api_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_scan_id", "kind", "identity", name="uq_web_api_ops_scan_kind_identity"
+        ),
+        CheckConstraint(
+            "kind IN ('rest','graphql','soap')", name="ck_web_api_ops_kind"
+        ),
+        Index("ix_web_api_ops_scan_id", "web_scan_id"),
+        Index("ix_web_api_ops_org_id", "org_id"),
+        Index("ix_web_api_ops_kind", "kind"),
+    )
+
+    id = Column(String(250), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    org_id = Column(
+        String(50), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
+    kind = Column(String(20), nullable=False)  # rest / graphql / soap
+    #: A stable per-scan identity — "GET /api/users/{id}", "mutation:deleteUser",
+    #: "soap:GetUser". Distinguishes operations that share a URL.
+    identity = Column(String(512), nullable=False)
+    url = Column(Text, nullable=False)
+    method = Column(String(10), nullable=False, default="POST")
+    operation_name = Column(String(255), nullable=True)  # deleteUser / GetUser
+    spec_source = Column(String(50), nullable=True)  # openapi / graphql / wsdl
+    #: parameter model for this operation (same shape as WebAsset.parameters).
+    parameters = Column(JSONB, nullable=False, default=dict)
+    secured = Column(Boolean, nullable=True)  # the spec declared auth (or unknown)
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    web_scan = relationship("WebScan", backref="web_api_operations")
+    organization = relationship("Organization", backref="web_api_operations")
+
+    def __repr__(self):
+        return f"<WebApiOperation {self.id!r} {self.kind}:{self.identity[:40]}>"

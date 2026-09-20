@@ -135,3 +135,52 @@ def test_injection_engine_builds_json_candidates():
     assert json_cands, "injection engine built no JSON candidates"
     assert {c["param"] for c in json_cands} == {"item", "qty"}
     assert json_cands[0]["json_obj"] == {"item": "x", "qty": 1}
+
+
+# ── Phase 23c (Codex item 2): cookie / header / multipart parameter discovery ──
+def test_multipart_form_fields_get_their_own_location():
+    ep = {
+        "url": "http://a/upload",
+        "request_content_type": "multipart/form-data; boundary=x",
+        "inputs": [{"name": "avatar", "type": "file"}, {"name": "title"}],
+    }
+    model = surface.describe_parameters(ep)
+    assert model.get("multipart") == ["avatar", "title"]
+    assert "form" not in model  # not folded into url-encoded form params
+
+
+def test_urlencoded_form_stays_form_not_multipart():
+    ep = {"url": "http://a/login", "inputs": [{"name": "user"}, {"name": "pw"}]}
+    model = surface.describe_parameters(ep)
+    assert model.get("form") == ["user", "pw"]
+    assert "multipart" not in model
+
+
+def test_cookies_and_headers_become_parameters():
+    ep = {
+        "url": "http://a/x",
+        "request_cookies": {"session": "..", "pref": ".."},
+        "request_headers": {
+            "X-Api-Key": "..",
+            "User-Agent": "..",
+            "Host": "..",  # transport header — dropped
+            "Accept": "..",  # negotiation header — dropped
+        },
+    }
+    model = surface.describe_parameters(ep)
+    assert model.get("cookie") == ["session", "pref"]
+    assert set(model.get("header", [])) == {"X-Api-Key", "User-Agent"}
+
+
+def test_testable_header_names_filters_transport_and_keeps_custom():
+    got = surface.testable_header_names(
+        {"X-Debug": "1", "Referer": "..", "Content-Type": "..", "Connection": ".."}
+    )
+    assert set(got) == {"X-Debug", "Referer"}
+    assert surface.testable_header_names(None) == []
+
+
+def test_is_multipart_detects_encoding_and_upload_flag():
+    assert surface.is_multipart({"request_content_type": "multipart/form-data"})
+    assert surface.is_multipart({"has_file_upload": True})
+    assert not surface.is_multipart({"request_content_type": "application/json"})

@@ -1256,6 +1256,55 @@ coverage ledger cannot. Populated by the DETECT phase from the finalised ledger.
 `ix_web_parameters_org_id`, `ix_web_parameters_name`, `ix_web_parameters_tested`,
 `ix_web_parameters_tested_by_gin` (GIN).
 
+### `web_forms`
+
+A discovered HTML form as a first-class site-map entity — the richest single
+source of write-side attack surface, so it earns its own row rather than a
+`is_form` flag on `web_assets`.
+
+| Column                      | Type          | Notes                                  |
+| --------------------------- | ------------- | -------------------------------------- |
+| `id`                        | `String(250)` | **PK**, `gen_web_form_id()`            |
+| `web_scan_id`               | `String(100)` | FK `web_scans.id` CASCADE, indexed     |
+| `org_id`                    | `String(50)`  | FK `organizations.id` CASCADE, indexed |
+| `action_url`                | `Text`        | Where the form submits                 |
+| `method`                    | `String(10)`  | default `GET`                          |
+| `page_url`                  | `Text`        | The page the form was found on         |
+| `inputs`                    | `JSONB`       | `[{"name","type"}, …]`                 |
+| `input_count`               | `Integer`     |                                        |
+| `has_file_upload`           | `Boolean`     | indexed                                |
+| `has_password`              | `Boolean`     |                                        |
+| `source`                    | `String(50)`  | default `crawler`                      |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` |                                        |
+
+**Constraint:** `uq_web_forms_scan_action_method` UNIQUE on
+`(web_scan_id, action_url, method)`. **Indexes:** `ix_web_forms_scan_id`,
+`ix_web_forms_org_id`, `ix_web_forms_file_upload`.
+
+### `web_api_operations`
+
+A discovered REST/GraphQL/SOAP operation as a first-class site-map entity — the
+API inventory Acunetix/Invicti put front and centre.
+
+| Column                      | Type          | Notes                                                |
+| --------------------------- | ------------- | ---------------------------------------------------- |
+| `id`                        | `String(250)` | **PK**, `gen_web_api_operation_id()`                 |
+| `web_scan_id`               | `String(100)` | FK `web_scans.id` CASCADE, indexed                   |
+| `org_id`                    | `String(50)`  | FK `organizations.id` CASCADE, indexed               |
+| `kind`                      | `String(20)`  | `rest`/`graphql`/`soap` (CHECK-constrained), indexed |
+| `identity`                  | `String(512)` | Stable per-scan identity, e.g. `GET /api/users/{id}` |
+| `url`                       | `Text`        |                                                      |
+| `method`                    | `String(10)`  | default `POST`                                       |
+| `operation_name`            | `String(255)` | e.g. `deleteUser`, `GetUser`                         |
+| `spec_source`               | `String(50)`  | `openapi`/`graphql`/`wsdl`                           |
+| `parameters`                | `JSONB`       | parameter model for the operation                    |
+| `secured`                   | `Boolean`     | spec declared auth, or NULL when unknown             |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` |                                                      |
+
+**Constraint:** `uq_web_api_ops_scan_kind_identity` UNIQUE on
+`(web_scan_id, kind, identity)`; `ck_web_api_ops_kind` CHECK. **Indexes:**
+`ix_web_api_ops_scan_id`, `ix_web_api_ops_org_id`, `ix_web_api_ops_kind`.
+
 ---
 
 ## 10. Compliance engine

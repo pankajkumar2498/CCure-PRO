@@ -24,7 +24,14 @@ from auth.jwt_handler import decode_token
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
 from db.models import User
 from core.web.auth.secrets import encrypt_auth_config
-from db.models.web_scans import WebAsset, WebFinding, WebParameter, WebScan
+from db.models.web_scans import (
+    WebApiOperation,
+    WebAsset,
+    WebFinding,
+    WebForm,
+    WebParameter,
+    WebScan,
+)
 from fastapi import (
     APIRouter,
     Depends,
@@ -777,6 +784,109 @@ def get_web_scan_parameters(
                 round(100.0 * tested_total / surface_total, 1) if surface_total else 0.0
             ),
         },
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/{scan_id}/forms")
+def get_web_scan_forms(
+    scan_id: str,
+    has_file_upload: bool | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The discovered form inventory (Codex item 1) — first-class WebForm rows
+    with their inputs, file-upload and password flags."""
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    query = db.query(WebForm).filter(WebForm.web_scan_id == scan.id)
+    if has_file_upload is not None:
+        query = query.filter(WebForm.has_file_upload == has_file_upload)
+    total = query.count()
+    rows = (
+        query.order_by(WebForm.action_url.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": f.id,
+                "action_url": f.action_url,
+                "method": f.method,
+                "page_url": f.page_url,
+                "inputs": f.inputs or [],
+                "input_count": f.input_count,
+                "has_file_upload": f.has_file_upload,
+                "has_password": f.has_password,
+                "source": f.source,
+            }
+            for f in rows
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/{scan_id}/api-operations")
+def get_web_scan_api_operations(
+    scan_id: str,
+    kind: str | None = Query(None, description="rest / graphql / soap"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(200, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
+    as first-class WebApiOperation rows, with a per-kind roll-up."""
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    query = db.query(WebApiOperation).filter(WebApiOperation.web_scan_id == scan.id)
+    if kind:
+        query = query.filter(WebApiOperation.kind == kind)
+    total = query.count()
+    all_rows = db.query(WebApiOperation.kind).filter(
+        WebApiOperation.web_scan_id == scan.id
+    )
+    by_kind: dict[str, int] = {}
+    for (k,) in all_rows:
+        by_kind[k] = by_kind.get(k, 0) + 1
+    rows = (
+        query.order_by(WebApiOperation.kind.asc(), WebApiOperation.identity.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": o.id,
+                "kind": o.kind,
+                "identity": o.identity,
+                "url": o.url,
+                "method": o.method,
+                "operation_name": o.operation_name,
+                "spec_source": o.spec_source,
+                "parameters": o.parameters or {},
+                "secured": o.secured,
+            }
+            for o in rows
+        ],
+        "by_kind": by_kind,
         "pagination": {
             "page": page,
             "per_page": per_page,

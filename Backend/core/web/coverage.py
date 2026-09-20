@@ -27,7 +27,16 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 #: parameter locations the ledger understands.
-LOCATIONS = ("query", "form", "json", "path", "cookie", "header", "soap")
+LOCATIONS = (
+    "query",
+    "form",
+    "json",
+    "path",
+    "cookie",
+    "header",
+    "soap",
+    "multipart",
+)
 
 STATUS_TESTED = "tested"
 STATUS_SKIPPED = "skipped"

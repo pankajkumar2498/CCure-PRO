@@ -1452,7 +1452,7 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 9 HTTP operations + 1 WebSocket. All
+Source: `Backend/routers/web_scans.py` — 11 HTTP operations + 1 WebSocket. All
 use `Depends(get_current_user)`; authorization is organization scoping inside
 each handler rather than a permission atom.
 
@@ -1464,6 +1464,8 @@ each handler rather than a permission atom.
 | GET    | `/web-scans/{scan_id}/findings`              | Findings, filtered and paginated                       |
 | GET    | `/web-scans/{scan_id}/assets`                | Discovered endpoints                                   |
 | GET    | `/web-scans/{scan_id}/parameters`            | Attack surface at parameter granularity, with coverage |
+| GET    | `/web-scans/{scan_id}/forms`                 | Discovered form inventory                              |
+| GET    | `/web-scans/{scan_id}/api-operations`        | REST/GraphQL/SOAP operation inventory                  |
 | POST   | `/web-scans/{scan_id}/cancel`                | Cancel a running scan                                  |
 | PATCH  | `/web-scans/{scan_id}/findings/{finding_id}` | Triage a finding                                       |
 | GET    | `/web-scans/{scan_id}/report`                | Generate and download the PDF                          |
@@ -1487,6 +1489,16 @@ acknowledgement persisted as `web_scans.authorization_confirmed`.
 default 100), `org_id`. Returns each parameter's coverage (`tested`,
 `tested_by`, `skipped_reason`) and a `coverage` roll-up (surface / tested /
 untested / pct); untested rows are ordered first.
+
+**`GET /web-scans/{scan_id}/forms`** — the discovered form inventory as
+first-class `web_forms` rows: `has_file_upload`, `page`, `per_page` (1–500,
+default 100), `org_id`. Each row carries its `inputs`, `input_count`,
+`has_file_upload` and `has_password`.
+
+**`GET /web-scans/{scan_id}/api-operations`** — the API operation inventory as
+first-class `web_api_operations` rows: `kind` (rest/graphql/soap), `page`,
+`per_page` (1–500, default 200), `org_id`. Returns each operation's identity,
+method, operation name, spec source and parameters, plus a `by_kind` roll-up.
 
 **`PATCH /web-scans/{scan_id}/findings/{finding_id}`** — body
 `TriageFindingRequest`; marks false positive, accepted risk, confirmed, etc.

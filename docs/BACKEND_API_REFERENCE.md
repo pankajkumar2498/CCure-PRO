@@ -1385,23 +1385,25 @@ plus `vendor_advisory_id` / `_url` / `vendor_remediation` from CSAF.
 Source: `Backend/routers/dashboard.py` — 15 operations, **all** requiring
 `dashboard:read`. All accept the optional `org_id`.
 
-| Method | Path                             | Extra parameters              | Returns                        |
-| ------ | -------------------------------- | ----------------------------- | ------------------------------ |
-| GET    | `/dashboard/summary`             | —                             | Eight headline metric cards    |
-| GET    | `/dashboard/risk-breakdown`      | —                             | Severity distribution          |
-| GET    | `/dashboard/vuln-trends`         | `days` 7–90 (30)              | Finding counts over time       |
-| GET    | `/dashboard/top-assets`          | `limit` 1–50 (10)             | Highest-risk assets            |
-| GET    | `/dashboard/top-cves`            | `limit` 1–50 (10), `severity` | Most prevalent CVEs            |
-| GET    | `/dashboard/services-exposure`   | —                             | Open service/port distribution |
-| GET    | `/dashboard/tls-health`          | —                             | TLS grades and issues          |
-| GET    | `/dashboard/http-headers`        | —                             | Security-header posture        |
-| GET    | `/dashboard/compliance`          | —                             | Compliance posture rollup      |
-| GET    | `/dashboard/asset-breakdown`     | —                             | Assets by category/OS          |
-| GET    | `/dashboard/scan-activity`       | `limit` 1–20 (8)              | Recent scan activity           |
-| GET    | `/dashboard/insights`            | —                             | Derived narrative insights     |
-| GET    | `/dashboard/web-scan-summary`    | —                             | DAST aggregate statistics      |
-| GET    | `/dashboard/web-owasp-scorecard` | —                             | OWASP Top 10 (2021) coverage   |
-| GET    | `/dashboard/web-scan-trends`     | `days` 7–90 (30)              | DAST finding trends            |
+| Method | Path                             | Extra parameters                                                                                    | Returns                                                  |
+| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| GET    | `/dashboard/summary`             | —                                                                                                   | Eight headline metric cards                              |
+| GET    | `/dashboard/risk-breakdown`      | —                                                                                                   | Severity distribution                                    |
+| GET    | `/dashboard/vuln-trends`         | `days` 7–90 (30)                                                                                    | Finding counts over time                                 |
+| GET    | `/dashboard/top-assets`          | `limit` 1–50 (10)                                                                                   | Highest-risk assets                                      |
+| GET    | `/dashboard/top-cves`            | `limit` 1–50 (10), `severity`                                                                       | Most prevalent CVEs                                      |
+| GET    | `/dashboard/services-exposure`   | —                                                                                                   | Open service/port distribution                           |
+| GET    | `/dashboard/tls-health`          | —                                                                                                   | TLS grades and issues                                    |
+| GET    | `/dashboard/http-headers`        | —                                                                                                   | Security-header posture                                  |
+| GET    | `/dashboard/compliance`          | —                                                                                                   | Compliance posture rollup                                |
+| GET    | `/dashboard/asset-breakdown`     | —                                                                                                   | Assets by category/OS                                    |
+| GET    | `/dashboard/scan-activity`       | `limit` 1–20 (8)                                                                                    | Recent scan activity                                     |
+| GET    | `/dashboard/insights`            | —                                                                                                   | Derived narrative insights                               |
+| GET    | `/dashboard/web-scan-summary`    | —                                                                                                   | DAST aggregate statistics                                |
+| GET    | `/dashboard/web-owasp-scorecard` | —                                                                                                   | OWASP Top 10 (2021) coverage                             |
+| GET    | `/dashboard/web-scan-trends`     | `days` 7–90 (30)                                                                                    | DAST finding trends                                      |
+| GET    | `/dashboard/web-findings`        | `severity`, `owasp`, `finding_type`, `detected_by`, `status`, `date`, `scan_id`, `page`, `per_page` | Org-wide findings drill-down behind the dashboard counts |
+| GET    | `/dashboard/web-endpoints`       | `source`, `is_api`, `scan_id`, `page`, `per_page`                                                   | Org-wide discovered-endpoints drill-down                 |
 
 ---
 

@@ -39,7 +39,7 @@
  * scope. It is recorded in the checkpoint report instead.
  */
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webScansApi } from "../api/webScansApi";
 import {
@@ -65,6 +65,7 @@ const RESPONSE_LIMIT = 2000;
 
 export default function FindingsExplorer() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFinding, setSelectedFinding] = useState(null);
@@ -125,6 +126,30 @@ export default function FindingsExplorer() {
     }
   };
 
+  // Filters carried in the URL by a drill-down from the Scan Detail counts, so
+  // clicking "Critical Findings" lands here showing exactly the critical ones.
+  const fSeverity = searchParams.get("severity");
+  const fType = searchParams.get("finding_type") || searchParams.get("type");
+  const fOwasp = searchParams.get("owasp");
+  const activeChips = [];
+  if (fSeverity) activeChips.push(["Severity", fSeverity]);
+  if (fType) activeChips.push(["Type", fType]);
+  if (fOwasp) activeChips.push(["OWASP", fOwasp]);
+  const visible = findings.filter((f) => {
+    if (
+      fSeverity &&
+      (f.severity || "").toLowerCase() !== fSeverity.toLowerCase()
+    )
+      return false;
+    if (fType && f.finding_type !== fType) return false;
+    if (
+      fOwasp &&
+      !(f.owasp_category || "").toUpperCase().startsWith(fOwasp.toUpperCase())
+    )
+      return false;
+    return true;
+  });
+
   return (
     <AppLayout pageTitle="Findings Explorer">
       <div className="page-inner wsp-page wsp-page--wide">
@@ -140,10 +165,24 @@ export default function FindingsExplorer() {
           </div>
         </div>
 
+        {activeChips.length > 0 && (
+          <div className="wsp-meta wsp-filter-bar">
+            <span className="wsp-muted">Filtered by:</span>
+            {activeChips.map(([label, val]) => (
+              <CcureBadge key={label} variant="info">
+                {label}: {val}
+              </CcureBadge>
+            ))}
+            <Link to={`/web-scans/${id}/findings`} className="wsp-back">
+              Clear filters
+            </Link>
+          </div>
+        )}
+
         <div className="wsp-split">
           <div className="wsp-panel">
             <CcureCard
-              title={`Vulnerabilities (${findings.length})`}
+              title={`Vulnerabilities (${visible.length})`}
               headingLevel={2}
               flush
               bodyFlush
@@ -157,14 +196,18 @@ export default function FindingsExplorer() {
                   <CcureSkeleton height="64px" radius="6px" />
                   <CcureSkeleton height="64px" radius="6px" />
                 </div>
-              ) : findings.length === 0 ? (
+              ) : visible.length === 0 ? (
                 <CcureEmptyState
                   title="No findings"
-                  description="This scan reported no vulnerabilities."
+                  description={
+                    activeChips.length
+                      ? "No findings match the current filter."
+                      : "This scan reported no vulnerabilities."
+                  }
                 />
               ) : (
                 <div className="wsp-finding-list">
-                  {findings.map((finding) => {
+                  {visible.map((finding) => {
                     const band = normalizeSeverity(finding.severity);
                     const selected = selectedFinding?.id === finding.id;
                     return (

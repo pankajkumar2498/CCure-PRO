@@ -225,20 +225,32 @@ export default function ScanDetail() {
       key: "endpoints",
       label: "Discovered Assets",
       value: scan.total_endpoints || 0,
+      to: scan.total_endpoints ? `/web-scans/${scan.id}/assets` : null,
     },
     {
       key: "critical",
       label: "Critical Findings",
       value: scan.critical_count || 0,
       tone: scan.critical_count > 0 ? "critical" : null,
+      to: scan.critical_count
+        ? `/web-scans/${scan.id}/findings?severity=critical`
+        : null,
     },
     {
       key: "high",
       label: "High Findings",
       value: scan.high_count || 0,
       tone: scan.high_count > 0 ? "high" : null,
+      to: scan.high_count
+        ? `/web-scans/${scan.id}/findings?severity=high`
+        : null,
     },
-    { key: "total", label: "Total Findings", value: scan.total_findings || 0 },
+    {
+      key: "total",
+      label: "Total Findings",
+      value: scan.total_findings || 0,
+      to: scan.total_findings ? `/web-scans/${scan.id}/findings` : null,
+    },
   ];
 
   return (
@@ -432,18 +444,32 @@ export default function ScanDetail() {
         )}
 
         <div className="sd-stat-grid">
-          {stats.map((s) => (
+          {stats.map((s) => {
             /* CcureCard supplies the heading, and the heading is what names the
-               counter. The previous markup paired a styled label div with a
-               styled value div and tied them together with nothing. */
-            <CcureCard key={s.key} title={s.label} headingLevel={2}>
-              <div
-                className={`sd-stat-value${s.tone ? ` sd-stat-value--${s.tone}` : ""}`}
+               counter. A non-zero counter drills into its records; a zero one
+               stays plain so a click never lands on an empty filtered page. */
+            const card = (
+              <CcureCard key={s.key} title={s.label} headingLevel={2}>
+                <div
+                  className={`sd-stat-value${s.tone ? ` sd-stat-value--${s.tone}` : ""}`}
+                >
+                  {s.value}
+                </div>
+              </CcureCard>
+            );
+            return s.to ? (
+              <Link
+                key={s.key}
+                to={s.to}
+                className="sd-stat-link"
+                aria-label={`${s.label}: ${s.value} — view`}
               >
-                {s.value}
-              </div>
-            </CcureCard>
-          ))}
+                {card}
+              </Link>
+            ) : (
+              card
+            );
+          })}
         </div>
 
         <div className="sd-links">

@@ -582,3 +582,53 @@
   border-radius: 6px;
   margin-top: 0.5rem;
 }
+
+/* ── Clickable dashboard / detail drill-downs ───────────────────────────────── */
+.wsp-metric-link,
+.sd-stat-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 12px;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.12s ease;
+}
+.wsp-metric-link:hover,
+.sd-stat-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+.wsp-metric-link:focus-visible,
+.sd-stat-link:focus-visible,
+.wsp-row--link:focus-visible {
+  outline: 2px solid var(--cc-focus, #6366f1);
+  outline-offset: 2px;
+}
+.wsp-row--link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.wsp-row--link:hover {
+  background: var(--cc-surface-hover, #f3f4f6);
+}
+.wsp-trend-date {
+  color: inherit;
+  text-decoration: none;
+}
+.wsp-trend-date:hover {
+  text-decoration: underline;
+}
+.wsp-finding-link {
+  color: var(--cc-link, #4f46e5);
+  text-decoration: none;
+}
+.wsp-finding-link:hover {
+  text-decoration: underline;
+}
+.wsp-filter-bar {
+  align-items: center;
+  margin-bottom: 0.75rem;
+}

@@ -1472,3 +1472,159 @@ def get_web_scan_trends(
         "days": days,
         "data": sorted(daily.values(), key=lambda x: x["date"]),
     }
+
+
+# ── 16. Web Scan drill-downs (org-wide, filterable) ───────────────────────────
+# The dashboard aggregates across every scan, so its numbers cannot drill into a
+# single scan-scoped page. These org-wide, filtered endpoints back the clickable
+# dashboard counts: the filters mirror exactly how each number is computed, so a
+# count and the records behind it stay consistent.
+
+
+@router.get("/web-findings")
+def get_web_findings_drilldown(
+    severity: str | None = Query(None),
+    owasp: str | None = Query(None, description="OWASP code prefix, e.g. A05"),
+    finding_type: str | None = Query(None),
+    detected_by: str | None = Query(None),
+    status: str | None = Query(None, description="e.g. open; omit for any status"),
+    date: str | None = Query(None, description="scan completed date YYYY-MM-DD"),
+    scan_id: str | None = Query(None),
+    org_id: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("dashboard", "read")),
+):
+    """Org-wide web findings with the same filters the dashboard counts use."""
+    from datetime import datetime
+
+    from routers.web_scans import _finding_detail
+    from db.models.web_scans import WebFinding, WebScan
+
+    org = _resolve_org(user, org_id)
+    q = (
+        db.query(WebFinding, WebScan.scan_name, WebScan.target_domain)
+        .join(WebScan, WebFinding.web_scan_id == WebScan.id)
+        .filter(WebFinding.org_id == org, WebScan.is_deleted == False)
+    )
+    if severity:
+        q = q.filter(WebFinding.severity == severity.lower())
+    if owasp:
+        # owasp_category is stored like "A05:2021 – …"; match on the code prefix.
+        q = q.filter(WebFinding.owasp_category.ilike(f"{owasp}%"))
+    if finding_type:
+        q = q.filter(WebFinding.finding_type == finding_type)
+    if detected_by:
+        q = q.filter(WebFinding.detected_by.ilike(f"%{detected_by}%"))
+    if status:
+        q = q.filter(WebFinding.status == status)
+    if scan_id:
+        q = q.filter(WebFinding.web_scan_id == scan_id)
+    if date:
+        try:
+            d0 = datetime.strptime(date, "%Y-%m-%d")
+            d1 = d0 + timedelta(days=1)
+            q = q.filter(WebScan.completed_at >= d0, WebScan.completed_at < d1)
+        except ValueError:
+            pass
+
+    total = q.count()
+    rows = (
+        q.order_by(WebFinding.severity.desc(), WebFinding.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    data = []
+    for finding, scan_name, target_domain in rows:
+        detail = _finding_detail(finding)
+        detail["scan_id"] = finding.web_scan_id
+        detail["scan_name"] = scan_name
+        detail["target_domain"] = target_domain
+        data.append(detail)
+
+    return {
+        "success": True,
+        "data": data,
+        "filters": {
+            "severity": severity,
+            "owasp": owasp,
+            "finding_type": finding_type,
+            "detected_by": detected_by,
+            "status": status,
+            "date": date,
+            "scan_id": scan_id,
+        },
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/web-endpoints")
+def get_web_endpoints_drilldown(
+    source: str | None = Query(None),
+    is_api: bool | None = Query(None),
+    scan_id: str | None = Query(None),
+    org_id: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("dashboard", "read")),
+):
+    """Org-wide discovered endpoints — backs the 'Total Endpoints Discovered' card."""
+    from db.models.web_scans import WebAsset, WebScan
+
+    org = _resolve_org(user, org_id)
+    q = (
+        db.query(WebAsset, WebScan.scan_name)
+        .join(WebScan, WebAsset.web_scan_id == WebScan.id)
+        .filter(WebScan.org_id == org, WebScan.is_deleted == False)
+    )
+    if source:
+        q = q.filter(WebAsset.source == source)
+    if is_api is not None:
+        q = q.filter(WebAsset.is_api == is_api)
+    if scan_id:
+        q = q.filter(WebAsset.web_scan_id == scan_id)
+
+    total = q.count()
+    rows = (
+        q.order_by(WebAsset.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    data = []
+    for asset, scan_name in rows:
+        data.append(
+            {
+                "id": asset.id,
+                "scan_id": asset.web_scan_id,
+                "scan_name": scan_name,
+                "url": asset.url,
+                "method": asset.method,
+                "response_code": asset.response_code,
+                "content_type": asset.content_type,
+                "is_api": asset.is_api,
+                "is_form": asset.is_form,
+                "auth_required": asset.auth_required,
+                "has_file_upload": asset.has_file_upload,
+                "source": asset.source,
+            }
+        )
+
+    return {
+        "success": True,
+        "data": data,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }

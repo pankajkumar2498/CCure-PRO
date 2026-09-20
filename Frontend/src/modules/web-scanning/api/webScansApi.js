@@ -134,4 +134,10 @@ export const webDashboardApi = {
     axiosInstance.get("/dashboard/web-owasp-scorecard", { params }),
   getTrends: (params) =>
     axiosInstance.get("/dashboard/web-scan-trends", { params }),
+  // Org-wide drill-downs behind the dashboard counts (severity / OWASP / trend
+  // date → findings; the endpoints card → discovered endpoints).
+  getAllFindings: (params) =>
+    axiosInstance.get("/dashboard/web-findings", { params }),
+  getAllEndpoints: (params) =>
+    axiosInstance.get("/dashboard/web-endpoints", { params }),
 };

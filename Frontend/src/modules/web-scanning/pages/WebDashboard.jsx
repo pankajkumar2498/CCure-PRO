@@ -28,7 +28,7 @@
  * a severity badge now.
  */
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webDashboardApi } from "../api/webScansApi";
 import {
@@ -41,8 +41,8 @@ import {
 } from "../../../design-system";
 import "../styles/web-scanning-pages.css";
 
-function MetricCard({ title, value }) {
-  return (
+function MetricCard({ title, value, to }) {
+  const body = (
     /* CcureCard supplies the heading, and the heading is what names the
        counter. The pre-migration version paired a styled <span> with a styled
        <div> and nothing tied them together programmatically, so a screen
@@ -50,6 +50,19 @@ function MetricCard({ title, value }) {
     <CcureCard title={title} headingLevel={3}>
       <div className="wsp-metric-value">{value}</div>
     </CcureCard>
+  );
+  // A counter that drills into its records is a link; one that does not (or is
+  // zero) stays plain, so a click never lands on an empty filtered page.
+  return to ? (
+    <Link
+      to={to}
+      className="wsp-metric-link"
+      aria-label={`${title}: ${value} — view details`}
+    >
+      {body}
+    </Link>
+  ) : (
+    body
   );
 }
 
@@ -146,18 +159,34 @@ export default function WebDashboard() {
               <MetricCard
                 title="Active Web Scans"
                 value={summary?.scans?.active || 0}
+                to={
+                  summary?.scans?.active
+                    ? "/web-scans/list?status=running"
+                    : undefined
+                }
               />
               <MetricCard
                 title="Critical Vulnerabilities"
                 value={summary?.severity?.critical || 0}
+                to={
+                  summary?.severity?.critical
+                    ? "/web-scans/all-findings?severity=critical&status=open"
+                    : undefined
+                }
               />
               <MetricCard
                 title="Total Endpoints Discovered"
                 value={summary?.endpoints?.total || 0}
+                to={
+                  summary?.endpoints?.total
+                    ? "/web-scans/all-endpoints"
+                    : undefined
+                }
               />
               <MetricCard
                 title="Scans Last 30 Days"
                 value={summary?.scans?.last_30d || 0}
+                to={summary?.scans?.last_30d ? "/web-scans/list" : undefined}
               />
             </div>
 
@@ -172,24 +201,35 @@ export default function WebDashboard() {
                     {[...scorecard]
                       .sort((a, b) => (b.total || 0) - (a.total || 0))
                       .slice(0, 5)
-                      .map((item) => (
-                        <div className="wsp-row" key={item.code}>
-                          <span>
-                            {item.code} — {item.name}
-                          </span>
-                          {item.total > 0 ? (
+                      .map((item) =>
+                        item.total > 0 ? (
+                          // A category with findings drills into exactly them.
+                          <Link
+                            className="wsp-row wsp-row--link"
+                            key={item.code}
+                            to={`/web-scans/all-findings?owasp=${item.code}&status=open`}
+                            aria-label={`${item.name}: ${item.total} findings — view`}
+                          >
+                            <span>
+                              {item.code} — {item.name}
+                            </span>
                             <CcureSeverityBadge
                               severity="high"
                               score={`${item.total} findings`}
                               showLabel={false}
                             />
-                          ) : (
+                          </Link>
+                        ) : (
+                          <div className="wsp-row" key={item.code}>
+                            <span>
+                              {item.code} — {item.name}
+                            </span>
                             <CcureBadge variant="success">
                               0 findings — clear
                             </CcureBadge>
-                          )}
-                        </div>
-                      ))}
+                          </div>
+                        ),
+                      )}
                   </div>
                 ) : (
                   <p className="wsp-placeholder">
@@ -208,19 +248,34 @@ export default function WebDashboard() {
                   <div className="wsp-rows">
                     {trends.slice(0, 5).map((trend) => (
                       <div className="wsp-row" key={trend.date}>
-                        <span>{trend.date}</span>
+                        <Link
+                          to={`/web-scans/all-findings?date=${trend.date}`}
+                          className="wsp-trend-date"
+                        >
+                          {trend.date}
+                        </Link>
                         <div className="wsp-bands">
                           {trend.critical > 0 && (
-                            <CcureSeverityBadge
-                              severity="critical"
-                              score={trend.critical}
-                            />
+                            <Link
+                              to={`/web-scans/all-findings?date=${trend.date}&severity=critical`}
+                              aria-label={`${trend.critical} critical on ${trend.date}`}
+                            >
+                              <CcureSeverityBadge
+                                severity="critical"
+                                score={trend.critical}
+                              />
+                            </Link>
                           )}
                           {trend.high > 0 && (
-                            <CcureSeverityBadge
-                              severity="high"
-                              score={trend.high}
-                            />
+                            <Link
+                              to={`/web-scans/all-findings?date=${trend.date}&severity=high`}
+                              aria-label={`${trend.high} high on ${trend.date}`}
+                            >
+                              <CcureSeverityBadge
+                                severity="high"
+                                score={trend.high}
+                              />
+                            </Link>
                           )}
                         </div>
                       </div>

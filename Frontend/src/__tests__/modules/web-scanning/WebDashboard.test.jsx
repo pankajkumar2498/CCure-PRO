@@ -30,7 +30,17 @@ const navigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => navigate };
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+    // The dashboard counts are now real <Link>s, which need a Router context;
+    // stub them to plain anchors so the page renders in isolation.
+    Link: ({ to, children, ...rest }) => (
+      <a href={to} {...rest}>
+        {children}
+      </a>
+    ),
+  };
 });
 
 vi.mock("../../../modules/web-scanning/api/webScansApi", () => ({

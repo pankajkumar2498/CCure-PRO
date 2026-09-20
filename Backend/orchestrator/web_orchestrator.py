@@ -1029,6 +1029,21 @@ class WebScanOrchestrator:
         t0 = time.monotonic()
         result: dict[str, Any] = {"success": False}
 
+        # Resolve the scan policy once (Codex P2 item 11): the named preset plus
+        # any explicit knob overrides decide the sqlmap testing level (which of
+        # cookies/headers are attacked), the per-page parameter budget, whether
+        # file-upload forms are tested, and the per-engine time budgets. Every
+        # value below is read from here, so a policy is not advisory.
+        from core.web.policy import resolve_policy
+
+        policy = resolve_policy(options)
+        self._log(
+            f"[DETECT] Policy '{policy['name']}': sqlmap L{policy['sqlmap_level']}, "
+            f"max_params/page={policy['max_params_per_page']}, "
+            f"cookies={policy['attack_cookies']} headers={policy['attack_headers']} "
+            f"uploads={policy['attack_file_uploads']}"
+        )
+
         try:
             all_findings: list[dict] = []
 
@@ -1040,6 +1055,16 @@ class WebScanOrchestrator:
             ledger = CoverageLedger()
             ledger.seed_from_surface(endpoints, forms)
             sqlmap_run_urls: set = set()
+
+            # Coverage scheduler (Codex P2 item 12): classify the discovered
+            # surface into passive + active check tasks up front, then record
+            # each engine's outcome so the scan produces one auditable plan of
+            # what was scheduled and what ran — not a set of tools each doing
+            # their own thing. It rolls outcomes into the same ledger.
+            from core.web.scheduler import CoverageScheduler
+
+            scheduler = CoverageScheduler(ledger)
+            scheduler.enqueue_surface(endpoints, forms)
 
             # Build auth headers
             auth_headers, auth_cookies, auth_status = await self._authenticate(
@@ -1101,12 +1126,22 @@ class WebScanOrchestrator:
                         if depth["use_tech_tags"]
                         else None
                     )
+                    # Auth-aware Nuclei (Codex item 13): fold the session cookies
+                    # into a Cookie header so a cookie-authenticated scan runs
+                    # Nuclei as the logged-in user, not anonymously. Without this,
+                    # every template ran against the login wall on a session-cookie
+                    # app. Header auth (bearer/JWT/API-key) already travelled.
+                    from core.web.nuclei.wrapper import auth_headers_with_cookies
+
+                    _nuclei_headers = auth_headers_with_cookies(
+                        auth_headers, auth_cookies
+                    )
                     nuclei_result = nuclei.run(
                         target=target_url,
                         targets=scan_targets,
                         severity=severity,
                         tags=tags,
-                        auth_headers=auth_headers or None,
+                        auth_headers=_nuclei_headers or None,
                         # Nuclei runs at its PROFILE rate (Phase 19 PART B), not
                         # the conservative shared probe rate — the wrapper still
                         # clamps it to the stealth rate when a WAF is present.
@@ -1115,7 +1150,10 @@ class WebScanOrchestrator:
                         profile=nuclei_profile,
                         concurrency=nuclei_controls["concurrency"],
                         run_timeout=self._bounded_timeout(
-                            web_scan_id, nuclei_controls["timeout"]
+                            web_scan_id,
+                            # Policy (item 11): a per-engine Nuclei budget overrides
+                            # the profile default when set.
+                            policy["nuclei_timeout"] or nuclei_controls["timeout"],
                         ),
                     )
                     all_findings.extend(nuclei_result.get("findings", []))
@@ -1191,7 +1229,18 @@ class WebScanOrchestrator:
 
                     sqlmap = SqlmapWrapper()
                     if coverage.check(sqlmap, "sqlmap"):
-                        injectable = build_injection_targets(endpoints, forms)
+                        # File-upload forms are only tested when the policy
+                        # allows attacking uploads (Codex item 11).
+                        _forms = forms
+                        if not policy["attack_file_uploads"]:
+                            _forms = [
+                                f
+                                for f in (forms or [])
+                                if not (
+                                    isinstance(f, dict) and f.get("has_file_upload")
+                                )
+                            ]
+                        injectable = build_injection_targets(endpoints, _forms)
                         tested = injectable[:MAX_SQLMAP_TARGETS]
                         outcomes = {
                             "clean": 0,
@@ -1254,8 +1303,13 @@ class WebScanOrchestrator:
                                     content_type=candidate.get("content_type"),
                                     auth_headers=auth_headers or None,
                                     raw_request=_wr.to_raw_http(),
+                                    # Policy (item 11): the level decides whether
+                                    # cookies (L2) and headers (L3) are attacked.
+                                    level=policy["sqlmap_level"],
                                     run_timeout=self._bounded_timeout(
-                                        web_scan_id, WebScanConfig.SQLMAP_TIMEOUT
+                                        web_scan_id,
+                                        policy["sqlmap_timeout"]
+                                        or WebScanConfig.SQLMAP_TIMEOUT,
                                     ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
@@ -1321,7 +1375,8 @@ class WebScanOrchestrator:
                     xss = XssEngine(
                         rate_limit=effective_rate,
                         max_targets=WebScanConfig.XSS_MAX_TARGETS,
-                        max_params_per_target=WebScanConfig.XSS_MAX_PARAMS_PER_TARGET,
+                        # Policy (item 11): per-page parameter budget.
+                        max_params_per_target=policy["max_params_per_page"],
                         max_payloads_per_param=WebScanConfig.XSS_MAX_PAYLOADS_PER_PARAM,
                         timeout_ms=WebScanConfig.XSS_TIMEOUT_MS,
                         same_origin_only=WebScanConfig.XSS_SAME_ORIGIN_ONLY,
@@ -1369,6 +1424,8 @@ class WebScanOrchestrator:
                         all_findings.extend(xss_findings)
                         s = xss_result.get("stats", {})
                         ledger.mark_tested_params("xss", s.get("tested_params", []))
+                        for _tp in s.get("tested_params", []):
+                            scheduler.record("xss", _tp.get("url", ""), "done")
                         coverage.ran(
                             "xss",
                             (
@@ -1850,16 +1907,19 @@ class WebScanOrchestrator:
             )
             header_findings = await self._check_security_headers(target_url)
             all_findings.extend(header_findings)
+            scheduler.record("security_headers", target_url, "done")
 
             # 4. CORS Misconfiguration Check
             cors_findings = await self._check_cors(target_url)
             all_findings.extend(cors_findings)
+            scheduler.record("cors", target_url, "done")
 
             # 4b. Cookie security (Phase 17): Secure / HttpOnly / SameSite on
             #     sensitive (session/auth/token) cookies only — preference
             #     cookies are not flagged, to avoid a false-positive flood.
             cookie_findings = await self._check_cookies(target_url)
             all_findings.extend(cookie_findings)
+            scheduler.record("cookies", target_url, "done")
 
             # A scan whose primary detector never ran has not assessed this
             # target. Say so as a finding, so an empty result cannot be read
@@ -1879,6 +1939,7 @@ class WebScanOrchestrator:
             # report distinguish "tested-clean" from "never-tested".
             for _u in sqlmap_run_urls:
                 ledger.mark_endpoint(_u, "sqlmap")
+                scheduler.record("sqli", _u, "done")
             _cov_active = [
                 e
                 for e in ("injection", "xss", "sqlmap")
@@ -1898,6 +1959,21 @@ class WebScanOrchestrator:
                 # engine, and how much of the discovered surface remains
                 # untested. This is the "coverage-driven" property.
                 "coverage_ledger": coverage_ledger,
+                # The scheduler's classified plan + outcomes (Codex item 12):
+                # how many passive/active tasks were scheduled and their status,
+                # so the report shows the work plan, not just the findings.
+                "schedule": scheduler.summary(),
+                # The resolved scan policy travels with the results (Codex item
+                # 11), so the report can state what was and was not attacked
+                # (cookies/headers/uploads) and under which budget.
+                "scan_policy": {
+                    "name": policy["name"],
+                    "attack_cookies": policy["attack_cookies"],
+                    "attack_headers": policy["attack_headers"],
+                    "attack_file_uploads": policy["attack_file_uploads"],
+                    "max_params_per_page": policy["max_params_per_page"],
+                    "sqlmap_level": policy["sqlmap_level"],
+                },
                 # The depth policy travels with the results, so a short scan is
                 # a stated choice on the report rather than an unexplained
                 # difference in how much was found.

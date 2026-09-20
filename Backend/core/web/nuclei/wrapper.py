@@ -46,6 +46,21 @@ _SEVERITY_MAP = {
 MAX_NUCLEI_TARGETS = 2000
 
 
+def auth_headers_with_cookies(
+    auth_headers: dict | None, auth_cookies: dict | None
+) -> dict:
+    """
+    Merge session cookies into a Cookie header so Nuclei runs authenticated on a
+    cookie-session app (Codex item 13). Header auth (bearer/JWT/API-key) already
+    travels as headers; this closes the cookie case. An explicit Cookie header
+    already present is never overwritten.
+    """
+    merged = dict(auth_headers or {})
+    if auth_cookies and not any(k.lower() == "cookie" for k in merged):
+        merged["Cookie"] = "; ".join(f"{k}={v}" for k, v in auth_cookies.items())
+    return merged
+
+
 def _dedupe_targets(targets: list[str] | None, fallback: str) -> list[str]:
     """
     Normalise the crawl's output into a stable, de-duplicated target list.

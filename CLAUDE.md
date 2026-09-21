@@ -196,9 +196,20 @@ section is the VM's answer.
     at 5432 is talking to the *old* Windows database without any error saying
     so.
 
-  Role `ccure_user`, password `POSTGRES_PASSWORD` in the VM's `.env`
-  (`vuln_intel` is browsable from the same entry). `sslmode=disable` on the
-  client side, per the TLS decision above.
+  Role `ccure_user`, password `POSTGRES_PASSWORD` in the VM's `.env`.
+  `sslmode=disable` on the client side, per the TLS decision above.
+
+  **`vuln_intel` is read-only from that entry, by design.** Its 22 tables are
+  owned by `admin` — the role the feed sync scripts and the application's
+  `VULN_DB_USER` use — and `ccure_user` holds SELECT through
+  `ALTER DEFAULT PRIVILEGES FOR ROLE admin`, so a table a sync creates next
+  month is readable the moment it exists. Note what did *not* grant that:
+  `GRANT ALL PRIVILEGES ON DATABASE vuln_intel TO ccure_user` had been in
+  `docker-postgres-init.sql` all along and confers CONNECT, CREATE and TEMP
+  only; every SELECT still failed with 42501 until 18 Sep 2026. The
+  application role stays unable to write the catalogue its findings rest on.
+  For writes, the second pgAdmin entry **CCure VM (vuln_intel as admin)**
+  connects as the owner (`VULN_DB_PASSWORD` in `.env`).
 
 - **The desktop is not part of the deployment.**
   `sudo scripts/linux/disable_desktop.sh` sets `multi-user.target` and keeps

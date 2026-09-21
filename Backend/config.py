@@ -7,7 +7,6 @@ Loads settings from environment variables with sensible defaults.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -267,6 +266,43 @@ class WebScanConfig:
     SUBFINDER_BINARY: str = os.getenv("SUBFINDER_BINARY", "subfinder")
     FFUF_BINARY: str = os.getenv("FFUF_BINARY", "ffuf")
     FFUF_WORDLIST: str = os.getenv("FFUF_WORDLIST", "/opt/wordlists/common.txt")
+    # ── ffuf adaptive content discovery (Phase 11) ─────────────────────────────
+    # Discovery depth scales with how much the crawl already mapped, so a tiny
+    # app does not spend ~8 minutes brute-forcing a full wordlist at the scan
+    # rate limit. The small tier uses a curated high-value list shipped in the
+    # repo that still covers every sensitive-file check, so the reduction is in
+    # the long tail of unlikely paths, not in the findings that matter — and the
+    # tier chosen is recorded on the scan so coverage is never reduced silently.
+    FFUF_WORDLIST_SMALL: str = os.getenv(
+        "FFUF_WORDLIST_SMALL",
+        str(BACKEND_DIR / "data" / "wordlists" / "web_discovery_small.txt"),
+    )
+    #: Deep-tier wordlist; empty falls back to FFUF_WORDLIST.
+    FFUF_WORDLIST_DEEP: str = os.getenv("FFUF_WORDLIST_DEEP", "")
+    #: Crawl-endpoint thresholds that pick the tier (<=small, <=medium, else deep).
+    FFUF_SMALL_MAX_ENDPOINTS: int = int(os.getenv("FFUF_SMALL_MAX_ENDPOINTS", "5"))
+    FFUF_MEDIUM_MAX_ENDPOINTS: int = int(os.getenv("FFUF_MEDIUM_MAX_ENDPOINTS", "50"))
+    #: Per-tier word caps (0 = use the whole wordlist).
+    FFUF_MAX_WORDS_SMALL: int = int(os.getenv("FFUF_MAX_WORDS_SMALL", "0"))
+    FFUF_MAX_WORDS_STANDARD: int = int(os.getenv("FFUF_MAX_WORDS_STANDARD", "0"))
+    FFUF_MAX_WORDS_DEEP: int = int(os.getenv("FFUF_MAX_WORDS_DEEP", "0"))
+    #: Request rate (req/s) for ffuf content discovery, Phase 21. Decoupled from
+    #: the conservative fuzzing ceiling WEB_SCAN_RATE_LIMIT (5): content
+    #: discovery is directory brute-forcing (plain GETs, like crawling), so at
+    #: 5 req/s the standard-tier wordlist dominated the CRAWL phase (Phase 20
+    #: measured ~479s). Raising the rate completes the SAME wordlist faster with
+    #: no reduction in coverage; a WAF still clamps it to WEB_STEALTH_RATE_LIMIT.
+    #: Set to 0 to fall back to WEB_SCAN_RATE_LIMIT for a fully-throttled deploy.
+    FFUF_RATE: int = int(os.getenv("FFUF_RATE", "30"))
+    #: Number of ffuf-discovered HTML-like paths to re-open with the browser at
+    #: depth 0 so hidden pages contribute forms/API calls to the attack surface.
+    FFUF_RECRAWL_MAX: int = int(os.getenv("FFUF_RECRAWL_MAX", "8"))
+    #: Number of discovered GET endpoints to sample for security header and
+    #: CORS checks. The checks aggregate affected URLs into one finding per
+    #: issue so endpoint-specific drift is visible without flooding reports.
+    SECURITY_HEADER_ENDPOINT_SAMPLE_MAX: int = int(
+        os.getenv("SECURITY_HEADER_ENDPOINT_SAMPLE_MAX", "25")
+    )
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────
@@ -274,6 +310,12 @@ class WebScanConfig:
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "5"))
     MAX_CRAWL_URLS: int = int(os.getenv("MAX_CRAWL_URLS", "500"))
     CRAWL_CONCURRENCY: int = int(os.getenv("CRAWL_CONCURRENCY", "3"))
+    #: Navigation-start rate ceiling for the crawler (pages/sec), shared across
+    #: all concurrent workers so concurrency fills the pipeline up to this limit
+    #: rather than exceeding the target's tolerance. Separate from
+    #: SCAN_RATE_LIMIT (fuzzing/probes) because a page navigation is ordinary
+    #: browsing, not a burst of guesses.
+    CRAWL_RATE_LIMIT: int = int(os.getenv("CRAWL_RATE_LIMIT", "10"))
     #: Per-page budget for client-side rendering to settle after the document
     #: loads. Bounded on purpose: an application holding a websocket or polling
     #: open never reaches network idle, and waiting the full page timeout on
@@ -282,6 +324,12 @@ class WebScanConfig:
 
     # ── Scan Limits ───────────────────────────────────────────────────────────
     WEB_SCAN_TIMEOUT: int = int(os.getenv("WEB_SCAN_TIMEOUT", "14400"))  # 4 hours
+    # A web scan queued but never picked up by the web-worker is settled after
+    # this many minutes. Its own deadline, separate from the network queue
+    # timeout, because a missing web-worker is a different operator problem.
+    WEB_SCAN_QUEUE_TIMEOUT_MINUTES: int = int(
+        os.getenv("WEB_SCAN_QUEUE_TIMEOUT_MINUTES", "15")
+    )
     SCAN_RATE_LIMIT: int = int(os.getenv("WEB_SCAN_RATE_LIMIT", "5"))  # req/sec
     STEALTH_RATE_LIMIT: int = int(
         os.getenv("WEB_STEALTH_RATE_LIMIT", "2")
@@ -306,11 +354,72 @@ class WebScanConfig:
     OAST_SERVER: str = os.getenv("OAST_SERVER", "")
     OAST_TOKEN: str = os.getenv("OAST_TOKEN", "")
 
+    # CCure's *own* active OOB probes (core/web/oast) — blind SSRF, out-of-band
+    # command injection, blind XXE — are separate from nuclei's built-in
+    # interactsh handling above. They run only against a collaborator the
+    # operator controls (a self-hosted OAST server), never the public
+    # interact.sh, so they add no outbound-internet dependency and never send a
+    # target callback to a third party. With no self-hosted server configured
+    # they simply do not run, and the scan records the blind classes as
+    # actively unassessed rather than cleared.
+    OAST_ACTIVE_PROBES: bool = os.getenv("OAST_ACTIVE_PROBES", "True").lower() == "true"
+    # The collaborator's DNS zone (callbacks arrive as <token>.<domain>) and,
+    # where wildcard DNS is not available, an HTTP base for path-style callbacks
+    # (<http_url>/<token>). Either is enough to enable active probing; if unset,
+    # the domain is derived from OAST_SERVER's host.
+    OAST_DOMAIN: str = os.getenv("OAST_DOMAIN", "")
+    OAST_HTTP_URL: str = os.getenv("OAST_HTTP_URL", "")
+    # Bounds for the active probe pass. Poll timeout caps how long the scan
+    # waits for callbacks after sending payloads; the loop exits early once
+    # every payload has been seen, and honours scan cancellation throughout.
+    OAST_POLL_TIMEOUT_S: int = int(os.getenv("OAST_POLL_TIMEOUT_S", "30"))
+    OAST_POLL_INTERVAL_S: float = float(os.getenv("OAST_POLL_INTERVAL_S", "2"))
+    OAST_RATE_LIMIT: int = int(os.getenv("OAST_RATE_LIMIT", "5"))
+    OAST_MAX_TARGETS: int = int(os.getenv("OAST_MAX_TARGETS", "25"))
+    # Ports for a collaborator CCure runs itself (no-egress deployments).
+    OAST_RECEIVER_HTTP_PORT: int = int(os.getenv("OAST_RECEIVER_HTTP_PORT", "0"))
+    OAST_RECEIVER_DNS_PORT: int = int(os.getenv("OAST_RECEIVER_DNS_PORT", "0"))
+
     # ── Nuclei Specific ───────────────────────────────────────────────────────
     NUCLEI_SEVERITY: str = os.getenv("NUCLEI_SEVERITY", "medium,high,critical")
     NUCLEI_CONCURRENCY: int = int(os.getenv("NUCLEI_CONCURRENCY", "25"))
     NUCLEI_BULK_SIZE: int = int(os.getenv("NUCLEI_BULK_SIZE", "25"))
     NUCLEI_TIMEOUT: int = int(os.getenv("NUCLEI_TIMEOUT", "7200"))  # 2 hours
+
+    # ── Nuclei scan profiles (Phase 10) ────────────────────────────────────────
+    # STANDARD reuses the values above so it does not regress. FAST trades
+    # coverage for speed (higher concurrency, shorter timeout); DEEP's timeout
+    # and concurrency are separately configurable because its whole point is a
+    # longer, broader run.
+    NUCLEI_CONCURRENCY_FAST: int = int(os.getenv("NUCLEI_CONCURRENCY_FAST", "75"))
+    NUCLEI_TIMEOUT_FAST: int = int(os.getenv("NUCLEI_TIMEOUT_FAST", "1800"))  # 30 min
+    NUCLEI_CONCURRENCY_DEEP: int = int(os.getenv("NUCLEI_CONCURRENCY_DEEP", "40"))
+    NUCLEI_TIMEOUT_DEEP: int = int(os.getenv("NUCLEI_TIMEOUT_DEEP", "14400"))  # 4 hours
+
+    # Per-profile nuclei request rate (req/s), Phase 19 PART B. The global
+    # WEB_SCAN_RATE_LIMIT (5 req/s) is a deliberately conservative fuzzing/probe
+    # ceiling; applied to nuclei it throttles a multi-thousand-template corpus so
+    # hard that runs hit their wall-clock budget without finishing — a timeout,
+    # not a clean result. Nuclei's own default is 150 req/s, and these are web
+    # application scans, so nuclei is given a profile-appropriate rate that is
+    # decoupled from the crawler/probe ceiling. The rate is TUNED per profile
+    # (not "just raise the timeout"): FAST is fastest, DEEP is gentler because it
+    # runs far more templates and would otherwise be the heaviest load. WAF
+    # detection still clamps any of these down to WEB_STEALTH_RATE_LIMIT, and the
+    # safety tag exclusions are untouched. Set to 0 to fall back to the global
+    # WEB_SCAN_RATE_LIMIT for a deployment that must keep nuclei fully throttled.
+    NUCLEI_RATE_FAST: int = int(os.getenv("NUCLEI_RATE_FAST", "150"))
+    NUCLEI_RATE_STANDARD: int = int(os.getenv("NUCLEI_RATE_STANDARD", "150"))
+    NUCLEI_RATE_DEEP: int = int(os.getenv("NUCLEI_RATE_DEEP", "100"))
+    # The safety exclusions applied to every profile by default. This scans
+    # production and OT hosts, so dos/fuzz/intrusive/brute-force templates are
+    # off unless an operator explicitly turns them on — DEEP does not.
+    NUCLEI_EXCLUDE_TAGS: str = os.getenv(
+        "NUCLEI_EXCLUDE_TAGS", "dos,fuzz,intrusive,brute-force"
+    )
+    NUCLEI_INCLUDE_DANGEROUS_TAGS: bool = (
+        os.getenv("NUCLEI_INCLUDE_DANGEROUS_TAGS", "False").lower() == "true"
+    )
 
     # ── SQLMap Specific ───────────────────────────────────────────────────────
     # Level 3, not 2. Verified against OWASP Juice Shop: the injectable search
@@ -323,6 +432,71 @@ class WebScanConfig:
     SQLMAP_LEVEL: int = int(os.getenv("SQLMAP_LEVEL", "3"))
     SQLMAP_RISK: int = int(os.getenv("SQLMAP_RISK", "2"))
     SQLMAP_TIMEOUT: int = int(os.getenv("SQLMAP_TIMEOUT", "600"))  # 10 min per URL
+
+    # ── Active XSS engine ─────────────────────────────────────────────────────
+    # Browser-driven reflected/DOM/stored XSS testing (core/web/xss). Bounds are
+    # deliberately conservative so XSS testing cannot turn a small app into an
+    # hours-long scan: worst case is roughly
+    # MAX_TARGETS * MAX_PARAMS_PER_TARGET * MAX_PAYLOADS_PER_PARAM navigations,
+    # rate-limited by the scan's effective rate. Detection is proof-of-execution,
+    # so payloads are non-destructive and same-origin by default.
+    XSS_MAX_TARGETS: int = int(os.getenv("XSS_MAX_TARGETS", "25"))
+    XSS_MAX_PARAMS_PER_TARGET: int = int(os.getenv("XSS_MAX_PARAMS_PER_TARGET", "10"))
+    XSS_MAX_PAYLOADS_PER_PARAM: int = int(os.getenv("XSS_MAX_PAYLOADS_PER_PARAM", "8"))
+    XSS_TIMEOUT_MS: int = int(os.getenv("XSS_TIMEOUT_MS", "8000"))
+    XSS_SAME_ORIGIN_ONLY: bool = os.getenv("XSS_SAME_ORIGIN_ONLY", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    XSS_TEST_DOM: bool = os.getenv("XSS_TEST_DOM", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    XSS_TEST_STORED: bool = os.getenv("XSS_TEST_STORED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    # ── Active injection engine (command/SSTI/XXE/LDAP/XPath) ──────────────────
+    # HTTP-driven, evidence-based (differential timing / computed value / canary
+    # / parser error). Bounded and same-origin by default. The timeout must
+    # exceed the larger command-injection delay so a genuine sleep is observed
+    # rather than cut off.
+    INJECTION_MAX_TARGETS: int = int(os.getenv("INJECTION_MAX_TARGETS", "25"))
+    INJECTION_MAX_PARAMS_PER_TARGET: int = int(
+        os.getenv("INJECTION_MAX_PARAMS_PER_TARGET", "10")
+    )
+    INJECTION_TIMEOUT_S: float = float(os.getenv("INJECTION_TIMEOUT_S", "20"))
+    INJECTION_CMDI_DELAY_1: int = int(os.getenv("INJECTION_CMDI_DELAY_1", "5"))
+    INJECTION_CMDI_DELAY_2: int = int(os.getenv("INJECTION_CMDI_DELAY_2", "8"))
+    INJECTION_SAME_ORIGIN_ONLY: bool = os.getenv(
+        "INJECTION_SAME_ORIGIN_ONLY", "true"
+    ).lower() in ("1", "true", "yes")
+    # Comma-separated subset of:
+    # command_injection,ssti,xxe,ldap_injection,xpath_injection
+    INJECTION_CLASSES: str = os.getenv(
+        "INJECTION_CLASSES",
+        "command_injection,ssti,xxe,ldap_injection,xpath_injection",
+    )
+
+    # ── Access-control engine (IDOR / privilege escalation) ───────────────────
+    # Multi-user, evidence-based, read-only by default. Runs only when the scan
+    # configures access_control users. Bounded and same-origin.
+    ACCESS_CONTROL_MAX_CANDIDATES: int = int(
+        os.getenv("ACCESS_CONTROL_MAX_CANDIDATES", "30")
+    )
+    ACCESS_CONTROL_TIMEOUT_S: float = float(os.getenv("ACCESS_CONTROL_TIMEOUT_S", "15"))
+    ACCESS_CONTROL_SAME_ORIGIN_ONLY: bool = os.getenv(
+        "ACCESS_CONTROL_SAME_ORIGIN_ONLY", "true"
+    ).lower() in ("1", "true", "yes")
+    # Similarity at/above which two responses are "the same resource". High on
+    # purpose — an authorization bypass returns the victim's actual content.
+    ACCESS_CONTROL_SIMILARITY: float = float(
+        os.getenv("ACCESS_CONTROL_SIMILARITY", "0.90")
+    )
 
 
 class AdminConfig:

@@ -25,8 +25,8 @@ Design Decisions:
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, List
+from urllib.parse import urljoin, urlparse
 
 from config import WebScanConfig
 
@@ -38,6 +38,12 @@ log = logging.getLogger("ccure.web.orchestrator")
 TOOL_PURPOSE = {
     "nuclei": "Template-based vulnerability detection (the primary web check)",
     "sqlmap": "SQL injection testing on parameterised endpoints",
+    "xss": "Active cross-site scripting testing (reflected, DOM and stored)",
+    "injection": "Active server-side injection testing (command, SSTI, XXE, LDAP, XPath)",
+    "access_control": "Authorization testing (IDOR, horizontal/vertical privilege escalation)",
+    "http_methods": "HTTP method/verb security testing (TRACE, method-based auth bypass)",
+    "js_deps": "Vulnerable JavaScript dependency detection (OSV npm intelligence)",
+    "oast": "Out-of-band blind detection (blind SSRF, OOB command injection, blind XXE) via a self-hosted collaborator",
     "sslyze": "TLS/SSL configuration and certificate audit",
     "ffuf": "Content and directory discovery",
     "subfinder": "Subdomain enumeration",
@@ -47,7 +53,7 @@ TOOL_PURPOSE = {
 #: Tools without which the phase has not meaningfully assessed the target.
 #: A scan missing these has produced an empty result, not a clean one — the
 #: same distinction the credentialed audit draws about its package inventory.
-ESSENTIAL_TOOLS = {"nuclei"}
+ESSENTIAL_TOOLS = {"nuclei", "sqlmap"}
 
 #: How much of the template corpus a scan runs, and against what.
 #:
@@ -137,6 +143,12 @@ class ToolCoverage:
     STATUS_UNAVAILABLE = "unavailable"
     STATUS_FAILED = "failed"
     STATUS_SKIPPED = "skipped"
+    # The tool ran and produced real findings but did not complete its corpus —
+    # e.g. nuclei stopped at its time limit (Phase 19 PART C). Distinct from
+    # ``ran`` (which implies full coverage) and from ``failed`` (which implies
+    # nothing was collected): a partial run has genuine findings AND leaves the
+    # target not fully assessed, so it must not read as a clean scan.
+    STATUS_PARTIAL = "partial"
 
     def __init__(self) -> None:
         self.tools: Dict[str, Dict[str, Any]] = {}
@@ -151,6 +163,9 @@ class ToolCoverage:
 
     def ran(self, name: str, detail: str = "") -> None:
         self.record(name, self.STATUS_RAN, detail)
+
+    def partial(self, name: str, detail: str = "") -> None:
+        self.record(name, self.STATUS_PARTIAL, detail)
 
     def unavailable(self, name: str) -> None:
         self.record(
@@ -179,10 +194,27 @@ class ToolCoverage:
 
     @property
     def missing_essential(self) -> List[str]:
+        # An essential tool that is *unavailable* or *failed* makes the scan
+        # incomplete — a missing sqlmap must not let a SQL-injectable app read
+        # as clean (Phase 15). A tool the operator *deliberately disabled*
+        # (skipped) is a choice, not an incompleteness, so it is not flagged.
         return sorted(
             name
             for name, row in self.tools.items()
-            if name in ESSENTIAL_TOOLS and row["status"] != self.STATUS_RAN
+            if name in ESSENTIAL_TOOLS
+            and row["status"] in (self.STATUS_UNAVAILABLE, self.STATUS_FAILED)
+        )
+
+    @property
+    def incomplete_essential(self) -> List[str]:
+        # An essential tool that ran but did not finish its corpus (e.g. nuclei
+        # timed out) leaves the target not fully assessed (Phase 19 PART C). It
+        # found real things, so it is not "missing", but the scan cannot claim
+        # full coverage — this keeps a timeout from reading as a clean scan.
+        return sorted(
+            name
+            for name, row in self.tools.items()
+            if name in ESSENTIAL_TOOLS and row["status"] == self.STATUS_PARTIAL
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -191,14 +223,107 @@ class ToolCoverage:
             "tools_run": sorted(
                 n for n, r in self.tools.items() if r["status"] == self.STATUS_RAN
             ),
+            "tools_partial": sorted(
+                n for n, r in self.tools.items() if r["status"] == self.STATUS_PARTIAL
+            ),
             "tools_unavailable": sorted(
                 n
                 for n, r in self.tools.items()
                 if r["status"] == self.STATUS_UNAVAILABLE
             ),
             "missing_essential": self.missing_essential,
-            "assessment_complete": not self.missing_essential,
+            "incomplete_essential": self.incomplete_essential,
+            # A scan is complete only when no essential tool is missing AND none
+            # finished partially. Either way a short result is not a clean one.
+            "assessment_complete": not (
+                self.missing_essential or self.incomplete_essential
+            ),
         }
+
+
+def ffuf_recrawl_candidates(
+    discovered_paths: List[Dict[str, Any]], limit: int
+) -> List[str]:
+    """Return ffuf hits worth opening with the browser for surface extraction.
+
+    ffuf already contributes URLs to detection. This helper picks a small,
+    deterministic subset of HTML-like 200 responses so hidden pages can also
+    contribute forms, static JS routes and network/API calls without launching an
+    unbounded second crawl.
+    """
+    out: List[str] = []
+    seen: set[str] = set()
+    if limit <= 0:
+        return out
+    for item in discovered_paths or []:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        try:
+            status = int(item.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status != 200:
+            continue
+        ctype = str(item.get("content_type") or item.get("content-type") or "").lower()
+        if ctype and not any(t in ctype for t in ("html", "xhtml", "text/plain")):
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def security_header_sample_urls(
+    target_url: str, endpoints: List[Dict[str, Any]] | None, limit: int
+) -> List[str]:
+    """Same-origin GET URLs to use for passive header/CORS sampling."""
+    samples: List[str] = []
+    seen: set[str] = set()
+    base = urlparse(target_url)
+    origin = (base.scheme, base.netloc.lower())
+
+    def add(raw: Any) -> None:
+        raw_url = str(raw or "").strip()
+        if not raw_url:
+            return
+        parsed = urlparse(urljoin(target_url, raw_url))
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return
+        if (parsed.scheme, parsed.netloc.lower()) != origin:
+            return
+        normalized = parsed._replace(fragment="").geturl()
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        samples.append(normalized)
+
+    add(target_url)
+    if limit <= 0:
+        return samples
+
+    for ep in endpoints or []:
+        if not isinstance(ep, dict):
+            continue
+        method = str(ep.get("method") or "GET").upper()
+        if method != "GET":
+            continue
+        add(ep.get("url") or ep.get("request_url") or ep.get("matched_at"))
+        if len(samples) - 1 >= limit:
+            break
+    return samples
+
+
+def _sample_evidence(label: str, urls: List[str], *, max_urls: int = 10) -> str:
+    shown = [str(u) for u in urls[:max_urls]]
+    lines = [f"{label}: {len(urls)} URL(s)"]
+    lines.extend(f"- {u}" for u in shown)
+    if len(urls) > max_urls:
+        lines.append(f"- ... {len(urls) - max_urls} more")
+    return "\n".join(lines)
 
 
 def tool_unavailable_finding(target_url: str, missing: List[str]) -> Dict[str, Any]:
@@ -236,6 +361,24 @@ def tool_unavailable_finding(target_url: str, missing: List[str]) -> Dict[str, A
 #: case of CSRF tokens, break the request when replaced with a probe).
 _NON_INJECTABLE_INPUT_TYPES = {"submit", "button", "reset", "image", "file", "hidden"}
 
+#: Active browser/custom probes deliberately avoid spraying credentials and
+#: anti-CSRF controls. They remain in the inventory, but coverage should explain
+#: why those engines skipped them instead of leaving a mystery gap.
+_ACTIVE_PROBE_SKIP_FIELD_NAMES = {
+    "csrf",
+    "csrf_token",
+    "_token",
+    "authenticity_token",
+    "password",
+}
+
+
+def is_active_probe_excluded_form_param(node: Dict[str, Any]) -> bool:
+    return (
+        node.get("location") == "form"
+        and str(node.get("param") or "").lower() in _ACTIVE_PROBE_SKIP_FIELD_NAMES
+    )
+
 
 def build_injection_targets(
     endpoints: List[Dict[str, Any]], forms: List[Dict[str, Any]]
@@ -243,39 +386,120 @@ def build_injection_targets(
     """
     The set of request shapes worth handing to an injection tester.
 
-    Two things this has to get right, both of which were previously wrong.
-
-    Forms were discovered by the crawl and then never used. Injection lives
-    disproportionately in form parameters — login, search, feedback — so a
-    scanner that tests only URLs carrying a query string skips the richest part
-    of the surface it just spent a phase mapping.
-
-    A POST endpoint with no body is not a test. sqlmap given ``-u`` and a POST
-    method with nothing to inject probes no parameter at all and returns clean,
-    which is indistinguishable from a target that has no flaw. Each target here
-    carries the data that makes it testable, or it is not emitted.
+    Each emitted target also carries ``coverage_params``: the exact
+    (url, location, parameter) triples that sqlmap will exercise if the run is
+    launched. Coverage is updated from those triples, not from the whole
+    endpoint, so headers/cookies/other body fields are never marked tested just
+    because one request to the same URL ran.
     """
+    from urllib.parse import parse_qsl
+
+    from core.web.surface import (
+        is_json_request,
+        json_param_names,
+        parse_json_object,
+        path_id_segments,
+        swap_path_segment,
+    )
+
     targets: List[Dict[str, Any]] = []
     seen: set = set()
 
-    def _add(url: str, method: str, data: str | None) -> None:
+    def _add(
+        url: str,
+        method: str,
+        data: str | None,
+        content_type: str | None = None,
+        coverage_params: list[dict] | None = None,
+    ) -> None:
         url = str(url or "").strip()
         # A fragment is resolved in the browser and never reaches the server,
         # so a client-side route has no server-side parameter to inject into.
         if not url.lower().startswith(("http://", "https://")) or "#" in url:
             return
-        key = f"{method}:{url}:{data or ''}"
+        key = f"{method}:{url}:{data or ''}:{content_type or ''}"
         if key in seen:
             return
         seen.add(key)
-        targets.append({"url": url, "method": method, "data": data})
+        targets.append(
+            {
+                "url": url,
+                "method": method,
+                "data": data,
+                "content_type": content_type,
+                "coverage_params": coverage_params or [],
+            }
+        )
 
     for ep in endpoints or []:
         if not isinstance(ep, dict):
             continue
         url = ep.get("url", "")
         if "?" in url and urlparse(url).query:
-            _add(url, "GET", None)
+            q_params = [
+                {"url": url, "location": "query", "param": name}
+                for name, _ in parse_qsl(urlparse(url).query, keep_blank_values=True)
+            ]
+            _add(url, "GET", None, coverage_params=q_params)
+
+        # JSON request body (Phase 22): a captured JSON API body is where modern
+        # parameters live. sqlmap auto-detects JSON params from --data in batch
+        # mode, so the whole body is handed over with its content-type.
+        if is_json_request(ep):
+            body_obj = parse_json_object(ep.get("request_body"))
+            if body_obj:
+                j_params = [
+                    {"url": url, "location": "json", "param": name}
+                    for name in json_param_names(body_obj)
+                ]
+                _add(
+                    url,
+                    str(ep.get("method") or "POST").upper(),
+                    ep.get("request_body"),
+                    content_type="application/json",
+                    coverage_params=j_params,
+                )
+
+        # XML / SOAP request body (Phase 23, WSDL import): sqlmap detects and
+        # tests SOAP/XML parameters in a --data body, so a SOAP operation
+        # envelope becomes an injection target with its content-type.
+        _xml_body = ep.get("request_body")
+        _xml_ct = str(ep.get("request_content_type") or "").lower()
+        if (
+            _xml_body
+            and isinstance(_xml_body, str)
+            and _xml_body.lstrip().startswith("<")
+            and ("xml" in _xml_ct or "soap" in _xml_ct)
+        ):
+            soap_names = (ep.get("parameters") or {}).get("soap") or ["body"]
+            _add(
+                url,
+                str(ep.get("method") or "POST").upper(),
+                _xml_body,
+                content_type=ep.get("request_content_type") or "text/xml",
+                coverage_params=[
+                    {"url": url, "location": "soap", "param": str(name)}
+                    for name in soap_names
+                ],
+            )
+
+        # Path identifiers (Phase 22): /api/users/123 → mark the id with sqlmap's
+        # custom injection-point marker '*' so the path segment is tested, not
+        # just query/body. Only identifier-looking segments are marked.
+        path_param_names = (ep.get("parameters") or {}).get("path") or []
+        for _seg_pos, seg in enumerate(path_id_segments(url)):
+            marked = swap_path_segment(url, seg["index"], seg["value"] + "*")
+            param_name = (
+                str(path_param_names[_seg_pos])
+                if _seg_pos < len(path_param_names)
+                else str(seg["index"])
+            )
+            _add(
+                marked,
+                str(ep.get("method") or "GET").upper(),
+                None,
+                coverage_params=[{"url": url, "location": "path", "param": param_name}],
+            )
 
     for form in forms or []:
         if not isinstance(form, dict):
@@ -291,11 +515,17 @@ def build_injection_targets(
         if not fields:
             continue
         body = "&".join(f"{name}=1" for name in fields)
+        form_url = form.get("url", "")
+        cov = [{"url": form_url, "location": "form", "param": name} for name in fields]
         if method == "POST":
-            _add(form.get("url", ""), "POST", body)
+            _add(form_url, "POST", body, coverage_params=cov)
         else:
-            url = form.get("url", "")
-            _add(f"{url}{'&' if urlparse(url).query else '?'}{body}", "GET", None)
+            _add(
+                f"{form_url}{'&' if urlparse(form_url).query else '?'}{body}",
+                "GET",
+                None,
+                coverage_params=cov,
+            )
 
     return targets
 
@@ -316,6 +546,40 @@ def _redis_or_none():
     except Exception as exc:  # noqa: BLE001 — caching is an optimisation
         log.debug("Redis unavailable for session sharing: %s", exc)
         return None
+
+
+def _emit_web_progress(web_scan_id: str, phase: str, data: dict) -> None:
+    """
+    Publish an intra-phase progress event on the same Redis channel the web
+    scan's progress WebSocket subscribes to (``scan_progress:{id}``), in the
+    same envelope ``core/web/tasks.py`` uses.
+
+    This is what stops a working scan reading as stuck. Without it the pipeline
+    emits one event at each phase boundary, so the DETECT phase — which can run
+    for well over an hour — shows a single "Scanning for vulnerabilities"
+    message and a progress bar frozen at 75% for its whole duration. Best
+    effort: a publish failure must never disturb the scan.
+    """
+    if not web_scan_id:
+        return
+    try:
+        import json as _json
+
+        from core.redis_client import get_redis_client
+
+        get_redis_client().publish(
+            f"scan_progress:{web_scan_id}",
+            _json.dumps(
+                {
+                    "scan_id": web_scan_id,
+                    "scan_type": "web",
+                    "phase": phase,
+                    "progress": {"phase": phase, **data},
+                }
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — progress is advisory
+        log.debug("web progress publish failed: %s", exc)
 
 
 def auth_failure_finding(target_url: str, error: str) -> Dict[str, Any]:
@@ -536,9 +800,15 @@ class WebScanOrchestrator:
             sensitive_findings: list[dict] = []
             crawl_stats: dict[str, Any] = {}
 
-            # 1. Authenticate if needed
+            # 1. Authenticate if needed. A single session manager is retained
+            #    for the phase so its bounded re-auth counter persists across
+            #    any session-loss events the crawl detects.
+            from core.web.auth.secrets import decrypt_auth_config
+            from core.web.auth.session_manager import WebSessionManager
+
+            auth_mgr = WebSessionManager(redis_client=_redis_or_none())
             auth_headers, auth_cookies, auth_status = await self._authenticate(
-                auth_config, web_scan_id, target_url
+                auth_config, web_scan_id, target_url, session_mgr=auth_mgr
             )
             result["auth_status"] = auth_status
             if auth_status.get("requested") and not auth_status.get("authenticated"):
@@ -546,21 +816,83 @@ class WebScanOrchestrator:
                     auth_failure_finding(target_url, auth_status.get("error", ""))
                 )
 
+            # A re-auth callback for authenticated crawling: if the session is
+            # lost mid-crawl the crawler calls this to recover it (bounded by
+            # max_reauth in the manager) and returns fresh cookies. Only the
+            # decrypted config lives in this closure — the crawler is handed a
+            # secret-free detection config (login_url + failure_indicator only).
+            reauth_cb = None
+            crawl_auth_cfg: dict = {}
+            if auth_status.get("authenticated"):
+                _usable_cfg = decrypt_auth_config(auth_config or {})
+                crawl_auth_cfg = {
+                    "login_url": _usable_cfg.get("login_url"),
+                    "failure_indicator": _usable_cfg.get("failure_indicator"),
+                }
+
+                async def _reauth():
+                    s = await auth_mgr.reauthenticate(_usable_cfg, web_scan_id)
+                    if s.is_authenticated:
+                        return s.get_cookies_for_playwright(target_url)
+                    return None
+
+                reauth_cb = _reauth
+
             # 2. Playwright Crawling
             try:
                 from core.web.crawling.browser import PlaywrightCrawler
 
+                # Bounded concurrency (Phase 11). Honours a per-scan override,
+                # else the configured default. The rate limit is WAF-aware and
+                # shared across workers, so concurrency fills the pipeline up to
+                # the ceiling rather than exceeding the target's tolerance.
+                crawl_conc = int(
+                    options.get("crawl_concurrency") or WebScanConfig.CRAWL_CONCURRENCY
+                )
+                crawl_rate = (
+                    WebScanConfig.STEALTH_RATE_LIMIT
+                    if waf_detected
+                    else WebScanConfig.CRAWL_RATE_LIMIT
+                )
                 crawler = PlaywrightCrawler(
                     max_depth=scan_scope.get(
                         "max_depth", WebScanConfig.MAX_CRAWL_DEPTH
                     ),
                     max_urls=WebScanConfig.MAX_CRAWL_URLS,
+                    concurrency=crawl_conc,
+                    rate_limit=crawl_rate,
                 )
+
+                def _crawl_cancelled() -> bool:
+                    return self._scan_is_cancelled(web_scan_id)
+
+                def _crawl_progress(pages: int, endpoints: int) -> None:
+                    _emit_web_progress(
+                        web_scan_id,
+                        "crawl",
+                        {
+                            "status": "running",
+                            "percentage": 50,
+                            "message": (
+                                f"Crawling — {pages} page(s) visited, "
+                                f"{endpoints} endpoint(s) found…"
+                            ),
+                            "total_endpoints": endpoints,
+                        },
+                    )
+
                 crawl_result = await crawler.crawl(
                     start_url=target_url,
                     auth_cookies=auth_cookies or None,
                     auth_headers=auth_headers or None,
                     exclude_patterns=scan_scope.get("exclude_paths", []),
+                    progress_cb=_crawl_progress,
+                    auth_config=crawl_auth_cfg,
+                    reauth_cb=reauth_cb,
+                    cancel_cb=_crawl_cancelled,
+                    # Autonomous SPA interaction (Phase 23) is opt-in — clicking
+                    # controls is an active behaviour on a production target.
+                    interact=bool(options.get("spa_interaction", False)),
                 )
                 all_endpoints.extend(crawl_result.endpoints)
                 all_endpoints.extend(crawl_result.js_endpoints)
@@ -569,7 +901,19 @@ class WebScanOrchestrator:
                     "pages_visited": crawl_result.pages_visited,
                     "soft_404s_discarded": len(crawl_result.soft_404s),
                     "off_scope_blocked": len(crawl_result.out_of_scope),
+                    "auth_events": list(crawl_result.auth_events),
+                    "concurrency": crawl_conc,
+                    "rate_limit": crawl_rate,
                 }
+                # DOM state graph (Phase 23b): the interaction transitions the
+                # autonomous pass discovered — states, edges and SPA-hidden
+                # states — so the report can prove interaction coverage. Only the
+                # compact summary is kept in stats; the full graph (bounded) is
+                # stored under its own key for the API/report.
+                _dg = getattr(crawl_result, "dom_graph", None)
+                if _dg:
+                    crawl_stats["dom_graph_summary"] = _dg.get("summary", {})
+                    crawl_stats["dom_graph"] = _dg
                 # A target that redirects the browser to an arbitrary external
                 # host is an open redirect. The crawler has to detect this to
                 # stay in scope; discarding what it learned would throw away a
@@ -577,10 +921,76 @@ class WebScanOrchestrator:
                 sensitive_findings.extend(
                     open_redirect_findings(crawl_result.out_of_scope, target_url)
                 )
+                # Static DOM source→sink findings from JS bundle analysis
+                # (Phase 22, Item 9). Low-severity review signals; the browser
+                # XSS engine remains the confirmation path.
+                sensitive_findings.extend(
+                    getattr(crawl_result, "js_findings", []) or []
+                )
             except ImportError:
                 log.warning("Playwright not available — skipping browser crawling")
             except Exception as exc:
                 log.warning("[CRAWL] Playwright crawling failed: %s", exc)
+
+            # 2b. Authenticated multi-step workflow (Phase 13). Replays a
+            #     validated workflow (login -> dashboard -> resource -> action)
+            #     in a browser session and hands the authenticated endpoints and
+            #     forms it reaches to the DETECT engines. Secrets are decrypted
+            #     only here and never logged or returned; the workflow's own
+            #     errors are already sanitised/masked by the engine.
+            try:
+                from core.web.auth.secrets import decrypt_auth_config
+
+                _wf_cfg = decrypt_auth_config(auth_config or {}).get("workflow")
+                if _wf_cfg:
+                    from core.web.workflow import WorkflowEngine
+
+                    wf_engine = WorkflowEngine(
+                        allowed_domains={urlparse(target_url).netloc}
+                    )
+                    if wf_engine.is_available():
+                        _emit_web_progress(
+                            web_scan_id,
+                            "crawl",
+                            {
+                                "status": "running",
+                                "percentage": 58,
+                                "message": "Replaying authenticated workflow…",
+                            },
+                        )
+
+                        def _wf_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        wf_res = await wf_engine.run(
+                            _wf_cfg,
+                            base_url=target_url,
+                            auth_cookies=auth_cookies or None,
+                            auth_headers=(
+                                {
+                                    k: v
+                                    for k, v in (auth_headers or {}).items()
+                                    if k.lower() != "cookie"
+                                }
+                                or None
+                            ),
+                            cancel_cb=_wf_cancelled,
+                        )
+                        all_endpoints.extend(wf_res.get("endpoints", []))
+                        all_forms.extend(wf_res.get("forms", []))
+                        crawl_stats["workflow"] = {
+                            "ok": wf_res.get("ok"),
+                            "steps_run": wf_res.get("steps_run"),
+                            "endpoints": len(wf_res.get("endpoints", [])),
+                            "errors": wf_res.get("errors", []),
+                        }
+                        self._log(
+                            f"[CRAWL] Workflow: {wf_res.get('steps_run')} step(s), "
+                            f"{len(wf_res.get('endpoints', []))} authenticated "
+                            f"endpoint(s) discovered"
+                        )
+            except Exception as exc:
+                log.warning("[CRAWL] Workflow engine failed: %s", exc)
 
             # 3. ffuf Directory Bruteforcing
             try:
@@ -588,18 +998,63 @@ class WebScanOrchestrator:
 
                 ffuf = FfufWrapper()
                 if ffuf.is_available():
+                    # Adaptive content discovery (Phase 11). The tier scales with
+                    # how much the crawl already mapped: a tiny surface gets the
+                    # curated high-value list (still covering every sensitive-file
+                    # check) instead of an ~8-minute full brute force; a large
+                    # surface gets deep discovery. The tier and word count are
+                    # recorded so a reduced pass is never mistaken for a clean
+                    # one.
+                    ffuf_tier = ffuf.resolve_tier(len(all_endpoints))
+                    ffuf_wordlist, ffuf_max_words = ffuf.wordlist_for_tier(ffuf_tier)
+                    _emit_web_progress(
+                        web_scan_id,
+                        "crawl",
+                        {
+                            "status": "running",
+                            "percentage": 60,
+                            "message": (
+                                f"Crawl found {len(all_endpoints)} endpoint(s); "
+                                f"content discovery with ffuf ({ffuf_tier} tier)…"
+                            ),
+                            "total_endpoints": len(all_endpoints),
+                        },
+                    )
+                    # Content discovery runs at the dedicated ffuf rate (Phase
+                    # 21) — plain GETs like crawling, not injection fuzzing — so
+                    # the same wordlist completes without dominating the phase.
+                    # A WAF still clamps it to the stealth rate. Falls back to
+                    # the fuzzing ceiling when FFUF_RATE is 0.
                     rate = (
                         WebScanConfig.STEALTH_RATE_LIMIT
                         if waf_detected
-                        else WebScanConfig.SCAN_RATE_LIMIT
+                        else (WebScanConfig.FFUF_RATE or WebScanConfig.SCAN_RATE_LIMIT)
                     )
                     ffuf_result = ffuf.run(
                         target=target_url,
                         rate_limit=rate,
                         auth_headers=auth_headers or None,
+                        wordlist=ffuf_wordlist,
+                        max_words=ffuf_max_words,
+                        tier=ffuf_tier,
                     )
-                    # Convert discovered paths to endpoints
-                    for path_info in ffuf_result.get("discovered_paths", []):
+                    _fst = ffuf_result.get("stats", {})
+                    discovered_paths = ffuf_result.get("discovered_paths", [])
+                    crawl_stats["ffuf_tier"] = ffuf_tier
+                    crawl_stats["ffuf_words"] = _fst.get("words")
+                    crawl_stats["ffuf_rate"] = rate
+                    if ffuf_tier == "small":
+                        crawl_stats["ffuf_caveat"] = (
+                            f"Content discovery used the reduced high-value "
+                            f"wordlist ({_fst.get('words')} paths, covering every "
+                            f"sensitive-file check) because the crawl mapped only "
+                            f"{len(all_endpoints)} endpoint(s). The exhaustive "
+                            f"wordlist was not run; raise the scan depth to force it."
+                        )
+                    # Convert discovered paths to endpoints. A bounded subset of
+                    # HTML-like hits is then re-opened with the browser so hidden
+                    # pages can contribute forms, JS endpoints and network calls.
+                    for path_info in discovered_paths:
                         all_endpoints.append(
                             {
                                 "url": path_info["url"],
@@ -610,6 +1065,63 @@ class WebScanOrchestrator:
                             }
                         )
                     sensitive_findings.extend(ffuf_result.get("sensitive_findings", []))
+
+                    recrawl_targets = ffuf_recrawl_candidates(
+                        discovered_paths, WebScanConfig.FFUF_RECRAWL_MAX
+                    )
+                    if recrawl_targets:
+                        from core.web.crawling.browser import PlaywrightCrawler
+
+                        crawl_stats["ffuf_recrawl_candidates"] = len(recrawl_targets)
+                        ffuf_recrawler = PlaywrightCrawler(
+                            max_depth=0,
+                            max_urls=1,
+                            concurrency=1,
+                            rate_limit=crawl_rate,
+                        )
+                        recrawl_pages = recrawl_endpoints = recrawl_forms = 0
+                        for hidden_url in recrawl_targets:
+                            if self._scan_is_cancelled(web_scan_id):
+                                break
+                            try:
+                                rr = await ffuf_recrawler.crawl(
+                                    start_url=hidden_url,
+                                    auth_cookies=auth_cookies or None,
+                                    auth_headers=auth_headers or None,
+                                    exclude_patterns=scan_scope.get(
+                                        "exclude_paths", []
+                                    ),
+                                    progress_cb=None,
+                                    auth_config=crawl_auth_cfg,
+                                    reauth_cb=reauth_cb,
+                                    cancel_cb=lambda: self._scan_is_cancelled(
+                                        web_scan_id
+                                    ),
+                                    interact=False,
+                                )
+                                recrawl_pages += rr.pages_visited
+                                recrawl_endpoints += len(rr.endpoints) + len(
+                                    rr.js_endpoints
+                                )
+                                recrawl_forms += len(rr.forms)
+                                all_endpoints.extend(rr.endpoints)
+                                all_endpoints.extend(rr.js_endpoints)
+                                all_forms.extend(rr.forms)
+                                sensitive_findings.extend(
+                                    open_redirect_findings(rr.out_of_scope, hidden_url)
+                                )
+                                sensitive_findings.extend(
+                                    getattr(rr, "js_findings", []) or []
+                                )
+                            except Exception as exc:
+                                log.debug(
+                                    "[CRAWL] ffuf follow-up crawl failed for %s: %s",
+                                    hidden_url[:120],
+                                    exc,
+                                )
+                        crawl_stats["ffuf_recrawl_pages"] = recrawl_pages
+                        crawl_stats["ffuf_recrawl_endpoints"] = recrawl_endpoints
+                        crawl_stats["ffuf_recrawl_forms"] = recrawl_forms
             except Exception as exc:
                 log.warning("[CRAWL] ffuf failed: %s", exc)
 
@@ -623,6 +1135,50 @@ class WebScanOrchestrator:
                             "source": "sitemap",
                         }
                     )
+
+            # 5. API surface import (Phase 5): OpenAPI/Swagger + GraphQL. The
+            #    imported operations are added as ordinary endpoints/forms so
+            #    the existing DETECT engines (sqlmap, XSS, injection, access
+            #    control) test API parameters and bodies with no changes; only
+            #    API-specific conditions are raised here.
+            if options.get("enable_api_scan", True):
+                try:
+                    from core.web.api_scan import ApiScanEngine
+
+                    api = ApiScanEngine(
+                        same_origin_only=True,
+                        discover=bool(options.get("api_discover", True)),
+                    )
+                    api_res = await api.run(
+                        target_url,
+                        options=options,
+                        auth_headers={
+                            k: v
+                            for k, v in (auth_headers or {}).items()
+                            if k.lower() != "cookie"
+                        },
+                        auth_cookies={
+                            c["name"]: c.get("value", "")
+                            for c in (auth_cookies or [])
+                            if c.get("name")
+                        },
+                    )
+                    all_endpoints.extend(api_res.get("endpoints", []))
+                    all_forms.extend(api_res.get("forms", []))
+                    sensitive_findings.extend(api_res.get("sensitive_findings", []))
+                    sensitive_findings.extend(api_res.get("findings", []))
+                    result["api_inventory"] = api_res.get("inventory", {})
+                    result["api_stats"] = api_res.get("stats", {})
+                    st = api_res.get("stats", {})
+                    if st.get("spec_source") or st.get("graphql"):
+                        self._log(
+                            f"[CRAWL] API import: spec={st.get('spec_source')}, "
+                            f"{st.get('operations', 0)} operation(s), "
+                            f"graphql={st.get('graphql')}, "
+                            f"{st.get('findings', 0)} API finding(s)"
+                        )
+                except Exception as exc:
+                    log.warning("[CRAWL] API import failed: %s", exc)
 
             # Deduplicate endpoints
             all_endpoints = self._deduplicate_endpoints(all_endpoints)
@@ -674,11 +1230,45 @@ class WebScanOrchestrator:
         t0 = time.monotonic()
         result: dict[str, Any] = {"success": False}
 
+        # Resolve the scan policy once (Codex P2 item 11): the named preset plus
+        # any explicit knob overrides decide the sqlmap testing level (which of
+        # cookies/headers are attacked), the per-page parameter budget, whether
+        # file-upload forms are tested, and the per-engine time budgets. Every
+        # value below is read from here, so a policy is not advisory.
+        from core.web.policy import allowed_locations, resolve_policy
+
+        policy = resolve_policy(options)
+        self._log(
+            f"[DETECT] Policy '{policy['name']}': sqlmap L{policy['sqlmap_level']}, "
+            f"max_params/page={policy['max_params_per_page']}, "
+            f"cookies={policy['attack_cookies']} headers={policy['attack_headers']} "
+            f"uploads={policy['attack_file_uploads']}"
+        )
+
         try:
             all_findings: list[dict] = []
 
+            # Coverage ledger (Phase 22): enumerate the discovered parameter
+            # surface up front, then record which engine tested what, so the scan
+            # can prove per-parameter coverage — "tested-clean" vs "never-tested".
+            from core.web.coverage import CoverageLedger
+
+            ledger = CoverageLedger()
+            ledger.seed_from_surface(endpoints, forms)
+            sqlmap_run_urls: set = set()
+
+            # Coverage scheduler (Codex P2 item 12): classify the discovered
+            # surface into passive + active check tasks up front, then record
+            # each engine's outcome so the scan produces one auditable plan of
+            # what was scheduled and what ran — not a set of tools each doing
+            # their own thing. It rolls outcomes into the same ledger.
+            from core.web.scheduler import CoverageScheduler
+
+            scheduler = CoverageScheduler(ledger)
+            scheduler.enqueue_surface(endpoints, forms)
+
             # Build auth headers
-            auth_headers, _, auth_status = await self._authenticate(
+            auth_headers, auth_cookies, auth_status = await self._authenticate(
                 auth_config, web_scan_id, target_url
             )
 
@@ -691,6 +1281,17 @@ class WebScanOrchestrator:
 
             coverage = ToolCoverage()
             depth_name, depth = resolve_scan_depth(options)
+            # Phase 10 nuclei profile (FAST / STANDARD / DEEP). Follows an
+            # explicit options["nuclei_profile"], else the scan_depth above.
+            from core.web.nuclei.profiles import (
+                profile_controls,
+                profile_label,
+                resolve_profile,
+            )
+
+            nuclei_profile = resolve_profile(options, depth_name)
+            nuclei_controls = profile_controls(nuclei_profile)
+            nuclei_metrics: dict = {}
 
             # The attack surface the crawl found. Scanning only the root URL
             # leaves every discovered endpoint untested unless a template
@@ -708,29 +1309,97 @@ class WebScanOrchestrator:
 
                 nuclei = NucleiWrapper()
                 if coverage.check(nuclei, "nuclei"):
+                    _emit_web_progress(
+                        web_scan_id,
+                        "detect",
+                        {
+                            "status": "running",
+                            "percentage": 76,
+                            "message": (
+                                f"Running Nuclei [{nuclei_profile} profile] against "
+                                f"{len(set(scan_targets))} target(s)…"
+                            ),
+                        },
+                    )
                     severity = options.get("nuclei_severity") or depth["severity"]
                     tags = (
                         tech_tags(options.get("tech_stack") or [])
                         if depth["use_tech_tags"]
                         else None
                     )
+                    # Auth-aware Nuclei (Codex item 13): fold the session cookies
+                    # into a Cookie header so a cookie-authenticated scan runs
+                    # Nuclei as the logged-in user, not anonymously. Without this,
+                    # every template ran against the login wall on a session-cookie
+                    # app. Header auth (bearer/JWT/API-key) already travelled.
+                    from core.web.nuclei.wrapper import auth_headers_with_cookies
+
+                    _nuclei_headers = auth_headers_with_cookies(
+                        auth_headers, auth_cookies
+                    )
                     nuclei_result = nuclei.run(
                         target=target_url,
                         targets=scan_targets,
                         severity=severity,
                         tags=tags,
-                        auth_headers=auth_headers or None,
-                        rate_limit=effective_rate,
+                        auth_headers=_nuclei_headers or None,
+                        # Nuclei runs at its PROFILE rate (Phase 19 PART B), not
+                        # the conservative shared probe rate — the wrapper still
+                        # clamps it to the stealth rate when a WAF is present.
+                        rate_limit=nuclei_controls["rate_limit"],
                         waf_detected=is_waf,
+                        profile=nuclei_profile,
+                        concurrency=nuclei_controls["concurrency"],
+                        run_timeout=self._bounded_timeout(
+                            web_scan_id,
+                            # Policy (item 11): a per-engine Nuclei budget overrides
+                            # the profile default when set.
+                            policy["nuclei_timeout"] or nuclei_controls["timeout"],
+                        ),
                     )
                     all_findings.extend(nuclei_result.get("findings", []))
                     stats = nuclei_result.get("stats") or {}
                     scanned = stats.get("targets_scanned", 1)
                     oast = stats.get("oast") or {}
+                    nuclei_timed_out = bool(stats.get("timed_out"))
+                    # Carry the profile + execution metrics onto the coverage
+                    # record so the DB and report can state exactly what ran.
+                    nuclei_metrics = {
+                        "profile": stats.get("profile", nuclei_profile),
+                        "concurrency": stats.get("concurrency"),
+                        "rate_limit": stats.get("rate_limit"),
+                        "duration_s": stats.get("duration_s"),
+                        "templates_total": stats.get("templates_total"),
+                        "templates_executed": stats.get("templates_executed"),
+                        "templates_skipped": stats.get("templates_skipped"),
+                        "findings": len(nuclei_result.get("findings", [])),
+                        "exclude_tags": stats.get("exclude_tags"),
+                        # Phase 19 PART C: timeout / partial-coverage state.
+                        "timed_out": nuclei_timed_out,
+                        "coverage_complete": stats.get("coverage_complete", True),
+                        "percent_complete": stats.get("percent_complete"),
+                        "timeout_limit_s": stats.get("timeout_limit_s"),
+                    }
                     detail = (
-                        f"{depth['label']}; severity {', '.join(severity)}; "
+                        f"Profile {nuclei_profile} — {profile_label(nuclei_profile)}; "
+                        f"severity {', '.join(severity)}; "
                         f"{scanned} target(s) from the discovered surface"
                     )
+                    tt, te, tk = (
+                        stats.get("templates_total"),
+                        stats.get("templates_executed"),
+                        stats.get("templates_skipped"),
+                    )
+                    if tt is not None:
+                        detail += (
+                            f"; {tt} template(s) loaded, {te} executed, {tk} skipped"
+                        )
+                    if stats.get("rate_limit") is not None:
+                        detail += f"; {stats['rate_limit']} req/s"
+                    if stats.get("duration_s") is not None:
+                        detail += f"; {stats['duration_s']}s"
+                    if stats.get("exclude_tags"):
+                        detail += f"; excluded tags: {', '.join(stats['exclude_tags'])}"
                     if tags:
                         detail += f"; templates narrowed to tags: {', '.join(tags)}"
                     detail += "; out-of-band testing " + (
@@ -738,7 +1407,18 @@ class WebScanOrchestrator:
                     )
                     if oast.get("caveat"):
                         detail += f". {oast['caveat']}"
-                    coverage.ran("nuclei", detail)
+                    # A timeout is recorded as PARTIAL coverage, not a completed
+                    # run — the findings are kept but the target is not fully
+                    # assessed, so it can never read as a clean scan (PART C).
+                    if nuclei_timed_out:
+                        detail += ". " + (
+                            stats.get("coverage_caveat")
+                            or "Nuclei did not finish its template corpus within "
+                            "the time limit; coverage is PARTIAL."
+                        )
+                        coverage.partial("nuclei", detail)
+                    else:
+                        coverage.ran("nuclei", detail)
             except Exception as exc:
                 log.warning("[DETECT] Nuclei scan failed: %s", exc)
                 coverage.failed("nuclei", exc)
@@ -750,7 +1430,18 @@ class WebScanOrchestrator:
 
                     sqlmap = SqlmapWrapper()
                     if coverage.check(sqlmap, "sqlmap"):
-                        injectable = build_injection_targets(endpoints, forms)
+                        # File-upload forms are only tested when the policy
+                        # allows attacking uploads (Codex item 11).
+                        _forms = forms
+                        if not policy["attack_file_uploads"]:
+                            _forms = [
+                                f
+                                for f in (forms or [])
+                                if not (
+                                    isinstance(f, dict) and f.get("has_file_upload")
+                                )
+                            ]
+                        injectable = build_injection_targets(endpoints, _forms)
                         tested = injectable[:MAX_SQLMAP_TARGETS]
                         outcomes = {
                             "clean": 0,
@@ -759,15 +1450,84 @@ class WebScanOrchestrator:
                             "error": 0,
                             "skipped": 0,
                         }
-                        for candidate in tested:
+                        total_tested = len(tested)
+                        outcomes["stopped"] = 0
+                        for idx, candidate in enumerate(tested, start=1):
+                            # Stop launching new sqlmap runs once the scan is
+                            # cancelled or past its global deadline — each run is
+                            # up to 10 min, so without this a cancelled scan
+                            # keeps grinding through the whole target list
+                            # (Phase 15, task 7). Remaining targets are recorded,
+                            # not silently dropped.
+                            if self._scan_is_cancelled(web_scan_id):
+                                outcomes["stopped"] = total_tested - (idx - 1)
+                                break
+                            # Each SQLMap run can take up to SQLMAP_TIMEOUT
+                            # (10 min) on its own, so emit before each one — a
+                            # silent injection sweep of twenty endpoints is the
+                            # longest unlit stretch in the whole pipeline.
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {
+                                    "status": "running",
+                                    "percentage": 80
+                                    + int(15 * (idx - 1) / max(total_tested, 1)),
+                                    "message": (
+                                        f"SQL injection testing endpoint "
+                                        f"{idx}/{total_tested}…"
+                                    ),
+                                    "total_findings": len(all_findings),
+                                },
+                            )
                             try:
+                                # Item 4: hand sqlmap the normalized request model
+                                # as a raw HTTP request — method, path, session
+                                # cookies, auth headers and body as one object —
+                                # so it tests the request exactly as the
+                                # authenticated crawl observed it, cookies and all,
+                                # rather than a bare URL that lost its session.
+                                from core.web.request_model import WebRequest
+
+                                _wr = WebRequest(
+                                    method=candidate["method"],
+                                    url=candidate["url"],
+                                    headers=dict(auth_headers or {}),
+                                    cookies=dict(auth_cookies or {}),
+                                    body=candidate.get("data"),
+                                    content_type=candidate.get("content_type"),
+                                )
                                 sqlmap_result = sqlmap.run(
                                     target=candidate["url"],
                                     method=candidate["method"],
                                     post_data=candidate.get("data"),
+                                    content_type=candidate.get("content_type"),
                                     auth_headers=auth_headers or None,
+                                    raw_request=_wr.to_raw_http(),
+                                    # Policy (item 11): the level decides whether
+                                    # cookies (L2) and headers (L3) are attacked.
+                                    level=policy["sqlmap_level"],
+                                    run_timeout=self._bounded_timeout(
+                                        web_scan_id,
+                                        policy["sqlmap_timeout"]
+                                        or WebScanConfig.SQLMAP_TIMEOUT,
+                                    ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
+                                # Coverage: mark exactly the parameters this
+                                # candidate hands to sqlmap. Do not mark the
+                                # whole endpoint; the same URL may also carry
+                                # headers/cookies/body fields sqlmap did not
+                                # receive for this run.
+                                if sqlmap_result.get("status") != "skipped":
+                                    sqlmap_run_urls.add(candidate["url"])
+                                    for _cp in candidate.get("coverage_params", []):
+                                        ledger.mark(
+                                            _cp.get("url", candidate["url"]),
+                                            _cp.get("location", "query"),
+                                            _cp.get("param", ""),
+                                            "sqlmap",
+                                        )
                                 outcomes[sqlmap_result.get("status", "error")] = (
                                     outcomes.get(
                                         sqlmap_result.get("status", "error"), 0
@@ -811,13 +1571,581 @@ class WebScanOrchestrator:
             else:
                 coverage.skipped("sqlmap", "Disabled in scan options")
 
+            # 2b. Active XSS engine (reflected / DOM / stored)
+            #
+            # nuclei's templates miss reflected and DOM XSS a browser-driven
+            # active test catches (measured on Juice Shop). This runs on the
+            # same discovered surface and the same authenticated session, and
+            # reports only proven execution — a reflected-but-encoded value is
+            # inert and never raised.
+            if options.get("enable_xss", True):
+                try:
+                    from core.web.xss import XssEngine
+
+                    xss = XssEngine(
+                        rate_limit=effective_rate,
+                        max_targets=WebScanConfig.XSS_MAX_TARGETS,
+                        # Policy (item 11): per-page parameter budget.
+                        max_params_per_target=policy["max_params_per_page"],
+                        max_payloads_per_param=WebScanConfig.XSS_MAX_PAYLOADS_PER_PARAM,
+                        timeout_ms=WebScanConfig.XSS_TIMEOUT_MS,
+                        same_origin_only=WebScanConfig.XSS_SAME_ORIGIN_ONLY,
+                        test_reflected=True,
+                        test_dom=WebScanConfig.XSS_TEST_DOM,
+                        test_stored=WebScanConfig.XSS_TEST_STORED,
+                        # Proof screenshots of confirmed XSS (Codex item 10) land in
+                        # a per-scan evidence dir the report can reference.
+                        evidence_dir=self._evidence_dir(web_scan_id),
+                    )
+                    if coverage.check(xss, "xss"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 90,
+                                "message": "Active XSS testing (reflected/DOM/stored)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _xss_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        def _xss_progress(msg: str) -> None:
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {"status": "running", "percentage": 92, "message": msg},
+                            )
+
+                        xss_result = await xss.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            forms=forms,
+                            auth_headers=auth_headers or None,
+                            auth_cookies=auth_cookies or None,
+                            options={
+                                **(options or {}),
+                                "_allowed_locations": sorted(allowed_locations(policy)),
+                            },
+                            waf_detected=waf_detected,
+                            progress_cb=_xss_progress,
+                            cancel_cb=_xss_cancelled,
+                        )
+                        xss_findings = xss_result.get("findings", [])
+                        all_findings.extend(xss_findings)
+                        s = xss_result.get("stats", {})
+                        ledger.mark_tested_params("xss", s.get("tested_params", []))
+                        for _tp in s.get("tested_params", []):
+                            scheduler.record("xss", _tp.get("url", ""), "done")
+                        coverage.ran(
+                            "xss",
+                            (
+                                f"{s.get('parameters_tested', 0)} parameter(s) and "
+                                f"{s.get('dom', 0) + s.get('reflected', 0) + s.get('stored', 0)} "
+                                f"finding(s) across reflected/DOM/stored; "
+                                f"{s.get('payloads_sent', 0)} payloads, "
+                                f"{s.get('requests', 0)} requests, "
+                                f"{s.get('duration_s', 0)}s. Detection is by proof of "
+                                f"execution in a real browser."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] XSS engine failed: %s", exc)
+                    coverage.failed("xss", exc)
+            else:
+                coverage.skipped("xss", "Disabled in scan options")
+
+            # 2c. Active injection engine (command / SSTI / XXE / LDAP / XPath)
+            #
+            # Extends injection coverage beyond sqlmap's SQLi. Server-side, so
+            # tested over HTTP (not a browser), on the same discovered surface
+            # and session. Evidence-based — differential timing, computed value,
+            # canary expansion or a parser-error signature — never reflection.
+            if options.get("enable_injection", True):
+                try:
+                    from core.web.injection import InjectionEngine
+
+                    classes = tuple(
+                        c.strip()
+                        for c in str(WebScanConfig.INJECTION_CLASSES).split(",")
+                        if c.strip()
+                    )
+                    inj = InjectionEngine(
+                        rate_limit=effective_rate,
+                        max_targets=WebScanConfig.INJECTION_MAX_TARGETS,
+                        max_params_per_target=policy["max_params_per_page"],
+                        timeout_s=WebScanConfig.INJECTION_TIMEOUT_S,
+                        cmdi_delay_1=WebScanConfig.INJECTION_CMDI_DELAY_1,
+                        cmdi_delay_2=WebScanConfig.INJECTION_CMDI_DELAY_2,
+                        same_origin_only=WebScanConfig.INJECTION_SAME_ORIGIN_ONLY,
+                        classes=classes or None,
+                    )
+                    if coverage.check(inj, "injection"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 93,
+                                "message": "Active injection testing (command/SSTI/XXE/LDAP/XPath)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _inj_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        def _inj_progress(msg: str) -> None:
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {"status": "running", "percentage": 94, "message": msg},
+                            )
+
+                        inj_result = await inj.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            forms=forms,
+                            auth_headers=auth_headers or None,
+                            auth_cookies=auth_cookies or None,
+                            options={
+                                **(options or {}),
+                                "_allowed_locations": sorted(allowed_locations(policy)),
+                            },
+                            waf_detected=waf_detected,
+                            progress_cb=_inj_progress,
+                            cancel_cb=_inj_cancelled,
+                        )
+                        inj_findings = inj_result.get("findings", [])
+                        all_findings.extend(inj_findings)
+                        st = inj_result.get("stats", {})
+                        ledger.mark_tested_params(
+                            "injection", st.get("tested_params", [])
+                        )
+                        per_class = ", ".join(
+                            f"{c}={st.get(c, 0)}"
+                            for c in (
+                                "command_injection",
+                                "ssti",
+                                "xxe",
+                                "ldap_injection",
+                                "xpath_injection",
+                            )
+                            if st.get(c)
+                        )
+                        coverage.ran(
+                            "injection",
+                            (
+                                f"{st.get('parameters_tested', 0)} parameter(s), "
+                                f"{st.get('requests', 0)} requests, "
+                                f"{st.get('duration_s', 0)}s; "
+                                f"{len(inj_findings)} finding(s)"
+                                + (f" ({per_class})" if per_class else "")
+                                + ". Detection is by timing/computed-value/canary/"
+                                "parser-error evidence, not reflection."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] Injection engine failed: %s", exc)
+                    coverage.failed("injection", exc)
+            else:
+                coverage.skipped("injection", "Disabled in scan options")
+
+            # 2d. Access-control engine (IDOR / privilege escalation)
+            #
+            # Multi-user and read-only by default. Runs only when the scan
+            # configures access_control users (isolated sessions, never mixed),
+            # and is evidence-based: a finding requires the owner's protected,
+            # resource-specific content to be seen by another identity.
+            ac_cfg = {}
+            try:
+                from core.web.auth.secrets import decrypt_auth_config
+
+                ac_cfg = (decrypt_auth_config(auth_config or {}) or {}).get(
+                    "access_control"
+                ) or {}
+            except Exception as exc:
+                log.debug("access_control config decrypt failed: %s", exc)
+            ac_users = ac_cfg.get("users") or []
+            if options.get("enable_access_control", True) and ac_users:
+                try:
+                    from core.web.access_control import AccessControlEngine
+                    from core.web.auth.session_manager import WebSessionManager
+
+                    ac_mgr = WebSessionManager(redis_client=_redis_or_none())
+                    # Owner = the main authenticated session (its crawl produced
+                    # the candidate resources). If the scan is anonymous, the
+                    # first non-privileged configured user becomes the owner.
+                    owner = None
+                    peers = []
+                    if auth_status.get("authenticated"):
+                        owner = {
+                            "label": ac_cfg.get("owner_label", "A"),
+                            "headers": {
+                                k: v
+                                for k, v in (auth_headers or {}).items()
+                                if k.lower() != "cookie"
+                            },
+                            "cookies": {
+                                c["name"]: c.get("value", "")
+                                for c in (auth_cookies or [])
+                                if c.get("name")
+                            },
+                        }
+                    pending = list(ac_users)
+                    if owner is None:
+                        for i, u in enumerate(pending):
+                            if not u.get("privileged"):
+                                s = await ac_mgr.authenticate(
+                                    u.get("auth") or {},
+                                    f"{web_scan_id}:{u.get('label')}",
+                                )
+                                if s.is_authenticated:
+                                    owner = {
+                                        "label": u.get("label", "A"),
+                                        "headers": dict(s.headers),
+                                        "cookies": s.get_cookies(),
+                                    }
+                                    pending.pop(i)
+                                    break
+                    for u in pending:
+                        s = await ac_mgr.authenticate(
+                            u.get("auth") or {}, f"{web_scan_id}:{u.get('label')}"
+                        )
+                        if s.is_authenticated:
+                            peers.append(
+                                {
+                                    "label": u.get("label"),
+                                    "headers": dict(s.headers),
+                                    "cookies": s.get_cookies(),
+                                    "privileged": bool(u.get("privileged")),
+                                }
+                            )
+                        else:
+                            log.warning(
+                                "access-control user %s did not authenticate: %s",
+                                u.get("label"),
+                                s.auth_error,
+                            )
+
+                    admin_paths = ac_cfg.get("admin_paths") or []
+                    if owner and (peers or admin_paths):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 95,
+                                "message": "Access-control testing (IDOR / privilege escalation)…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+                        ac_engine = AccessControlEngine(
+                            rate_limit=effective_rate,
+                            max_candidates=WebScanConfig.ACCESS_CONTROL_MAX_CANDIDATES,
+                            timeout_s=WebScanConfig.ACCESS_CONTROL_TIMEOUT_S,
+                            same_origin_only=WebScanConfig.ACCESS_CONTROL_SAME_ORIGIN_ONLY,
+                            similarity_same=WebScanConfig.ACCESS_CONTROL_SIMILARITY,
+                            allow_write_testing=bool(ac_cfg.get("allow_write_testing")),
+                        )
+
+                        def _ac_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        ac_result = await ac_engine.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            owner=owner,
+                            peers=peers,
+                            admin_paths=admin_paths,
+                            cancel_cb=_ac_cancelled,
+                        )
+                        ac_findings = ac_result.get("findings", [])
+                        all_findings.extend(ac_findings)
+                        st = ac_result.get("stats", {})
+                        coverage.ran(
+                            "access_control",
+                            (
+                                f"{len(peers)} peer identit(y/ies) + anon vs "
+                                f"'{owner['label']}'; {st.get('candidates', 0)} "
+                                f"candidate resource(s), {st.get('requests', 0)} "
+                                f"requests, {st.get('duration_s', 0)}s; "
+                                f"{len(ac_findings)} finding(s) "
+                                f"(idor={st.get('idor', 0)}, "
+                                f"priv_esc={st.get('privilege_escalation', 0)}, "
+                                f"bac={st.get('broken_access_control', 0)}). "
+                                f"Evidence-based cross-identity comparison."
+                            ),
+                        )
+                    else:
+                        coverage.skipped(
+                            "access_control",
+                            "no additional identity authenticated for comparison",
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] Access-control engine failed: %s", exc)
+                    coverage.failed("access_control", exc)
+
+            # 2e. HTTP method / verb security testing (Phase 6)
+            #
+            # Read-only and safe by default (OPTIONS/HEAD/GET/TRACE only). Uses
+            # the main authenticated session, when present, to establish which
+            # endpoints require auth for GET so a HEAD/verb bypass can be proven.
+            if options.get("enable_http_methods", True):
+                try:
+                    from core.web.http_methods import HttpMethodEngine
+
+                    hm = HttpMethodEngine(
+                        rate_limit=effective_rate,
+                        same_origin_only=True,
+                        allow_write_testing=bool(options.get("allow_write_testing")),
+                    )
+                    if coverage.check(hm, "http_methods"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 97,
+                                "message": "HTTP method/verb security testing…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+                        hm_owner = None
+                        if auth_status.get("authenticated"):
+                            hm_owner = {
+                                "headers": {
+                                    k: v
+                                    for k, v in (auth_headers or {}).items()
+                                    if k.lower() != "cookie"
+                                },
+                                "cookies": {
+                                    c["name"]: c.get("value", "")
+                                    for c in (auth_cookies or [])
+                                    if c.get("name")
+                                },
+                            }
+
+                        def _hm_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        hm_result = await hm.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            owner=hm_owner,
+                            cancel_cb=_hm_cancelled,
+                        )
+                        hm_findings = hm_result.get("findings", [])
+                        all_findings.extend(hm_findings)
+                        st = hm_result.get("stats", {})
+                        coverage.ran(
+                            "http_methods",
+                            (
+                                f"{st.get('endpoints_tested', 0)} endpoint(s), "
+                                f"{st.get('requests', 0)} requests, "
+                                f"{st.get('duration_s', 0)}s; "
+                                f"{len(hm_findings)} finding(s) "
+                                f"(insecure_method={st.get('insecure_http_method', 0)}, "
+                                f"auth_bypass={st.get('http_method_auth_bypass', 0)}). "
+                                f"Read-only verbs unless write testing was enabled."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] HTTP-method engine failed: %s", exc)
+                    coverage.failed("http_methods", exc)
+
+            # 2f. Vulnerable JavaScript dependency detection (Phase 7)
+            #
+            # Identifies front-end libraries + versions from <script src> and
+            # banners, and matches them against the OSV npm feed CCureAudit
+            # already carries, enriching CVSS/CWE from the NVD catalogue. Invents
+            # no CVEs; bounded network use.
+            if options.get("enable_js_deps", True):
+                try:
+                    from core.web.js_deps import JsDependencyEngine
+
+                    jsd = JsDependencyEngine()
+                    if coverage.check(jsd, "js_deps"):
+                        _emit_web_progress(
+                            web_scan_id,
+                            "detect",
+                            {
+                                "status": "running",
+                                "percentage": 98,
+                                "message": "Checking JavaScript dependencies for known vulnerabilities…",
+                                "total_findings": len(all_findings),
+                            },
+                        )
+
+                        def _jsd_cancelled() -> bool:
+                            return self._scan_is_cancelled(web_scan_id)
+
+                        jsd_result = await jsd.scan(
+                            target_url=target_url,
+                            endpoints=endpoints,
+                            auth_headers=auth_headers or None,
+                            auth_cookies={
+                                c["name"]: c.get("value", "")
+                                for c in (auth_cookies or [])
+                                if c.get("name")
+                            },
+                            cancel_cb=_jsd_cancelled,
+                        )
+                        jsd_findings = jsd_result.get("findings", [])
+                        all_findings.extend(jsd_findings)
+                        st = jsd_result.get("stats", {})
+                        coverage.ran(
+                            "js_deps",
+                            (
+                                f"{st.get('libraries', 0)} JS librar(y/ies) "
+                                f"identified from {st.get('scripts', 0)} script(s) "
+                                f"across {st.get('pages', 0)} page(s); "
+                                f"{len(jsd_findings)} vulnerable-dependency "
+                                f"finding(s) via OSV. {st.get('requests', 0)} "
+                                f"request(s)."
+                            ),
+                        )
+                except Exception as exc:
+                    log.warning("[DETECT] JS-dependency engine failed: %s", exc)
+                    coverage.failed("js_deps", exc)
+
+            # 2g. Out-of-band (OAST) blind detection (Phase 9)
+            #
+            # Blind SSRF, out-of-band command injection and blind XXE leave no
+            # trace in the HTTP response — the only evidence is a callback the
+            # payload causes the target to make to a collaborator the scanner
+            # controls. This stage runs CCure's own active OOB probes, and only
+            # against a *self-hosted* collaborator (build_oast never selects the
+            # public interact.sh), so it adds no outbound-internet dependency and
+            # sends no target callback to a third party. With no collaborator
+            # configured it is skipped with a stated caveat, never silently
+            # treated as having cleared those classes.
+            if options.get("enable_oast", True):
+                try:
+                    from core.web.oast import OastEngine, build_oast
+
+                    built = build_oast(scan_id=web_scan_id)
+                    if built is None:
+                        coverage.skipped(
+                            "oast",
+                            "No self-hosted OAST collaborator is configured "
+                            "(OAST_SERVER / OAST_DOMAIN / OAST_HTTP_URL), so blind "
+                            "SSRF, out-of-band command injection and blind XXE were "
+                            "not actively probed. Set a self-hosted collaborator to "
+                            "assess them without depending on the public interact.sh.",
+                        )
+                    else:
+                        oast_session, oast_client = built
+                        oast = OastEngine(
+                            oast_session,
+                            oast_client,
+                            rate_limit=WebScanConfig.OAST_RATE_LIMIT,
+                            max_targets=WebScanConfig.OAST_MAX_TARGETS,
+                            poll_timeout_s=WebScanConfig.OAST_POLL_TIMEOUT_S,
+                            poll_interval_s=WebScanConfig.OAST_POLL_INTERVAL_S,
+                        )
+                        if coverage.check(oast, "oast"):
+                            _emit_web_progress(
+                                web_scan_id,
+                                "detect",
+                                {
+                                    "status": "running",
+                                    "percentage": 99,
+                                    "message": "Out-of-band (OAST) blind detection…",
+                                    "total_findings": len(all_findings),
+                                },
+                            )
+
+                            def _oast_cancelled() -> bool:
+                                return self._scan_is_cancelled(web_scan_id)
+
+                            def _oast_progress(msg: str) -> None:
+                                _emit_web_progress(
+                                    web_scan_id,
+                                    "detect",
+                                    {
+                                        "status": "running",
+                                        "percentage": 99,
+                                        "message": msg,
+                                    },
+                                )
+
+                            try:
+                                oast_result = await oast.scan(
+                                    target_url=target_url,
+                                    endpoints=endpoints,
+                                    forms=forms,
+                                    auth_headers=auth_headers or None,
+                                    auth_cookies=auth_cookies or None,
+                                    options=options,
+                                    progress_cb=_oast_progress,
+                                    cancel_cb=_oast_cancelled,
+                                )
+                                oast_findings = oast_result.get("findings", [])
+                                all_findings.extend(oast_findings)
+                                st = oast_result.get("stats", {})
+                                coverage.ran(
+                                    "oast",
+                                    (
+                                        f"{st.get('parameters_probed', 0)} parameter(s) "
+                                        f"probed, {st.get('payloads_sent', 0)} OOB "
+                                        f"payload(s) sent, {st.get('interactions', 0)} "
+                                        f"interaction(s) correlated in "
+                                        f"{st.get('duration_s', 0)}s; "
+                                        f"{len(oast_findings)} finding(s). Evidence is "
+                                        "a proven out-of-band callback, not inference."
+                                    ),
+                                )
+                            finally:
+                                # Cleanup: forget every token this scan minted.
+                                try:
+                                    oast_session.close()
+                                except Exception:
+                                    pass
+                except Exception as exc:
+                    log.warning("[DETECT] OAST engine failed: %s", exc)
+                    coverage.failed("oast", exc)
+            else:
+                coverage.skipped("oast", "Disabled in scan options")
+
             # 3. Custom Security Header Checks
-            header_findings = await self._check_security_headers(target_url)
+            _emit_web_progress(
+                web_scan_id,
+                "detect",
+                {
+                    "status": "running",
+                    "percentage": 96,
+                    "message": "Checking security headers and CORS…",
+                    "total_findings": len(all_findings),
+                },
+            )
+            header_sample_urls = security_header_sample_urls(
+                target_url,
+                endpoints,
+                WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
+            )
+            header_findings = await self._check_security_headers(
+                target_url, endpoints=endpoints
+            )
             all_findings.extend(header_findings)
+            for sampled_url in header_sample_urls:
+                scheduler.record("security_headers", sampled_url, "done")
 
             # 4. CORS Misconfiguration Check
-            cors_findings = await self._check_cors(target_url)
+            cors_findings = await self._check_cors(target_url, endpoints=endpoints)
             all_findings.extend(cors_findings)
+            for sampled_url in header_sample_urls:
+                scheduler.record("cors", sampled_url, "done")
+
+            # 4b. Cookie security (Phase 17): Secure / HttpOnly / SameSite on
+            #     sensitive (session/auth/token) cookies only — preference
+            #     cookies are not flagged, to avoid a false-positive flood.
+            cookie_findings = await self._check_cookies(target_url, endpoints=endpoints)
+            all_findings.extend(cookie_findings)
+            for sampled_url in header_sample_urls:
+                scheduler.record("cookies", sampled_url, "done")
 
             # A scan whose primary detector never ran has not assessed this
             # target. Say so as a finding, so an empty result cannot be read
@@ -832,15 +2160,124 @@ class WebScanOrchestrator:
                     target_url,
                 )
 
+            # Coverage ledger (Phase 22): sqlmap parameter coverage has already
+            # been recorded per candidate above. Record only scheduler task
+            # outcomes here; do not mark endpoint-wide parameter coverage.
+            for _u in sqlmap_run_urls:
+                scheduler.record("sqli", _u, "done")
+
+            # Honest skipped coverage: record why still-untested parameters were
+            # not exercised. This is deliberately separate from positive
+            # coverage marking so unsupported locations do not become "tested".
+            _allowed_locs = allowed_locations(policy)
+            ledger.mark_skipped(
+                "policy",
+                "parameter location disabled by scan policy",
+                lambda n: n.get("location") not in _allowed_locs,
+            )
+            _coverage_now = coverage.as_dict()
+            _tool_rows = {r.get("tool"): r for r in _coverage_now.get("tools", [])}
+
+            def _tool_not_ran(name: str) -> str:
+                row = _tool_rows.get(name) or {}
+                status = row.get("status") or "not_run"
+                if status in (ToolCoverage.STATUS_RAN, ToolCoverage.STATUS_PARTIAL):
+                    return ""
+                detail = (row.get("detail") or "not run").strip()
+                return f"{name} {status}: {detail}"[:255]
+
+            _sqlmap_reason = _tool_not_ran("sqlmap")
+            if _sqlmap_reason:
+                ledger.mark_skipped(
+                    "sqlmap",
+                    _sqlmap_reason,
+                    lambda n: n.get("location")
+                    in (
+                        _allowed_locs
+                        & {"query", "form", "json", "path", "soap", "cookie", "header"}
+                    ),
+                )
+            _xss_reason = _tool_not_ran("xss")
+            if _xss_reason:
+                ledger.mark_skipped("xss", _xss_reason)
+            else:
+                ledger.mark_skipped(
+                    "xss",
+                    "sensitive/control form field excluded from XSS probes",
+                    is_active_probe_excluded_form_param,
+                )
+                ledger.mark_skipped(
+                    "xss",
+                    "xss engine supports query/form/json/path plus policy-enabled header/cookie inputs",
+                    lambda n: n.get("location")
+                    not in (
+                        _allowed_locs
+                        & {"query", "form", "json", "path", "header", "cookie"}
+                    ),
+                )
+            _inj_reason = _tool_not_ran("injection")
+            if _inj_reason:
+                ledger.mark_skipped("injection", _inj_reason)
+            else:
+                ledger.mark_skipped(
+                    "injection",
+                    "sensitive/control form field excluded from injection probes",
+                    is_active_probe_excluded_form_param,
+                )
+                ledger.mark_skipped(
+                    "injection",
+                    "injection engine supports query/form/json/path/header/cookie inputs only",
+                    lambda n: n.get("location")
+                    not in {"query", "form", "json", "path", "header", "cookie"},
+                )
+            scheduler.finalize_unresolved(
+                "planned task not individually executed by current engine batch"
+            )
+            _cov_active = [
+                e
+                for e in ("injection", "xss", "sqlmap")
+                if e in coverage.as_dict().get("tools_run", [])
+            ]
+            coverage_ledger = ledger.summary(active_engines=_cov_active or None)
+            # Full per-parameter coverage for persistence as first-class
+            # relational rows (WebParameter). Not stored in options — the DETECT
+            # task consumes it to build the attack-surface table, then it is
+            # discarded; only the bounded summary above goes into the report.
+            result["coverage_parameters"] = ledger.export_parameters()
+
             result["findings"] = all_findings
             result["tool_coverage"] = {
                 **coverage.as_dict(),
+                # Phase 22: per-parameter coverage — what was tested, by which
+                # engine, and how much of the discovered surface remains
+                # untested. This is the "coverage-driven" property.
+                "coverage_ledger": coverage_ledger,
+                # The scheduler's classified plan + outcomes (Codex item 12):
+                # how many passive/active tasks were scheduled and their status,
+                # so the report shows the work plan, not just the findings.
+                "schedule": scheduler.summary(),
+                # The resolved scan policy travels with the results (Codex item
+                # 11), so the report can state what was and was not attacked
+                # (cookies/headers/uploads) and under which budget.
+                "scan_policy": {
+                    "name": policy["name"],
+                    "attack_cookies": policy["attack_cookies"],
+                    "attack_headers": policy["attack_headers"],
+                    "attack_file_uploads": policy["attack_file_uploads"],
+                    "max_params_per_page": policy["max_params_per_page"],
+                    "sqlmap_level": policy["sqlmap_level"],
+                },
                 # The depth policy travels with the results, so a short scan is
                 # a stated choice on the report rather than an unexplained
                 # difference in how much was found.
                 "scan_depth": depth_name,
                 "scan_depth_label": depth["label"],
                 "scan_depth_caveat": depth["caveat"],
+                # Phase 10: the nuclei profile and its execution metrics travel
+                # with the results into the DB and the report.
+                "nuclei_profile": nuclei_profile,
+                "nuclei_profile_label": profile_label(nuclei_profile),
+                "nuclei_metrics": nuclei_metrics,
                 "targets_scanned": len(set(scan_targets)),
             }
             result["success"] = True
@@ -915,12 +2352,16 @@ class WebScanOrchestrator:
                 )
 
             # 2. Compliance Mapping
-            from core.web.standards_mapping import map_compliance
+            from core.web.standards_mapping import map_compliance, resolve_cwe
 
             for finding in all_findings:
                 compliance = map_compliance(finding.get("finding_type", ""))
                 finding["owasp_category"] = compliance.get("owasp", "")
                 finding["compliance_tags"] = compliance.get("tags", [])
+                # Same resolution as the persist path: keep an engine/tool CWE,
+                # else the centralized default, else None. Filling it here means
+                # the copy embedded in the report carries the CWE too.
+                finding["cwe_id"] = resolve_cwe(finding)
 
             # 3. Deduplication
             from core.web.correlation import deduplicate_findings
@@ -951,7 +2392,7 @@ class WebScanOrchestrator:
     # ── Internal Helpers ──────────────────────────────────────────────────────
 
     async def _authenticate(
-        self, auth_config: dict, web_scan_id: str, target_url: str
+        self, auth_config: dict, web_scan_id: str, target_url: str, session_mgr=None
     ) -> tuple[dict, list, dict]:
         """
         Establish the session every later step runs under.
@@ -981,10 +2422,13 @@ class WebScanOrchestrator:
             # place they are needed in the clear.
             usable_config = decrypt_auth_config(auth_config)
 
-            session_mgr = WebSessionManager(redis_client=_redis_or_none())
+            session_mgr = session_mgr or WebSessionManager(
+                redis_client=_redis_or_none()
+            )
             session = await session_mgr.authenticate(usable_config, web_scan_id)
             if session.is_authenticated:
                 status["authenticated"] = True
+                status["verified"] = session.verified
                 return (
                     session.get_auth_headers(),
                     session.get_cookies_for_playwright(target_url),
@@ -1106,106 +2550,313 @@ class WebScanOrchestrator:
 
         return result
 
-    async def _check_security_headers(self, target_url: str) -> list[dict]:
-        """Check for missing security headers."""
+    async def _check_security_headers(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
+        """Check sampled discovered pages for missing security headers."""
         findings = []
+        required_headers = {
+            "strict-transport-security": {
+                "title": "Missing HSTS Header",
+                "severity": "medium",
+                "cvss_score": 5.0,
+            },
+            "x-content-type-options": {
+                "title": "Missing X-Content-Type-Options Header",
+                "severity": "low",
+                "cvss_score": 3.0,
+            },
+            "x-frame-options": {
+                "title": "Missing X-Frame-Options Header (Clickjacking)",
+                "severity": "medium",
+                "cvss_score": 4.0,
+            },
+            "content-security-policy": {
+                "title": "Missing Content-Security-Policy Header",
+                "severity": "medium",
+                "cvss_score": 5.0,
+            },
+            # X-XSS-Protection is deliberately NOT here (Phase 19, PART A).
+            # The header is deprecated: Chrome/Edge removed the XSS auditor
+            # it controlled in 2019, Firefox never implemented it, and OWASP
+            # now recommends omitting it (or setting it to "0"), because the
+            # auditor itself introduced information-disclosure side channels.
+            # A modern, correctly-configured application therefore does NOT
+            # send it, so flagging its absence is a false positive. Content-
+            # Security-Policy above is the real non-deprecated XSS control.
+        }
+        missing: Dict[str, List[str]] = {name: [] for name in required_headers}
+        sample_urls = security_header_sample_urls(
+            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+        )
         try:
             import httpx
 
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
-                resp = await client.get(target_url)
-                headers = {k.lower(): v for k, v in resp.headers.items()}
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url)
+                    except Exception as exc:
+                        log.debug("Security header check failed for %s: %s", url, exc)
+                        continue
+                    headers = {k.lower(): v for k, v in resp.headers.items()}
+                    for header_name in required_headers:
+                        if header_name not in headers:
+                            missing[header_name].append(url)
 
-                required_headers = {
-                    "strict-transport-security": {
-                        "title": "Missing HSTS Header",
-                        "severity": "medium",
-                        "cvss_score": 5.0,
-                    },
-                    "x-content-type-options": {
-                        "title": "Missing X-Content-Type-Options Header",
-                        "severity": "low",
-                        "cvss_score": 3.0,
-                    },
-                    "x-frame-options": {
-                        "title": "Missing X-Frame-Options Header (Clickjacking)",
-                        "severity": "medium",
-                        "cvss_score": 4.0,
-                    },
-                    "content-security-policy": {
-                        "title": "Missing Content-Security-Policy Header",
-                        "severity": "medium",
-                        "cvss_score": 5.0,
-                    },
-                    "x-xss-protection": {
-                        "title": "Missing X-XSS-Protection Header",
-                        "severity": "low",
-                        "cvss_score": 2.0,
-                    },
-                }
-
-                for header_name, meta in required_headers.items():
-                    if header_name not in headers:
-                        findings.append(
-                            {
-                                "finding_type": "misconfig",
-                                "title": meta["title"],
-                                "description": f"The response is missing the {header_name} security header.",
-                                "severity": meta["severity"],
-                                "cvss_score": meta["cvss_score"],
-                                "detected_by": "custom",
-                                "matched_at": target_url,
-                            }
-                        )
+            for header_name, urls in missing.items():
+                if not urls:
+                    continue
+                meta = required_headers[header_name]
+                findings.append(
+                    {
+                        "finding_type": "misconfig",
+                        "title": meta["title"],
+                        "description": (
+                            f"{len(urls)} sampled response(s) are missing the "
+                            f"{header_name} security header."
+                        ),
+                        "severity": meta["severity"],
+                        "cvss_score": meta["cvss_score"],
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": (
+                            f"Sampled {len(sample_urls)} same-origin GET URL(s)."
+                        ),
+                        "response_evidence": _sample_evidence("Affected URLs", urls),
+                        # "misconfig" is a nuclei catch-all with no single
+                        # defensible CWE, but a missing security header is a
+                        # protection-mechanism failure.
+                        "cwe_id": "CWE-693",
+                    }
+                )
         except Exception as exc:
             log.debug("Security header check failed: %s", exc)
         return findings
 
-    async def _check_cors(self, target_url: str) -> list[dict]:
-        """Check for CORS misconfiguration."""
-        findings = []
+    async def _check_cookies(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
+        """
+        Cookie security check (Phase 17). Fetches sampled same-origin pages,
+        reads their Set-Cookie headers, and flags Secure/HttpOnly/SameSite
+        weaknesses on sensitive cookies only. Never stores a cookie value.
+        """
         try:
             import httpx
 
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
-                # Send request with a malicious Origin header
-                resp = await client.get(
-                    target_url,
-                    headers={"Origin": "https://evil-attacker.com"},
-                )
-                acao = resp.headers.get("access-control-allow-origin", "")
+            from core.web.cookies import analyze_cookies
 
-                if acao == "*":
-                    findings.append(
-                        {
-                            "finding_type": "cors",
-                            "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
-                            "description": "Server allows any origin to make cross-origin requests. This may expose sensitive data.",
-                            "severity": "medium",
-                            "cvss_score": 5.3,
-                            "detected_by": "custom",
-                            "matched_at": target_url,
-                        }
+            sample_urls = security_header_sample_urls(
+                target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+            )
+            grouped: Dict[tuple[str, str], dict] = {}
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url)
+                    except Exception as exc:
+                        log.debug("Cookie security check failed for %s: %s", url, exc)
+                        continue
+                    raw = (
+                        resp.headers.get_list("set-cookie")
+                        if hasattr(resp.headers, "get_list")
+                        else resp.headers.get("set-cookie", "")
                     )
-                elif "evil-attacker.com" in acao:
+                    is_https = urlparse(url).scheme == "https"
+                    for finding in analyze_cookies(
+                        raw, is_https=is_https, matched_at=url
+                    ):
+                        key = (finding.get("title", ""), finding.get("cwe_id", ""))
+                        if key not in grouped:
+                            grouped[key] = {**finding, "_affected_urls": []}
+                        grouped[key]["_affected_urls"].append(url)
+
+            findings: list[dict] = []
+            for finding in grouped.values():
+                affected = list(dict.fromkeys(finding.pop("_affected_urls", [])))
+                if not affected:
+                    continue
+                finding["matched_at"] = affected[0]
+                finding["request_url"] = affected[0]
+                finding["request_evidence"] = (
+                    f"Sampled {len(sample_urls)} same-origin GET URL(s)."
+                )
+                finding["response_evidence"] = _sample_evidence(
+                    "Set-Cookie observed at", affected
+                )
+                findings.append(finding)
+            return findings
+        except Exception as exc:
+            log.debug("Cookie security check failed: %s", exc)
+            return []
+
+    async def _check_cors(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
+        """Check sampled discovered pages for CORS misconfiguration."""
+        findings = []
+        origin = "https://evil-attacker.com"
+        wildcard: List[str] = []
+        reflected: List[str] = []
+        reflected_with_creds: List[str] = []
+        sample_urls = security_header_sample_urls(
+            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+        )
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url, headers={"Origin": origin})
+                    except Exception as exc:
+                        log.debug("CORS check failed for %s: %s", url, exc)
+                        continue
+                    acao = resp.headers.get("access-control-allow-origin", "")
                     creds = resp.headers.get(
                         "access-control-allow-credentials", ""
                     ).lower()
-                    severity = "critical" if creds == "true" else "high"
-                    findings.append(
-                        {
-                            "finding_type": "cors",
-                            "title": "CORS Origin Reflection Vulnerability",
-                            "description": "Server reflects arbitrary Origin in ACAO header, enabling cross-origin data theft.",
-                            "severity": severity,
-                            "cvss_score": 9.1 if creds == "true" else 7.5,
-                            "detected_by": "custom",
-                            "matched_at": target_url,
-                        }
-                    )
+                    if acao == "*":
+                        wildcard.append(url)
+                    elif "evil-attacker.com" in acao:
+                        reflected.append(url)
+                        if creds == "true":
+                            reflected_with_creds.append(url)
+
+            if wildcard:
+                findings.append(
+                    {
+                        "finding_type": "cors",
+                        "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
+                        "description": (
+                            f"{len(wildcard)} sampled response(s) allow any "
+                            "origin to make cross-origin requests."
+                        ),
+                        "severity": "medium",
+                        "cvss_score": 5.3,
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": f"GET with Origin: {origin}",
+                        "response_evidence": _sample_evidence(
+                            "Affected URLs", wildcard
+                        ),
+                    }
+                )
+            if reflected:
+                critical = bool(reflected_with_creds)
+                findings.append(
+                    {
+                        "finding_type": "cors",
+                        "title": "CORS Origin Reflection Vulnerability",
+                        "description": (
+                            f"{len(reflected)} sampled response(s) reflect an "
+                            "arbitrary Origin in ACAO."
+                        ),
+                        "severity": "critical" if critical else "high",
+                        "cvss_score": 9.1 if critical else 7.5,
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": f"GET with Origin: {origin}",
+                        "response_evidence": _sample_evidence(
+                            "Affected URLs", reflected
+                        ),
+                    }
+                )
         except Exception as exc:
             log.debug("CORS check failed: %s", exc)
         return findings
+
+    @staticmethod
+    def _evidence_dir(web_scan_id: str) -> str:
+        """Per-scan directory for proof artefacts (screenshots). Configurable via
+        WEB_EVIDENCE_DIR; defaults beside the generated reports. Best-effort — a
+        directory that cannot be created just disables screenshot capture."""
+        import os
+
+        base = os.environ.get("WEB_EVIDENCE_DIR") or os.path.join(
+            os.getcwd(), "reports", "web_evidence"
+        )
+        return os.path.join(base, str(web_scan_id))
+
+    @staticmethod
+    def _scan_is_cancelled(web_scan_id: str) -> bool:
+        """
+        Best-effort "should this stop now?" check for long in-phase work.
+
+        Returns True when the user cancelled the scan **or** the global
+        wall-clock timeout (WEB_SCAN_TIMEOUT, from execution start) has passed —
+        so every engine that honours this callback (crawler, XSS, injection,
+        access control, HTTP-method, JS-deps, OAST) aborts mid-phase rather than
+        only at the phase boundary. Reads through a short-lived session and
+        never raises — a failed check simply does not stop.
+        """
+        if not web_scan_id:
+            return False
+        try:
+            from db.base import SessionLocal
+            from db.models.web_scans import WebScan
+
+            db = SessionLocal()
+            try:
+                row = (
+                    db.query(WebScan.status, WebScan.started_at)
+                    .filter(WebScan.id == web_scan_id)
+                    .first()
+                )
+                if not row:
+                    return False
+                if str(row[0]).lower() in ("cancelled", "cancelling"):
+                    return True
+                from core.web.timeout import is_timed_out
+
+                return is_timed_out(row[1])
+            finally:
+                db.close()
+        except Exception:
+            return False
+
+    @staticmethod
+    def _global_remaining(web_scan_id: str):
+        """Seconds left before the global scan deadline, or None if no deadline."""
+        if not web_scan_id:
+            return None
+        try:
+            from core.web.timeout import remaining_seconds
+            from db.base import SessionLocal
+            from db.models.web_scans import WebScan
+
+            db = SessionLocal()
+            try:
+                row = (
+                    db.query(WebScan.started_at)
+                    .filter(WebScan.id == web_scan_id)
+                    .first()
+                )
+                return remaining_seconds(row[0]) if row else None
+            finally:
+                db.close()
+        except Exception:
+            return None
+
+    def _bounded_timeout(self, web_scan_id: str, base_timeout: int) -> int:
+        """
+        A subprocess timeout that cannot run past the global scan deadline.
+
+        Bounds a long tool (nuclei) so it terminates safely at the deadline
+        rather than overrunning the whole scan's budget. With no deadline set,
+        the tool's own timeout applies unchanged.
+        """
+        rem = self._global_remaining(web_scan_id)
+        if rem is None:
+            return base_timeout
+        return max(1, int(min(base_timeout, rem)))
 
     @staticmethod
     def _calculate_web_risk_score(findings: list[dict]) -> float:
@@ -1219,10 +2870,18 @@ class WebScanOrchestrator:
 
     @staticmethod
     def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
+        import hashlib
+
         seen = set()
         unique = []
         for ep in endpoints:
-            key = f"{ep.get('method', 'GET')}:{ep.get('url', '')}"
+            method = ep.get("method", "GET")
+            url = ep.get("url", "")
+            extra = ep.get("graphql_operation") or ""
+            body = ep.get("request_body")
+            if body:
+                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+            key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)
                 unique.append(ep)

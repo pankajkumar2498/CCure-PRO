@@ -186,25 +186,71 @@ export default function ScanDetail() {
   const showCoverage =
     Boolean(coverage) && (unavailable.length > 0 || incomplete || narrowed);
 
+  // Coverage-driven / request-aware summary (Codex P0-P2): what the scan
+  // assessed and how it was steered, read from the persisted detect/crawl
+  // coverage. All optional — older scans have none and the card is hidden.
+  const detectCov = coverage?.detect || {};
+  const crawlCov = coverage?.crawl || {};
+  const ledger = detectCov.coverage_ledger || {};
+  const policy = detectCov.scan_policy || {};
+  const schedule = detectCov.schedule || {};
+  const domGraph = crawlCov.dom_graph_summary || {};
+  const attacked = ["cookies", "headers", "file_uploads"].filter(
+    (k) => policy[`attack_${k}`],
+  );
+  const surfaceRows = [];
+  if (ledger.total_parameters != null)
+    surfaceRows.push([
+      "Parameter coverage",
+      `${ledger.tested_parameters || 0}/${ledger.total_parameters} tested (${ledger.coverage_pct ?? 0}%)`,
+    ]);
+  if (policy.name)
+    surfaceRows.push([
+      "Scan policy",
+      `${policy.name}${attacked.length ? ` — attacks ${attacked.join(", ")}` : " — query/form/JSON/path only"}`,
+    ]);
+  if (schedule.total_tasks != null)
+    surfaceRows.push([
+      "Checks scheduled",
+      `${schedule.total_tasks} (${schedule.passive_tasks || 0} passive / ${schedule.active_tasks || 0} active)`,
+    ]);
+  if (domGraph.states != null)
+    surfaceRows.push([
+      "SPA states (DOM graph)",
+      `${domGraph.states} states, ${domGraph.transitions || 0} transitions, ${domGraph.spa_hidden_states || 0} hidden`,
+    ]);
+
   const stats = [
     {
       key: "endpoints",
       label: "Discovered Assets",
       value: scan.total_endpoints || 0,
+      to: scan.total_endpoints ? `/web-scans/${scan.id}/assets` : null,
     },
     {
       key: "critical",
       label: "Critical Findings",
       value: scan.critical_count || 0,
       tone: scan.critical_count > 0 ? "critical" : null,
+      to: scan.critical_count
+        ? `/web-scans/${scan.id}/findings?severity=critical`
+        : null,
     },
     {
       key: "high",
       label: "High Findings",
       value: scan.high_count || 0,
       tone: scan.high_count > 0 ? "high" : null,
+      to: scan.high_count
+        ? `/web-scans/${scan.id}/findings?severity=high`
+        : null,
     },
-    { key: "total", label: "Total Findings", value: scan.total_findings || 0 },
+    {
+      key: "total",
+      label: "Total Findings",
+      value: scan.total_findings || 0,
+      to: scan.total_findings ? `/web-scans/${scan.id}/findings` : null,
+    },
   ];
 
   return (
@@ -384,19 +430,46 @@ export default function ScanDetail() {
           </CcureAlert>
         )}
 
+        {surfaceRows.length > 0 && (
+          <CcureCard title="Coverage & Attack Surface" headingLevel={2}>
+            <dl className="sd-summary">
+              {surfaceRows.map(([label, value]) => (
+                <div key={label} className="sd-summary-row">
+                  <dt className="sd-summary-label">{label}</dt>
+                  <dd className="sd-summary-value">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </CcureCard>
+        )}
+
         <div className="sd-stat-grid">
-          {stats.map((s) => (
+          {stats.map((s) => {
             /* CcureCard supplies the heading, and the heading is what names the
-               counter. The previous markup paired a styled label div with a
-               styled value div and tied them together with nothing. */
-            <CcureCard key={s.key} title={s.label} headingLevel={2}>
-              <div
-                className={`sd-stat-value${s.tone ? ` sd-stat-value--${s.tone}` : ""}`}
+               counter. A non-zero counter drills into its records; a zero one
+               stays plain so a click never lands on an empty filtered page. */
+            const card = (
+              <CcureCard key={s.key} title={s.label} headingLevel={2}>
+                <div
+                  className={`sd-stat-value${s.tone ? ` sd-stat-value--${s.tone}` : ""}`}
+                >
+                  {s.value}
+                </div>
+              </CcureCard>
+            );
+            return s.to ? (
+              <Link
+                key={s.key}
+                to={s.to}
+                className="sd-stat-link"
+                aria-label={`${s.label}: ${s.value} — view`}
               >
-                {s.value}
-              </div>
-            </CcureCard>
-          ))}
+                {card}
+              </Link>
+            ) : (
+              card
+            );
+          })}
         </div>
 
         <div className="sd-links">
@@ -411,6 +484,16 @@ export default function ScanDetail() {
             <span className="sd-link-title">Asset Inventory →</span>
             <span className="sd-link-desc">
               Review discovered endpoints, APIs, forms, and technologies.
+            </span>
+          </Link>
+          <Link
+            to={`/web-scans/${scan.id}/attack-surface`}
+            className="sd-link-card"
+          >
+            <span className="sd-link-title">Attack Surface →</span>
+            <span className="sd-link-desc">
+              Parameters with per-engine coverage, forms, and REST/GraphQL/SOAP
+              API operations.
             </span>
           </Link>
         </div>

@@ -22,7 +22,6 @@ This wrapper:
 
 import logging
 import os
-from typing import Dict, List, Optional
 
 from config import WebScanConfig
 from core.web.base_wrapper import ToolWrapper
@@ -45,6 +44,21 @@ _SEVERITY_MAP = {
 #: scan finite; the cap being hit is recorded rather than passed over, because
 #: a truncated target list bounds what the scan could have found.
 MAX_NUCLEI_TARGETS = 2000
+
+
+def auth_headers_with_cookies(
+    auth_headers: dict | None, auth_cookies: dict | None
+) -> dict:
+    """
+    Merge session cookies into a Cookie header so Nuclei runs authenticated on a
+    cookie-session app (Codex item 13). Header auth (bearer/JWT/API-key) already
+    travels as headers; this closes the cookie case. An explicit Cookie header
+    already present is never overwritten.
+    """
+    merged = dict(auth_headers or {})
+    if auth_cookies and not any(k.lower() == "cookie" for k in merged):
+        merged["Cookie"] = "; ".join(f"{k}={v}" for k, v in auth_cookies.items())
+    return merged
 
 
 def _dedupe_targets(targets: list[str] | None, fallback: str) -> list[str]:
@@ -123,6 +137,10 @@ class NucleiWrapper(ToolWrapper):
         template_ids: list[str] | None = None,
         waf_detected: bool = False,
         targets: list[str] | None = None,
+        profile: str = "STANDARD",
+        concurrency: int | None = None,
+        run_timeout: int | None = None,
+        include_dangerous_tags: bool = False,
         **kwargs,
     ) -> dict:
         """
@@ -159,10 +177,18 @@ class NucleiWrapper(ToolWrapper):
             )
             with open(target_file, "w", encoding="utf-8") as fh:
                 fh.write("\n".join(target_list))
-            args = [self.binary, "-l", target_file, "-jsonl", "-silent", "-nc"]
+            args = [self.binary, "-l", target_file, "-jsonl", "-nc"]
             log.info("Nuclei scanning %d discovered target(s)", len(target_list))
         else:
-            args = [self.binary, "-u", target_list[0], "-jsonl", "-silent", "-nc"]
+            args = [self.binary, "-u", target_list[0], "-jsonl", "-nc"]
+
+        # Execution metrics. -stats-json prints periodic statistics (templates,
+        # requests, matched) to stderr, and dropping -silent lets the
+        # "Templates loaded for current scan: N" line through — together these
+        # give the template count / executed / skipped / findings the report
+        # records per profile. Results are still read from the -o file, so
+        # console verbosity does not affect parsing.
+        args.extend(["-stats", "-stats-json", "-stats-interval", "5"])
 
         # Severity filter.
         #
@@ -188,15 +214,27 @@ class NucleiWrapper(ToolWrapper):
             )
         args.extend(["-rate-limit", str(effective_rate)])
 
-        # Concurrency
-        args.extend(["-concurrency", str(WebScanConfig.NUCLEI_CONCURRENCY)])
+        # Concurrency — from the profile when the caller supplied one, else the
+        # deployment default.
+        effective_concurrency = concurrency or WebScanConfig.NUCLEI_CONCURRENCY
+        args.extend(["-concurrency", str(effective_concurrency)])
         args.extend(["-bulk-size", str(WebScanConfig.NUCLEI_BULK_SIZE)])
 
         # Template filters
         if tags:
             args.extend(["-tags", ",".join(tags)])
-        if exclude_tags:
-            args.extend(["-exclude-tags", ",".join(exclude_tags)])
+        # Safety exclusions. dos/fuzz/intrusive/brute-force are excluded on every
+        # profile by default (this scans production and OT); an explicit
+        # exclude_tags overrides, and include_dangerous_tags / the config flag
+        # is the only way to run them. resolve_exclude_tags([]) means "exclude
+        # nothing", which is why the None-vs-[] distinction matters.
+        from core.web.nuclei.profiles import resolve_exclude_tags
+
+        effective_exclude = resolve_exclude_tags(
+            override=exclude_tags, include_dangerous=include_dangerous_tags
+        )
+        if effective_exclude:
+            args.extend(["-exclude-tags", ",".join(effective_exclude)])
         if template_ids:
             args.extend(["-template-id", ",".join(template_ids)])
 
@@ -219,17 +257,76 @@ class NucleiWrapper(ToolWrapper):
         args.extend(["-o", output_file])
 
         try:
-            self._run_subprocess(args)
+            import subprocess as _subprocess
+            import time as _time
 
-            # Parse output
-            with open(output_file, "r", encoding="utf-8", errors="replace") as f:
-                raw_output = f.read()
+            from core.web.nuclei.profiles import parse_run_metrics
+
+            t0 = _time.monotonic()
+            effective_timeout = run_timeout or self.timeout
+            timed_out = False
+            stderr = ""
+
+            # A timeout must not be a silent clean scan (Phase 19 PART C).
+            # nuclei writes its -o file incrementally, so when the process is
+            # killed at the time limit the findings it already confirmed are on
+            # disk. We catch the timeout, keep those partial findings, and mark
+            # the coverage partial rather than letting the exception discard the
+            # work and reach the orchestrator as a bare failure.
+            try:
+                result = self._run_subprocess(args, timeout=effective_timeout)
+                stderr = getattr(result, "stderr", "") or ""
+            except _subprocess.TimeoutExpired as exc:
+                timed_out = True
+                raw_err = getattr(exc, "stderr", None)
+                if isinstance(raw_err, bytes):
+                    raw_err = raw_err.decode("utf-8", "replace")
+                stderr = raw_err or ""
+                log.warning(
+                    "Nuclei hit its %ss time limit — preserving partial findings "
+                    "and reporting PARTIAL coverage",
+                    effective_timeout,
+                )
+            duration_s = round(_time.monotonic() - t0, 2)
+
+            # Parse output (partial after a timeout, complete otherwise).
+            try:
+                with open(output_file, "r", encoding="utf-8", errors="replace") as f:
+                    raw_output = f.read()
+            except FileNotFoundError:
+                raw_output = ""
 
             raw_findings = self._parse_jsonl(raw_output)
             findings = [self._normalize_finding(f) for f in raw_findings]
 
             # Filter out None (failed to parse)
             findings = [f for f in findings if f is not None]
+
+            # Execution metrics from nuclei's own stderr (best-effort; honest
+            # about anything nuclei did not report).
+            metrics = parse_run_metrics(stderr)
+            percent = metrics.get("percent")
+
+            # Coverage is complete only when nuclei finished. On a timeout the
+            # corpus was not fully run; ``percent`` (when nuclei reported it)
+            # states how far it got, and the caveat spells out that a short
+            # result is unassessed, not clean.
+            coverage_complete = not timed_out
+            coverage_caveat = ""
+            if timed_out:
+                pct = (
+                    f"{percent}% of the template corpus"
+                    if percent is not None
+                    else "an unknown fraction of the template corpus"
+                )
+                coverage_caveat = (
+                    f"Nuclei was stopped at its {effective_timeout}s time limit "
+                    f"after completing {pct}. Coverage is PARTIAL: the findings "
+                    f"recorded are real, but the target is not fully assessed, so "
+                    f"an empty or short result here must not be read as clean. "
+                    f"Re-run with a longer nuclei timeout for this profile, or a "
+                    f"narrower scope, to complete the corpus."
+                )
 
             stats = {
                 "total_findings": len(findings),
@@ -241,13 +338,35 @@ class NucleiWrapper(ToolWrapper):
                 # coverage instead of implying the whole application was.
                 "targets_scanned": len(target_list),
                 "oast": oast,
+                # Phase 10 profile + execution metrics.
+                "profile": (profile or "STANDARD").upper(),
+                "concurrency": effective_concurrency,
+                "rate_limit": effective_rate,
+                "exclude_tags": effective_exclude,
+                "duration_s": duration_s,
+                "templates_total": metrics["templates_total"],
+                "templates_executed": metrics["templates_executed"],
+                "templates_skipped": metrics["templates_skipped"],
+                "requests": metrics["requests"],
+                "rps": metrics.get("rps"),
+                # Phase 19 PART C: timeout / partial-coverage state.
+                "timed_out": timed_out,
+                "coverage_complete": coverage_complete,
+                "percent_complete": percent,
+                "timeout_limit_s": effective_timeout if timed_out else None,
+                "coverage_caveat": coverage_caveat,
             }
 
             log.info(
-                "Nuclei scan complete: %d findings across %d target(s) (%s)",
+                "Nuclei scan %s: %d findings across %d target(s) in %.1fs "
+                "[%s] (%s)%s",
+                "TIMED OUT (partial)" if timed_out else "complete",
                 len(findings),
                 len(target_list),
+                duration_s,
+                stats["profile"],
                 ", ".join(f"{k}={v}" for k, v in stats["by_severity"].items() if v > 0),
+                f" — {percent}% of corpus" if timed_out and percent else "",
             )
 
             return {"findings": findings, "stats": stats}
@@ -417,7 +536,6 @@ class NucleiWrapper(ToolWrapper):
 
             # Parse matcher info
             matched_at = raw.get("matched-at", raw.get("host", ""))
-            curl_command = raw.get("curl-command", "")
 
             # Determine finding type from nuclei classification
             classification = info.get("classification", {})
@@ -443,6 +561,16 @@ class NucleiWrapper(ToolWrapper):
                 finding_type = "exposed_panel"
             elif "tech" in (info.get("tags") or []):
                 finding_type = "technology_detected"
+
+            # CWE from the template's own classification. This is nuclei's
+            # authoritative weakness class for the template that matched — a
+            # source-tool identifier, preserved rather than overwritten by the
+            # coarser finding_type default downstream. Published as a list
+            # (e.g. ["CWE-79"]); normalize_cwe takes the first well-formed
+            # entry and rejects anything malformed.
+            from core.web.standards_mapping import normalize_cwe
+
+            cwe_id = normalize_cwe(classification.get("cwe-id"))
 
             # CVSS extraction
             cvss_score = None
@@ -480,6 +608,7 @@ class NucleiWrapper(ToolWrapper):
                     "extracted-results", raw.get("matcher-name", "")
                 ),
                 "cve_id": cve_id,
+                "cwe_id": cwe_id,
                 "tags": info.get("tags", []),
                 "reference": info.get("reference", []),
                 "is_verified": severity_raw in ("high", "critical"),

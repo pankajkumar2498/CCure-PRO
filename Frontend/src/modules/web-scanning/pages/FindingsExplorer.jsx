@@ -39,7 +39,7 @@
  * scope. It is recorded in the checkpoint report instead.
  */
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
 import { webScansApi } from "../api/webScansApi";
 import {
@@ -65,9 +65,34 @@ const RESPONSE_LIMIT = 2000;
 
 export default function FindingsExplorer() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFinding, setSelectedFinding] = useState(null);
+  // Proof screenshot (Codex item 10) — fetched as a blob (auth header) and
+  // shown as an object URL; revoked when the selection changes.
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
+
+  useEffect(() => {
+    let objUrl = null;
+    let active = true;
+    if (selectedFinding?.screenshot_path && selectedFinding?.id) {
+      webScansApi
+        .getFindingScreenshot(id, selectedFinding.id)
+        .then((res) => {
+          if (!active) return;
+          objUrl = window.URL.createObjectURL(res.data);
+          setScreenshotUrl(objUrl);
+        })
+        .catch((err) => console.error("Failed to load screenshot", err));
+    } else {
+      setScreenshotUrl(null);
+    }
+    return () => {
+      active = false;
+      if (objUrl) window.URL.revokeObjectURL(objUrl);
+    };
+  }, [id, selectedFinding]);
 
   useEffect(() => {
     async function fetchFindings() {
@@ -101,6 +126,30 @@ export default function FindingsExplorer() {
     }
   };
 
+  // Filters carried in the URL by a drill-down from the Scan Detail counts, so
+  // clicking "Critical Findings" lands here showing exactly the critical ones.
+  const fSeverity = searchParams.get("severity");
+  const fType = searchParams.get("finding_type") || searchParams.get("type");
+  const fOwasp = searchParams.get("owasp");
+  const activeChips = [];
+  if (fSeverity) activeChips.push(["Severity", fSeverity]);
+  if (fType) activeChips.push(["Type", fType]);
+  if (fOwasp) activeChips.push(["OWASP", fOwasp]);
+  const visible = findings.filter((f) => {
+    if (
+      fSeverity &&
+      (f.severity || "").toLowerCase() !== fSeverity.toLowerCase()
+    )
+      return false;
+    if (fType && f.finding_type !== fType) return false;
+    if (
+      fOwasp &&
+      !(f.owasp_category || "").toUpperCase().startsWith(fOwasp.toUpperCase())
+    )
+      return false;
+    return true;
+  });
+
   return (
     <AppLayout pageTitle="Findings Explorer">
       <div className="page-inner wsp-page wsp-page--wide">
@@ -116,10 +165,24 @@ export default function FindingsExplorer() {
           </div>
         </div>
 
+        {activeChips.length > 0 && (
+          <div className="wsp-meta wsp-filter-bar">
+            <span className="wsp-muted">Filtered by:</span>
+            {activeChips.map(([label, val]) => (
+              <CcureBadge key={label} variant="info">
+                {label}: {val}
+              </CcureBadge>
+            ))}
+            <Link to={`/web-scans/${id}/findings`} className="wsp-back">
+              Clear filters
+            </Link>
+          </div>
+        )}
+
         <div className="wsp-split">
           <div className="wsp-panel">
             <CcureCard
-              title={`Vulnerabilities (${findings.length})`}
+              title={`Vulnerabilities (${visible.length})`}
               headingLevel={2}
               flush
               bodyFlush
@@ -133,14 +196,18 @@ export default function FindingsExplorer() {
                   <CcureSkeleton height="64px" radius="6px" />
                   <CcureSkeleton height="64px" radius="6px" />
                 </div>
-              ) : findings.length === 0 ? (
+              ) : visible.length === 0 ? (
                 <CcureEmptyState
                   title="No findings"
-                  description="This scan reported no vulnerabilities."
+                  description={
+                    activeChips.length
+                      ? "No findings match the current filter."
+                      : "This scan reported no vulnerabilities."
+                  }
                 />
               ) : (
                 <div className="wsp-finding-list">
-                  {findings.map((finding) => {
+                  {visible.map((finding) => {
                     const band = normalizeSeverity(finding.severity);
                     const selected = selectedFinding?.id === finding.id;
                     return (
@@ -190,9 +257,34 @@ export default function FindingsExplorer() {
                       {selectedFinding.cve_id}
                     </CcureBadge>
                   )}
+                  {selectedFinding.cwe_id && (
+                    <CcureBadge variant="neutral" mono>
+                      {selectedFinding.cwe_id}
+                    </CcureBadge>
+                  )}
                   {selectedFinding.owasp_category && (
                     <CcureBadge variant="warning">
                       OWASP: {selectedFinding.owasp_category}
+                    </CcureBadge>
+                  )}
+                  {/* Proof-based evidence (Codex item 10): how sure the
+                      detection is, and the identity it was tested under. */}
+                  {selectedFinding.confidence && (
+                    <CcureBadge
+                      variant={
+                        selectedFinding.confidence === "high"
+                          ? "success"
+                          : selectedFinding.confidence === "low"
+                            ? "neutral"
+                            : "info"
+                      }
+                    >
+                      Confidence: {selectedFinding.confidence}
+                    </CcureBadge>
+                  )}
+                  {selectedFinding.auth_context && (
+                    <CcureBadge variant="neutral">
+                      Tested as: {selectedFinding.auth_context}
                     </CcureBadge>
                   )}
                 </div>
@@ -215,6 +307,13 @@ export default function FindingsExplorer() {
                 <p>
                   {selectedFinding.description || "No description provided."}
                 </p>
+
+                {selectedFinding.remediation && (
+                  <>
+                    <h3>Remediation</h3>
+                    <p>{selectedFinding.remediation}</p>
+                  </>
+                )}
 
                 {(selectedFinding.request_method ||
                   selectedFinding.request_url) && (
@@ -260,6 +359,24 @@ export default function FindingsExplorer() {
                     <pre className="wsp-evidence">
                       {selectedFinding.curl_command}
                     </pre>
+                  </>
+                )}
+
+                {/* Proof of execution — a screenshot captured at the moment the
+                    payload fired (e.g. a rendered XSS). Shown only when the
+                    scanner captured one and the image loaded. */}
+                {selectedFinding.screenshot_path && (
+                  <>
+                    <h3>Proof Screenshot</h3>
+                    {screenshotUrl ? (
+                      <img
+                        src={screenshotUrl}
+                        alt={`Proof of execution for ${selectedFinding.title}`}
+                        className="wsp-screenshot"
+                      />
+                    ) : (
+                      <p className="wsp-muted">Loading screenshot…</p>
+                    )}
                   </>
                 )}
               </CcureCard>

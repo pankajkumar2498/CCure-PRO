@@ -22,7 +22,6 @@ Usage:
 
 import os
 from datetime import datetime
-from typing import List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -296,6 +295,30 @@ def _section(title, styles):
     return Paragraph(f"&nbsp; {title}", styles["section"])
 
 
+def _format_tech_stack(tech_stack) -> str:
+    """
+    Render the technology list for the summary table.
+
+    ``tech_stack`` is a list of dicts as RECON stores it
+    (``{"name": ..., "category": ..., "version": ...}``), not a list of
+    strings — joining it directly raised ``TypeError: expected str instance,
+    dict found`` and took the whole report generation down with it, on every
+    scan where technology fingerprinting produced anything. A plain list of
+    strings is accepted too, so an older payload still renders.
+    """
+    if not tech_stack:
+        return ""
+    names: list[str] = []
+    for item in tech_stack:
+        if isinstance(item, dict):
+            label = str(item.get("name") or item.get("technology") or "").strip()
+        else:
+            label = str(item).strip()
+        if label and label not in names:
+            names.append(label)
+    return ", ".join(names)
+
+
 # ── Story Builder ─────────────────────────────────────────────────────────────
 
 
@@ -330,7 +353,7 @@ def _build_web_scan_story(
         ("Target Domain", target_domain),
         ("Status", (scan.get("status", "N/A")).upper()),
         ("WAF Detected", scan.get("waf_detected") or "None"),
-        ("Tech Stack", ", ".join(scan.get("tech_stack", [])) or "N/A"),
+        ("Tech Stack", _format_tech_stack(scan.get("tech_stack", [])) or "N/A"),
         ("Duration", duration_str),
         ("Started At", scan.get("started_at", "N/A")),
         ("Completed At", scan.get("completed_at", "N/A")),
@@ -338,6 +361,175 @@ def _build_web_scan_story(
     ]
     story.append(_kv_table(scan_info, styles))
     story.append(Spacer(1, 4 * mm))
+
+    # ── 1b. Nuclei Scan Profile & Coverage ────────────────────────────────────
+    # Depth is a decision the operator made; stating it (and what the run
+    # actually executed) stops a short scan being read as a thorough one that
+    # found nothing.
+    profile = scan.get("nuclei_profile")
+    metrics = scan.get("nuclei_metrics") or {}
+    if profile or metrics:
+        story.append(_section("Scan Profile & Coverage", styles))
+
+        def _num(v):
+            return "N/A" if v is None else str(v)
+
+        prof_rows = [
+            ("Nuclei Profile", scan.get("nuclei_profile_label") or profile or "N/A"),
+        ]
+        if metrics.get("templates_total") is not None:
+            prof_rows.append(("Templates Loaded", _num(metrics.get("templates_total"))))
+            prof_rows.append(
+                ("Templates Executed", _num(metrics.get("templates_executed")))
+            )
+            prof_rows.append(
+                ("Templates Skipped", _num(metrics.get("templates_skipped")))
+            )
+        if metrics.get("findings") is not None:
+            prof_rows.append(("Nuclei Findings", _num(metrics.get("findings"))))
+        if metrics.get("duration_s") is not None:
+            prof_rows.append(("Nuclei Duration", f"{metrics.get('duration_s')} s"))
+        if metrics.get("concurrency") is not None:
+            prof_rows.append(("Concurrency", _num(metrics.get("concurrency"))))
+        if metrics.get("rate_limit") is not None:
+            prof_rows.append(("Rate Limit", f"{metrics.get('rate_limit')} req/s"))
+        excl = metrics.get("exclude_tags")
+        if excl:
+            prof_rows.append(("Excluded Tags (safety)", ", ".join(excl)))
+        # Phase 19 PART C: a timeout is stated as PARTIAL coverage so a short
+        # result is never read as a completed, clean assessment.
+        timed_out = bool(metrics.get("timed_out"))
+        if metrics.get("coverage_complete") is not None:
+            prof_rows.append(
+                (
+                    "Nuclei Coverage",
+                    (
+                        "Complete"
+                        if metrics.get("coverage_complete")
+                        else "PARTIAL — timed out"
+                    ),
+                )
+            )
+        if timed_out and metrics.get("percent_complete") is not None:
+            prof_rows.append(
+                ("Corpus Completed", f"{metrics.get('percent_complete')}%")
+            )
+        if timed_out and metrics.get("timeout_limit_s") is not None:
+            prof_rows.append(
+                ("Nuclei Time Limit", f"{metrics.get('timeout_limit_s')} s")
+            )
+        story.append(_kv_table(prof_rows, styles))
+        if timed_out:
+            pct = metrics.get("percent_complete")
+            pct_txt = f"{pct}% of" if pct is not None else "part of"
+            story.append(Spacer(1, 2 * mm))
+            story.append(
+                Paragraph(
+                    f'<font color="#EA580C"><b>Partial nuclei coverage:</b></font> '
+                    f"the template scan was stopped at its "
+                    f"{_num(metrics.get('timeout_limit_s'))}s time limit after "
+                    f"completing {pct_txt} the corpus. The findings above are real, "
+                    f"but this target is <b>not fully assessed</b> — an empty or "
+                    f"short result must not be treated as clean. Re-run with a "
+                    f"longer nuclei time limit for this profile, or a narrower "
+                    f"scope, to complete coverage.",
+                    styles["value"],
+                )
+            )
+        story.append(Spacer(1, 4 * mm))
+
+    # ── 1c. Parameter Coverage (Phase 22) ─────────────────────────────────────
+    # What was tested at parameter granularity, so an empty result is never read
+    # as a clean one over an unassessed surface.
+    cov = scan.get("coverage_ledger") or {}
+    if cov and cov.get("total_parameters"):
+        story.append(_section("Parameter Coverage", styles))
+        cov_rows = [
+            ("Parameters Discovered", str(cov.get("total_parameters", 0))),
+            ("Parameters Tested", str(cov.get("tested_parameters", 0))),
+            ("Parameters Untested", str(cov.get("untested_parameters", 0))),
+            ("Coverage", f"{cov.get('coverage_pct', 0)}%"),
+        ]
+        for eng, n in (cov.get("per_engine_tested") or {}).items():
+            cov_rows.append((f"Tested by {eng}", str(n)))
+        story.append(_kv_table(cov_rows, styles))
+        if cov.get("untested_parameters"):
+            story.append(Spacer(1, 2 * mm))
+            sample = cov.get("untested") or []
+            names = ", ".join(
+                f"{u.get('param')}@{u.get('location')}" for u in sample[:15]
+            )
+            story.append(
+                Paragraph(
+                    f"<font color='#CA8A04'><b>Untested parameters "
+                    f"({cov.get('untested_parameters')}):</b></font> these were "
+                    f"discovered but not exercised by an active engine, so they "
+                    f"are <b>unassessed, not proven clean</b>. Examples: {_escape(names)}.",
+                    styles["small"],
+                )
+            )
+        story.append(Spacer(1, 4 * mm))
+
+    # ── 1d. Site Map & Scan Policy (Codex item 15) ─────────────────────────────
+    # State the attack surface discovered, what the policy permitted attacking,
+    # the scheduler's plan, and the identity the scan ran under — so a reader
+    # knows the scope of what was and was not assessed.
+    site = scan.get("site_map") or {}
+    pol = scan.get("scan_policy") or {}
+    sched = scan.get("schedule") or {}
+    if site or pol or sched:
+        story.append(_section("Site Map & Scan Policy", styles))
+        rows = []
+        if site:
+            api_ops = site.get("api_operations") or {}
+            rows += [
+                ("Endpoints", str(site.get("endpoints", 0))),
+                ("Forms", str(site.get("forms", 0))),
+                (
+                    "API Operations",
+                    ", ".join(f"{k}: {v}" for k, v in api_ops.items()) or "0",
+                ),
+            ]
+            dg = site.get("dom_graph") or {}
+            if dg.get("states"):
+                rows.append(
+                    (
+                        "SPA States (DOM graph)",
+                        f"{dg.get('states', 0)} states, "
+                        f"{dg.get('transitions', 0)} transitions, "
+                        f"{dg.get('spa_hidden_states', 0)} hidden",
+                    )
+                )
+        if scan.get("auth_status"):
+            rows.append(("Authenticated As", str(scan.get("auth_status"))))
+        if pol:
+            rows += [
+                ("Scan Policy", str(pol.get("name", "standard"))),
+                (
+                    "Attacked",
+                    ", ".join(
+                        loc
+                        for loc, on in (
+                            ("cookies", pol.get("attack_cookies")),
+                            ("headers", pol.get("attack_headers")),
+                            ("file-uploads", pol.get("attack_file_uploads")),
+                        )
+                        if on
+                    )
+                    or "query/form/JSON/path only",
+                ),
+                ("Max Params/Page", str(pol.get("max_params_per_page", "—"))),
+            ]
+        if sched:
+            rows += [
+                ("Checks Scheduled", str(sched.get("total_tasks", 0))),
+                (
+                    "Passive / Active",
+                    f"{sched.get('passive_tasks', 0)} / {sched.get('active_tasks', 0)}",
+                ),
+            ]
+        story.append(_kv_table(rows, styles))
+        story.append(Spacer(1, 4 * mm))
 
     # ── 2. Executive Summary ──────────────────────────────────────────────────
     story.append(_section("Executive Summary", styles))
@@ -459,10 +651,16 @@ def _build_web_scan_story(
                 ("Detected By", f.get("detected_by", "N/A")),
                 ("Matched At", f.get("matched_at", "N/A")),
                 ("CVSS Score", str(f.get("cvss_score") or "N/A")),
+                # Lifecycle / retest status (Codex item 15): open, confirmed,
+                # fixed, reopened, accepted_risk — so a report shows what a
+                # re-scan established, not only the first sighting.
+                ("Status", str(f.get("status", "open"))),
             ]
 
             if f.get("owasp_category"):
                 detail_rows.append(("OWASP", f["owasp_category"]))
+            if f.get("cwe_id"):
+                detail_rows.append(("CWE", str(f["cwe_id"])))
             if f.get("cve_id"):
                 detail_rows.append(
                     ("CVE", make_pdf_cve_paragraph(f["cve_id"], styles["value"]))
@@ -473,6 +671,14 @@ def _build_web_scan_story(
                     detail_rows.append(("Compliance", ", ".join(tags[:5])))
             if f.get("is_verified"):
                 detail_rows.append(("Verified", "✓ Confirmed by multiple tools"))
+            # Proof-based evidence (Codex item 10/15): confidence, the identity
+            # tested under, and a screenshot path where execution was captured.
+            if f.get("confidence"):
+                detail_rows.append(("Confidence", str(f["confidence"]).upper()))
+            if f.get("auth_context"):
+                detail_rows.append(("Tested As", str(f["auth_context"])))
+            if f.get("screenshot_path"):
+                detail_rows.append(("Screenshot", _escape(str(f["screenshot_path"]))))
 
             finding_block.append(
                 _kv_table(detail_rows, styles, col_widths=[40 * mm, W - 40 * mm])
@@ -495,6 +701,47 @@ def _build_web_scan_story(
                 finding_block.append(
                     Paragraph(
                         f"<b>Payload:</b> <font face='Courier' size='7'>{_escape(f['payload_used'][:200])}</font>",
+                        styles["small"],
+                    )
+                )
+
+            # Proof-based HTTP evidence (Phase 22, Item 10): the exact request
+            # and response, and a curl that reproduces the request — so a reader
+            # can answer "which exact request caused this?" and re-verify it.
+            if f.get("request_body"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Request Body:</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['request_body'])[:500])}</font>",
+                        styles["small"],
+                    )
+                )
+            if f.get("response_body"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Response Evidence:</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['response_body'])[:500])}</font>",
+                        styles["small"],
+                    )
+                )
+            if f.get("curl_command"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Reproduce (curl):</b> <font face='Courier' size='7'>"
+                        f"{_escape(str(f['curl_command'])[:600])}</font>",
+                        styles["small"],
+                    )
+                )
+
+            # Remediation (Phase 21) — the actionable fix carried on the finding.
+            if f.get("remediation"):
+                finding_block.append(Spacer(1, 2 * mm))
+                finding_block.append(
+                    Paragraph(
+                        f"<b>Remediation:</b> {_escape(str(f['remediation'])[:800])}",
                         styles["small"],
                     )
                 )
@@ -592,7 +839,15 @@ class WebScanReportGenerator:
 
     def __init__(self, output_dir: str | None = None):
         if output_dir is None or output_dir == "reports":
-            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            # The runtime output directory is Backend/reports/ — the writable,
+            # bind-mounted volume where the network report generators also write
+            # (they are handed it explicitly by the scan orchestrator). This
+            # module lives in Backend/reporting/, so the target is its *parent's*
+            # reports/, not a reports/ beside the code: a single dirname() here
+            # yielded Backend/reporting/reports, which does not exist and is not
+            # creatable by the API container's user (Backend/ is bind-mounted
+            # read-mostly), so every web-scan report download failed with a 500.
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             output_dir = os.path.join(backend_dir, "reports")
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)

@@ -57,9 +57,12 @@ class SqlmapWrapper(ToolWrapper):
         target: str,
         method: str = "GET",
         post_data: str | None = None,
+        content_type: str | None = None,
         auth_headers: dict[str, str] | None = None,
         level: int | None = None,
         risk: int | None = None,
+        run_timeout: int | None = None,
+        raw_request: str | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -78,8 +81,19 @@ class SqlmapWrapper(ToolWrapper):
         """
         self.require_available()
 
-        # Safety check: only test URLs with parameters
-        if method.upper() == "GET" and "?" not in target and not post_data:
+        # Safety check: only test requests that carry an injectable parameter.
+        # A '*' in the target is sqlmap's custom injection-point marker (Phase
+        # 22 path-parameter targets, e.g. /api/users/123*), which is a testable
+        # point even without a query string or body. A raw_request carries its
+        # own parameters (headers/cookies/body), so it bypasses this gate.
+        has_marker = "*" in target
+        if (
+            not raw_request
+            and method.upper() == "GET"
+            and "?" not in target
+            and not post_data
+            and not has_marker
+        ):
             log.info("Skipping SQLMap for %s — no dynamic parameters", target[:80])
             return {
                 "findings": [],
@@ -90,10 +104,7 @@ class SqlmapWrapper(ToolWrapper):
 
         output_dir = self._create_temp_dir(prefix="sqlmap_")
 
-        args = [
-            self.binary,
-            "-u",
-            target,
+        common = [
             "--batch",  # Non-interactive
             f"--level={level or WebScanConfig.SQLMAP_LEVEL}",
             f"--risk={risk or WebScanConfig.SQLMAP_RISK}",
@@ -103,12 +114,37 @@ class SqlmapWrapper(ToolWrapper):
             "--answers=crack=N,dict=N",  # Skip cracking
         ]
 
-        if method.upper() == "POST" and post_data:
-            args.extend(["--data", post_data])
-
-        if auth_headers:
-            header_strs = [f"{k}: {v}" for k, v in auth_headers.items()]
-            args.extend(["--headers", "\n".join(header_strs)])
+        # Item 4 (Phase 22): a reconstructed raw HTTP request — full method,
+        # path, headers, cookies and body from the authenticated crawl — is
+        # tested with sqlmap -r, so the request is exercised exactly as it was
+        # observed (session and body intact) rather than as a bare URL.
+        req_file = None
+        if raw_request:
+            req_file = self._create_temp_file(suffix=".req", prefix="sqlmap_req_")
+            with open(req_file, "w", encoding="utf-8") as fh:
+                fh.write(raw_request)
+            args = [self.binary, "-r", req_file] + common
+            # A raw HTTP request carries no scheme, so sqlmap -r defaults to
+            # http. Without this an https target is silently tested over http —
+            # wrong port, and a clean result that means nothing. Force TLS when
+            # the request was observed over https.
+            if str(target or "").lower().startswith("https://") or (
+                "https://" in (raw_request.splitlines()[0] if raw_request else "")
+            ):
+                args.append("--force-ssl")
+        else:
+            args = [self.binary, "-u", target] + common
+            if method.upper() == "POST" and post_data:
+                args.extend(["--data", post_data])
+            # Merge auth headers with an explicit content-type (Phase 22) so a
+            # JSON body is sent and parsed as JSON — sqlmap tests each field.
+            header_lines: list[str] = []
+            if content_type:
+                header_lines.append(f"Content-Type: {content_type}")
+            if auth_headers:
+                header_lines.extend(f"{k}: {v}" for k, v in auth_headers.items())
+            if header_lines:
+                args.extend(["--headers", "\n".join(header_lines)])
 
         # Per-request network timeout and retries.
         args.extend(["--timeout", "30"])
@@ -116,8 +152,13 @@ class SqlmapWrapper(ToolWrapper):
 
         import subprocess
 
+        # A caller (the orchestrator) may pass a shorter budget so a sqlmap run
+        # cannot outlive the scan's global wall-clock deadline (Phase 12/15).
+        effective_timeout = (
+            min(self.timeout, run_timeout) if run_timeout else self.timeout
+        )
         try:
-            result = self._run_subprocess(args, timeout=self.timeout)
+            result = self._run_subprocess(args, timeout=effective_timeout)
             stdout = result.stdout or ""
 
             vulnerable, injection_points, dbms = self._parse_output(stdout)
@@ -204,6 +245,8 @@ class SqlmapWrapper(ToolWrapper):
             }
         finally:
             self._cleanup_path(output_dir)
+            if req_file:
+                self._cleanup_path(req_file)
 
     @staticmethod
     def _parse_output(stdout: str) -> tuple[bool, list[str], str]:

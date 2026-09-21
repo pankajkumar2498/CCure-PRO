@@ -35,6 +35,9 @@ vi.mock("react-router-dom", async () => {
   return {
     ...actual,
     useParams: () => ({ id: "ws-42" }),
+    // The page reads filters from the query string; return empty params so the
+    // unfiltered list renders (the drill-down filtering is covered elsewhere).
+    useSearchParams: () => [new URLSearchParams(""), vi.fn()],
     // The page renders a real <Link>, which needs a Router context. Stubbing
     // useParams alone left it in place and every test in this file died on
     // "Cannot destructure property 'basename'" — a defect in this harness, not
@@ -48,7 +51,11 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("../../../modules/web-scanning/api/webScansApi", () => ({
-  webScansApi: { getFindings: vi.fn(), updateFindingStatus: vi.fn() },
+  webScansApi: {
+    getFindings: vi.fn(),
+    updateFindingStatus: vi.fn(),
+    getFindingScreenshot: vi.fn(() => Promise.resolve({ data: new Blob() })),
+  },
   webDashboardApi: {},
 }));
 

@@ -1385,23 +1385,25 @@ plus `vendor_advisory_id` / `_url` / `vendor_remediation` from CSAF.
 Source: `Backend/routers/dashboard.py` — 15 operations, **all** requiring
 `dashboard:read`. All accept the optional `org_id`.
 
-| Method | Path                             | Extra parameters              | Returns                        |
-| ------ | -------------------------------- | ----------------------------- | ------------------------------ |
-| GET    | `/dashboard/summary`             | —                             | Eight headline metric cards    |
-| GET    | `/dashboard/risk-breakdown`      | —                             | Severity distribution          |
-| GET    | `/dashboard/vuln-trends`         | `days` 7–90 (30)              | Finding counts over time       |
-| GET    | `/dashboard/top-assets`          | `limit` 1–50 (10)             | Highest-risk assets            |
-| GET    | `/dashboard/top-cves`            | `limit` 1–50 (10), `severity` | Most prevalent CVEs            |
-| GET    | `/dashboard/services-exposure`   | —                             | Open service/port distribution |
-| GET    | `/dashboard/tls-health`          | —                             | TLS grades and issues          |
-| GET    | `/dashboard/http-headers`        | —                             | Security-header posture        |
-| GET    | `/dashboard/compliance`          | —                             | Compliance posture rollup      |
-| GET    | `/dashboard/asset-breakdown`     | —                             | Assets by category/OS          |
-| GET    | `/dashboard/scan-activity`       | `limit` 1–20 (8)              | Recent scan activity           |
-| GET    | `/dashboard/insights`            | —                             | Derived narrative insights     |
-| GET    | `/dashboard/web-scan-summary`    | —                             | DAST aggregate statistics      |
-| GET    | `/dashboard/web-owasp-scorecard` | —                             | OWASP Top 10 (2021) coverage   |
-| GET    | `/dashboard/web-scan-trends`     | `days` 7–90 (30)              | DAST finding trends            |
+| Method | Path                             | Extra parameters                                                                                    | Returns                                                  |
+| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| GET    | `/dashboard/summary`             | —                                                                                                   | Eight headline metric cards                              |
+| GET    | `/dashboard/risk-breakdown`      | —                                                                                                   | Severity distribution                                    |
+| GET    | `/dashboard/vuln-trends`         | `days` 7–90 (30)                                                                                    | Finding counts over time                                 |
+| GET    | `/dashboard/top-assets`          | `limit` 1–50 (10)                                                                                   | Highest-risk assets                                      |
+| GET    | `/dashboard/top-cves`            | `limit` 1–50 (10), `severity`                                                                       | Most prevalent CVEs                                      |
+| GET    | `/dashboard/services-exposure`   | —                                                                                                   | Open service/port distribution                           |
+| GET    | `/dashboard/tls-health`          | —                                                                                                   | TLS grades and issues                                    |
+| GET    | `/dashboard/http-headers`        | —                                                                                                   | Security-header posture                                  |
+| GET    | `/dashboard/compliance`          | —                                                                                                   | Compliance posture rollup                                |
+| GET    | `/dashboard/asset-breakdown`     | —                                                                                                   | Assets by category/OS                                    |
+| GET    | `/dashboard/scan-activity`       | `limit` 1–20 (8)                                                                                    | Recent scan activity                                     |
+| GET    | `/dashboard/insights`            | —                                                                                                   | Derived narrative insights                               |
+| GET    | `/dashboard/web-scan-summary`    | —                                                                                                   | DAST aggregate statistics                                |
+| GET    | `/dashboard/web-owasp-scorecard` | —                                                                                                   | OWASP Top 10 (2021) coverage                             |
+| GET    | `/dashboard/web-scan-trends`     | `days` 7–90 (30)                                                                                    | DAST finding trends                                      |
+| GET    | `/dashboard/web-findings`        | `severity`, `owasp`, `finding_type`, `detected_by`, `status`, `date`, `scan_id`, `page`, `per_page` | Org-wide findings drill-down behind the dashboard counts |
+| GET    | `/dashboard/web-endpoints`       | `source`, `is_api`, `scan_id`, `page`, `per_page`                                                   | Org-wide discovered-endpoints drill-down                 |
 
 ---
 
@@ -1452,20 +1454,24 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 8 HTTP operations + 1 WebSocket. All
+Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. All
 use `Depends(get_current_user)`; authorization is organization scoping inside
 each handler rather than a permission atom.
 
-| Method | Path                                         | Purpose                          |
-| ------ | -------------------------------------------- | -------------------------------- |
-| POST   | `/web-scans`                                 | Start a scan (201)               |
-| GET    | `/web-scans`                                 | List scans                       |
-| GET    | `/web-scans/{scan_id}`                       | Detail with per-phase progress   |
-| GET    | `/web-scans/{scan_id}/findings`              | Findings, filtered and paginated |
-| GET    | `/web-scans/{scan_id}/assets`                | Discovered endpoints             |
-| POST   | `/web-scans/{scan_id}/cancel`                | Cancel a running scan            |
-| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}` | Triage a finding                 |
-| GET    | `/web-scans/{scan_id}/report`                | Generate and download the PDF    |
+| Method | Path                                                    | Purpose                                                |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------ |
+| POST   | `/web-scans`                                            | Start a scan (201)                                     |
+| GET    | `/web-scans`                                            | List scans                                             |
+| GET    | `/web-scans/{scan_id}`                                  | Detail with per-phase progress                         |
+| GET    | `/web-scans/{scan_id}/findings`                         | Findings, filtered and paginated                       |
+| GET    | `/web-scans/{scan_id}/findings/{finding_id}/screenshot` | Proof screenshot for a finding (PNG)                   |
+| GET    | `/web-scans/{scan_id}/assets`                           | Discovered endpoints                                   |
+| GET    | `/web-scans/{scan_id}/parameters`                       | Attack surface at parameter granularity, with coverage |
+| GET    | `/web-scans/{scan_id}/forms`                            | Discovered form inventory                              |
+| GET    | `/web-scans/{scan_id}/api-operations`                   | REST/GraphQL/SOAP operation inventory                  |
+| POST   | `/web-scans/{scan_id}/cancel`                           | Cancel a running scan                                  |
+| PATCH  | `/web-scans/{scan_id}/findings/{finding_id}`            | Triage a finding                                       |
+| GET    | `/web-scans/{scan_id}/report`                           | Generate and download the PDF                          |
 
 **`POST /web-scans`** accepts an optional **`Idempotency-Key` header** (aliased
 from `idempotency_key`) so a retried submission does not start a second scan.
@@ -1480,6 +1486,22 @@ acknowledgement persisted as `web_scans.authorization_confirmed`.
 (1–200, default 50), `org_id`.
 
 **`GET /web-scans/{scan_id}/assets`** — `source`, `page`, `per_page`, `org_id`.
+
+**`GET /web-scans/{scan_id}/parameters`** — the attack surface as first-class
+`web_parameters` rows: `location`, `tested`, `name`, `page`, `per_page` (1–500,
+default 100), `org_id`. Returns each parameter's coverage (`tested`,
+`tested_by`, `skipped_reason`) and a `coverage` roll-up (surface / tested /
+untested / pct); untested rows are ordered first.
+
+**`GET /web-scans/{scan_id}/forms`** — the discovered form inventory as
+first-class `web_forms` rows: `has_file_upload`, `page`, `per_page` (1–500,
+default 100), `org_id`. Each row carries its `inputs`, `input_count`,
+`has_file_upload` and `has_password`.
+
+**`GET /web-scans/{scan_id}/api-operations`** — the API operation inventory as
+first-class `web_api_operations` rows: `kind` (rest/graphql/soap), `page`,
+`per_page` (1–500, default 200), `org_id`. Returns each operation's identity,
+method, operation name, spec source and parameters, plus a `by_kind` roll-up.
 
 **`PATCH /web-scans/{scan_id}/findings/{finding_id}`** — body
 `TriageFindingRequest`; marks false positive, accepted risk, confirmed, etc.

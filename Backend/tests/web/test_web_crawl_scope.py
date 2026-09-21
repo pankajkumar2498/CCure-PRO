@@ -6,6 +6,8 @@ live deliberately-vulnerable application (OWASP Juice Shop). They are written
 against the pure helpers so they run without a browser or a target.
 """
 
+import asyncio
+
 import pytest
 
 from core.web.crawling.browser import PlaywrightCrawler
@@ -132,12 +134,63 @@ def test_fingerprint_differs_for_different_content():
     assert a != b
 
 
+# ── Passive embedded surface discovery ───────────────────────────────────────
+
+
+class _LinkEl:
+    def __init__(self, **attrs):
+        self.attrs = attrs
+
+    async def get_attribute(self, name):
+        return self.attrs.get(name)
+
+
+class _LinkPage:
+    def __init__(self):
+        self.by_selector = {}
+
+    async def query_selector_all(self, selector):
+        return self.by_selector.get(selector, [])
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+def test_extract_links_includes_iframe_sources():
+    page = _LinkPage()
+    page.by_selector = {
+        "a[href]": [_LinkEl(href="/linked")],
+        "iframe[src], frame[src]": [
+            _LinkEl(src="/embedded"),
+            _LinkEl(src="about:blank"),
+            _LinkEl(src="javascript:alert(1)"),
+        ],
+    }
+    links = set(_run(PlaywrightCrawler._extract_links(page, "http://app/root")))
+    assert "http://app/linked" in links
+    assert "http://app/embedded" in links
+    assert not any(x.startswith("about:") or x.startswith("javascript:") for x in links)
+
+
 # ── Injection target selection ───────────────────────────────────────────────
 
 
 def test_query_string_endpoint_is_injectable():
     targets = build_injection_targets([{"url": "http://app/search?q=1"}], [])
-    assert targets == [{"url": "http://app/search?q=1", "method": "GET", "data": None}]
+    # A target also carries coverage_params: the exact discovered parameter
+    # context that downstream engines should mark when they actually run.
+    assert targets == [
+        {
+            "url": "http://app/search?q=1",
+            "method": "GET",
+            "data": None,
+            "content_type": None,
+            "coverage_params": [
+                {"url": "http://app/search?q=1", "location": "query", "param": "q"}
+            ],
+        }
+    ]
 
 
 def test_endpoint_without_parameters_is_skipped():

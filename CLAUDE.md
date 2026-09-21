@@ -6,8 +6,9 @@
 `CASCADE`, which reaches `scans`, `scan_phases`, `assets`, `services`,
 `asset_change_log`, `audit_logs` and `notifications`.
 
-The live application database is named **`ccure_test`**. That name looks
-disposable and is not. On 10 Aug 2026 a full-suite run inherited the API
+The live application database is named **`ccure_test`** on the Windows
+deployment and **`ccure_db`** on the Linux VM (both are in
+`FORBIDDEN_DB_NAMES`). The first name looks disposable and is not. On 10 Aug 2026 a full-suite run inherited the API
 container's `DATABASE_URL`, was accepted by a guard that matched `_test$`, and
 destroyed all users, orgs, scans and assets. There was no recovery:
 `archive_mode` is `off`.
@@ -32,15 +33,26 @@ $env:PGPASSWORD = '<password>'
 .\scripts\backup_db.ps1 -SkipReferenceData   # fast: operational data only
 ```
 
-Restore with `pg_restore --clean --if-exists -d ccure_test <file>.dump`.
+```bash
+scripts/backup_db.sh --skip-reference-data     # the same, on the Linux VM
+```
+
+Restore with `pg_restore --clean --if-exists -d ccure_test <file>.dump` —
+**for a `_full` dump only.** An `_ops` dump excludes the catalogue tables the
+findings reference, so it cannot be restored on its own, and `--clean` with
+one drops the live catalogue first. See "Backups on the VM" below for the
+procedure that works.
 
 A scheduled task **CCure DB Backup** already dumps operational data every 6
 hours into `backups/` and prunes after 30 days (registered by
-`scripts/install_backup_schedule.ps1`). Check it with:
+`scripts/install_backup_schedule.ps1`) on the Windows deployment. Check it with:
 
 ```powershell
 Get-ScheduledTask -TaskName 'CCure DB Backup' | Get-ScheduledTaskInfo
 ```
+
+On the Linux VM the equivalent is a user crontab installed by
+`scripts/install_backup_schedule.sh`; `crontab -l` and `backups/backup.log`.
 
 `archive_mode` is still `off`, so recovery granularity is "since the last
 dump", not point-in-time. Ad-hoc dumps before risky work are still worth taking.
@@ -114,6 +126,165 @@ Two rules the layout depends on, both of which fail loudly if broken:
   directory* for generated PDFs, bind-mounted into the API container. Code in
   `reporting/`, artefacts in `reports/`. Compliance keeps its own DOCX/PDF
   generators inside `routers/compliance.py`.
+
+## Deployment: Linux VM (`ccurepro`, 10.180.22.127) — since 17 Sep 2026
+
+The application now runs on an Ubuntu 24.04 VM (15 GB, 8 CPUs) with
+**everything in Docker**, reached from a Windows workstation over SSH. The
+"Architecture" section below still describes the Windows-host deployment it
+was written for — PostgreSQL on the host, the scanner worker as a host
+process, PowerShell scripts, `D:\PostgreSQL`. Where the two disagree, this
+section is the VM's answer.
+
+- **PostgreSQL 18 is the `ccure-db` container**, volume `pgdata18`, published
+  on `127.0.0.1:5432` only. The bootstrap superuser is `postgres`, not
+  `ccure_user` — `scripts/docker-postgres-init.sql` says why that cannot be
+  corrected after initdb. The PG15 `pgdata` volume (383 MB) is kept unmounted
+  for rollback; `docker volume rm ccure-audit-pro_pgdata` reclaims it.
+
+- **TLS to PostgreSQL is off here, and that is a recorded decision.** The
+  Windows rule (`verify-full`, `hostssl` only) exists because that server
+  listened on `*` and the LAN could reach it. The container is reachable from
+  loopback and the Compose bridge (`172.18.0.0/16`) and from nowhere else, so
+  there is no hop for a certificate to authenticate. `PGSSLMODE=disable` in
+  `.env`, `ssl=off` in the server. **If the port binding is ever widened past
+  `127.0.0.1`, this decision is void and TLS comes back first** —
+  `scripts/tls/` still issues the certificates, and the compose file still
+  mounts `/etc/ssl/ccure/ccure-internal-ca.crt` for the day it does.
+
+- **The scanner worker runs in Docker with `network_mode: host` and
+  `NET_ADMIN`/`NET_RAW`** — the Linux equivalent of the Windows host worker,
+  for the reasons in the compose file. Restart it after changing anything
+  under `core/`, `scans/` or `orchestrator/`: `docker compose restart worker`.
+  `start_host_scan_stack.ps1` and its twin are Windows-only; here the stack is
+  `docker compose up -d` / `down`, and every service is `restart:
+  unless-stopped` so a reboot brings it all back together.
+
+- **`docker-compose.yml` sizes PostgreSQL for this VM** — `shared_buffers=2GB`,
+  `effective_cache_size=6GB`, `work_mem=16MB`, `shm_size: 1gb`. The `shm_size`
+  line is the one that will look removable: Docker's default `/dev/shm` is
+  64 MB, and a parallel query past it fails with "could not resize shared
+  memory segment … No space left on device", which reads as a full disk.
+
+- **Reaching things from the Windows workstation.** The app is
+  `https://ccurepro.cdac.in` (host nginx on 443, 301 from 80). Portainer is
+  reached through the tunnel below, **not** on the LAN. VS Code uses Remote
+  SSH to the same host. `psql` on the VM is the 16 client and talks to the 18
+  server fine; `pg_dump` 16 does not.
+
+- **PostgreSQL and Portainer from the workstation are one SSH tunnel with a
+  dedicated key.** `C:\Users\pankaj\.ssh\ccure_vm_tunnel` (generated on the
+  workstation; the private half has never left it) is in the VM's
+  `~/.ssh/authorized_keys` as `restrict,port-forwarding,permitopen=
+  "127.0.0.1:5432",permitopen="127.0.0.1:9443",command="/bin/false"` — it can
+  forward to those two ports and do nothing else (a forward to Redis answers
+  `administratively prohibited`, a shell request exits 1; both measured), which
+  is why VS Code keeps its own credentials rather than reusing it.
+  `ssh -N ccure-vm` on the workstation (`ccure-vm-db` is an alias of the same
+  entry) forwards **15432 → PostgreSQL** and **9443 → Portainer**; then
+  `https://127.0.0.1:9443` for Portainer. Verified from the workstation on
+  17 Sep 2026:
+
+  - **pgAdmin 4** (9.14, bundled with the workstation's PostgreSQL 18) has a
+    server entry **CCure VM (ccure_db)** in group *CCure VM* that opens the
+    tunnel itself through its bundled `sshtunnel`. Imported with
+    `setup.py load-servers`; `pgadmin4.db.bak-20260917` beside the config DB
+    is the state before.
+  - **psql / DBeaver**: `ssh -N ccure-vm`, then connect to
+    **`127.0.0.1:15432`**. Not 5432 — the
+    workstation's own PostgreSQL 18 still listens there, and a client pointed
+    at 5432 is talking to the *old* Windows database without any error saying
+    so.
+
+  Role `ccure_user`, password `POSTGRES_PASSWORD` in the VM's `.env`
+  (`vuln_intel` is browsable from the same entry). `sslmode=disable` on the
+  client side, per the TLS decision above.
+
+- **The desktop is not part of the deployment.**
+  `sudo scripts/linux/disable_desktop.sh` sets `multi-user.target` and keeps
+  the packages; GNOME and TigerVNC were holding 1–2 GB and a listener on
+  `0.0.0.0:5901`.
+
+- **Portainer is a service in `docker-compose.yml`, on `127.0.0.1:9443`.** It
+  holds the Docker socket, which is root on the VM, so it is deliberately not
+  on the LAN — it was `0.0.0.0:9443` while it was a hand-run container. Its
+  volume `portainer_data` is declared `external` because it predates the
+  compose entry and holds the admin user and the self-signed certificate.
+  **"Cannot access Portainer" was the 5-minute lock**: a fresh instance needs
+  an admin user within 5 minutes of starting, plus the `setup_token` printed
+  in `docker logs portainer`; miss either and it serves a lock page until
+  restarted. `docker restart portainer` reopens the window.
+
+- **Every container's log is rotated** (`x-logging` anchor, json-file, 20 MB
+  × 5). Docker's default is the same driver with no cap, so a scanner worker
+  that logs every probe fills the disk one line at a time and the first
+  symptom is PostgreSQL refusing writes. A new service must carry
+  `logging: *default-logging`; there is no daemon-level default on this VM.
+
+- **`docker compose up -d` is the whole stack**, Portainer included, and
+  `COMPOSE_PROFILES=container-scanner` in `.env` is what makes it start the
+  worker and web-worker. The PG15 `pgdata` volume and the anonymous leftovers
+  were removed on 17 Sep 2026 once a verified full dump existed; nothing
+  outside compose-declared volumes holds state.
+
+### Backups on the VM
+
+`scripts/backup_db.sh` and `scripts/install_backup_schedule.sh` are the Linux
+twins of the `.ps1` files. The schedule is a **user crontab** — no sudo and no
+stored password, because the dump runs the container's own `pg_dump` as the
+bootstrap superuser over the Unix socket, where the image's `pg_hba.conf` is
+`trust`. The host's `pg_dump` is 16 and refuses an 18 server, and an archive
+written by 18 is unreadable by an older `pg_restore`; **every dump,
+verification and restore goes through `docker exec ccure-db`.**
+
+    crontab -l                                   # two entries marked `# ccure-db-backup`
+    tail backups/backup.log                      # every run logs here
+    scripts/backup_db.sh --skip-reference-data   # ad hoc, before risky work
+
+Two tiers, and the second is not optional:
+
+- **Operational dump every 6 h** (`_ops`, 3 s, ~10 MB) — excludes the CVE and
+  compliance catalogues.
+- **Full dump daily at 02:30** (`_full`, 18 s, ~100 MB) — everything.
+
+**An ops dump cannot be restored on its own.** `asset_vulnerabilities.vuln_id`
+is a foreign key into `vulnerability_definitions`, which the ops dump
+excludes: the constraint fails at the end of `pg_restore`, and `--clean` into
+the live database would first **drop the 370k-row catalogue** the dump does
+not carry. Measured 17 Sep 2026 by restoring into a scratch database. Every
+6-hourly dump the Windows task had produced since August had this property,
+and it went unnoticed because none was ever restored. The full dump is both
+the self-contained recovery point and where an ops dump borrows its catalogue.
+
+Both tiers are pushed to the Windows workstation
+(`pankaj@10.180.6.14:D:/ccure-backups`, key `~/.ssh/ccure_backup_ed25519`,
+expired there after 30 days). A failed push is exit 2 with the local dump
+intact — look for `ERROR: remote copy` in the log. The dump itself is written
+to a `.part` and renamed only after the matching `pg_restore -l` has listed
+its table data, so a half-written file never carries a name the prune or the
+push would trust.
+
+**Restoring** — both proven against a scratch database on 17 Sep 2026, 44 s
+each, every row count matching. Restore into a fresh database and rename, or
+stop the API first; never over `ccure_db` while it is serving.
+
+    docker exec ccure-db psql -U postgres -c 'CREATE DATABASE ccure_db_restored OWNER ccure_user'
+
+    # A. full dump — self-contained
+    docker exec -i ccure-db pg_restore -U postgres -d ccure_db_restored --exit-on-error \
+        < backups/ccure_db_<stamp>_full.dump
+
+    # B. ops dump — three sections, catalogue borrowed from the newest full dump
+    docker exec -i ccure-db pg_restore -U postgres -d ccure_db_restored --exit-on-error \
+        --section=pre-data --section=data < backups/ccure_db_<stamp>_ops.dump
+    docker exec -i ccure-db pg_restore -U postgres -d ccure_db_restored --exit-on-error --data-only \
+        -t vulnerability_definitions -t compliance_controls -t compliance_rules \
+        -t compliance_rule_controls -t compliance_policy_rules < backups/ccure_db_<stamp>_full.dump
+    docker exec -i ccure-db pg_restore -U postgres -d ccure_db_restored --exit-on-error \
+        --section=post-data < backups/ccure_db_<stamp>_ops.dump
+
+`archive_mode` is still `off`, so recovery granularity is "since the last
+dump": up to six hours of operational data.
 
 ## Architecture
 

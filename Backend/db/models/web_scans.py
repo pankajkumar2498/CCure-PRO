@@ -260,6 +260,9 @@ class WebAsset(Base):
     web_findings = relationship(
         "WebFinding", back_populates="web_asset", cascade="all, delete-orphan"
     )
+    web_parameters = relationship(
+        "WebParameter", back_populates="web_asset", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<WebAsset {self.id!r} {self.method} {self.url[:60]}>"
@@ -347,6 +350,18 @@ class WebFinding(Base):
     response_body = Column(Text, nullable=True)  # truncated to 10KB
     payload_used = Column(Text, nullable=True)  # injection payload
 
+    # ── Proof-based evidence (Codex item 10) ──────────────────────────────────
+    # A finding is only as credible as what it lets a reviewer reproduce and
+    # judge. These complete the evidence the API and PDF report render.
+    #: high / medium / low — how sure the detection is (verified proof vs inferred).
+    confidence = Column(String(20), nullable=True)
+    #: a ready-to-run curl reproducing the exact request that produced the finding.
+    curl_command = Column(Text, nullable=True)
+    #: the authenticated identity the request was tested under (label / "anonymous").
+    auth_context = Column(String(120), nullable=True)
+    #: path to a screenshot proving execution (e.g. a rendered XSS), where captured.
+    screenshot_path = Column(String(512), nullable=True)
+
     # ── Compliance Mapping ────────────────────────────────────────────────────
     owasp_category = Column(String(100), nullable=True)
     # Example: "A03:2021 – Injection"
@@ -355,6 +370,11 @@ class WebFinding(Base):
     # Example: ["PCI-DSS-6.5.1", "SOC2-CC6.1", "OWASP-A03"]
 
     cve_id = Column(String(30), nullable=True, index=True)
+    # The `web_findings` table has carried a cwe_id column since the table was
+    # created, but the model never mapped it, so findings could not record a
+    # weakness class. The active XSS engine needs CWE-79; wiring it in the model
+    # makes the existing column reachable (no migration — the column exists).
+    cwe_id = Column(String(50), nullable=True)
 
     # ── Status & Triage ───────────────────────────────────────────────────────
     status = Column(String(50), nullable=False, default="open")
@@ -371,6 +391,12 @@ class WebFinding(Base):
         nullable=True,
     )
 
+    # Engine/central-supplied remediation guidance for this finding (Phase 21).
+    # Distinct from remediation_notes, which holds a human triager's own notes:
+    # this is the actionable fix the detection layer produced, persisted so the
+    # API, UI and PDF report can render it. Populated via resolve_remediation
+    # (engine text wins, else the central finding_type default).
+    remediation = Column(Text, nullable=True)
     remediation_notes = Column(Text, nullable=True)
     fixed_at = Column(TIMESTAMPTZ, nullable=True)
 
@@ -390,3 +416,225 @@ class WebFinding(Base):
             f"<WebFinding {self.id!r} type={self.finding_type!r} "
             f"severity={self.severity!r} status={self.status!r}>"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web Parameter  (attack-surface parameter as a first-class relational row)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebParameter(Base):
+    """
+    One tested-or-testable input of the attack surface — an (endpoint, location,
+    name) triple — carrying its own coverage.
+
+    Why a table, not just ``WebAsset.parameters`` (JSONB) and the coverage ledger
+    (``scans.options``)? Those answer "what does this one endpoint expose" and
+    "what did this one scan cover". They cannot answer, in SQL, the questions a
+    mature DAST is expected to: *every endpoint across every scan that exposes an
+    untested ``redirect`` parameter*, *which locations carry the most untested
+    surface*, *does this parameter join to a finding*. A JSONB blob is not
+    join-able or indexable at parameter granularity; a per-parameter row is.
+
+    Coverage is folded in (``tested`` / ``tested_by`` / ``skipped_reason``) rather
+    than kept in a parallel table: a parameter and its coverage are one fact, and
+    a second table would need the same identity and the same lifecycle. The row
+    is idempotent by (asset, location, name) so a parameter re-seen on a later
+    phase updates rather than duplicates.
+
+    ID: wpa_{asset_short}_{location}_{name_hash_8}
+    """
+
+    __tablename__ = "web_parameters"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_asset_id",
+            "location",
+            "name",
+            name="uq_web_parameters_asset_loc_name",
+        ),
+        CheckConstraint(
+            "location IN "
+            "('query','form','json','path','cookie','header','soap','multipart')",
+            name="ck_web_parameters_location",
+        ),
+        Index("ix_web_parameters_scan_id", "web_scan_id"),
+        Index("ix_web_parameters_asset_id", "web_asset_id"),
+        Index("ix_web_parameters_org_id", "org_id"),
+        Index("ix_web_parameters_name", "name"),
+        Index("ix_web_parameters_tested", "tested"),
+        Index("ix_web_parameters_tested_by_gin", "tested_by", postgresql_using="gin"),
+    )
+
+    # Indexes are declared explicitly in __table_args__ above (matching the
+    # migration); column-level index=True would create a second, differently
+    # named auto-index — schema drift and, for `tested`, a name collision.
+    id = Column(String(300), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    web_asset_id = Column(
+        String(250),
+        ForeignKey("web_assets.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    # Denormalised for cross-scan, tenant-scoped attack-surface queries without a
+    # three-table join back to the scan on every lookup.
+    org_id = Column(
+        String(50),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # ── Identity ──────────────────────────────────────────────────────────────
+    location = Column(String(20), nullable=False)  # query/form/json/path/…/soap
+    name = Column(String(255), nullable=False)
+    source = Column(String(50), nullable=False, default="crawler")
+
+    # ── Coverage (folded in — a parameter and its coverage are one fact) ──────
+    tested = Column(Boolean, nullable=False, default=False)
+    #: engines that tested this parameter, e.g. ["sqlmap", "xss"].
+    tested_by = Column(JSONB, nullable=False, default=list)
+    #: why an untested parameter was not reached (from the coverage ledger).
+    skipped_reason = Column(String(255), nullable=True)
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    # ── Relationships ─────────────────────────────────────────────────────────
+    web_scan = relationship("WebScan", backref="web_parameters")
+    web_asset = relationship("WebAsset", back_populates="web_parameters")
+    organization = relationship("Organization", backref="web_parameters")
+
+    def __repr__(self):
+        return (
+            f"<WebParameter {self.id!r} {self.location}:{self.name} "
+            f"tested={self.tested}>"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web Form  (an HTML form as a first-class site-map entity)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebForm(Base):
+    """
+    A discovered HTML form — a first-class site-map entity (Codex item 1).
+
+    Forms were captured by the crawler and folded into a WebAsset flagged
+    ``is_form`` with the inputs in JSONB. That records *that* a form exists, not
+    its structure as a queryable thing — which fields, which are file uploads,
+    which carry a password, what it submits to. A form is the richest single
+    source of write-side attack surface, so it earns its own row.
+
+    ID: wfo_{scan_short}_{action_hash}
+    """
+
+    __tablename__ = "web_forms"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_scan_id",
+            "action_url",
+            "method",
+            name="uq_web_forms_scan_action_method",
+        ),
+        Index("ix_web_forms_scan_id", "web_scan_id"),
+        Index("ix_web_forms_org_id", "org_id"),
+        Index("ix_web_forms_file_upload", "has_file_upload"),
+    )
+
+    id = Column(String(250), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    org_id = Column(
+        String(50), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
+    action_url = Column(Text, nullable=False)  # where the form submits
+    method = Column(String(10), nullable=False, default="GET")
+    page_url = Column(Text, nullable=True)  # the page the form was found on
+    #: [{"name": "user", "type": "text"}, {"name": "avatar", "type": "file"}, …]
+    inputs = Column(JSONB, nullable=False, default=list)
+    input_count = Column(Integer, nullable=False, default=0)
+    has_file_upload = Column(Boolean, nullable=False, default=False)
+    has_password = Column(Boolean, nullable=False, default=False)
+    source = Column(String(50), nullable=False, default="crawler")
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    web_scan = relationship("WebScan", backref="web_forms")
+    organization = relationship("Organization", backref="web_forms")
+
+    def __repr__(self):
+        return f"<WebForm {self.id!r} {self.method} {self.action_url[:50]}>"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web API Operation  (a REST/GraphQL/SOAP operation as a first-class entity)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WebApiOperation(Base):
+    """
+    A discovered API operation — REST path+method, GraphQL query/mutation, or
+    SOAP operation — as a first-class site-map entity (Codex item 1).
+
+    API operations flowed through the pipeline as WebAssets flagged ``is_api``
+    with a ``source`` and their parameters in JSONB. That is enough to *test*
+    them, but not enough to present an API inventory — the thing Acunetix/Invicti
+    put front and centre: which operations exist, of what kind, from which spec,
+    and whether the spec declared them secured. This row is that inventory.
+
+    ID: wao_{scan_short}_{kind}_{identity_hash}
+    """
+
+    __tablename__ = "web_api_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "web_scan_id", "kind", "identity", name="uq_web_api_ops_scan_kind_identity"
+        ),
+        CheckConstraint(
+            "kind IN ('rest','graphql','soap')", name="ck_web_api_ops_kind"
+        ),
+        Index("ix_web_api_ops_scan_id", "web_scan_id"),
+        Index("ix_web_api_ops_org_id", "org_id"),
+        Index("ix_web_api_ops_kind", "kind"),
+    )
+
+    id = Column(String(250), primary_key=True)
+    web_scan_id = Column(
+        String(100),
+        ForeignKey("web_scans.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    org_id = Column(
+        String(50), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+
+    kind = Column(String(20), nullable=False)  # rest / graphql / soap
+    #: A stable per-scan identity — "GET /api/users/{id}", "mutation:deleteUser",
+    #: "soap:GetUser". Distinguishes operations that share a URL.
+    identity = Column(String(512), nullable=False)
+    url = Column(Text, nullable=False)
+    method = Column(String(10), nullable=False, default="POST")
+    operation_name = Column(String(255), nullable=True)  # deleteUser / GetUser
+    spec_source = Column(String(50), nullable=True)  # openapi / graphql / wsdl
+    #: parameter model for this operation (same shape as WebAsset.parameters).
+    parameters = Column(JSONB, nullable=False, default=dict)
+    secured = Column(Boolean, nullable=True)  # the spec declared auth (or unknown)
+
+    created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
+    updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
+
+    web_scan = relationship("WebScan", backref="web_api_operations")
+    organization = relationship("Organization", backref="web_api_operations")
+
+    def __repr__(self):
+        return f"<WebApiOperation {self.id!r} {self.kind}:{self.identity[:40]}>"

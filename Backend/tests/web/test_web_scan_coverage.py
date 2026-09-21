@@ -24,6 +24,7 @@ from orchestrator.web_orchestrator import (
     ESSENTIAL_TOOLS,
     ToolCoverage,
     WebScanOrchestrator,
+    is_active_probe_excluded_form_param,
     tool_unavailable_finding,
 )
 
@@ -110,6 +111,37 @@ def test_a_query_string_does_not_split_one_finding_into_many():
     assert len(findings) == 1
 
 
+def test_distinct_query_parameters_at_one_path_are_not_merged():
+    """One route can have two independent input flaws on different parameters."""
+    findings = deduplicate_findings(
+        [
+            _finding("SQL Injection", ftype="sqli", matched_at=f"{URL}/x?id=1"),
+            _finding("SQL Injection", ftype="sqli", matched_at=f"{URL}/x?name=2"),
+        ]
+    )
+    assert len(findings) == 2
+
+
+def test_structured_parameter_evidence_prevents_overmerge():
+    findings = deduplicate_findings(
+        [
+            _finding(
+                "Reflected XSS",
+                ftype="xss",
+                matched_at=f"{URL}/search",
+                request_evidence="location=query; parameter=q; variant=reflected",
+            ),
+            _finding(
+                "Reflected XSS",
+                ftype="xss",
+                matched_at=f"{URL}/search",
+                request_evidence="location=query; parameter=page; variant=reflected",
+            ),
+        ]
+    )
+    assert len(findings) == 2
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Tool coverage
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,11 +182,26 @@ def test_a_tool_that_errors_on_probe_is_not_reported_as_missing():
 
 
 def test_a_non_essential_tool_does_not_invalidate_the_assessment():
+    # subfinder is recon-only; its absence narrows discovery but does not make
+    # the assessment incomplete. (Phase 15 made sqlmap essential — a missing
+    # SQLi engine must invalidate a "clean" verdict — so this now uses a
+    # genuinely non-essential tool to make the original point.)
     coverage = ToolCoverage()
-    coverage.check(_Tool(available=False), "sqlmap")
+    coverage.check(_Tool(available=False), "subfinder")
     coverage.ran("nuclei")
+    coverage.ran("sqlmap")
     assert coverage.as_dict()["assessment_complete"] is True
-    assert "sqlmap" not in ESSENTIAL_TOOLS
+    assert "subfinder" not in ESSENTIAL_TOOLS
+
+
+def test_missing_sqlmap_invalidates_the_assessment():
+    # Phase 15: an unavailable SQLi engine must not let a SQL-injectable app
+    # read as clean — the scan is incomplete.
+    coverage = ToolCoverage()
+    coverage.ran("nuclei")
+    coverage.check(_Tool(available=False), "sqlmap")
+    assert "sqlmap" in ESSENTIAL_TOOLS
+    assert coverage.as_dict()["assessment_complete"] is False
 
 
 def test_skipped_is_distinct_from_unavailable():
@@ -181,13 +228,28 @@ def test_the_coverage_finding_matches_the_stored_finding_contract():
     assert "not clean" in finding["description"]
 
 
+def test_sensitive_form_fields_are_explicitly_skipped_for_active_probes():
+    assert is_active_probe_excluded_form_param(
+        {"location": "form", "param": "password"}
+    )
+    assert is_active_probe_excluded_form_param({"location": "form", "param": "csrf"})
+    assert not is_active_probe_excluded_form_param(
+        {"location": "form", "param": "search"}
+    )
+    assert not is_active_probe_excluded_form_param(
+        {"location": "query", "param": "password"}
+    )
+
+
 def test_detect_reports_incompleteness_as_a_finding(monkeypatch):
     """A scan whose primary detector never ran must not look like a clean one."""
     import orchestrator.web_orchestrator as mod
 
     orch = WebScanOrchestrator(silent=True)
-    monkeypatch.setattr(orch, "_check_security_headers", lambda url: _noop_async([]))
-    monkeypatch.setattr(orch, "_check_cors", lambda url: _noop_async([]))
+    monkeypatch.setattr(
+        orch, "_check_security_headers", lambda url, **kwargs: _noop_async([])
+    )
+    monkeypatch.setattr(orch, "_check_cors", lambda url, **kwargs: _noop_async([]))
 
     class _Nuclei:
         def is_available(self):
@@ -388,8 +450,10 @@ def _detect_with(monkeypatch, endpoints, options):
     _RecordingNuclei.called_with = {}
     monkeypatch.setattr(nw, "NucleiWrapper", _RecordingNuclei)
     orch = WebScanOrchestrator(silent=True)
-    monkeypatch.setattr(orch, "_check_security_headers", lambda url: _noop_async([]))
-    monkeypatch.setattr(orch, "_check_cors", lambda url: _noop_async([]))
+    monkeypatch.setattr(
+        orch, "_check_security_headers", lambda url, **kwargs: _noop_async([])
+    )
+    monkeypatch.setattr(orch, "_check_cors", lambda url, **kwargs: _noop_async([]))
     result = asyncio.run(orch.run_detect("ws", URL, endpoints, {}, options, {}, False))
     return result, _RecordingNuclei.called_with
 
@@ -465,7 +529,10 @@ def test_quick_depth_is_opt_in_and_declares_what_it_traded(monkeypatch):
     cov = result["tool_coverage"]
     assert cov["scan_depth"] == "quick"
     assert "not tested for" in cov["scan_depth_caveat"]
-    assert "narrowed to tags" in cov["tools"][0]["detail"]
+    # Select nuclei by name: the coverage tool list is sorted, and other tools
+    # (e.g. "injection") now sort ahead of it, so an index assumption is wrong.
+    nuclei_tool = next(t for t in cov["tools"] if t["tool"] == "nuclei")
+    assert "narrowed to tags" in nuclei_tool["detail"]
 
 
 def test_deep_depth_includes_low_and_informational(monkeypatch):

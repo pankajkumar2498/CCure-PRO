@@ -1,6 +1,61 @@
 {
   "components": {
     "schemas": {
+      "AccessControlSchema": {
+        "description": "Phase 4 multi-user access-control (IDOR / privilege-escalation) config.",
+        "properties": {
+          "admin_paths": {
+            "description": "Known administrator-only paths, tested for vertical privilege escalation by lower-privilege identities.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Admin Paths",
+            "type": "array"
+          },
+          "allow_write_testing": {
+            "default": false,
+            "description": "Permit safe state-changing method probes. Off by default: testing is read-only unless the environment explicitly allows writes.",
+            "title": "Allow Write Testing",
+            "type": "boolean"
+          },
+          "users": {
+            "description": "Additional isolated identities (User B, an administrator) tested against the resources the main session can reach.",
+            "items": {
+              "$ref": "#/components/schemas/AccessControlUserSchema"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "title": "AccessControlSchema",
+        "type": "object"
+      },
+      "AccessControlUserSchema": {
+        "description": "One authorization context for Phase 4 access-control testing.",
+        "properties": {
+          "auth": {
+            "description": "This user's own auth config (same shape as the top-level auth block). Its secrets are encrypted at rest like the main login.",
+            "title": "Auth",
+            "type": "object"
+          },
+          "label": {
+            "description": "A short identity label, e.g. 'A', 'B', 'admin'.",
+            "title": "Label",
+            "type": "string"
+          },
+          "privileged": {
+            "default": false,
+            "description": "Marks an administrator/high-privilege identity, used as the baseline for vertical privilege-escalation checks.",
+            "title": "Privileged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "AccessControlUserSchema",
+        "type": "object"
+      },
       "ApproveUserSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4172,6 +4227,65 @@
       },
       "WebScanAuthSchema": {
         "properties": {
+          "access_control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccessControlSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phase 4 access-control testing: additional isolated users (B, admin) and admin paths for IDOR / privilege-escalation checks."
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "capture_local_storage": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "localStorage keys to read after a recorded login; a token-like value is presented as a Bearer header so token-auth SPAs are scanned as logged in.",
+            "title": "Capture Local Storage"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret"
+          },
           "content_type": {
             "default": "auto",
             "description": "Login body encoding: auto, form, or json",
@@ -4192,6 +4306,30 @@
             ],
             "title": "Cookies"
           },
+          "csrf_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of the anti-CSRF token field on the login page. When omitted, all hidden fields are captured automatically.",
+            "title": "Csrf Field"
+          },
+          "csrf_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Page to read the CSRF/hidden token from before logging in (defaults to login_url).",
+            "title": "Csrf Url"
+          },
           "extra_fields": {
             "anyOf": [
               {
@@ -4207,6 +4345,48 @@
             "description": "Additional fields to send with the login",
             "title": "Extra Fields"
           },
+          "extract_hidden": {
+            "default": true,
+            "description": "Carry the login page's hidden form fields into the login.",
+            "title": "Extract Hidden",
+            "type": "boolean"
+          },
+          "failure_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text whose presence in a response means the session is invalid / login failed.",
+            "title": "Failure Indicator"
+          },
+          "grant_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OAuth2 grant: client_credentials | password.",
+            "title": "Grant Type"
+          },
+          "header": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Header name for jwt/api_key injection.",
+            "title": "Header"
+          },
           "headers": {
             "anyOf": [
               {
@@ -4221,6 +4401,117 @@
             ],
             "title": "Headers"
           },
+          "idp_consent_submit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the OAuth consent/authorize/allow button.",
+            "title": "Idp Consent Submit"
+          },
+          "idp_mfa_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the MFA/OTP code field.",
+            "title": "Idp Mfa Field"
+          },
+          "idp_next_submit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the 'Next' button in an identifier-first flow (username, Next, then password on a second screen).",
+            "title": "Idp Next Submit"
+          },
+          "idp_password_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the IdP password field.",
+            "title": "Idp Password Field"
+          },
+          "idp_submit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the IdP submit button.",
+            "title": "Idp Submit"
+          },
+          "idp_username_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CSS selector for the IdP username/email field.",
+            "title": "Idp Username Field"
+          },
+          "jwt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Static JWT for type=jwt.",
+            "title": "Jwt"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "API key value for type=api_key.",
+            "title": "Key"
+          },
+          "login_steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Multi-step login/workflow: an ordered list of {method,url,fields,extract,success_indicator} steps run on one session.",
+            "title": "Login Steps"
+          },
           "login_url": {
             "anyOf": [
               {
@@ -4232,11 +4523,31 @@
             ],
             "title": "Login Url"
           },
+          "max_reauth": {
+            "default": 2,
+            "description": "Maximum re-authentication attempts if the session is lost mid-scan.",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Max Reauth",
+            "type": "integer"
+          },
           "method": {
             "default": "POST",
             "description": "Login request method",
             "title": "Method",
             "type": "string"
+          },
+          "mfa_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Static one-time code for the MFA screen.",
+            "title": "Mfa Code"
           },
           "password": {
             "anyOf": [
@@ -4254,6 +4565,56 @@
             "title": "Password Field",
             "type": "string"
           },
+          "prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Value prefix, e.g. 'Bearer ' or 'ApiKey '.",
+            "title": "Prefix"
+          },
+          "recorded_steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ordered browser actions to replay a recorded login: [{action: goto|fill|click|select|press|wait|wait_for, selector?, value?, url?, timeout?}]. The recording is produced in a browser and replayed headless to capture the authenticated session.",
+            "title": "Recorded Steps"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "start_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL that initiates the redirect login flow.",
+            "title": "Start Url"
+          },
           "success_indicator": {
             "anyOf": [
               {
@@ -4265,6 +4626,18 @@
             ],
             "title": "Success Indicator"
           },
+          "success_url_contains": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Substring expected in the post-login URL.",
+            "title": "Success Url Contains"
+          },
           "token": {
             "anyOf": [
               {
@@ -4275,6 +4648,18 @@
               }
             ],
             "title": "Token"
+          },
+          "token_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "JSON field holding the access token (default access_token).",
+            "title": "Token Field"
           },
           "token_header": {
             "default": "Authorization",
@@ -4298,9 +4683,33 @@
             "title": "Token Prefix",
             "type": "string"
           },
+          "token_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OAuth2 token endpoint for type=oauth2.",
+            "title": "Token Url"
+          },
+          "totp_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Base32 TOTP shared secret; a current code is generated for the MFA screen when mfa_code is not supplied.",
+            "title": "Totp Secret"
+          },
           "type": {
             "default": "none",
-            "description": "Auth type: none, form_login, bearer_token, cookie, custom_header",
+            "description": "Auth type: none, form_login, bearer_token, cookie, custom_header, multi_step, jwt, api_key, oauth2, oauth2_authcode, oidc, saml, recorded",
             "title": "Type",
             "type": "string"
           },
@@ -4319,6 +4728,58 @@
             "default": "username",
             "title": "Username Field",
             "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alias for key/token value.",
+            "title": "Value"
+          },
+          "verify_success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text expected on verify_url when authenticated (defaults to success_indicator).",
+            "title": "Verify Success Indicator"
+          },
+          "verify_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Authenticated-only URL fetched after login to confirm the session works.",
+            "title": "Verify Url"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Authenticated multi-step workflow: an ordered list of actions (open/click/type/select/submit/wait/extract/verify/capture_token/capture_cookie/api_request) replayed in one browser session; discovered authenticated endpoints feed the security engines.",
+            "title": "Workflow"
           }
         },
         "title": "WebScanAuthSchema",
@@ -4326,6 +4787,80 @@
       },
       "WebScanOptionsSchema": {
         "properties": {
+          "api_discover": {
+            "default": true,
+            "description": "Auto-discover an OpenAPI spec and GraphQL endpoint at well-known paths.",
+            "title": "Api Discover",
+            "type": "boolean"
+          },
+          "api_spec_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of an OpenAPI/Swagger spec to import.",
+            "title": "Api Spec Url"
+          },
+          "attack_cookies": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Test cookies as injection points (sqlmap L2).",
+            "title": "Attack Cookies"
+          },
+          "attack_file_uploads": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Test multipart/file-upload fields.",
+            "title": "Attack File Uploads"
+          },
+          "attack_headers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Test HTTP headers as injection points (sqlmap L3).",
+            "title": "Attack Headers"
+          },
+          "enable_access_control": {
+            "default": true,
+            "title": "Enable Access Control",
+            "type": "boolean"
+          },
+          "enable_api_scan": {
+            "default": true,
+            "title": "Enable Api Scan",
+            "type": "boolean"
+          },
+          "enable_injection": {
+            "default": true,
+            "title": "Enable Injection",
+            "type": "boolean"
+          },
+          "enable_oast": {
+            "default": true,
+            "title": "Enable Oast",
+            "type": "boolean"
+          },
           "enable_sqli": {
             "default": true,
             "title": "Enable Sqli",
@@ -4335,6 +4870,56 @@
             "default": true,
             "title": "Enable Xss",
             "type": "boolean"
+          },
+          "graphql_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "GraphQL endpoint URL to probe for introspection.",
+            "title": "Graphql Url"
+          },
+          "har": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A HAR document (JSON) to import requests from.",
+            "title": "Har"
+          },
+          "max_params_per_page": {
+            "anyOf": [
+              {
+                "maximum": 200.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cap parameters tested per page.",
+            "title": "Max Params Per Page"
+          },
+          "nuclei_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nuclei scan profile: fast, standard, or deep.",
+            "title": "Nuclei Profile"
           },
           "nuclei_severity": {
             "default": [
@@ -4348,6 +4933,32 @@
             "title": "Nuclei Severity",
             "type": "array"
           },
+          "nuclei_timeout": {
+            "anyOf": [
+              {
+                "maximum": 14400.0,
+                "minimum": 30.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-scan Nuclei time budget (s).",
+            "title": "Nuclei Timeout"
+          },
+          "postman": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Postman v2 collection (JSON) to import.",
+            "title": "Postman"
+          },
           "rate_limit": {
             "default": 10,
             "maximum": 100.0,
@@ -4360,6 +4971,50 @@
             "description": "Template coverage: quick, standard, or deep",
             "title": "Scan Depth",
             "type": "string"
+          },
+          "scan_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Named policy preset: safe, standard, deep, api, authenticated. Explicit knobs below override the preset.",
+            "title": "Scan Policy"
+          },
+          "spa_interaction": {
+            "default": false,
+            "description": "Autonomously click non-destructive controls to discover SPA routes/state (active behaviour; off by default).",
+            "title": "Spa Interaction",
+            "type": "boolean"
+          },
+          "sqlmap_timeout": {
+            "anyOf": [
+              {
+                "maximum": 3600.0,
+                "minimum": 30.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-target sqlmap time budget (s).",
+            "title": "Sqlmap Timeout"
+          },
+          "wsdl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A WSDL (SOAP) document (XML) to import operations from.",
+            "title": "Wsdl"
           }
         },
         "title": "WebScanOptionsSchema",
@@ -15343,6 +15998,324 @@
         ]
       }
     },
+    "/dashboard/web-endpoints": {
+      "get": {
+        "description": "Org-wide discovered endpoints — backs the 'Total Endpoints Discovered' card.",
+        "operationId": "get_web_endpoints_drilldown_dashboard_web_endpoints_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_api",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Api"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Web Endpoints Drilldown",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/dashboard/web-findings": {
+      "get": {
+        "description": "Org-wide web findings with the same filters the dashboard counts use.",
+        "operationId": "get_web_findings_drilldown_dashboard_web_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "description": "OWASP code prefix, e.g. A05",
+            "in": "query",
+            "name": "owasp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "OWASP code prefix, e.g. A05",
+              "title": "Owasp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "finding_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finding Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "detected_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detected By"
+            }
+          },
+          {
+            "description": "e.g. open; omit for any status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "e.g. open; omit for any status",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "scan completed date YYYY-MM-DD",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "scan completed date YYYY-MM-DD",
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Web Findings Drilldown",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/dashboard/web-owasp-scorecard": {
       "get": {
         "description": "OWASP Top 10 (2021) coverage from web scan findings.\nShows how many open findings map to each OWASP category.",
@@ -21367,6 +22340,109 @@
         ]
       }
     },
+    "/web-scans/{scan_id}/api-operations": {
+      "get": {
+        "description": "The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations\nas first-class WebApiOperation rows, with a per-kind roll-up.",
+        "operationId": "get_web_scan_api_operations_web_scans__scan_id__api_operations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "rest / graphql / soap",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "rest / graphql / soap",
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Web Scan Api Operations",
+        "tags": [
+          "Web Scans"
+        ]
+      }
+    },
     "/web-scans/{scan_id}/assets": {
       "get": {
         "description": "Get discovered web assets/endpoints for a scan.",
@@ -21755,6 +22831,317 @@
           }
         ],
         "summary": "Triage Finding",
+        "tags": [
+          "Web Scans"
+        ]
+      }
+    },
+    "/web-scans/{scan_id}/findings/{finding_id}/screenshot": {
+      "get": {
+        "description": "Serve the proof screenshot captured for a finding (Codex item 10), e.g. a\nrendered XSS. The finding must belong to the scan, and the stored path must\nresolve inside the scan's own evidence directory — a screenshot_path is\nwritten by the scanner, but this refuses to serve anything that escapes the\nevidence root, so a crafted path cannot read an arbitrary server file.",
+        "operationId": "get_finding_screenshot_web_scans__scan_id__findings__finding_id__screenshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Finding Screenshot",
+        "tags": [
+          "Web Scans"
+        ]
+      }
+    },
+    "/web-scans/{scan_id}/forms": {
+      "get": {
+        "description": "The discovered form inventory (Codex item 1) — first-class WebForm rows\nwith their inputs, file-upload and password flags.",
+        "operationId": "get_web_scan_forms_web_scans__scan_id__forms_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_file_upload",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has File Upload"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Web Scan Forms",
+        "tags": [
+          "Web Scans"
+        ]
+      }
+    },
+    "/web-scans/{scan_id}/parameters": {
+      "get": {
+        "description": "The attack surface at parameter granularity (Phase 23b relational model):\nevery (endpoint, location, name) with its coverage — tested, by which\nengines, or why it was skipped. Filterable by location, coverage status and\nname, which the JSONB parameter blob and the report's coverage summary\ncannot answer relationally. Includes an ``untested`` roll-up so a caller can\nsee, in one call, how much surface remains unassessed.",
+        "operationId": "get_web_scan_parameters_web_scans__scan_id__parameters_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "query/form/json/path/…/soap",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "query/form/json/path/…/soap",
+              "title": "Location"
+            }
+          },
+          {
+            "description": "filter by coverage status",
+            "in": "query",
+            "name": "tested",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "filter by coverage status",
+              "title": "Tested"
+            }
+          },
+          {
+            "description": "parameter name (exact)",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "parameter name (exact)",
+              "title": "Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Web Scan Parameters",
         "tags": [
           "Web Scans"
         ]

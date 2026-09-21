@@ -13,11 +13,12 @@ This crawler handles:
   - Scope enforcement (stay within target domain/path)
 """
 
+import asyncio
 import hashlib
 import logging
 import re
+import time
 import uuid
-from collections import deque
 from typing import Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse
 
@@ -33,6 +34,33 @@ _JS_ENDPOINT_PATTERNS = [
     ),
     re.compile(r"""(?:GET|POST|PUT|DELETE|PATCH)\s*['"`]\s*([/][^'"`\s]+)"""),
 ]
+
+# Autonomous SPA interaction (Phase 23): controls whose label suggests a
+# destructive or state-changing action are never clicked — this product scans
+# production, so an autonomous crawl must not delete, pay, or log itself out.
+_DESTRUCTIVE_WORDS = (
+    "delete",
+    "remove",
+    "destroy",
+    "drop",
+    "logout",
+    "log out",
+    "sign out",
+    "signout",
+    "pay",
+    "buy",
+    "purchase",
+    "checkout",
+    "confirm",
+    "submit order",
+    "unsubscribe",
+    "deactivate",
+    "close account",
+    "reset",
+    "wipe",
+)
+#: Max controls clicked per page during autonomous interaction.
+_INTERACT_MAX = 8
 
 # File extensions to skip during crawling
 _SKIP_EXTENSIONS = {
@@ -78,6 +106,8 @@ class CrawlResult:
         self.endpoints: list[dict] = []
         self.forms: list[dict] = []
         self.js_endpoints: list[dict] = []
+        #: Static DOM source→sink findings from JS bundle analysis (Phase 22).
+        self.js_findings: list[dict] = []
         self.technologies: list[dict] = []
         self.cookies: list[dict] = []
         self.errors: list[str] = []
@@ -89,6 +119,15 @@ class CrawlResult:
         self.out_of_scope: list[dict] = []
         #: URLs the application answered with its not-found page.
         self.soft_404s: list[str] = []
+        #: Session-loss / re-authentication events observed during the crawl,
+        #: so the report can say the authenticated session dropped and whether
+        #: it was recovered — otherwise a mid-crawl logout silently turns the
+        #: rest of the crawl anonymous.
+        self.auth_events: list[dict] = []
+        #: Directed graph of DOM states and the interactions connecting them,
+        #: built from the autonomous interaction pass (Phase 23b). Empty unless
+        #: interaction is enabled. Serialised into scans.options for the report.
+        self.dom_graph: dict = {}
 
     def to_dict(self) -> dict:
         return {
@@ -102,6 +141,7 @@ class CrawlResult:
             "api_specs": self.api_specs,
             "out_of_scope": self.out_of_scope,
             "soft_404s": self.soft_404s,
+            "dom_graph": self.dom_graph,
         }
 
 
@@ -130,11 +170,14 @@ class PlaywrightCrawler:
         timeout: int | None = None,
         concurrency: int | None = None,
         settle_timeout: int | None = None,
+        rate_limit: int | None = None,
     ):
         self.max_depth = max_depth or WebScanConfig.MAX_CRAWL_DEPTH
         self.max_urls = max_urls or WebScanConfig.MAX_CRAWL_URLS
         self.timeout = timeout or WebScanConfig.PLAYWRIGHT_TIMEOUT
         self.concurrency = concurrency or WebScanConfig.CRAWL_CONCURRENCY
+        #: Shared navigation-start rate ceiling across all concurrent workers.
+        self.rate_limit = rate_limit or WebScanConfig.CRAWL_RATE_LIMIT
         #: How long to wait for a page to go quiet after the document loads,
         #: bounded so a page that never goes quiet cannot stall the crawl.
         self.settle_timeout = settle_timeout or WebScanConfig.CRAWL_SETTLE_TIMEOUT
@@ -146,6 +189,11 @@ class PlaywrightCrawler:
         auth_headers: dict[str, str] | None = None,
         scope_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
+        progress_cb=None,
+        auth_config: dict | None = None,
+        reauth_cb=None,
+        cancel_cb=None,
+        interact: bool = False,
     ) -> CrawlResult:
         """
         Crawl a web application starting from start_url.
@@ -156,6 +204,9 @@ class PlaywrightCrawler:
             auth_headers: Headers for authenticated crawling
             scope_patterns: URL patterns to stay within
             exclude_patterns: URL patterns to skip
+            progress_cb: optional callable(pages_visited, endpoints_found) invoked
+                periodically so a caller can surface live crawl progress. Best
+                effort — any exception it raises is swallowed.
 
         Returns:
             CrawlResult with discovered endpoints, forms, and JS endpoints
@@ -163,6 +214,12 @@ class PlaywrightCrawler:
         result = CrawlResult()
         parsed_start = urlparse(start_url)
         base_domain = parsed_start.netloc
+
+        # DOM state graph (Phase 23b): records the interaction transitions the
+        # autonomous pass discovers. One graph per crawl, attached to the result.
+        from core.web.dom_graph import DomStateGraph
+
+        dom_graph = DomStateGraph()
 
         # Scope enforcement
         allowed_domains = {base_domain}
@@ -190,8 +247,6 @@ class PlaywrightCrawler:
             return result
 
         visited: set[str] = set()
-        queue: deque = deque()
-        queue.append((start_url, 0))  # (url, depth)
 
         try:
             async with async_playwright() as pw:
@@ -219,6 +274,13 @@ class PlaywrightCrawler:
                 # Apply auth headers
                 if auth_headers:
                     await context.set_extra_http_headers(auth_headers)
+
+                # Authenticated crawling: only watch for session loss when the
+                # crawl started authenticated and a re-auth callback exists.
+                # The callback is itself bounded (WebSessionManager.max_reauth),
+                # and once it can no longer recover the session we stop checking
+                # so the crawl does not stall re-detecting the same logout.
+                _auth_watch = bool((auth_cookies or auth_headers) and reauth_cb)
 
                 # Refuse to *navigate* off-scope in the first place.
                 #
@@ -254,184 +316,530 @@ class PlaywrightCrawler:
 
                 await context.route("**/*", _scope_guard)
 
-                # Intercept network requests for API discovery
+                # Intercept network requests for API discovery (attached
+                # per-page below, so every concurrent worker's page contributes).
                 network_apis: list[dict] = []
+                # Bundle routes discovered by scanning JS *source* (Phase 22,
+                # Crawler 2.0): an endpoint hardcoded in a bundle but never
+                # executed is still part of the attack surface.
+                bundle_routes: list[dict] = []
+                dom_flows: list[dict] = []
+                websockets: list[dict] = []
+                # External source maps to fetch after the crawl (Codex item 9):
+                # {map_url: bundle_url}. Inline data: maps are handled in-band.
+                sourcemap_urls: dict = {}
+                _js_scanned = {"n": 0}
 
-                page = await context.new_page()
-
-                # Listen for API calls
-                async def _on_response(response):
+                def _on_ws(ws) -> None:
+                    # WebSocket endpoints are real attack surface (Phase 23,
+                    # Crawler 2.0) — record the ws:// URL if it is in scope.
                     try:
-                        url = response.url
-                        if self._is_api_call(url):
-                            network_apis.append(
+                        wurl = getattr(ws, "url", "") or ""
+                        if wurl and self._is_in_scope(
+                            wurl.replace("ws://", "http://").replace(
+                                "wss://", "https://"
+                            ),
+                            allowed_domains,
+                            exclude_compiled,
+                        ):
+                            websockets.append(
                                 {
-                                    "url": url,
-                                    "method": response.request.method,
-                                    "status": response.status,
-                                    "content_type": response.headers.get(
-                                        "content-type", ""
-                                    ),
-                                    "source": "network_intercept",
+                                    "url": wurl,
+                                    "method": "GET",
+                                    "is_api": True,
+                                    "source": "websocket",
                                 }
                             )
                     except Exception:
                         pass
 
-                page.on("response", _on_response)
+                _JS_SCAN_MAX = 40
+                _JS_BODY_MAX = 2_000_000
+
+                async def _on_response(response):
+                    try:
+                        url = response.url
+                        # Scan JavaScript source for hardcoded routes/APIs.
+                        try:
+                            ctype = (
+                                response.headers.get("content-type", "") or ""
+                            ).lower()
+                            is_js = "javascript" in ctype or url.split("?")[0].endswith(
+                                ".js"
+                            )
+                            if (
+                                is_js
+                                and _js_scanned["n"] < _JS_SCAN_MAX
+                                and self._is_in_scope(
+                                    url, allowed_domains, exclude_compiled
+                                )
+                            ):
+                                _js_scanned["n"] += 1
+                                body = await response.text()
+                                if body and len(body) <= _JS_BODY_MAX:
+                                    from core.web.js_dom import analyze_dom_flows
+                                    from core.web.js_routes import (
+                                        inline_sourcemap,
+                                        resolve_sourcemap_url,
+                                        route_endpoints,
+                                        routes_from_sourcemap,
+                                        sourcemap_ref,
+                                    )
+
+                                    bundle_routes.extend(
+                                        route_endpoints(body, start_url)
+                                    )
+                                    # Static DOM source→sink analysis (Item 9).
+                                    dom_flows.extend(analyze_dom_flows(body, url))
+                                    # Source maps (Item 9): an inline map is mined
+                                    # in-band; an external .map is queued to fetch
+                                    # after the crawl (same session/origin).
+                                    ref = sourcemap_ref(body)
+                                    if ref:
+                                        inline = inline_sourcemap(ref)
+                                        if inline:
+                                            for r in routes_from_sourcemap(
+                                                inline, start_url
+                                            ):
+                                                bundle_routes.append(
+                                                    {
+                                                        "url": r,
+                                                        "method": "GET",
+                                                        "source": "js_sourcemap",
+                                                        "content_type": "",
+                                                        "response_code": None,
+                                                    }
+                                                )
+                                        else:
+                                            map_url = resolve_sourcemap_url(ref, url)
+                                            if map_url and self._is_in_scope(
+                                                map_url,
+                                                allowed_domains,
+                                                exclude_compiled,
+                                            ):
+                                                sourcemap_urls[map_url] = url
+                        except Exception:
+                            pass
+                        if self._is_api_call(url):
+                            req = response.request
+                            # Capture the REQUEST body + its content-type (Phase
+                            # 22): a JSON API body is where modern parameters
+                            # live, and without it sqlmap / the injection engine
+                            # never see those parameters. post_data is a string
+                            # property (None for GET); bounded so a large upload
+                            # cannot bloat the crawl result.
+                            req_body = None
+                            try:
+                                pd = req.post_data
+                                if pd and len(pd) <= 20000:
+                                    req_body = pd
+                            except Exception:
+                                req_body = None
+                            req_ctype = ""
+                            req_headers: dict = {}
+                            try:
+                                req_headers = dict(req.headers)
+                                req_ctype = req_headers.get("content-type", "")
+                            except Exception:
+                                req_ctype = ""
+                            # Header and cookie NAMES are attacker-reachable input
+                            # too (header/cookie injection, cookie-based SQLi), so
+                            # capture them value-free for the parameter inventory.
+                            testable_headers: list = []
+                            cookie_names: list = []
+                            try:
+                                from core.web.surface import testable_header_names
+
+                                testable_headers = testable_header_names(req_headers)
+                                cookie_hdr = req_headers.get("cookie", "")
+                                cookie_names = [
+                                    c.split("=", 1)[0].strip()
+                                    for c in cookie_hdr.split(";")
+                                    if "=" in c
+                                ]
+                            except Exception:
+                                pass
+                            entry = {
+                                "url": url,
+                                "method": req.method,
+                                "status": response.status,
+                                "content_type": response.headers.get(
+                                    "content-type", ""
+                                ),
+                                "request_body": req_body,
+                                "request_content_type": req_ctype,
+                                "is_api": True,
+                                "source": "network_intercept",
+                            }
+                            if testable_headers:
+                                entry["request_headers"] = testable_headers
+                            if cookie_names:
+                                entry["request_cookies"] = cookie_names
+                            # Value-free parameter model for the inventory.
+                            try:
+                                from core.web.surface import describe_parameters
+
+                                params = describe_parameters(entry)
+                                if params:
+                                    entry["parameters"] = params
+                            except Exception:
+                                pass
+                            network_apis.append(entry)
+                    except Exception:
+                        pass
 
                 # Learn what a missing page looks like before trusting any 200.
-                soft_404 = await self._soft_404_fingerprint(page, start_url)
+                fp_page = await context.new_page()
+                fp_page.on("response", _on_response)
+                soft_404 = await self._soft_404_fingerprint(fp_page, start_url)
+                try:
+                    await fp_page.close()
+                except Exception:
+                    pass
                 if soft_404:
                     log.info(
                         "Target answers unknown paths with 200 — soft-404 baseline "
                         "recorded; pages matching it will not be reported as endpoints"
                     )
 
-                while queue and len(visited) < self.max_urls:
-                    url, depth = queue.popleft()
+                # ── Bounded-concurrency crawl (Phase 11) ──────────────────────
+                # A level-synchronous BFS: each wave processes up to
+                # ``concurrency`` URLs at once, each in its own page (so at most
+                # ``concurrency`` pages exist at any moment — the browser cannot
+                # be exhausted), and every navigation passes a shared rate
+                # limiter. A URL is added to ``visited`` before it is awaited, so
+                # two workers never crawl the same URL. The frontier is ordered
+                # deterministically each wave, so the set of pages visited — and
+                # therefore the findings — does not depend on task scheduling.
+                sem = asyncio.Semaphore(max(1, int(self.concurrency)))
+                min_interval = 1.0 / max(1, int(self.rate_limit))
+                rl = {"last": 0.0}
+                rl_lock = asyncio.Lock()
+                reauth_lock = asyncio.Lock()
+                state = {"auth_watch": _auth_watch, "reauth_gen": 0}
 
-                    # Normalize URL
-                    url = self._normalize_url(url)
-                    if not url or url in visited:
-                        continue
-                    if depth > self.max_depth:
-                        continue
-                    if not self._is_in_scope(url, allowed_domains, exclude_compiled):
-                        continue
-                    if self._should_skip_url(url):
-                        continue
+                async def _throttle():
+                    async with rl_lock:
+                        now = time.monotonic()
+                        wait = min_interval - (now - rl["last"])
+                        if wait > 0:
+                            await asyncio.sleep(wait)
+                        rl["last"] = time.monotonic()
 
-                    visited.add(url)
-                    result.pages_visited += 1
-
-                    blocked_before = len(blocked_navigations)
+                def _cancelled() -> bool:
                     try:
-                        # Wait for the document, then give the page a bounded
-                        # moment to settle.
-                        #
-                        # Waiting on "networkidle" for the full page timeout
-                        # stalls on any application that holds a connection open
-                        # — a websocket, a polling heartbeat, an analytics
-                        # beacon. Network idle simply never arrives, so every
-                        # page costs the entire timeout, and a few hundred URLs
-                        # turn a crawl into an overnight job. The settle wait
-                        # below gives client-rendered content time to appear and
-                        # then moves on regardless.
-                        response = await page.goto(
-                            url, wait_until="domcontentloaded", timeout=self.timeout
-                        )
+                        return bool(cancel_cb and cancel_cb())
+                    except Exception:
+                        return False
+
+                async def _process(url: str, depth: int) -> dict:
+                    out: dict = {"links": [], "requeue": None}
+                    async with sem:
+                        if _cancelled():
+                            return out
+                        result.pages_visited += 1
+                        if progress_cb is not None and result.pages_visited % 3 == 0:
+                            try:
+                                progress_cb(
+                                    result.pages_visited,
+                                    len(result.endpoints) + len(result.js_endpoints),
+                                )
+                            except Exception:
+                                pass
+
+                        gen = state["reauth_gen"]
+                        page = await context.new_page()
+                        page.on("response", _on_response)
+                        page.on("websocket", _on_ws)
+                        blocked_before = len(blocked_navigations)
                         try:
-                            await page.wait_for_load_state(
-                                "networkidle", timeout=self.settle_timeout
+                            await _throttle()
+                            response = await page.goto(
+                                url,
+                                wait_until="domcontentloaded",
+                                timeout=self.timeout,
                             )
-                        except Exception:
-                            pass  # Busy page — crawl what has rendered so far.
+                            try:
+                                await page.wait_for_load_state(
+                                    "networkidle", timeout=self.settle_timeout
+                                )
+                            except Exception:
+                                pass  # Busy page — crawl what has rendered so far.
 
-                        # Where the browser actually ended up. Redirects mean the
-                        # requested URL and the loaded document need not share an
-                        # origin, a path, or anything else — and everything below
-                        # is about the document, so it must be keyed to this.
-                        final_url = self._normalize_url(page.url) or url
-                        visited.add(final_url)
+                            final_url = self._normalize_url(page.url) or url
+                            visited.add(final_url)
 
-                        # Scope is re-checked *after* navigation. A target with an
-                        # open redirect will otherwise walk the crawler onto a
-                        # third-party site, which is both outside the authorisation
-                        # this scan has and the source of the fabricated endpoints
-                        # below.
-                        if not self._is_in_scope(
-                            final_url, allowed_domains, exclude_compiled
-                        ):
-                            log.warning(
-                                "Redirect left scope: %s -> %s — not crawled",
-                                url[:100],
-                                final_url[:100],
-                            )
-                            result.out_of_scope.append(
-                                {
-                                    "from": url,
-                                    "to": final_url,
-                                    "status": response.status if response else None,
-                                }
-                            )
-                            continue
-
-                        # Extract page content
-                        content = await page.content()
-
-                        # A path the application does not have. Recording it would
-                        # invent attack surface: every downstream tool would then
-                        # test a URL that does not exist, and the report would
-                        # describe an application larger than the real one.
-                        if (
-                            soft_404
-                            and final_url != start_url
-                            and not self._has_route_fragment(final_url)
-                            and self._content_fingerprint(content) == soft_404
-                        ):
-                            result.soft_404s.append(final_url)
-                            continue
-
-                        # Record endpoint. A client-side route has no HTTP
-                        # response of its own — its status and headers belong to
-                        # the shell document — so those fields are left empty
-                        # rather than filled with the shell's, which would state
-                        # something about this route that was never observed.
-                        resp_headers = dict(response.headers) if response else {}
-                        endpoint = {
-                            "url": final_url,
-                            "method": "GET",
-                            "content_type": resp_headers.get("content-type", ""),
-                            "response_code": response.status if response else None,
-                            "response_size": len(content),
-                            "source": "crawler" if response else "crawler_spa_route",
-                            "parameters": {},
-                            "response_headers": resp_headers,
-                        }
-
-                        # Technology detection from headers
-                        if resp_headers:
-                            self._detect_tech_from_headers(resp_headers, result)
-
-                        result.endpoints.append(endpoint)
-
-                        # Relative links are resolved against the document that
-                        # contained them, never against the URL that was
-                        # requested to reach it.
-                        links = await self._extract_links(page, final_url)
-                        for link in links:
-                            if link not in visited:
-                                queue.append((link, depth + 1))
-
-                        # Extract forms
-                        forms = await self._extract_forms(page, final_url)
-                        result.forms.extend(forms)
-
-                        # Extract JS endpoints
-                        js_eps = self._extract_js_endpoints(content, final_url)
-                        result.js_endpoints.extend(js_eps)
-
-                    except Exception as exc:
-                        # A navigation the scope guard aborted is a recorded
-                        # outcome, not a crawl failure — reporting it as an error
-                        # would bury an open redirect in the noise of timeouts.
-                        if len(blocked_navigations) > blocked_before:
-                            for blocked in blocked_navigations[blocked_before:]:
+                            if not self._is_in_scope(
+                                final_url, allowed_domains, exclude_compiled
+                            ):
                                 log.warning(
-                                    "Blocked off-scope navigation: %s -> %s",
+                                    "Redirect left scope: %s -> %s — not crawled",
                                     url[:100],
-                                    blocked["url"][:100],
+                                    final_url[:100],
                                 )
                                 result.out_of_scope.append(
-                                    {"from": url, "to": blocked["url"], "blocked": True}
+                                    {
+                                        "from": url,
+                                        "to": final_url,
+                                        "status": (
+                                            response.status if response else None
+                                        ),
+                                    }
                                 )
-                        else:
-                            log.debug("Crawl error for %s: %s", url[:100], exc)
-                            result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
+                                return out
+
+                            content = await page.content()
+
+                            # Authenticated-crawl session-loss detection,
+                            # serialized so one logout triggers at most one
+                            # re-authentication across all concurrent workers.
+                            if state["auth_watch"]:
+                                from core.web.auth.session_manager import WebSession
+
+                                status_code = response.status if response else 0
+                                if WebSession.looks_unauthenticated(
+                                    status_code, final_url, content, auth_config or {}
+                                ):
+                                    async with reauth_lock:
+                                        if not state["auth_watch"]:
+                                            pass
+                                        elif state["reauth_gen"] != gen:
+                                            # Another worker re-authenticated
+                                            # after this page loaded — our view
+                                            # is stale; re-crawl rather than
+                                            # re-authenticate a second time.
+                                            visited.discard(final_url)
+                                            visited.discard(url)
+                                            out["requeue"] = (url, depth)
+                                            return out
+                                        else:
+                                            fresh = None
+                                            try:
+                                                fresh = await reauth_cb()
+                                            except Exception as exc:
+                                                log.debug(
+                                                    "re-auth callback error: %s", exc
+                                                )
+                                            if fresh:
+                                                try:
+                                                    await context.clear_cookies()
+                                                    await context.add_cookies(fresh)
+                                                except Exception as exc:
+                                                    log.debug(
+                                                        "re-auth cookie apply "
+                                                        "failed: %s",
+                                                        exc,
+                                                    )
+                                                state["reauth_gen"] += 1
+                                                result.auth_events.append(
+                                                    {
+                                                        "url": final_url,
+                                                        "event": "reauthenticated",
+                                                    }
+                                                )
+                                                log.info(
+                                                    "Session lost at %s — "
+                                                    "re-authenticated, re-crawling",
+                                                    final_url[:100],
+                                                )
+                                                visited.discard(final_url)
+                                                visited.discard(url)
+                                                out["requeue"] = (url, depth)
+                                                return out
+                                            state["auth_watch"] = False
+                                            result.auth_events.append(
+                                                {
+                                                    "url": final_url,
+                                                    "event": (
+                                                        "session_lost_unrecovered"
+                                                    ),
+                                                }
+                                            )
+                                            log.warning(
+                                                "Session lost at %s and could not "
+                                                "be re-established — remaining "
+                                                "pages are crawled unauthenticated",
+                                                final_url[:100],
+                                            )
+
+                            if (
+                                soft_404
+                                and final_url != start_url
+                                and not self._has_route_fragment(final_url)
+                                and self._content_fingerprint(content) == soft_404
+                            ):
+                                result.soft_404s.append(final_url)
+                                return out
+
+                            resp_headers = dict(response.headers) if response else {}
+                            endpoint = {
+                                "url": final_url,
+                                "method": "GET",
+                                "content_type": resp_headers.get("content-type", ""),
+                                "response_code": response.status if response else None,
+                                "response_size": len(content),
+                                "source": (
+                                    "crawler" if response else "crawler_spa_route"
+                                ),
+                                "parameters": {},
+                                "response_headers": resp_headers,
+                            }
+                            if resp_headers:
+                                self._detect_tech_from_headers(resp_headers, result)
+                            self._fingerprint_page(
+                                final_url, resp_headers, content, result
+                            )
+                            result.endpoints.append(endpoint)
+
+                            links = await self._extract_links(page, final_url)
+                            for link in links:
+                                if link not in visited:
+                                    out["links"].append((link, depth + 1))
+
+                            forms = await self._extract_forms(page, final_url)
+                            result.forms.extend(forms)
+
+                            js_eps = self._extract_js_endpoints(content, final_url)
+                            result.js_endpoints.extend(js_eps)
+
+                            # Autonomous SPA interaction (Phase 23, Crawler 2.0):
+                            # click safe, non-destructive controls to reach
+                            # client-side routes/state a link crawl never sees.
+                            # Opt-in — clicking is an active behaviour, and this
+                            # product scans production; destructive controls are
+                            # never clicked (see _interact_page).
+                            if interact and depth < self.max_depth:
+                                try:
+                                    new_links = await self._interact_page(
+                                        page, final_url, dom_graph
+                                    )
+                                    for link in new_links:
+                                        if link not in visited and self._is_in_scope(
+                                            link, allowed_domains, exclude_compiled
+                                        ):
+                                            out["links"].append((link, depth + 1))
+                                except Exception as exc:
+                                    log.debug("SPA interaction error: %s", exc)
+
+                        except Exception as exc:
+                            if len(blocked_navigations) > blocked_before:
+                                for blocked in blocked_navigations[blocked_before:]:
+                                    log.warning(
+                                        "Blocked off-scope navigation: %s -> %s",
+                                        url[:100],
+                                        blocked["url"][:100],
+                                    )
+                                    result.out_of_scope.append(
+                                        {
+                                            "from": url,
+                                            "to": blocked["url"],
+                                            "blocked": True,
+                                        }
+                                    )
+                            else:
+                                log.debug("Crawl error for %s: %s", url[:100], exc)
+                                result.errors.append(f"{url[:100]}: {str(exc)[:200]}")
+                        finally:
+                            try:
+                                await page.close()
+                            except Exception:
+                                pass
+                        return out
+
+                frontier: list = [(start_url, 0)]
+                while frontier and len(visited) < self.max_urls and not _cancelled():
+                    batch: list = []
+                    for u, d in frontier:
+                        if len(visited) >= self.max_urls:
+                            break
+                        nu = self._normalize_url(u)
+                        if not nu or nu in visited:
+                            continue
+                        if d > self.max_depth:
+                            continue
+                        if not self._is_in_scope(nu, allowed_domains, exclude_compiled):
+                            continue
+                        if self._should_skip_url(nu):
+                            continue
+                        visited.add(nu)
+                        batch.append((nu, d))
+                    if not batch:
+                        break
+                    outs = await asyncio.gather(
+                        *[_process(u, d) for u, d in batch],
+                        return_exceptions=True,
+                    )
+                    nxt: list = []
+                    for o in outs:
+                        if isinstance(o, dict):
+                            nxt.extend(o.get("links") or [])
+                            if o.get("requeue"):
+                                nxt.append(o["requeue"])
+                    frontier = self._order_frontier(nxt)
 
                 # Add network-intercepted API calls
                 result.js_endpoints.extend(network_apis)
+                # Fetch and mine external JS source maps (Codex item 9): the
+                # original, pre-minification source reveals routes/endpoints a
+                # minified bundle hid. Fetched over the browser session (same
+                # cookies/origin), bounded, best-effort.
+                if sourcemap_urls:
+                    from core.web.js_routes import routes_from_sourcemap
+
+                    _sm_routes = 0
+                    for map_url in list(sourcemap_urls)[:20]:
+                        try:
+                            resp = await context.request.get(map_url, timeout=15000)
+                            if not resp.ok:
+                                continue
+                            text = await resp.text()
+                            if not text or len(text) > _JS_BODY_MAX * 4:
+                                continue
+                            for r in routes_from_sourcemap(text, start_url):
+                                bundle_routes.append(
+                                    {
+                                        "url": r,
+                                        "method": "GET",
+                                        "source": "js_sourcemap",
+                                        "content_type": "",
+                                        "response_code": None,
+                                    }
+                                )
+                                _sm_routes += 1
+                        except Exception as exc:
+                            log.debug("source-map fetch failed %s: %s", map_url, exc)
+                    if _sm_routes:
+                        log.info(
+                            "Crawl: %d route(s) mined from %d external source map(s)",
+                            _sm_routes,
+                            len(sourcemap_urls),
+                        )
+                # Add routes mined from JS bundle source (unexecuted included).
+                if bundle_routes:
+                    result.js_endpoints.extend(bundle_routes)
+                    log.info(
+                        "Crawl: %d route(s) mined from %d JS bundle(s)",
+                        len(bundle_routes),
+                        _js_scanned["n"],
+                    )
+                # WebSocket endpoints observed during the crawl (Item 5/2.0).
+                if websockets:
+                    result.js_endpoints.extend(websockets)
+                    log.info(
+                        "Crawl: %d WebSocket endpoint(s) observed", len(websockets)
+                    )
+                # DOM source→sink findings from JS bundle analysis (Item 9).
+                if dom_flows:
+                    # Dedupe by (title) across bundles/pages.
+                    _seen_dom: set = set()
+                    for d in dom_flows:
+                        if d["title"] not in _seen_dom:
+                            _seen_dom.add(d["title"])
+                            result.js_findings.append(d)
+                    log.info(
+                        "Crawl: %d DOM source→sink flow(s) found in JS",
+                        len(result.js_findings),
+                    )
 
                 await browser.close()
 
@@ -442,6 +850,27 @@ class PlaywrightCrawler:
         # Deduplicate endpoints
         result.endpoints = self._deduplicate_endpoints(result.endpoints)
         result.js_endpoints = self._deduplicate_endpoints(result.js_endpoints)
+        # Deterministic output order — concurrency must not change which
+        # findings a report shows or the order downstream engines see them.
+        result.endpoints.sort(key=lambda e: (e.get("url") or ""))
+        result.js_endpoints.sort(key=lambda e: (e.get("url") or ""))
+        result.forms.sort(
+            key=lambda f: (
+                f.get("action") or f.get("url") or "",
+                str(f.get("method") or ""),
+            )
+        )
+        result.technologies = self._dedupe_technologies(result.technologies)
+        if dom_graph.node_count:
+            result.dom_graph = dom_graph.to_dict()
+            _g = result.dom_graph["summary"]
+            log.info(
+                "Crawl: DOM state graph — %d states, %d transitions, "
+                "%d SPA-hidden states",
+                _g["states"],
+                _g["transitions"],
+                _g["spa_hidden_states"],
+            )
 
         log.info(
             "Crawl complete: %d pages visited, %d endpoints, %d forms, "
@@ -457,6 +886,107 @@ class PlaywrightCrawler:
         return result
 
     # ── Extraction Helpers ────────────────────────────────────────────────────
+
+    async def _dom_fingerprint(self, page) -> tuple[str, str]:
+        """Return (fingerprint, title) for the page's current DOM state, using
+        the structural probe. Best-effort — an empty fingerprint on failure so a
+        state still gets a URL-keyed node."""
+        from core.web.dom_graph import DOM_FINGERPRINT_JS, fingerprint_from_probe
+
+        try:
+            probe = await page.evaluate(DOM_FINGERPRINT_JS)
+            return fingerprint_from_probe(probe), (probe or {}).get("title", "")
+        except Exception:
+            return "", ""
+
+    async def _interact_page(self, page, base_url: str, dom_graph=None) -> list[str]:
+        """
+        Autonomously click safe, non-destructive controls to reach client-side
+        routes/state a link crawl never sees (Phase 23, Crawler 2.0). Returns
+        new same-page URLs (SPA routes reached via pushState/hash or client
+        navigation). Opt-in; destructive-labelled and submit controls are never
+        clicked, and the number of clicks per page is bounded.
+
+        When ``dom_graph`` is supplied it records each interaction as a state
+        transition (Phase 23b): the base state, the control clicked, and the
+        state it led to — including a state reached on the *same* URL, which is
+        the SPA coverage a URL list cannot show.
+        """
+        discovered: set = set()
+        try:
+            elements = await page.query_selector_all(
+                "button, [role=button], [onclick], a[href^='#'], a[href^='javascript']"
+            )
+        except Exception:
+            return []
+        # Fingerprint the base state once so every transition shares one origin.
+        base_sig = None
+        if dom_graph is not None:
+            fp, title = await self._dom_fingerprint(page)
+            base_sig = dom_graph.add_state(base_url, fp, title)
+        clicks = 0
+        for el in elements:
+            if clicks >= _INTERACT_MAX:
+                break
+            try:
+                text = ((await el.inner_text()) or "").strip().lower()[:80]
+            except Exception:
+                text = ""
+            if any(bad in text for bad in _DESTRUCTIVE_WORDS):
+                continue
+            try:
+                etype = ((await el.get_attribute("type")) or "").lower()
+            except Exception:
+                etype = ""
+            if etype in {"submit", "reset", "image"}:
+                continue  # a submit/reset may mutate target state
+            try:
+                in_form = bool(
+                    await el.evaluate(
+                        "(node) => !!(node.closest && node.closest('form'))"
+                    )
+                )
+            except Exception:
+                in_form = False
+            try:
+                remote_form = bool((await el.get_attribute("form")) or "")
+            except Exception:
+                remote_form = False
+            if in_form or remote_form:
+                # A <button> inside a form defaults to type=submit when the
+                # attribute is omitted. Do not rely on markup being explicit:
+                # autonomous crawling must not accidentally submit workflows.
+                continue
+            before = page.url
+            try:
+                await el.click(timeout=2000, no_wait_after=True)
+                await page.wait_for_timeout(300)
+            except Exception:
+                continue
+            clicks += 1
+            after = page.url
+            # Record the transition: the state after the click may differ from
+            # the base even when the URL did not (an opened panel, a client
+            # route), which is exactly the hidden state worth recording.
+            state_changed = False
+            if dom_graph is not None and base_sig:
+                fp2, title2 = await self._dom_fingerprint(page)
+                to_sig = dom_graph.add_state(after, fp2, title2)
+                if to_sig != base_sig:
+                    dom_graph.add_transition(base_sig, to_sig, text, control=etype)
+                    state_changed = True
+            if after != before and after not in discovered:
+                discovered.add(after)
+            if after != before or state_changed:
+                # Reset to the base page so the next click starts from a known
+                # state rather than compounding SPA transitions.
+                try:
+                    await page.goto(
+                        base_url, wait_until="domcontentloaded", timeout=self.timeout
+                    )
+                except Exception:
+                    break
+        return list(discovered)
 
     @staticmethod
     async def _extract_links(page, current_url: str) -> list[str]:
@@ -476,6 +1006,20 @@ class PlaywrightCrawler:
                 href = await el.get_attribute("href")
                 if href:
                     links.add(urljoin(current_url, href.strip()))
+        except Exception:
+            pass
+
+        # Iframes/frames are independent application surfaces. They are passive
+        # navigations, so enqueue their src just like links and let scope checks
+        # decide whether the crawler may visit them.
+        try:
+            for el in await page.query_selector_all("iframe[src], frame[src]"):
+                src = (await el.get_attribute("src")) or ""
+                src = src.strip()
+                if src and not src.startswith(
+                    ("javascript:", "data:", "about:", "blob:")
+                ):
+                    links.add(urljoin(current_url, src))
         except Exception:
             pass
 
@@ -664,6 +1208,43 @@ class PlaywrightCrawler:
         if not headers.get("strict-transport-security"):
             pass  # Will be flagged by audit phase
 
+    @staticmethod
+    def _fingerprint_page(url, headers: dict, content: str, result: "CrawlResult"):
+        """
+        Multi-source technology fingerprint for a page (Phase 16, Part B).
+
+        Runs the fetch-free fingerprinter over the response the crawl already
+        has (headers, Set-Cookie names, HTML/asset markers) and merges the
+        result — so a stack that only advertises itself in the DOM (Angular's
+        ng-version, __NEXT_DATA__, wp-content, …) is detected, not just what a
+        Server header happens to say. Best-effort; never raises.
+        """
+        try:
+            from core.web.fingerprint import TechFingerprinter
+
+            cookie_names = {}
+            raw_cookies = headers.get("set-cookie", "") or ""
+            for chunk in re.split(r"[\n,]", raw_cookies):
+                name = chunk.split("=", 1)[0].strip()
+                if name and " " not in name:
+                    cookie_names[name] = ""
+            techs = TechFingerprinter().fingerprint(
+                url, 200, headers=headers, cookies=cookie_names, html=content or ""
+            )
+            for t in techs:
+                result.technologies.append(
+                    {
+                        "name": t["name"],
+                        "category": t["category"],
+                        "version": t.get("version"),
+                        "confidence": t["confidence"],
+                        "evidence": t["evidence"],
+                        "source": "fingerprint",
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("fingerprint failed for %s: %s", str(url)[:80], exc)
+
     # ── Scope & Filtering ─────────────────────────────────────────────────────
 
     @staticmethod
@@ -801,12 +1382,76 @@ class PlaywrightCrawler:
         return any(indicator in url_lower for indicator in api_indicators)
 
     @staticmethod
+    def _dedupe_technologies(techs: list) -> list:
+        """
+        One entry per technology across the whole crawl. A richer fingerprint
+        (carries a version / confidence / evidence) supersedes a bare
+        header-derived entry for the same technology, so the inventory reads
+        cleanly rather than listing "nginx/1.27.5" and "nginx" separately.
+        """
+        rank = {"high": 2, "medium": 1}
+        best: dict = {}
+        order: list = []
+        for t in techs or []:
+            raw = str(t.get("name") or "").strip()
+            if not raw:
+                continue
+            # Normalise a bare "nginx/1.27.5" header value to "nginx" so it
+            # merges with the fingerprint entry.
+            key = re.split(r"[/ ]", raw, 1)[0].lower()
+            if key not in best:
+                best[key] = dict(t)
+                order.append(key)
+                continue
+            cur = best[key]
+            cand_rich = 1 if (t.get("version") or t.get("confidence")) else 0
+            cur_rich = 1 if (cur.get("version") or cur.get("confidence")) else 0
+            if cand_rich > cur_rich or (
+                cand_rich == cur_rich
+                and rank.get(t.get("confidence"), 0)
+                > rank.get(cur.get("confidence"), 0)
+            ):
+                best[key] = dict(t)
+        return [best[k] for k in order]
+
+    @staticmethod
+    def _order_frontier(items: list) -> list:
+        """
+        Deduplicate and deterministically order the next BFS wave.
+
+        Each ``(url, depth)`` is kept at its shallowest depth, then sorted by
+        (depth, url). Ordering the frontier is what makes the crawl
+        deterministic under concurrency: which URLs fall inside ``max_urls``,
+        and the order downstream engines receive them, no longer depend on the
+        order tasks happened to finish.
+        """
+        best: dict = {}
+        for url, depth in items:
+            if url not in best or depth < best[url]:
+                best[url] = depth
+        return sorted(best.items(), key=lambda kv: (kv[1], kv[0]))
+
+    @staticmethod
     def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
-        """Deduplicate endpoints by URL+method."""
+        """Deduplicate endpoints without collapsing distinct API operations.
+
+        Method+URL is enough for ordinary pages, but APIs often multiplex many
+        operations through one URL (GraphQL) or one path with different JSON
+        bodies. Include operation identity/body hash when present so generated
+        GraphQL/OpenAPI/HAR requests remain independently testable.
+        """
+        import hashlib
+
         seen: set[str] = set()
         unique: list[dict] = []
         for ep in endpoints:
-            key = f"{ep.get('method', 'GET')}:{ep.get('url', '')}"
+            method = ep.get("method", "GET")
+            url = ep.get("url", "")
+            extra = ep.get("graphql_operation") or ""
+            body = ep.get("request_body")
+            if body:
+                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+            key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)
                 unique.append(ep)

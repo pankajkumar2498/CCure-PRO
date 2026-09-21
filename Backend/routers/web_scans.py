@@ -24,7 +24,14 @@ from auth.jwt_handler import decode_token
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
 from db.models import User
 from core.web.auth.secrets import encrypt_auth_config
-from db.models.web_scans import WebAsset, WebFinding, WebScan
+from db.models.web_scans import (
+    WebApiOperation,
+    WebAsset,
+    WebFinding,
+    WebForm,
+    WebParameter,
+    WebScan,
+)
 from fastapi import (
     APIRouter,
     Depends,
@@ -73,10 +80,101 @@ class WebScanScopeSchema(BaseModel):
     max_depth: int = Field(default=5, ge=1, le=20)
 
 
+class AccessControlUserSchema(BaseModel):
+    """One authorization context for Phase 4 access-control testing."""
+
+    label: str = Field(description="A short identity label, e.g. 'A', 'B', 'admin'.")
+    auth: dict = Field(
+        default_factory=dict,
+        description="This user's own auth config (same shape as the top-level "
+        "auth block). Its secrets are encrypted at rest like the main login.",
+    )
+    privileged: bool = Field(
+        default=False,
+        description="Marks an administrator/high-privilege identity, used as the "
+        "baseline for vertical privilege-escalation checks.",
+    )
+
+
+class AccessControlSchema(BaseModel):
+    """Phase 4 multi-user access-control (IDOR / privilege-escalation) config."""
+
+    users: list[AccessControlUserSchema] = Field(
+        default_factory=list,
+        description="Additional isolated identities (User B, an administrator) "
+        "tested against the resources the main session can reach.",
+    )
+    admin_paths: list[str] = Field(
+        default_factory=list,
+        description="Known administrator-only paths, tested for vertical "
+        "privilege escalation by lower-privilege identities.",
+    )
+    allow_write_testing: bool = Field(
+        default=False,
+        description="Permit safe state-changing method probes. Off by default: "
+        "testing is read-only unless the environment explicitly allows writes.",
+    )
+
+
 class WebScanAuthSchema(BaseModel):
     type: str = Field(
         default="none",
-        description="Auth type: none, form_login, bearer_token, cookie, custom_header",
+        description=(
+            "Auth type: none, form_login, bearer_token, cookie, custom_header, "
+            "multi_step, jwt, api_key, oauth2, oauth2_authcode, oidc, saml, "
+            "recorded"
+        ),
+    )
+    # ── Phase 23c: recorded login sequence (Codex item 6) ─────────────────────
+    recorded_steps: list[dict] | None = Field(
+        default=None,
+        description="Ordered browser actions to replay a recorded login: "
+        "[{action: goto|fill|click|select|press|wait|wait_for, selector?, "
+        "value?, url?, timeout?}]. The recording is produced in a browser and "
+        "replayed headless to capture the authenticated session.",
+    )
+    capture_local_storage: list[str] | None = Field(
+        default=None,
+        description="localStorage keys to read after a recorded login; a "
+        "token-like value is presented as a Bearer header so token-auth SPAs "
+        "are scanned as logged in.",
+    )
+    # ── Phase 23: browser-driven redirect login (OAuth2 auth-code / OIDC / SAML)
+    start_url: str | None = Field(
+        default=None, description="URL that initiates the redirect login flow."
+    )
+    idp_username_field: str | None = Field(
+        default=None, description="CSS selector for the IdP username/email field."
+    )
+    idp_password_field: str | None = Field(
+        default=None, description="CSS selector for the IdP password field."
+    )
+    idp_submit: str | None = Field(
+        default=None, description="CSS selector for the IdP submit button."
+    )
+    # ── Phase 23b: redirect-login edge cases (identifier-first / MFA / consent)
+    idp_next_submit: str | None = Field(
+        default=None,
+        description="CSS selector for the 'Next' button in an identifier-first "
+        "flow (username, Next, then password on a second screen).",
+    )
+    idp_mfa_field: str | None = Field(
+        default=None, description="CSS selector for the MFA/OTP code field."
+    )
+    mfa_code: str | None = Field(
+        default=None, description="Static one-time code for the MFA screen."
+    )
+    totp_secret: str | None = Field(
+        default=None,
+        description="Base32 TOTP shared secret; a current code is generated for "
+        "the MFA screen when mfa_code is not supplied.",
+    )
+    idp_consent_submit: str | None = Field(
+        default=None,
+        description="CSS selector for the OAuth consent/authorize/allow button.",
+    )
+    success_url_contains: str | None = Field(
+        default=None, description="Substring expected in the post-login URL."
     )
     login_url: str | None = None
     username: str | None = None
@@ -87,6 +185,101 @@ class WebScanAuthSchema(BaseModel):
     token: str | None = None
     cookies: dict[str, str] | None = None
     headers: dict[str, str] | None = None
+    # ── Phase 23: modern token auth (jwt / api_key / oauth2) ──────────────────
+    jwt: str | None = Field(default=None, description="Static JWT for type=jwt.")
+    key: str | None = Field(default=None, description="API key value for type=api_key.")
+    value: str | None = Field(default=None, description="Alias for key/token value.")
+    header: str | None = Field(
+        default=None, description="Header name for jwt/api_key injection."
+    )
+    prefix: str | None = Field(
+        default=None, description="Value prefix, e.g. 'Bearer ' or 'ApiKey '."
+    )
+    token_url: str | None = Field(
+        default=None, description="OAuth2 token endpoint for type=oauth2."
+    )
+    grant_type: str | None = Field(
+        default=None, description="OAuth2 grant: client_credentials | password."
+    )
+    client_id: str | None = None
+    client_secret: str | None = None
+    scope: str | None = None
+    audience: str | None = None
+    token_field: str | None = Field(
+        default=None,
+        description="JSON field holding the access token (default access_token).",
+    )
+    # ── Phase 3: CSRF / hidden-token logins, verification, re-auth ────────────
+    csrf_field: str | None = Field(
+        default=None,
+        description="Name of the anti-CSRF token field on the login page. "
+        "When omitted, all hidden fields are captured automatically.",
+    )
+    csrf_url: str | None = Field(
+        default=None,
+        description="Page to read the CSRF/hidden token from before logging in "
+        "(defaults to login_url).",
+    )
+    extract_hidden: bool = Field(
+        default=True,
+        description="Carry the login page's hidden form fields into the login.",
+    )
+    failure_indicator: str | None = Field(
+        default=None,
+        description="Text whose presence in a response means the session is "
+        "invalid / login failed.",
+    )
+    verify_url: str | None = Field(
+        default=None,
+        description="Authenticated-only URL fetched after login to confirm the "
+        "session works.",
+    )
+    verify_success_indicator: str | None = Field(
+        default=None,
+        description="Text expected on verify_url when authenticated "
+        "(defaults to success_indicator).",
+    )
+    max_reauth: int = Field(
+        default=2,
+        ge=0,
+        le=10,
+        description="Maximum re-authentication attempts if the session is lost "
+        "mid-scan.",
+    )
+    login_steps: list[dict] | None = Field(
+        default=None,
+        description="Multi-step login/workflow: an ordered list of "
+        "{method,url,fields,extract,success_indicator} steps run on one session.",
+    )
+    # Phase 13: a browser-driven authenticated workflow (login -> dashboard ->
+    # resource -> action) as validated configuration. The endpoints it reaches
+    # are handed to the DETECT engines. Either a bare list of actions or
+    # {actions:[...], timeout_ms:...}.
+    workflow: dict | list | None = Field(
+        default=None,
+        description="Authenticated multi-step workflow: an ordered list of "
+        "actions (open/click/type/select/submit/wait/extract/verify/"
+        "capture_token/capture_cookie/api_request) replayed in one browser "
+        "session; discovered authenticated endpoints feed the security engines.",
+    )
+
+    @field_validator("workflow")
+    @classmethod
+    def _valid_workflow(cls, value):
+        if value is None:
+            return None
+        from core.web.workflow.actions import validate_workflow
+
+        errs = validate_workflow(value)
+        if errs:
+            raise ValueError("; ".join(errs[:5]))
+        return value
+
+    access_control: AccessControlSchema | None = Field(
+        default=None,
+        description="Phase 4 access-control testing: additional isolated users "
+        "(B, admin) and admin paths for IDOR / privilege-escalation checks.",
+    )
     # Token-based logins. The session manager supports these, but with no field
     # here Pydantic drops them from the request body, so an operator scanning a
     # JSON-API application had no way to describe its login and the scan ran
@@ -111,14 +304,87 @@ class WebScanAuthSchema(BaseModel):
 class WebScanOptionsSchema(BaseModel):
     enable_sqli: bool = True
     enable_xss: bool = True
+    # Phase 2 / 4 / 5 engines (default on; a field so a client can disable one).
+    enable_injection: bool = True
+    enable_access_control: bool = True
+    enable_api_scan: bool = True
+    # Phase 9 active OOB probing. Runs only when a self-hosted OAST collaborator
+    # is configured (OAST_SERVER / OAST_DOMAIN / OAST_HTTP_URL); this flag lets a
+    # client turn the pass off even when one is.
+    enable_oast: bool = True
+    # Phase 5 API import knobs.
+    api_spec_url: str | None = Field(
+        default=None, description="URL of an OpenAPI/Swagger spec to import."
+    )
+    graphql_url: str | None = Field(
+        default=None, description="GraphQL endpoint URL to probe for introspection."
+    )
+    api_discover: bool = Field(
+        default=True,
+        description="Auto-discover an OpenAPI spec and GraphQL endpoint at "
+        "well-known paths.",
+    )
+    # Phase 23, Item 8: traffic-based API import. Inline JSON (or a parsed dict)
+    # for a HAR export or a Postman v2 collection; same-origin requests become
+    # scan targets alongside the spec/GraphQL surface.
+    har: dict | None = Field(
+        default=None, description="A HAR document (JSON) to import requests from."
+    )
+    postman: dict | None = Field(
+        default=None, description="A Postman v2 collection (JSON) to import."
+    )
+    wsdl: str | None = Field(
+        default=None,
+        description="A WSDL (SOAP) document (XML) to import operations from.",
+    )
+    # Phase 23, Crawler 2.0: opt-in autonomous SPA interaction — click safe,
+    # non-destructive controls to reach client-side routes a link crawl misses.
+    # Off by default: clicking is an active behaviour on a production target.
+    spa_interaction: bool = Field(
+        default=False,
+        description="Autonomously click non-destructive controls to discover "
+        "SPA routes/state (active behaviour; off by default).",
+    )
     nuclei_severity: list[str] = Field(default=["medium", "high", "critical"])
     rate_limit: int = Field(default=10, ge=1, le=100)
+    # ── Phase 23c: scan policy engine (Codex P2 item 11) ──────────────────────
+    scan_policy: str | None = Field(
+        default=None,
+        description="Named policy preset: safe, standard, deep, api, "
+        "authenticated. Explicit knobs below override the preset.",
+    )
+    max_params_per_page: int | None = Field(
+        default=None, ge=1, le=200, description="Cap parameters tested per page."
+    )
+    attack_cookies: bool | None = Field(
+        default=None, description="Test cookies as injection points (sqlmap L2)."
+    )
+    attack_headers: bool | None = Field(
+        default=None, description="Test HTTP headers as injection points (sqlmap L3)."
+    )
+    attack_file_uploads: bool | None = Field(
+        default=None, description="Test multipart/file-upload fields."
+    )
+    nuclei_timeout: int | None = Field(
+        default=None, ge=30, le=14400, description="Per-scan Nuclei time budget (s)."
+    )
+    sqlmap_timeout: int | None = Field(
+        default=None, ge=30, le=3600, description="Per-target sqlmap time budget (s)."
+    )
     # The orchestrator implements quick/standard/deep depth profiles and
     # defaults to standard. Without this field the request body could not carry
     # the choice, so the profiles were unreachable through the API.
     scan_depth: str = Field(
         default="standard",
         description="Template coverage: quick, standard, or deep",
+    )
+
+    # Phase 10 nuclei profile. Optional; when set it overrides the scan_depth
+    # mapping (quick→FAST, standard→STANDARD, deep→DEEP). Kept as a distinct
+    # field because "profile" is the term operators use for the nuclei run.
+    nuclei_profile: str | None = Field(
+        default=None,
+        description="Nuclei scan profile: fast, standard, or deep.",
     )
 
     @field_validator("scan_depth")
@@ -132,6 +398,18 @@ class WebScanOptionsSchema(BaseModel):
                 f"scan_depth must be one of: {', '.join(sorted(SCAN_DEPTHS))}"
             )
         return normalized
+
+    @field_validator("nuclei_profile")
+    @classmethod
+    def _known_profile(cls, value):
+        if value is None or not str(value).strip():
+            return None
+        from core.web.nuclei.profiles import normalize_profile
+
+        canonical = normalize_profile(value)
+        if canonical is None:
+            raise ValueError("nuclei_profile must be one of: fast, standard, deep")
+        return canonical
 
 
 class StartWebScanRequest(BaseModel):
@@ -469,6 +747,194 @@ def get_web_scan_assets(
     }
 
 
+@router.get("/{scan_id}/parameters")
+def get_web_scan_parameters(
+    scan_id: str,
+    location: str | None = Query(None, description="query/form/json/path/…/soap"),
+    tested: bool | None = Query(None, description="filter by coverage status"),
+    name: str | None = Query(None, description="parameter name (exact)"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    The attack surface at parameter granularity (Phase 23b relational model):
+    every (endpoint, location, name) with its coverage — tested, by which
+    engines, or why it was skipped. Filterable by location, coverage status and
+    name, which the JSONB parameter blob and the report's coverage summary
+    cannot answer relationally. Includes an ``untested`` roll-up so a caller can
+    see, in one call, how much surface remains unassessed.
+    """
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+
+    query = db.query(WebParameter).filter(WebParameter.web_scan_id == scan.id)
+    if location:
+        query = query.filter(WebParameter.location == location)
+    if tested is not None:
+        query = query.filter(WebParameter.tested == tested)
+    if name:
+        query = query.filter(WebParameter.name == name)
+
+    total = query.count()
+    tested_total = (
+        db.query(WebParameter)
+        .filter(
+            WebParameter.web_scan_id == scan.id,
+            WebParameter.tested.is_(True),
+        )
+        .count()
+    )
+    surface_total = (
+        db.query(WebParameter).filter(WebParameter.web_scan_id == scan.id).count()
+    )
+    rows = (
+        query.order_by(
+            WebParameter.tested.asc(),  # untested first — the interesting rows
+            WebParameter.location.asc(),
+            WebParameter.name.asc(),
+        )
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": p.id,
+                "web_asset_id": p.web_asset_id,
+                "location": p.location,
+                "name": p.name,
+                "source": p.source,
+                "tested": p.tested,
+                "tested_by": p.tested_by or [],
+                "skipped_reason": p.skipped_reason,
+            }
+            for p in rows
+        ],
+        "coverage": {
+            "surface_parameters": surface_total,
+            "tested_parameters": tested_total,
+            "untested_parameters": surface_total - tested_total,
+            "coverage_pct": (
+                round(100.0 * tested_total / surface_total, 1) if surface_total else 0.0
+            ),
+        },
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/{scan_id}/forms")
+def get_web_scan_forms(
+    scan_id: str,
+    has_file_upload: bool | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The discovered form inventory (Codex item 1) — first-class WebForm rows
+    with their inputs, file-upload and password flags."""
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    query = db.query(WebForm).filter(WebForm.web_scan_id == scan.id)
+    if has_file_upload is not None:
+        query = query.filter(WebForm.has_file_upload == has_file_upload)
+    total = query.count()
+    rows = (
+        query.order_by(WebForm.action_url.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": f.id,
+                "action_url": f.action_url,
+                "method": f.method,
+                "page_url": f.page_url,
+                "inputs": f.inputs or [],
+                "input_count": f.input_count,
+                "has_file_upload": f.has_file_upload,
+                "has_password": f.has_password,
+                "source": f.source,
+            }
+            for f in rows
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
+@router.get("/{scan_id}/api-operations")
+def get_web_scan_api_operations(
+    scan_id: str,
+    kind: str | None = Query(None, description="rest / graphql / soap"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(200, ge=1, le=500),
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
+    as first-class WebApiOperation rows, with a per-kind roll-up."""
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    query = db.query(WebApiOperation).filter(WebApiOperation.web_scan_id == scan.id)
+    if kind:
+        query = query.filter(WebApiOperation.kind == kind)
+    total = query.count()
+    all_rows = db.query(WebApiOperation.kind).filter(
+        WebApiOperation.web_scan_id == scan.id
+    )
+    by_kind: dict[str, int] = {}
+    for (k,) in all_rows:
+        by_kind[k] = by_kind.get(k, 0) + 1
+    rows = (
+        query.order_by(WebApiOperation.kind.asc(), WebApiOperation.identity.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": o.id,
+                "kind": o.kind,
+                "identity": o.identity,
+                "url": o.url,
+                "method": o.method,
+                "operation_name": o.operation_name,
+                "spec_source": o.spec_source,
+                "parameters": o.parameters or {},
+                "secured": o.secured,
+            }
+            for o in rows
+        ],
+        "by_kind": by_kind,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        },
+    }
+
+
 @router.post("/{scan_id}/cancel")
 def cancel_web_scan(
     scan_id: str,
@@ -573,6 +1039,47 @@ def triage_finding(
     return {"success": True, "finding_id": finding_id, "status": body.status}
 
 
+@router.get("/{scan_id}/findings/{finding_id}/screenshot")
+def get_finding_screenshot(
+    scan_id: str,
+    finding_id: str,
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
+    rendered XSS. The finding must belong to the scan, and the stored path must
+    resolve inside the scan's own evidence directory — a screenshot_path is
+    written by the scanner, but this refuses to serve anything that escapes the
+    evidence root, so a crafted path cannot read an arbitrary server file.
+    """
+    import os
+
+    from fastapi.responses import FileResponse
+
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    scan = _get_scan_or_404(db, scan_id, user, org_id)
+    finding = (
+        db.query(WebFinding)
+        .filter(WebFinding.id == finding_id, WebFinding.web_scan_id == scan.id)
+        .first()
+    )
+    if not finding or not finding.screenshot_path:
+        raise HTTPException(status_code=404, detail="No screenshot for this finding")
+
+    evidence_root = os.path.realpath(WebScanOrchestrator._evidence_dir(scan.id))
+    target = os.path.realpath(finding.screenshot_path)
+    # Path-traversal guard: the resolved file must live under this scan's
+    # evidence directory, and must actually exist.
+    if not (target == evidence_root or target.startswith(evidence_root + os.sep)):
+        raise HTTPException(status_code=404, detail="Screenshot not available")
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="Screenshot file missing")
+    return FileResponse(target, media_type="image/png")
+
+
 @router.get("/{scan_id}/report")
 @limiter.limit("10/minute")
 def download_web_scan_report(
@@ -607,12 +1114,44 @@ def download_web_scan_report(
     findings = db.query(WebFinding).filter(WebFinding.web_scan_id == scan_id).all()
     assets = db.query(WebAsset).filter(WebAsset.web_scan_id == scan_id).all()
 
+    _detect_cov = (scan.options or {}).get("tool_coverage", {}).get("detect", {})
+    _crawl_cov = (scan.options or {}).get("tool_coverage", {}).get("crawl", {})
+    # Site-map inventory for the report (Codex item 15): forms + API operations
+    # as counts, from the first-class tables.
+    _forms_count = db.query(WebForm).filter(WebForm.web_scan_id == scan.id).count()
+    _api_ops_by_kind: dict = {}
+    for (k,) in db.query(WebApiOperation.kind).filter(
+        WebApiOperation.web_scan_id == scan.id
+    ):
+        _api_ops_by_kind[k] = _api_ops_by_kind.get(k, 0) + 1
     scan_dict = {
         **_scan_summary(scan),
         "scan_scope": scan.scan_scope,
         "waf_detected": scan.waf_detected,
         "tech_stack": scan.tech_stack or [],
         "subdomains": scan.subdomains or [],
+        # Phase 10: nuclei profile + execution metrics for the report.
+        "nuclei_profile": _detect_cov.get("nuclei_profile"),
+        "nuclei_profile_label": _detect_cov.get("nuclei_profile_label"),
+        "nuclei_metrics": _detect_cov.get("nuclei_metrics") or {},
+        "scan_depth": _detect_cov.get("scan_depth"),
+        # Phase 22: per-parameter coverage ledger for the report.
+        "coverage_ledger": _detect_cov.get("coverage_ledger") or {},
+        # Phase 23c (Codex item 15): scan policy, scheduler plan, tool coverage
+        # and the site-map inventory, so the report states what was assessed,
+        # what was attacked, and what ran.
+        "scan_policy": _detect_cov.get("scan_policy") or {},
+        "schedule": _detect_cov.get("schedule") or {},
+        "tool_coverage_detail": _detect_cov,
+        "auth_status": _detect_cov.get("auth_status")
+        or (scan.auth_config or {}).get("type"),
+        "site_map": {
+            "endpoints": scan.total_endpoints or 0,
+            "forms": _forms_count,
+            "api_operations": _api_ops_by_kind,
+            # DOM state graph summary (Crawler 2.0), if the interaction pass ran.
+            "dom_graph": _crawl_cov.get("dom_graph_summary") or {},
+        },
     }
     findings_list = [_finding_detail(f) for f in findings]
     assets_list = [_asset_detail(a) for a in assets]
@@ -916,13 +1455,57 @@ def _finding_detail(f: WebFinding) -> dict:
         "request_url": f.request_url,
         "payload_used": f.payload_used,
         "response_code": f.response_code,
+        # Proof-based evidence (Phase 22, Item 10): the full HTTP request and
+        # response are persisted but were dropped here — a reader could not
+        # answer "which exact request caused this?". They are now exposed, plus
+        # a curl that reproduces the request.
+        "request_headers": f.request_headers,
+        "request_body": f.request_body,
+        "response_headers": f.response_headers,
+        "response_body": f.response_body,
+        "curl_command": f.curl_command or _finding_curl(f),
+        # Proof-based evidence completeness (Codex item 10).
+        "confidence": f.confidence,
+        "auth_context": f.auth_context,
+        "screenshot_path": f.screenshot_path,
         "owasp_category": f.owasp_category,
         "compliance_tags": f.compliance_tags,
         "cve_id": f.cve_id,
+        "cwe_id": f.cwe_id,
+        "remediation": f.remediation,
         "status": f.status,
         "is_verified": f.is_verified,
         "created_at": _iso(f.created_at),
     }
+
+
+def _finding_curl(f: WebFinding) -> str | None:
+    """A curl command reproducing the finding's request (proof-based evidence).
+
+    Built from the persisted request fields; returns None when there is no
+    request URL to reproduce."""
+    url = f.request_url or f.matched_at
+    if not url:
+        return None
+
+    def _q(s: str) -> str:
+        return "'" + str(s).replace("'", "'\\''") + "'"
+
+    parts = ["curl", "-i", "-X", (f.request_method or "GET").upper()]
+    # request_headers is stored as text; emit it as a single -H when present and
+    # header-shaped, so the reproduction carries auth/content-type the scan used.
+    rh = (f.request_headers or "").strip()
+    if rh and ":" in rh and "\n" not in rh and len(rh) <= 300:
+        parts += ["-H", _q(rh)]
+    if f.request_body and (f.request_method or "").upper() in (
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+    ):
+        parts += ["--data-raw", _q(str(f.request_body)[:2000])]
+    parts.append(_q(url))
+    return " ".join(parts)
 
 
 def _asset_detail(a: WebAsset) -> dict:

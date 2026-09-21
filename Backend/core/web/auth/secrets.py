@@ -30,8 +30,19 @@ log = logging.getLogger("ccure.web.auth.secrets")
 #: text, which is what makes rows predating encryption keep working.
 _PREFIX = "enc:v1:"
 
-#: auth_config keys whose values are credentials.
-_SECRET_KEYS = ("password", "token")
+#: auth_config keys whose values are credentials. Beyond form/bearer, this
+#: covers the modern-token fields (jwt / api_key / oauth2 client secret and
+#: their `value` alias) and the TOTP shared secret used to drive an MFA screen —
+#: all long-lived credentials that must not sit in the clear in the scan row.
+_SECRET_KEYS = (
+    "password",
+    "token",
+    "jwt",
+    "key",
+    "value",
+    "client_secret",
+    "totp_secret",
+)
 
 #: auth_config keys holding a mapping whose *values* are credentials.
 _SECRET_MAP_KEYS = ("cookies", "headers")
@@ -80,6 +91,71 @@ def _transform(config: Dict[str, Any], fn) -> Dict[str, Any]:
             result[key] = {
                 k: fn(v) if isinstance(v, str) else v for k, v in mapping.items()
             }
+    # Multi-step logins carry their credentials inside each step's `fields`
+    # dict, under an application-specific name we cannot predict, so every
+    # string value there is protected. Encryption round-trips a `{{token}}`
+    # placeholder or a username unchanged, so this is safe for non-secret
+    # fields too.
+    steps = result.get("login_steps")
+    if isinstance(steps, list):
+        new_steps = []
+        for step in steps:
+            if isinstance(step, dict) and isinstance(step.get("fields"), dict):
+                step = dict(step)
+                step["fields"] = {
+                    k: fn(v) if isinstance(v, str) else v
+                    for k, v in step["fields"].items()
+                }
+            new_steps.append(step)
+        result["login_steps"] = new_steps
+    # Recorded logins (Codex item 6) carry a typed password in a step's `value`
+    # (a `fill` action). Protect every step value the same way — a non-secret
+    # value or a placeholder round-trips unchanged.
+    rec = result.get("recorded_steps")
+    if isinstance(rec, list):
+        new_rec = []
+        for step in rec:
+            if isinstance(step, dict) and isinstance(step.get("value"), str):
+                step = dict(step)
+                step["value"] = fn(step["value"])
+            new_rec.append(step)
+        result["recorded_steps"] = new_rec
+    # Phase 13 workflows carry user-entered values (a password typed into a
+    # field, a token) in each action's `value`. Protect every action value the
+    # same way as login_steps — encryption round-trips a placeholder or a
+    # non-secret unchanged, so this is safe for all of them.
+    wf = result.get("workflow")
+    _wf_actions = (
+        wf.get("actions")
+        if isinstance(wf, dict)
+        else (wf if isinstance(wf, list) else None)
+    )
+    if isinstance(_wf_actions, list):
+        new_actions = []
+        for a in _wf_actions:
+            if isinstance(a, dict) and isinstance(a.get("value"), str):
+                a = dict(a)
+                a["value"] = fn(a["value"])
+            new_actions.append(a)
+        result["workflow"] = (
+            {**wf, "actions": new_actions} if isinstance(wf, dict) else new_actions
+        )
+    # Phase 4 access-control testing carries additional users (User B, admin),
+    # each with their own auth config nested under access_control.users[].auth.
+    # Those are the same class of secret as the main login and must be
+    # protected the same way, recursively.
+    access = result.get("access_control")
+    if isinstance(access, dict) and isinstance(access.get("users"), list):
+        access = dict(access)
+        access["users"] = [
+            (
+                {**u, "auth": _transform(u["auth"], fn)}
+                if isinstance(u, dict) and isinstance(u.get("auth"), dict)
+                else u
+            )
+            for u in access["users"]
+        ]
+        result["access_control"] = access
     return result
 
 
@@ -110,4 +186,48 @@ def redact_auth_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         mapping = redacted.get(key)
         if isinstance(mapping, dict):
             redacted[key] = {k: "********" for k in mapping}
+    steps = redacted.get("login_steps")
+    if isinstance(steps, list):
+        red_steps = []
+        for step in steps:
+            if isinstance(step, dict) and isinstance(step.get("fields"), dict):
+                step = dict(step)
+                step["fields"] = {k: "********" for k in step["fields"]}
+            red_steps.append(step)
+        redacted["login_steps"] = red_steps
+    rec = redacted.get("recorded_steps")
+    if isinstance(rec, list):
+        red_rec = []
+        for step in rec:
+            if isinstance(step, dict) and step.get("value") not in (None, ""):
+                step = {**step, "value": "********"}
+            red_rec.append(step)
+        redacted["recorded_steps"] = red_rec
+    wf = redacted.get("workflow")
+    _wf_actions = (
+        wf.get("actions")
+        if isinstance(wf, dict)
+        else (wf if isinstance(wf, list) else None)
+    )
+    if isinstance(_wf_actions, list):
+        red_actions = []
+        for a in _wf_actions:
+            if isinstance(a, dict) and a.get("value") not in (None, ""):
+                a = {**a, "value": "********"}
+            red_actions.append(a)
+        redacted["workflow"] = (
+            {**wf, "actions": red_actions} if isinstance(wf, dict) else red_actions
+        )
+    access = redacted.get("access_control")
+    if isinstance(access, dict) and isinstance(access.get("users"), list):
+        access = dict(access)
+        access["users"] = [
+            (
+                {**u, "auth": redact_auth_config(u["auth"])}
+                if isinstance(u, dict) and isinstance(u.get("auth"), dict)
+                else u
+            )
+            for u in access["users"]
+        ]
+        redacted["access_control"] = access
     return redacted

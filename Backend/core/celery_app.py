@@ -131,4 +131,43 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.reap_stalled_scans",
         "schedule": crontab(minute="*/2"),
     },
+    # Web-application scans live in their own table with a four-phase lifecycle
+    # and were not covered by the network reaper above — a hung crawl, a dead
+    # web-worker, or a phase failing inside its own except handler left a web
+    # scan 'running' forever, and the UI showed it live forever. Same cadence
+    # and same conservative contract as the network reaper.
+    "reap-stalled-web-scans-every-2-min": {
+        "task": "ccure.tasks.reap_stalled_web_scans",
+        "schedule": crontab(minute="*/2"),
+    },
 }
+
+
+# ── Web-scanner readiness self-check (Phase 15) ──────────────────────────────
+# When the web-scanner worker comes up, verify its DAST toolchain (nuclei +
+# templates, ffuf, sqlmap, the Playwright browser, sslyze) and its backing
+# services (Redis, PostgreSQL), and log the verdict loudly. Phase 14 wrongly
+# read SQLi as broken because an ad-hoc login-shell probe hid sqlmap on PATH;
+# the fix is for the worker to report its own readiness in its own runtime, so
+# a genuinely missing engine surfaces as NOT_READY rather than a silent skip
+# that lets a vulnerable app read as clean. Runs only on the web-scanner worker
+# (identified by its web_* queues) and never emits a secret.
+from celery.signals import worker_ready  # noqa: E402
+
+
+@worker_ready.connect
+def _web_scanner_self_check(sender=None, **_kwargs):
+    import logging
+    import sys
+
+    argv = " ".join(sys.argv)
+    if not any(q in argv for q in ("web_dast", "web_crawl", "web_recon", "web_audit")):
+        return  # not the web-scanner worker — it does not need the DAST toolchain
+    try:
+        from core.web.self_check import log_self_check
+
+        log_self_check()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("ccure.web.self_check").warning(
+            "web-scanner self-check could not run: %s", exc
+        )

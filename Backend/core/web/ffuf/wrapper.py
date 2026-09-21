@@ -76,6 +76,37 @@ class FfufWrapper(ToolWrapper):
         )
         self.wordlist = wordlist or WebScanConfig.FFUF_WORDLIST
 
+    #: Adaptive content-discovery tiers (Phase 11).
+    DISCOVERY_TIERS = ("small", "standard", "deep")
+
+    @staticmethod
+    def resolve_tier(endpoint_count: int) -> str:
+        """
+        Pick a discovery tier from how much the crawl already found.
+
+        A small surface rarely hides a large one behind it, so an exhaustive
+        brute force there is mostly wasted time; a large surface is where deep
+        discovery earns its cost.
+        """
+        if endpoint_count <= WebScanConfig.FFUF_SMALL_MAX_ENDPOINTS:
+            return "small"
+        if endpoint_count <= WebScanConfig.FFUF_MEDIUM_MAX_ENDPOINTS:
+            return "standard"
+        return "deep"
+
+    @staticmethod
+    def wordlist_for_tier(tier: str) -> tuple[str, int]:
+        """Return (wordlist_path, max_words) for a tier."""
+        if tier == "small":
+            return (
+                WebScanConfig.FFUF_WORDLIST_SMALL,
+                WebScanConfig.FFUF_MAX_WORDS_SMALL,
+            )
+        if tier == "deep":
+            wl = WebScanConfig.FFUF_WORDLIST_DEEP or WebScanConfig.FFUF_WORDLIST
+            return wl, WebScanConfig.FFUF_MAX_WORDS_DEEP
+        return WebScanConfig.FFUF_WORDLIST, WebScanConfig.FFUF_MAX_WORDS_STANDARD
+
     def _is_acceptable_exit_code(self, code: int) -> bool:
         """ffuf returns 0 on success regardless of findings count."""
         return code == 0
@@ -89,6 +120,8 @@ class FfufWrapper(ToolWrapper):
         auth_headers: dict[str, str] | None = None,
         match_codes: list[int] | None = None,
         filter_codes: list[int] | None = None,
+        max_words: int | None = None,
+        tier: str | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -111,7 +144,35 @@ class FfufWrapper(ToolWrapper):
         effective_wordlist = wordlist or self.wordlist
         if not os.path.isfile(effective_wordlist):
             log.warning("ffuf wordlist not found: %s", effective_wordlist)
-            return {"discovered_paths": [], "sensitive_findings": [], "stats": {}}
+            return {
+                "discovered_paths": [],
+                "sensitive_findings": [],
+                "stats": {"tier": tier, "wordlist": effective_wordlist, "words": 0},
+            }
+
+        # Adaptive cap: run only the first ``max_words`` entries. A truncated
+        # temp wordlist is written rather than passing the whole file, so the
+        # reduction is real (fewer requests) and the exact count is recorded.
+        _trunc_path = None
+        words_used = None
+        try:
+            with open(
+                effective_wordlist, "r", encoding="utf-8", errors="replace"
+            ) as fh:
+                _lines = [
+                    ln.strip()
+                    for ln in fh
+                    if ln.strip() and not ln.lstrip().startswith("#")
+                ]
+            words_used = len(_lines)
+            if max_words and max_words > 0 and len(_lines) > max_words:
+                _trunc_path = self._create_temp_file(suffix=".txt", prefix="ffuf_wl_")
+                with open(_trunc_path, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(_lines[:max_words]))
+                effective_wordlist = _trunc_path
+                words_used = max_words
+        except Exception as exc:
+            log.debug("ffuf wordlist sizing failed: %s", exc)
 
         # Ensure target URL ends without trailing slash for FUZZ placement
         base_url = target.rstrip("/")
@@ -227,6 +288,8 @@ class FfufWrapper(ToolWrapper):
                 "total_discovered": len(discovered_paths),
                 "sensitive_count": len(sensitive_findings),
                 "wordlist": effective_wordlist,
+                "tier": tier,
+                "words": words_used,
             }
 
             log.info(
@@ -251,3 +314,5 @@ class FfufWrapper(ToolWrapper):
             }
         finally:
             self._cleanup_path(output_file)
+            if _trunc_path:
+                self._cleanup_path(_trunc_path)

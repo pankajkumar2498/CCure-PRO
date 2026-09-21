@@ -81,6 +81,14 @@ SENSITIVE_WITHOUT_LIMIT = {
     "routers.web_scans.get_web_scan",
     "routers.web_scans.get_web_scan_assets",
     "routers.web_scans.get_web_scan_findings",
+    # The attack-surface reads of one scan the caller already owns. Each returns
+    # rows a completed scan persisted (parameters, forms, API operations) or a
+    # single stored screenshot file — bounded by that scan's data, paginated,
+    # permission-gated, and generating nothing. Same rationale as the two above.
+    "routers.web_scans.get_web_scan_parameters",
+    "routers.web_scans.get_web_scan_forms",
+    "routers.web_scans.get_web_scan_api_operations",
+    "routers.web_scans.get_finding_screenshot",
     "routers.scan_history.list_scans",
     "routers.scan_history.get_scan",
     "routers.dashboard.get_scan_activity",

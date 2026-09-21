@@ -294,6 +294,15 @@ class WebScanConfig:
     #: no reduction in coverage; a WAF still clamps it to WEB_STEALTH_RATE_LIMIT.
     #: Set to 0 to fall back to WEB_SCAN_RATE_LIMIT for a fully-throttled deploy.
     FFUF_RATE: int = int(os.getenv("FFUF_RATE", "30"))
+    #: Number of ffuf-discovered HTML-like paths to re-open with the browser at
+    #: depth 0 so hidden pages contribute forms/API calls to the attack surface.
+    FFUF_RECRAWL_MAX: int = int(os.getenv("FFUF_RECRAWL_MAX", "8"))
+    #: Number of discovered GET endpoints to sample for security header and
+    #: CORS checks. The checks aggregate affected URLs into one finding per
+    #: issue so endpoint-specific drift is visible without flooding reports.
+    SECURITY_HEADER_ENDPOINT_SAMPLE_MAX: int = int(
+        os.getenv("SECURITY_HEADER_ENDPOINT_SAMPLE_MAX", "25")
+    )
     SQLMAP_BINARY: str = os.getenv("SQLMAP_BINARY", "sqlmap")
 
     # ── Playwright / Crawling ─────────────────────────────────────────────────

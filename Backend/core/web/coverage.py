@@ -43,12 +43,19 @@ STATUS_SKIPPED = "skipped"
 
 
 def _base(url: str) -> str:
-    """URL without query/fragment — the stable identity of an endpoint."""
+    """URL without query/fragment — the stable identity of an endpoint.
+
+    sqlmap path-parameter targets use ``*`` as an injection marker
+    (``/users/123*``). Strip that marker so coverage recorded for the tested
+    request attaches to the discovered endpoint row (``/users/123``).
+    """
     try:
         p = urlparse(url or "")
-        return p._replace(query="", fragment="").geturl()
+        return p._replace(
+            path=(p.path or "").replace("*", ""), query="", fragment=""
+        ).geturl()
     except Exception:
-        return (url or "").split("?")[0]
+        return (url or "").split("?")[0].replace("*", "")
 
 
 class CoverageLedger:

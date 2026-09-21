@@ -938,8 +938,25 @@ class PlaywrightCrawler:
                 etype = ((await el.get_attribute("type")) or "").lower()
             except Exception:
                 etype = ""
-            if etype == "submit":
-                continue  # a submit may POST a form — not a safe autonomous click
+            if etype in {"submit", "reset", "image"}:
+                continue  # a submit/reset may mutate target state
+            try:
+                in_form = bool(
+                    await el.evaluate(
+                        "(node) => !!(node.closest && node.closest('form'))"
+                    )
+                )
+            except Exception:
+                in_form = False
+            try:
+                remote_form = bool((await el.get_attribute("form")) or "")
+            except Exception:
+                remote_form = False
+            if in_form or remote_form:
+                # A <button> inside a form defaults to type=submit when the
+                # attribute is omitted. Do not rely on markup being explicit:
+                # autonomous crawling must not accidentally submit workflows.
+                continue
             before = page.url
             try:
                 await el.click(timeout=2000, no_wait_after=True)
@@ -989,6 +1006,20 @@ class PlaywrightCrawler:
                 href = await el.get_attribute("href")
                 if href:
                     links.add(urljoin(current_url, href.strip()))
+        except Exception:
+            pass
+
+        # Iframes/frames are independent application surfaces. They are passive
+        # navigations, so enqueue their src just like links and let scope checks
+        # decide whether the crawler may visit them.
+        try:
+            for el in await page.query_selector_all("iframe[src], frame[src]"):
+                src = (await el.get_attribute("src")) or ""
+                src = src.strip()
+                if src and not src.startswith(
+                    ("javascript:", "data:", "about:", "blob:")
+                ):
+                    links.add(urljoin(current_url, src))
         except Exception:
             pass
 
@@ -1402,11 +1433,25 @@ class PlaywrightCrawler:
 
     @staticmethod
     def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
-        """Deduplicate endpoints by URL+method."""
+        """Deduplicate endpoints without collapsing distinct API operations.
+
+        Method+URL is enough for ordinary pages, but APIs often multiplex many
+        operations through one URL (GraphQL) or one path with different JSON
+        bodies. Include operation identity/body hash when present so generated
+        GraphQL/OpenAPI/HAR requests remain independently testable.
+        """
+        import hashlib
+
         seen: set[str] = set()
         unique: list[dict] = []
         for ep in endpoints:
-            key = f"{ep.get('method', 'GET')}:{ep.get('url', '')}"
+            method = ep.get("method", "GET")
+            url = ep.get("url", "")
+            extra = ep.get("graphql_operation") or ""
+            body = ep.get("request_body")
+            if body:
+                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+            key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)
                 unique.append(ep)

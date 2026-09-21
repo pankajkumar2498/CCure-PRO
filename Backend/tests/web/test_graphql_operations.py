@@ -161,3 +161,31 @@ def test_injection_engine_builds_graphql_variable_candidates():
     cands = ie._param_candidates("http://t/", eps, [])
     json_c = [c for c in cands if c.get("kind") == "json"]
     assert json_c and json_c[0]["param"] == "id"  # the variable, not "query"
+
+
+def test_endpoint_dedup_preserves_distinct_graphql_operations():
+    from core.web.crawling.browser import PlaywrightCrawler
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    eps = [
+        graphql_operation_request(
+            "http://t/graphql",
+            {
+                "operation": "query",
+                "name": "user",
+                "args": ["id"],
+                "return_kind": "OBJECT",
+            },
+        ),
+        graphql_operation_request(
+            "http://t/graphql",
+            {
+                "operation": "query",
+                "name": "search",
+                "args": ["term"],
+                "return_kind": "SCALAR",
+            },
+        ),
+    ]
+    assert len(PlaywrightCrawler._deduplicate_endpoints(eps)) == 2
+    assert len(WebScanOrchestrator._deduplicate_endpoints(eps)) == 2

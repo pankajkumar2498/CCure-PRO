@@ -108,8 +108,13 @@ class CoverageScheduler:
 
     # ── recording ─────────────────────────────────────────────────────────────
     def record(self, kind: str, url: str, outcome: str, reason: str = "") -> None:
-        """Record an engine's outcome for a check, updating the matching tasks and
-        the coverage ledger."""
+        """Record an engine's outcome for a check, updating matching tasks.
+
+        This does *not* update the parameter coverage ledger. The ledger is
+        parameter-granular, while a scheduler task is endpoint-granular; treating
+        one completed task as proof that every parameter on that endpoint was
+        tested made reports claim coverage the engine never performed.
+        """
         matched = False
         for t in self._tasks:
             if t.kind == kind and (not url or t.url == url):
@@ -117,12 +122,22 @@ class CoverageScheduler:
                 t.outcome = outcome
                 t.reason = reason
                 matched = True
-        if self._ledger is not None and outcome != SKIPPED:
-            try:
-                self._ledger.mark_endpoint(url, kind)
-            except Exception:
-                pass
         return matched
+
+    def finalize_unresolved(self, reason: str) -> None:
+        """Mark tasks still queued at phase end as skipped.
+
+        The current orchestrator runs engines in coarse batches rather than by
+        individual scheduler task. Leaving all unvisited tasks as ``queued`` in a
+        completed scan made the report look internally inconsistent. ``skipped``
+        is explicit: planned but not independently executed by the current
+        scheduler.
+        """
+        for t in self._tasks:
+            if t.status == QUEUED:
+                t.status = SKIPPED
+                t.outcome = SKIPPED
+                t.reason = reason
 
     def add_findings(self, findings: List[dict]) -> None:
         self._findings.extend(findings or [])

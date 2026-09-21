@@ -14,18 +14,31 @@ from core.web.crawling.browser import PlaywrightCrawler
 
 
 class _FakeEl:
-    def __init__(self, page, text="", etype=None, new_url=None):
+    def __init__(
+        self, page, text="", etype=None, new_url=None, *, in_form=False, form_attr=None
+    ):
         self._page = page
         self._text = text
         self._etype = etype
         self._new_url = new_url
+        self._in_form = in_form
+        self._form_attr = form_attr
         self.clicked = False
 
     async def inner_text(self):
         return self._text
 
     async def get_attribute(self, name):
-        return self._etype if name == "type" else None
+        if name == "type":
+            return self._etype
+        if name == "form":
+            return self._form_attr
+        return None
+
+    async def evaluate(self, script):
+        if "closest('form')" in script or 'closest("form")' in script:
+            return self._in_form
+        return None
 
     async def click(self, **kwargs):
         self.clicked = True
@@ -83,6 +96,28 @@ def test_submit_controls_are_skipped():
     crawler = PlaywrightCrawler()
     found = _run(crawler._interact_page(page, "http://t/"))
     assert not submit.clicked and found == []
+
+
+def test_default_buttons_inside_forms_are_skipped():
+    page = _FakePage()
+    default_submit = _FakeEl(
+        page, text="Comment", new_url="http://t/#/posted", in_form=True
+    )
+    page.elements = [default_submit]
+    crawler = PlaywrightCrawler()
+    found = _run(crawler._interact_page(page, "http://t/"))
+    assert not default_submit.clicked and found == []
+
+
+def test_remote_form_controls_are_skipped():
+    page = _FakePage()
+    remote = _FakeEl(
+        page, text="Save", new_url="http://t/#/saved", form_attr="profile-form"
+    )
+    page.elements = [remote]
+    crawler = PlaywrightCrawler()
+    found = _run(crawler._interact_page(page, "http://t/"))
+    assert not remote.clicked and found == []
 
 
 def test_clicks_are_bounded():

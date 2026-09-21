@@ -14,7 +14,8 @@ Correlation rules:
 """
 
 import logging
-from typing import Dict, List, Set
+import re
+from urllib.parse import parse_qsl, urlparse
 
 log = logging.getLogger("ccure.web.correlation")
 
@@ -43,6 +44,54 @@ def _finding_identity(f: dict) -> str:
     return str(f.get("finding_type") or "unknown").strip().lower()
 
 
+_INPUT_FINDING_TYPES = {
+    "sqli",
+    "xss",
+    "cmdi",
+    "ssti",
+    "xxe",
+    "ldap",
+    "xpath",
+    "idor",
+    "open_redirect",
+}
+
+
+def _parameter_identity(f: dict) -> str:
+    """Return a stable input identity when evidence names the tested parameter."""
+    ftype = str(f.get("finding_type") or "").lower()
+    param = str(f.get("parameter") or f.get("param") or "").strip()
+    loc = str(
+        f.get("parameter_location")
+        or f.get("param_location")
+        or f.get("location")
+        or ""
+    ).strip()
+
+    evidence = str(f.get("request_evidence") or "")
+    if not param:
+        m = re.search(r"(?:^|;)\s*parameter=([^;]+)", evidence, re.I)
+        if m:
+            param = m.group(1).strip()
+    if not loc:
+        m = re.search(r"(?:^|;)\s*location=([^;]+)", evidence, re.I)
+        if m:
+            loc = m.group(1).strip()
+
+    if param:
+        return f"param:{(loc or 'unknown').lower()}:{param.lower()}"
+
+    if ftype in _INPUT_FINDING_TYPES:
+        parsed = urlparse(str(f.get("request_url") or f.get("matched_at") or ""))
+        query_names = sorted(
+            {name for name, _ in parse_qsl(parsed.query, keep_blank_values=True)}
+        )
+        if len(query_names) == 1:
+            return f"param:query:{query_names[0].lower()}"
+
+    return ""
+
+
 def deduplicate_findings(findings: list[dict]) -> list[dict]:
     """
     Collapse repeat reports of the *same* issue at the same location.
@@ -64,12 +113,13 @@ def deduplicate_findings(findings: list[dict]) -> list[dict]:
     if not findings:
         return []
 
-    # Group by (url, finding_type, specific check identity)
+    # Group by (url, finding_type, specific check identity, input identity).
     groups: dict[str, list[dict]] = {}
     for f in findings:
         url = (f.get("matched_at") or f.get("request_url") or "").split("?")[0]
         ftype = f.get("finding_type", "unknown")
-        key = f"{url}|{ftype}|{_finding_identity(f)}"
+        input_key = _parameter_identity(f)
+        key = f"{url}|{ftype}|{_finding_identity(f)}|{input_key}"
         groups.setdefault(key, []).append(f)
 
     deduplicated: list[dict] = []

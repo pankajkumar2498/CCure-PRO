@@ -264,3 +264,25 @@ def test_scope_preserved_under_concurrency():
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_ffuf_recrawl_candidates_are_capped_and_html_like():
+    from orchestrator.web_orchestrator import ffuf_recrawl_candidates
+
+    hits = [
+        {"url": "http://t/admin", "status": 200, "content_type": "text/html"},
+        {"url": "http://t/app", "status": 200, "content_type": ""},
+        {
+            "url": "http://t/app.js",
+            "status": 200,
+            "content_type": "application/javascript",
+        },
+        {"url": "http://t/missing", "status": 404, "content_type": "text/html"},
+        {
+            "url": "http://t/other",
+            "status": 200,
+            "content_type": "application/xhtml+xml",
+        },
+    ]
+    assert ffuf_recrawl_candidates(hits, 2) == ["http://t/admin", "http://t/app"]
+    assert ffuf_recrawl_candidates(hits, 0) == []

@@ -26,7 +26,7 @@ Design Decisions:
 import logging
 import time
 from typing import Any, Dict, List
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from config import WebScanConfig
 
@@ -241,6 +241,91 @@ class ToolCoverage:
         }
 
 
+def ffuf_recrawl_candidates(
+    discovered_paths: List[Dict[str, Any]], limit: int
+) -> List[str]:
+    """Return ffuf hits worth opening with the browser for surface extraction.
+
+    ffuf already contributes URLs to detection. This helper picks a small,
+    deterministic subset of HTML-like 200 responses so hidden pages can also
+    contribute forms, static JS routes and network/API calls without launching an
+    unbounded second crawl.
+    """
+    out: List[str] = []
+    seen: set[str] = set()
+    if limit <= 0:
+        return out
+    for item in discovered_paths or []:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        try:
+            status = int(item.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status != 200:
+            continue
+        ctype = str(item.get("content_type") or item.get("content-type") or "").lower()
+        if ctype and not any(t in ctype for t in ("html", "xhtml", "text/plain")):
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def security_header_sample_urls(
+    target_url: str, endpoints: List[Dict[str, Any]] | None, limit: int
+) -> List[str]:
+    """Same-origin GET URLs to use for passive header/CORS sampling."""
+    samples: List[str] = []
+    seen: set[str] = set()
+    base = urlparse(target_url)
+    origin = (base.scheme, base.netloc.lower())
+
+    def add(raw: Any) -> None:
+        raw_url = str(raw or "").strip()
+        if not raw_url:
+            return
+        parsed = urlparse(urljoin(target_url, raw_url))
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return
+        if (parsed.scheme, parsed.netloc.lower()) != origin:
+            return
+        normalized = parsed._replace(fragment="").geturl()
+        if normalized in seen:
+            return
+        seen.add(normalized)
+        samples.append(normalized)
+
+    add(target_url)
+    if limit <= 0:
+        return samples
+
+    for ep in endpoints or []:
+        if not isinstance(ep, dict):
+            continue
+        method = str(ep.get("method") or "GET").upper()
+        if method != "GET":
+            continue
+        add(ep.get("url") or ep.get("request_url") or ep.get("matched_at"))
+        if len(samples) - 1 >= limit:
+            break
+    return samples
+
+
+def _sample_evidence(label: str, urls: List[str], *, max_urls: int = 10) -> str:
+    shown = [str(u) for u in urls[:max_urls]]
+    lines = [f"{label}: {len(urls)} URL(s)"]
+    lines.extend(f"- {u}" for u in shown)
+    if len(urls) > max_urls:
+        lines.append(f"- ... {len(urls) - max_urls} more")
+    return "\n".join(lines)
+
+
 def tool_unavailable_finding(target_url: str, missing: List[str]) -> Dict[str, Any]:
     """
     A finding stating that the scan did not assess the target.
@@ -276,6 +361,24 @@ def tool_unavailable_finding(target_url: str, missing: List[str]) -> Dict[str, A
 #: case of CSRF tokens, break the request when replaced with a probe).
 _NON_INJECTABLE_INPUT_TYPES = {"submit", "button", "reset", "image", "file", "hidden"}
 
+#: Active browser/custom probes deliberately avoid spraying credentials and
+#: anti-CSRF controls. They remain in the inventory, but coverage should explain
+#: why those engines skipped them instead of leaving a mystery gap.
+_ACTIVE_PROBE_SKIP_FIELD_NAMES = {
+    "csrf",
+    "csrf_token",
+    "_token",
+    "authenticity_token",
+    "password",
+}
+
+
+def is_active_probe_excluded_form_param(node: Dict[str, Any]) -> bool:
+    return (
+        node.get("location") == "form"
+        and str(node.get("param") or "").lower() in _ACTIVE_PROBE_SKIP_FIELD_NAMES
+    )
+
 
 def build_injection_targets(
     endpoints: List[Dict[str, Any]], forms: List[Dict[str, Any]]
@@ -283,20 +386,17 @@ def build_injection_targets(
     """
     The set of request shapes worth handing to an injection tester.
 
-    Two things this has to get right, both of which were previously wrong.
-
-    Forms were discovered by the crawl and then never used. Injection lives
-    disproportionately in form parameters — login, search, feedback — so a
-    scanner that tests only URLs carrying a query string skips the richest part
-    of the surface it just spent a phase mapping.
-
-    A POST endpoint with no body is not a test. sqlmap given ``-u`` and a POST
-    method with nothing to inject probes no parameter at all and returns clean,
-    which is indistinguishable from a target that has no flaw. Each target here
-    carries the data that makes it testable, or it is not emitted.
+    Each emitted target also carries ``coverage_params``: the exact
+    (url, location, parameter) triples that sqlmap will exercise if the run is
+    launched. Coverage is updated from those triples, not from the whole
+    endpoint, so headers/cookies/other body fields are never marked tested just
+    because one request to the same URL ran.
     """
+    from urllib.parse import parse_qsl
+
     from core.web.surface import (
         is_json_request,
+        json_param_names,
         parse_json_object,
         path_id_segments,
         swap_path_segment,
@@ -306,7 +406,11 @@ def build_injection_targets(
     seen: set = set()
 
     def _add(
-        url: str, method: str, data: str | None, content_type: str | None = None
+        url: str,
+        method: str,
+        data: str | None,
+        content_type: str | None = None,
+        coverage_params: list[dict] | None = None,
     ) -> None:
         url = str(url or "").strip()
         # A fragment is resolved in the browser and never reaches the server,
@@ -318,7 +422,13 @@ def build_injection_targets(
             return
         seen.add(key)
         targets.append(
-            {"url": url, "method": method, "data": data, "content_type": content_type}
+            {
+                "url": url,
+                "method": method,
+                "data": data,
+                "content_type": content_type,
+                "coverage_params": coverage_params or [],
+            }
         )
 
     for ep in endpoints or []:
@@ -326,7 +436,11 @@ def build_injection_targets(
             continue
         url = ep.get("url", "")
         if "?" in url and urlparse(url).query:
-            _add(url, "GET", None)
+            q_params = [
+                {"url": url, "location": "query", "param": name}
+                for name, _ in parse_qsl(urlparse(url).query, keep_blank_values=True)
+            ]
+            _add(url, "GET", None, coverage_params=q_params)
 
         # JSON request body (Phase 22): a captured JSON API body is where modern
         # parameters live. sqlmap auto-detects JSON params from --data in batch
@@ -334,11 +448,16 @@ def build_injection_targets(
         if is_json_request(ep):
             body_obj = parse_json_object(ep.get("request_body"))
             if body_obj:
+                j_params = [
+                    {"url": url, "location": "json", "param": name}
+                    for name in json_param_names(body_obj)
+                ]
                 _add(
                     url,
                     str(ep.get("method") or "POST").upper(),
                     ep.get("request_body"),
                     content_type="application/json",
+                    coverage_params=j_params,
                 )
 
         # XML / SOAP request body (Phase 23, WSDL import): sqlmap detects and
@@ -352,19 +471,35 @@ def build_injection_targets(
             and _xml_body.lstrip().startswith("<")
             and ("xml" in _xml_ct or "soap" in _xml_ct)
         ):
+            soap_names = (ep.get("parameters") or {}).get("soap") or ["body"]
             _add(
                 url,
                 str(ep.get("method") or "POST").upper(),
                 _xml_body,
                 content_type=ep.get("request_content_type") or "text/xml",
+                coverage_params=[
+                    {"url": url, "location": "soap", "param": str(name)}
+                    for name in soap_names
+                ],
             )
 
         # Path identifiers (Phase 22): /api/users/123 → mark the id with sqlmap's
         # custom injection-point marker '*' so the path segment is tested, not
         # just query/body. Only identifier-looking segments are marked.
-        for seg in path_id_segments(url):
+        path_param_names = (ep.get("parameters") or {}).get("path") or []
+        for _seg_pos, seg in enumerate(path_id_segments(url)):
             marked = swap_path_segment(url, seg["index"], seg["value"] + "*")
-            _add(marked, str(ep.get("method") or "GET").upper(), None)
+            param_name = (
+                str(path_param_names[_seg_pos])
+                if _seg_pos < len(path_param_names)
+                else str(seg["index"])
+            )
+            _add(
+                marked,
+                str(ep.get("method") or "GET").upper(),
+                None,
+                coverage_params=[{"url": url, "location": "path", "param": param_name}],
+            )
 
     for form in forms or []:
         if not isinstance(form, dict):
@@ -380,11 +515,17 @@ def build_injection_targets(
         if not fields:
             continue
         body = "&".join(f"{name}=1" for name in fields)
+        form_url = form.get("url", "")
+        cov = [{"url": form_url, "location": "form", "param": name} for name in fields]
         if method == "POST":
-            _add(form.get("url", ""), "POST", body)
+            _add(form_url, "POST", body, coverage_params=cov)
         else:
-            url = form.get("url", "")
-            _add(f"{url}{'&' if urlparse(url).query else '?'}{body}", "GET", None)
+            _add(
+                f"{form_url}{'&' if urlparse(form_url).query else '?'}{body}",
+                "GET",
+                None,
+                coverage_params=cov,
+            )
 
     return targets
 
@@ -898,6 +1039,7 @@ class WebScanOrchestrator:
                         tier=ffuf_tier,
                     )
                     _fst = ffuf_result.get("stats", {})
+                    discovered_paths = ffuf_result.get("discovered_paths", [])
                     crawl_stats["ffuf_tier"] = ffuf_tier
                     crawl_stats["ffuf_words"] = _fst.get("words")
                     crawl_stats["ffuf_rate"] = rate
@@ -909,8 +1051,10 @@ class WebScanOrchestrator:
                             f"{len(all_endpoints)} endpoint(s). The exhaustive "
                             f"wordlist was not run; raise the scan depth to force it."
                         )
-                    # Convert discovered paths to endpoints
-                    for path_info in ffuf_result.get("discovered_paths", []):
+                    # Convert discovered paths to endpoints. A bounded subset of
+                    # HTML-like hits is then re-opened with the browser so hidden
+                    # pages can contribute forms, JS endpoints and network calls.
+                    for path_info in discovered_paths:
                         all_endpoints.append(
                             {
                                 "url": path_info["url"],
@@ -921,6 +1065,63 @@ class WebScanOrchestrator:
                             }
                         )
                     sensitive_findings.extend(ffuf_result.get("sensitive_findings", []))
+
+                    recrawl_targets = ffuf_recrawl_candidates(
+                        discovered_paths, WebScanConfig.FFUF_RECRAWL_MAX
+                    )
+                    if recrawl_targets:
+                        from core.web.crawling.browser import PlaywrightCrawler
+
+                        crawl_stats["ffuf_recrawl_candidates"] = len(recrawl_targets)
+                        ffuf_recrawler = PlaywrightCrawler(
+                            max_depth=0,
+                            max_urls=1,
+                            concurrency=1,
+                            rate_limit=crawl_rate,
+                        )
+                        recrawl_pages = recrawl_endpoints = recrawl_forms = 0
+                        for hidden_url in recrawl_targets:
+                            if self._scan_is_cancelled(web_scan_id):
+                                break
+                            try:
+                                rr = await ffuf_recrawler.crawl(
+                                    start_url=hidden_url,
+                                    auth_cookies=auth_cookies or None,
+                                    auth_headers=auth_headers or None,
+                                    exclude_patterns=scan_scope.get(
+                                        "exclude_paths", []
+                                    ),
+                                    progress_cb=None,
+                                    auth_config=crawl_auth_cfg,
+                                    reauth_cb=reauth_cb,
+                                    cancel_cb=lambda: self._scan_is_cancelled(
+                                        web_scan_id
+                                    ),
+                                    interact=False,
+                                )
+                                recrawl_pages += rr.pages_visited
+                                recrawl_endpoints += len(rr.endpoints) + len(
+                                    rr.js_endpoints
+                                )
+                                recrawl_forms += len(rr.forms)
+                                all_endpoints.extend(rr.endpoints)
+                                all_endpoints.extend(rr.js_endpoints)
+                                all_forms.extend(rr.forms)
+                                sensitive_findings.extend(
+                                    open_redirect_findings(rr.out_of_scope, hidden_url)
+                                )
+                                sensitive_findings.extend(
+                                    getattr(rr, "js_findings", []) or []
+                                )
+                            except Exception as exc:
+                                log.debug(
+                                    "[CRAWL] ffuf follow-up crawl failed for %s: %s",
+                                    hidden_url[:120],
+                                    exc,
+                                )
+                        crawl_stats["ffuf_recrawl_pages"] = recrawl_pages
+                        crawl_stats["ffuf_recrawl_endpoints"] = recrawl_endpoints
+                        crawl_stats["ffuf_recrawl_forms"] = recrawl_forms
             except Exception as exc:
                 log.warning("[CRAWL] ffuf failed: %s", exc)
 
@@ -1034,7 +1235,7 @@ class WebScanOrchestrator:
         # cookies/headers are attacked), the per-page parameter budget, whether
         # file-upload forms are tested, and the per-engine time budgets. Every
         # value below is read from here, so a policy is not advisory.
-        from core.web.policy import resolve_policy
+        from core.web.policy import allowed_locations, resolve_policy
 
         policy = resolve_policy(options)
         self._log(
@@ -1313,11 +1514,20 @@ class WebScanOrchestrator:
                                     ),
                                 )
                                 all_findings.extend(sqlmap_result.get("findings", []))
-                                # Coverage: sqlmap tests every parameter in a
-                                # target, so record its endpoint as sqlmap-covered
-                                # unless the target itself was skipped.
+                                # Coverage: mark exactly the parameters this
+                                # candidate hands to sqlmap. Do not mark the
+                                # whole endpoint; the same URL may also carry
+                                # headers/cookies/body fields sqlmap did not
+                                # receive for this run.
                                 if sqlmap_result.get("status") != "skipped":
                                     sqlmap_run_urls.add(candidate["url"])
+                                    for _cp in candidate.get("coverage_params", []):
+                                        ledger.mark(
+                                            _cp.get("url", candidate["url"]),
+                                            _cp.get("location", "query"),
+                                            _cp.get("param", ""),
+                                            "sqlmap",
+                                        )
                                 outcomes[sqlmap_result.get("status", "error")] = (
                                     outcomes.get(
                                         sqlmap_result.get("status", "error"), 0
@@ -1415,7 +1625,10 @@ class WebScanOrchestrator:
                             forms=forms,
                             auth_headers=auth_headers or None,
                             auth_cookies=auth_cookies or None,
-                            options=options,
+                            options={
+                                **(options or {}),
+                                "_allowed_locations": sorted(allowed_locations(policy)),
+                            },
                             waf_detected=waf_detected,
                             progress_cb=_xss_progress,
                             cancel_cb=_xss_cancelled,
@@ -1462,7 +1675,7 @@ class WebScanOrchestrator:
                     inj = InjectionEngine(
                         rate_limit=effective_rate,
                         max_targets=WebScanConfig.INJECTION_MAX_TARGETS,
-                        max_params_per_target=WebScanConfig.INJECTION_MAX_PARAMS_PER_TARGET,
+                        max_params_per_target=policy["max_params_per_page"],
                         timeout_s=WebScanConfig.INJECTION_TIMEOUT_S,
                         cmdi_delay_1=WebScanConfig.INJECTION_CMDI_DELAY_1,
                         cmdi_delay_2=WebScanConfig.INJECTION_CMDI_DELAY_2,
@@ -1497,7 +1710,10 @@ class WebScanOrchestrator:
                             forms=forms,
                             auth_headers=auth_headers or None,
                             auth_cookies=auth_cookies or None,
-                            options=options,
+                            options={
+                                **(options or {}),
+                                "_allowed_locations": sorted(allowed_locations(policy)),
+                            },
                             waf_detected=waf_detected,
                             progress_cb=_inj_progress,
                             cancel_cb=_inj_cancelled,
@@ -1905,21 +2121,31 @@ class WebScanOrchestrator:
                     "total_findings": len(all_findings),
                 },
             )
-            header_findings = await self._check_security_headers(target_url)
+            header_sample_urls = security_header_sample_urls(
+                target_url,
+                endpoints,
+                WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX,
+            )
+            header_findings = await self._check_security_headers(
+                target_url, endpoints=endpoints
+            )
             all_findings.extend(header_findings)
-            scheduler.record("security_headers", target_url, "done")
+            for sampled_url in header_sample_urls:
+                scheduler.record("security_headers", sampled_url, "done")
 
             # 4. CORS Misconfiguration Check
-            cors_findings = await self._check_cors(target_url)
+            cors_findings = await self._check_cors(target_url, endpoints=endpoints)
             all_findings.extend(cors_findings)
-            scheduler.record("cors", target_url, "done")
+            for sampled_url in header_sample_urls:
+                scheduler.record("cors", sampled_url, "done")
 
             # 4b. Cookie security (Phase 17): Secure / HttpOnly / SameSite on
             #     sensitive (session/auth/token) cookies only — preference
             #     cookies are not flagged, to avoid a false-positive flood.
-            cookie_findings = await self._check_cookies(target_url)
+            cookie_findings = await self._check_cookies(target_url, endpoints=endpoints)
             all_findings.extend(cookie_findings)
-            scheduler.record("cookies", target_url, "done")
+            for sampled_url in header_sample_urls:
+                scheduler.record("cookies", sampled_url, "done")
 
             # A scan whose primary detector never ran has not assessed this
             # target. Say so as a finding, so an empty result cannot be read
@@ -1934,12 +2160,79 @@ class WebScanOrchestrator:
                     target_url,
                 )
 
-            # Coverage ledger (Phase 22): fold sqlmap's endpoint-level coverage
-            # in, then compute the per-parameter coverage summary that lets the
-            # report distinguish "tested-clean" from "never-tested".
+            # Coverage ledger (Phase 22): sqlmap parameter coverage has already
+            # been recorded per candidate above. Record only scheduler task
+            # outcomes here; do not mark endpoint-wide parameter coverage.
             for _u in sqlmap_run_urls:
-                ledger.mark_endpoint(_u, "sqlmap")
                 scheduler.record("sqli", _u, "done")
+
+            # Honest skipped coverage: record why still-untested parameters were
+            # not exercised. This is deliberately separate from positive
+            # coverage marking so unsupported locations do not become "tested".
+            _allowed_locs = allowed_locations(policy)
+            ledger.mark_skipped(
+                "policy",
+                "parameter location disabled by scan policy",
+                lambda n: n.get("location") not in _allowed_locs,
+            )
+            _coverage_now = coverage.as_dict()
+            _tool_rows = {r.get("tool"): r for r in _coverage_now.get("tools", [])}
+
+            def _tool_not_ran(name: str) -> str:
+                row = _tool_rows.get(name) or {}
+                status = row.get("status") or "not_run"
+                if status in (ToolCoverage.STATUS_RAN, ToolCoverage.STATUS_PARTIAL):
+                    return ""
+                detail = (row.get("detail") or "not run").strip()
+                return f"{name} {status}: {detail}"[:255]
+
+            _sqlmap_reason = _tool_not_ran("sqlmap")
+            if _sqlmap_reason:
+                ledger.mark_skipped(
+                    "sqlmap",
+                    _sqlmap_reason,
+                    lambda n: n.get("location")
+                    in (
+                        _allowed_locs
+                        & {"query", "form", "json", "path", "soap", "cookie", "header"}
+                    ),
+                )
+            _xss_reason = _tool_not_ran("xss")
+            if _xss_reason:
+                ledger.mark_skipped("xss", _xss_reason)
+            else:
+                ledger.mark_skipped(
+                    "xss",
+                    "sensitive/control form field excluded from XSS probes",
+                    is_active_probe_excluded_form_param,
+                )
+                ledger.mark_skipped(
+                    "xss",
+                    "xss engine supports query/form/json/path plus policy-enabled header/cookie inputs",
+                    lambda n: n.get("location")
+                    not in (
+                        _allowed_locs
+                        & {"query", "form", "json", "path", "header", "cookie"}
+                    ),
+                )
+            _inj_reason = _tool_not_ran("injection")
+            if _inj_reason:
+                ledger.mark_skipped("injection", _inj_reason)
+            else:
+                ledger.mark_skipped(
+                    "injection",
+                    "sensitive/control form field excluded from injection probes",
+                    is_active_probe_excluded_form_param,
+                )
+                ledger.mark_skipped(
+                    "injection",
+                    "injection engine supports query/form/json/path/header/cookie inputs only",
+                    lambda n: n.get("location")
+                    not in {"query", "form", "json", "path", "header", "cookie"},
+                )
+            scheduler.finalize_unresolved(
+                "planned task not individually executed by current engine batch"
+            )
             _cov_active = [
                 e
                 for e in ("injection", "xss", "sqlmap")
@@ -2257,142 +2550,225 @@ class WebScanOrchestrator:
 
         return result
 
-    async def _check_security_headers(self, target_url: str) -> list[dict]:
-        """Check for missing security headers."""
+    async def _check_security_headers(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
+        """Check sampled discovered pages for missing security headers."""
         findings = []
+        required_headers = {
+            "strict-transport-security": {
+                "title": "Missing HSTS Header",
+                "severity": "medium",
+                "cvss_score": 5.0,
+            },
+            "x-content-type-options": {
+                "title": "Missing X-Content-Type-Options Header",
+                "severity": "low",
+                "cvss_score": 3.0,
+            },
+            "x-frame-options": {
+                "title": "Missing X-Frame-Options Header (Clickjacking)",
+                "severity": "medium",
+                "cvss_score": 4.0,
+            },
+            "content-security-policy": {
+                "title": "Missing Content-Security-Policy Header",
+                "severity": "medium",
+                "cvss_score": 5.0,
+            },
+            # X-XSS-Protection is deliberately NOT here (Phase 19, PART A).
+            # The header is deprecated: Chrome/Edge removed the XSS auditor
+            # it controlled in 2019, Firefox never implemented it, and OWASP
+            # now recommends omitting it (or setting it to "0"), because the
+            # auditor itself introduced information-disclosure side channels.
+            # A modern, correctly-configured application therefore does NOT
+            # send it, so flagging its absence is a false positive. Content-
+            # Security-Policy above is the real non-deprecated XSS control.
+        }
+        missing: Dict[str, List[str]] = {name: [] for name in required_headers}
+        sample_urls = security_header_sample_urls(
+            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+        )
         try:
             import httpx
 
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
-                resp = await client.get(target_url)
-                headers = {k.lower(): v for k, v in resp.headers.items()}
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url)
+                    except Exception as exc:
+                        log.debug("Security header check failed for %s: %s", url, exc)
+                        continue
+                    headers = {k.lower(): v for k, v in resp.headers.items()}
+                    for header_name in required_headers:
+                        if header_name not in headers:
+                            missing[header_name].append(url)
 
-                required_headers = {
-                    "strict-transport-security": {
-                        "title": "Missing HSTS Header",
-                        "severity": "medium",
-                        "cvss_score": 5.0,
-                    },
-                    "x-content-type-options": {
-                        "title": "Missing X-Content-Type-Options Header",
-                        "severity": "low",
-                        "cvss_score": 3.0,
-                    },
-                    "x-frame-options": {
-                        "title": "Missing X-Frame-Options Header (Clickjacking)",
-                        "severity": "medium",
-                        "cvss_score": 4.0,
-                    },
-                    "content-security-policy": {
-                        "title": "Missing Content-Security-Policy Header",
-                        "severity": "medium",
-                        "cvss_score": 5.0,
-                    },
-                    # X-XSS-Protection is deliberately NOT here (Phase 19, PART A).
-                    # The header is deprecated: Chrome/Edge removed the XSS auditor
-                    # it controlled in 2019, Firefox never implemented it, and OWASP
-                    # now recommends omitting it (or setting it to "0"), because the
-                    # auditor itself introduced information-disclosure side channels.
-                    # A modern, correctly-configured application therefore does NOT
-                    # send it, so flagging its absence is a false positive — exactly
-                    # the one Phase 14 validation found. Content-Security-Policy above
-                    # is the real, non-deprecated control against XSS, and its
-                    # absence is still flagged. Nothing legitimate is hidden: the
-                    # other four headers continue to fire on their own merits.
-                }
-
-                for header_name, meta in required_headers.items():
-                    if header_name not in headers:
-                        findings.append(
-                            {
-                                "finding_type": "misconfig",
-                                "title": meta["title"],
-                                "description": f"The response is missing the {header_name} security header.",
-                                "severity": meta["severity"],
-                                "cvss_score": meta["cvss_score"],
-                                "detected_by": "custom",
-                                "matched_at": target_url,
-                                # "misconfig" is a nuclei catch-all with no
-                                # single defensible CWE, but a *missing security
-                                # header* specifically is a protection-mechanism
-                                # failure. Set it explicitly so resolve_cwe
-                                # preserves it rather than leaving it blank.
-                                "cwe_id": "CWE-693",
-                            }
-                        )
+            for header_name, urls in missing.items():
+                if not urls:
+                    continue
+                meta = required_headers[header_name]
+                findings.append(
+                    {
+                        "finding_type": "misconfig",
+                        "title": meta["title"],
+                        "description": (
+                            f"{len(urls)} sampled response(s) are missing the "
+                            f"{header_name} security header."
+                        ),
+                        "severity": meta["severity"],
+                        "cvss_score": meta["cvss_score"],
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": (
+                            f"Sampled {len(sample_urls)} same-origin GET URL(s)."
+                        ),
+                        "response_evidence": _sample_evidence("Affected URLs", urls),
+                        # "misconfig" is a nuclei catch-all with no single
+                        # defensible CWE, but a missing security header is a
+                        # protection-mechanism failure.
+                        "cwe_id": "CWE-693",
+                    }
+                )
         except Exception as exc:
             log.debug("Security header check failed: %s", exc)
         return findings
 
-    async def _check_cookies(self, target_url: str) -> list[dict]:
+    async def _check_cookies(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
         """
-        Cookie security check (Phase 17). Fetches the target, reads its
-        Set-Cookie headers, and flags Secure/HttpOnly/SameSite weaknesses on
-        sensitive cookies only. Never raises; never stores a cookie value.
+        Cookie security check (Phase 17). Fetches sampled same-origin pages,
+        reads their Set-Cookie headers, and flags Secure/HttpOnly/SameSite
+        weaknesses on sensitive cookies only. Never stores a cookie value.
         """
         try:
             import httpx
-            from urllib.parse import urlparse
 
             from core.web.cookies import analyze_cookies
 
-            is_https = urlparse(target_url).scheme == "https"
+            sample_urls = security_header_sample_urls(
+                target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+            )
+            grouped: Dict[tuple[str, str], dict] = {}
             async with httpx.AsyncClient(
                 verify=False, timeout=10.0, follow_redirects=True
             ) as client:
-                resp = await client.get(target_url)
-                raw = (
-                    resp.headers.get_list("set-cookie")
-                    if hasattr(resp.headers, "get_list")
-                    else resp.headers.get("set-cookie", "")
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url)
+                    except Exception as exc:
+                        log.debug("Cookie security check failed for %s: %s", url, exc)
+                        continue
+                    raw = (
+                        resp.headers.get_list("set-cookie")
+                        if hasattr(resp.headers, "get_list")
+                        else resp.headers.get("set-cookie", "")
+                    )
+                    is_https = urlparse(url).scheme == "https"
+                    for finding in analyze_cookies(
+                        raw, is_https=is_https, matched_at=url
+                    ):
+                        key = (finding.get("title", ""), finding.get("cwe_id", ""))
+                        if key not in grouped:
+                            grouped[key] = {**finding, "_affected_urls": []}
+                        grouped[key]["_affected_urls"].append(url)
+
+            findings: list[dict] = []
+            for finding in grouped.values():
+                affected = list(dict.fromkeys(finding.pop("_affected_urls", [])))
+                if not affected:
+                    continue
+                finding["matched_at"] = affected[0]
+                finding["request_url"] = affected[0]
+                finding["request_evidence"] = (
+                    f"Sampled {len(sample_urls)} same-origin GET URL(s)."
                 )
-            return analyze_cookies(raw, is_https=is_https, matched_at=target_url)
+                finding["response_evidence"] = _sample_evidence(
+                    "Set-Cookie observed at", affected
+                )
+                findings.append(finding)
+            return findings
         except Exception as exc:
             log.debug("Cookie security check failed: %s", exc)
             return []
 
-    async def _check_cors(self, target_url: str) -> list[dict]:
-        """Check for CORS misconfiguration."""
+    async def _check_cors(
+        self, target_url: str, endpoints: List[Dict[str, Any]] | None = None
+    ) -> list[dict]:
+        """Check sampled discovered pages for CORS misconfiguration."""
         findings = []
+        origin = "https://evil-attacker.com"
+        wildcard: List[str] = []
+        reflected: List[str] = []
+        reflected_with_creds: List[str] = []
+        sample_urls = security_header_sample_urls(
+            target_url, endpoints, WebScanConfig.SECURITY_HEADER_ENDPOINT_SAMPLE_MAX
+        )
         try:
             import httpx
 
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
-                # Send request with a malicious Origin header
-                resp = await client.get(
-                    target_url,
-                    headers={"Origin": "https://evil-attacker.com"},
-                )
-                acao = resp.headers.get("access-control-allow-origin", "")
-
-                if acao == "*":
-                    findings.append(
-                        {
-                            "finding_type": "cors",
-                            "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
-                            "description": "Server allows any origin to make cross-origin requests. This may expose sensitive data.",
-                            "severity": "medium",
-                            "cvss_score": 5.3,
-                            "detected_by": "custom",
-                            "matched_at": target_url,
-                        }
-                    )
-                elif "evil-attacker.com" in acao:
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0, follow_redirects=True
+            ) as client:
+                for url in sample_urls:
+                    try:
+                        resp = await client.get(url, headers={"Origin": origin})
+                    except Exception as exc:
+                        log.debug("CORS check failed for %s: %s", url, exc)
+                        continue
+                    acao = resp.headers.get("access-control-allow-origin", "")
                     creds = resp.headers.get(
                         "access-control-allow-credentials", ""
                     ).lower()
-                    severity = "critical" if creds == "true" else "high"
-                    findings.append(
-                        {
-                            "finding_type": "cors",
-                            "title": "CORS Origin Reflection Vulnerability",
-                            "description": "Server reflects arbitrary Origin in ACAO header, enabling cross-origin data theft.",
-                            "severity": severity,
-                            "cvss_score": 9.1 if creds == "true" else 7.5,
-                            "detected_by": "custom",
-                            "matched_at": target_url,
-                        }
-                    )
+                    if acao == "*":
+                        wildcard.append(url)
+                    elif "evil-attacker.com" in acao:
+                        reflected.append(url)
+                        if creds == "true":
+                            reflected_with_creds.append(url)
+
+            if wildcard:
+                findings.append(
+                    {
+                        "finding_type": "cors",
+                        "title": "CORS Wildcard: Access-Control-Allow-Origin: *",
+                        "description": (
+                            f"{len(wildcard)} sampled response(s) allow any "
+                            "origin to make cross-origin requests."
+                        ),
+                        "severity": "medium",
+                        "cvss_score": 5.3,
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": f"GET with Origin: {origin}",
+                        "response_evidence": _sample_evidence(
+                            "Affected URLs", wildcard
+                        ),
+                    }
+                )
+            if reflected:
+                critical = bool(reflected_with_creds)
+                findings.append(
+                    {
+                        "finding_type": "cors",
+                        "title": "CORS Origin Reflection Vulnerability",
+                        "description": (
+                            f"{len(reflected)} sampled response(s) reflect an "
+                            "arbitrary Origin in ACAO."
+                        ),
+                        "severity": "critical" if critical else "high",
+                        "cvss_score": 9.1 if critical else 7.5,
+                        "detected_by": "custom",
+                        "matched_at": target_url,
+                        "request_evidence": f"GET with Origin: {origin}",
+                        "response_evidence": _sample_evidence(
+                            "Affected URLs", reflected
+                        ),
+                    }
+                )
         except Exception as exc:
             log.debug("CORS check failed: %s", exc)
         return findings
@@ -2494,10 +2870,18 @@ class WebScanOrchestrator:
 
     @staticmethod
     def _deduplicate_endpoints(endpoints: list[dict]) -> list[dict]:
+        import hashlib
+
         seen = set()
         unique = []
         for ep in endpoints:
-            key = f"{ep.get('method', 'GET')}:{ep.get('url', '')}"
+            method = ep.get("method", "GET")
+            url = ep.get("url", "")
+            extra = ep.get("graphql_operation") or ""
+            body = ep.get("request_body")
+            if body:
+                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+            key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)
                 unique.append(ep)

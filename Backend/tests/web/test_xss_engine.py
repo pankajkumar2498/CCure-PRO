@@ -13,10 +13,11 @@ real validation runs where the scanner's browser is installed.
 
 import asyncio
 import html
+import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
@@ -101,6 +102,21 @@ def _make_handler(store):
                     self._send(f"<html><body>Secret: {q}</body></html>")
                 else:
                     self._send("<html><body>login required</body></html>")
+            elif p.startswith("/path_reflect/"):
+                value = unquote(p.rsplit("/", 1)[-1])
+                self._send(f"<html><body>Path: {value}</body></html>")
+            elif p == "/header_reflect":
+                value = self.headers.get("X-Name", "")
+                self._send(f"<html><body>Header: {value}</body></html>")
+            elif p == "/cookie_reflect":
+                value = ""
+                for part in (self.headers.get("Cookie") or "").split(";"):
+                    if "=" not in part:
+                        continue
+                    name, raw = part.split("=", 1)
+                    if name.strip() == "theme":
+                        value = unquote(raw.strip().strip('"'))
+                self._send(f"<html><body>Cookie: {value}</body></html>")
             elif p == "/slow":
                 time.sleep(3)
                 self._send("<html><body>slow</body></html>")
@@ -110,7 +126,22 @@ def _make_handler(store):
         def do_POST(self):
             u = urlparse(self.path)
             n = int(self.headers.get("Content-Length", 0))
-            form = parse_qs(self.rfile.read(n).decode(), keep_blank_values=True)
+            raw = self.rfile.read(n).decode()
+            if "json" in (self.headers.get("Content-Type") or "").lower():
+                try:
+                    obj = json.loads(raw or "{}")
+                except Exception:
+                    obj = {}
+                term = str(obj.get("term", ""))
+                if u.path == "/json_reflect":
+                    self._send(f"<html><body><div>{term}</div></body></html>")
+                    return
+                if u.path == "/json_safe":
+                    self._send(
+                        f"<html><body><div>{html.escape(term)}</div></body></html>"
+                    )
+                    return
+            form = parse_qs(raw, keep_blank_values=True)
             if u.path == "/stored":
                 store.append((form.get("comment") or [""])[0])  # stored raw
                 self._send("", code=303, headers={"Location": "/stored"})
@@ -211,6 +242,129 @@ def test_non_vulnerable_param_no_finding(target):
     eng = _engine(test_dom=False, test_stored=False)
     # /home echoes nothing back, so no parameter is reflected.
     res = _run(eng.scan(f"{base}/home?q=x", [{"url": f"{base}/home?q=x"}], []))
+    assert res["findings"] == []
+
+
+def test_reflected_json_body_context(target):
+    base, _ = target
+    ep = {
+        "url": f"{base}/json_reflect",
+        "method": "POST",
+        "request_content_type": "application/json",
+        "request_body": '{"term": "hello"}',
+        "parameters": {"json": ["term"]},
+    }
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(eng.scan(base, [ep], []))
+    fs = [f for f in res["findings"] if f["xss_variant"] == "reflected"]
+    assert fs, "JSON-body reflected XSS not detected"
+    assert any(
+        p["location"] == "json" and p["param"] == "term"
+        for p in res["stats"]["tested_params"]
+    )
+    assert "location=json" in fs[0]["request_evidence"]
+
+
+def test_safe_json_body_is_not_flagged(target):
+    base, _ = target
+    ep = {
+        "url": f"{base}/json_safe",
+        "method": "POST",
+        "request_content_type": "application/json",
+        "request_body": '{"term": "hello"}',
+        "parameters": {"json": ["term"]},
+    }
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(eng.scan(base, [ep], []))
+    assert res["findings"] == []
+
+
+def test_reflected_path_parameter_context(target):
+    base, _ = target
+    ep = {
+        "url": f"{base}/path_reflect/123",
+        "method": "GET",
+        "parameters": {"path": ["itemId"]},
+    }
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(eng.scan(base, [ep], []))
+    fs = [f for f in res["findings"] if f["xss_variant"] == "reflected"]
+    assert fs, "path-parameter reflected XSS not detected"
+    assert any(
+        p["location"] == "path" and p["param"] == "itemId"
+        for p in res["stats"]["tested_params"]
+    )
+    assert "location=path" in fs[0]["request_evidence"]
+
+
+def test_reflected_header_context_when_policy_allows(target):
+    base, _ = target
+    ep = {
+        "url": f"{base}/header_reflect",
+        "method": "GET",
+        "parameters": {"header": ["X-Name"]},
+        "request_headers": {"X-Name": "alice"},
+    }
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(
+        eng.scan(
+            base,
+            [ep],
+            [],
+            options={"allowed_locations": ["query", "form", "json", "path", "header"]},
+        )
+    )
+    fs = [f for f in res["findings"] if f["xss_variant"] == "reflected"]
+    assert fs, "header reflected XSS not detected when headers are enabled"
+    assert "location=header" in fs[0]["request_evidence"]
+
+
+def test_reflected_cookie_context_when_policy_allows(target):
+    base, _ = target
+    ep = {
+        "url": f"{base}/cookie_reflect",
+        "method": "GET",
+        "parameters": {"cookie": ["theme"]},
+        "request_cookies": {"theme": "light"},
+    }
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(
+        eng.scan(
+            base,
+            [ep],
+            [],
+            options={"allowed_locations": ["query", "form", "json", "path", "cookie"]},
+        )
+    )
+    fs = [f for f in res["findings"] if f["xss_variant"] == "reflected"]
+    assert fs, "cookie reflected XSS not detected when cookies are enabled"
+    assert "location=cookie" in fs[0]["request_evidence"]
+
+
+def test_header_cookie_xss_are_policy_gated(target):
+    base, _ = target
+    eps = [
+        {
+            "url": f"{base}/header_reflect",
+            "method": "GET",
+            "parameters": {"header": ["X-Name"]},
+        },
+        {
+            "url": f"{base}/cookie_reflect",
+            "method": "GET",
+            "parameters": {"cookie": ["theme"]},
+        },
+    ]
+    eng = _engine(test_dom=False, test_stored=False)
+    res = _run(
+        eng.scan(
+            base,
+            eps,
+            [],
+            options={"allowed_locations": ["query", "form", "json", "path"]},
+        )
+    )
+    assert res["stats"]["parameters_tested"] == 0
     assert res["findings"] == []
 
 

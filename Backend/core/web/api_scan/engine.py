@@ -109,6 +109,7 @@ def graphql_operation_request(url: str, op: dict) -> dict:
         "request_body": body,
         "request_content_type": "application/json",
         "graphql_operation": f"{op['operation']}:{name}",
+        "parameters": {"json": list(variables.keys())} if variables else {},
     }
 
 
@@ -318,6 +319,7 @@ class ApiScanEngine:
                 # Path-level parameters apply too.
                 params += [p for p in (item.get("parameters") or [])]
                 query_params, path_values, body_fields = [], {}, []
+                body_content_type = ""
                 # Retain each query parameter's schema + required flag so negative
                 # testing (Codex item 8) can send a schema-violating value.
                 query_schemas: dict = {}
@@ -344,11 +346,14 @@ class ApiScanEngine:
                     elif loc in ("body", "formData"):
                         schema = p.get("schema") or {}
                         body_fields += self._schema_fields(schema, components)
+                        if loc == "body":
+                            body_content_type = body_content_type or "application/json"
                         if loc == "formData":
                             body_fields.append(name)
                 if is3 and op.get("requestBody"):
                     content = op["requestBody"].get("content") or {}
                     for ctype, media in content.items():
+                        body_content_type = ctype or body_content_type
                         body_fields += self._schema_fields(
                             media.get("schema") or {}, components
                         )
@@ -367,19 +372,34 @@ class ApiScanEngine:
                 if query_params:
                     q = "&".join(f"{n}=1" for n in query_params)
                     url = url + ("&" if urlparse(url).query else "?") + q
+                unique_body_fields = list(dict.fromkeys(body_fields))
+                param_model: dict[str, list[str]] = {}
+                if query_params:
+                    param_model["query"] = list(dict.fromkeys(query_params))
+                if path_values:
+                    param_model["path"] = list(path_values.keys())
+                if unique_body_fields and "json" in (body_content_type or "").lower():
+                    param_model["json"] = unique_body_fields
+
                 ep = {
                     "url": url,
                     "method": method_u,
                     "is_api": True,
                     "source": "openapi",
                     "auth_required": auth_required,
-                    "parameters": {n: "1" for n in query_params},
+                    "parameters": param_model,
                     # Retained for negative testing (Codex item 8).
                     "query_schemas": query_schemas,
                     "required_query": required_query,
                 }
+                if param_model.get("json") and method_u in ("POST", "PUT", "PATCH"):
+                    ep["request_body"] = json.dumps(
+                        {f: "1" for f in unique_body_fields}
+                    )
+                    ep["request_content_type"] = body_content_type or "application/json"
                 endpoints.append(ep)
-                # Body-bearing operations → a form so sqlmap/XSS test the fields.
+                # Body-bearing operations → keep a form-compatible shape too, so
+                # existing form-based engines still test these fields.
                 if body_fields and method_u in ("POST", "PUT", "PATCH"):
                     forms.append(
                         {

@@ -57,6 +57,26 @@ def _header_findings(headers: dict):
         srv.server_close()
 
 
+def _server_by_path(headers_by_path: dict):
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            headers = headers_by_path.get(path, headers_by_path.get("*", {}))
+            self.send_response(200)
+            for k, v in headers.items():
+                self.send_header(k, v)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>ok</body></html>")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, srv.server_address[1]
+
+
 # ── PART A: X-XSS-Protection false positive ──────────────────────────────────
 # A modern secure app sets the real headers and omits the deprecated one.
 _SECURE_HEADERS = {
@@ -92,6 +112,58 @@ def test_real_missing_headers_still_fire():
     findings = _header_findings(partial)
     titles = [f["title"] for f in findings]
     assert titles == ["Missing Content-Security-Policy Header"], titles
+
+
+def test_security_headers_sample_discovered_endpoints():
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    endpoint_headers = dict(_SECURE_HEADERS)
+    endpoint_headers.pop("Content-Security-Policy")
+    srv, port = _server_by_path({"/": _SECURE_HEADERS, "/admin": endpoint_headers})
+    base = f"http://127.0.0.1:{port}"
+    try:
+        findings = _run(
+            WebScanOrchestrator(silent=True)._check_security_headers(
+                f"{base}/", endpoints=[{"url": f"{base}/admin", "method": "GET"}]
+            )
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    titles = [f["title"] for f in findings]
+    assert titles == ["Missing Content-Security-Policy Header"], titles
+    assert "/admin" in findings[0]["response_evidence"]
+    assert "Sampled 2" in findings[0]["request_evidence"]
+
+
+def test_cors_samples_discovered_endpoints():
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    srv, port = _server_by_path(
+        {
+            "/": {},
+            "/api/users": {
+                "Access-Control-Allow-Origin": "https://evil-attacker.com",
+                "Access-Control-Allow-Credentials": "true",
+            },
+        }
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        findings = _run(
+            WebScanOrchestrator(silent=True)._check_cors(
+                f"{base}/", endpoints=[{"url": f"{base}/api/users", "method": "GET"}]
+            )
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert len(findings) == 1
+    assert findings[0]["title"] == "CORS Origin Reflection Vulnerability"
+    assert findings[0]["severity"] == "critical"
+    assert "/api/users" in findings[0]["response_evidence"]
 
 
 # ── PART B: per-profile rate tuning ──────────────────────────────────────────

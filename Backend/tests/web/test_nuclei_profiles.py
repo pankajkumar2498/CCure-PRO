@@ -239,8 +239,10 @@ def _detect(monkeypatch, options):
     _ProfileRecordingNuclei.called_with = {}
     monkeypatch.setattr(nw, "NucleiWrapper", _ProfileRecordingNuclei)
     orch = WebScanOrchestrator(silent=True)
-    monkeypatch.setattr(orch, "_check_security_headers", lambda url: _noop_async([]))
-    monkeypatch.setattr(orch, "_check_cors", lambda url: _noop_async([]))
+    monkeypatch.setattr(
+        orch, "_check_security_headers", lambda url, **kwargs: _noop_async([])
+    )
+    monkeypatch.setattr(orch, "_check_cors", lambda url, **kwargs: _noop_async([]))
     result = asyncio.run(orch.run_detect("ws", URL, [], {}, options, {}, False))
     return result, _ProfileRecordingNuclei.called_with
 

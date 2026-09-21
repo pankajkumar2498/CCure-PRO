@@ -2,8 +2,9 @@
 Phase 23c — coverage scheduler / queue engine (Codex P2 item 12).
 
 The scheduler classifies the discovered surface into passive+active check tasks,
-orders passive before active, records outcomes into the coverage ledger, and
-deduplicates findings through the correlation engine. These pin that flow.
+orders passive before active, records task outcomes, and deduplicates findings
+through the correlation engine. Engines, not endpoint-level task outcomes, update
+parameter coverage. These tests pin that flow.
 """
 
 from core.web.coverage import CoverageLedger
@@ -45,7 +46,7 @@ def test_endpoint_without_params_schedules_no_active_tasks():
     assert summ["passive_tasks"] == len(PASSIVE_CHECKS)
 
 
-def test_record_updates_tasks_and_ledger():
+def test_record_updates_tasks_but_not_parameter_ledger():
     ledger = CoverageLedger()
     ledger.discover("http://a/x", "query", "id")
     s = CoverageScheduler(ledger)
@@ -55,9 +56,22 @@ def test_record_updates_tasks_and_ledger():
     assert s.record("sqli", "http://a/x", "done")
     summ = s.summary()
     assert summ["by_status"].get("done", 0) >= 1
-    # the ledger got the sqli coverage for that endpoint's parameter
+    # Endpoint-level task completion is not proof that a parameter was tested.
     cov = ledger.summary(active_engines=["sqli"])
-    assert cov["per_engine_tested"].get("sqli", 0) == 1
+    assert cov["per_engine_tested"].get("sqli", 0) == 0
+
+
+def test_finalize_unresolved_marks_queued_tasks_skipped():
+    s = CoverageScheduler()
+    s.enqueue_surface(
+        endpoints=[{"url": "http://a/x?id=1", "parameters": {"query": ["id"]}}],
+        forms=[],
+    )
+    s.record("xss", "http://a/x?id=1", "done")
+    s.finalize_unresolved("not individually executed")
+    summ = s.summary()
+    assert summ["by_status"].get("queued", 0) == 0
+    assert summ["by_status"].get("skipped", 0) > 0
 
 
 def test_deduplicate_delegates_to_correlation():

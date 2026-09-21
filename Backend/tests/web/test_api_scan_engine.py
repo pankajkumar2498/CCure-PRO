@@ -156,6 +156,19 @@ def test_openapi_discovered_and_imported(api_app):
     urls = {e["url"].split("?")[0] for e in res["endpoints"]}
     assert any(u.endswith("/items/1") for u in urls)  # path param filled
     assert any(u.endswith("/search") for u in urls)
+    items = next(
+        e for e in res["endpoints"] if e["url"].split("?")[0].endswith("/items/1")
+    )
+    search = next(
+        e for e in res["endpoints"] if e["url"].split("?")[0].endswith("/search")
+    )
+    login_ep = next(
+        e for e in res["endpoints"] if e["url"].split("?")[0].endswith("/login")
+    )
+    assert items["parameters"] == {"path": ["id"]}
+    assert search["parameters"] == {"query": ["q"]}
+    assert login_ep["parameters"] == {"json": ["username", "password"]}
+    assert json.loads(login_ep["request_body"]) == {"username": "1", "password": "1"}
     forms = {
         f["url"].split("?")[0]: [i["name"] for i in f["inputs"]] for f in res["forms"]
     }

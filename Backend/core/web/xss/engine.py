@@ -41,7 +41,7 @@ import logging
 import secrets
 import time
 from typing import Any, Callable, Dict, List, Optional
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
 from core.web.xss.payloads import (
     CWE_ID,
@@ -218,10 +218,17 @@ class XssEngine:
 
                 if self.test_reflected and not _cancelled():
                     _progress("XSS: testing reflected parameters…")
-                    # Coverage ledger (Phase 22): record the query/form params
-                    # this engine probes, at the one place the candidate set is
+                    allowed_locations = set(
+                        (options or {}).get("allowed_locations")
+                        or (options or {}).get("_allowed_locations")
+                        or {"query", "form", "json", "path"}
+                    )
+                    # Coverage ledger (Phase 22): record the parameters this
+                    # engine probes, at the one place the candidate set is
                     # known, so the scan can prove what XSS actually covered.
-                    for c in self._reflected_candidates(target_url, endpoints, forms):
+                    for c in self._reflected_candidates(
+                        target_url, endpoints, forms, allowed_locations
+                    ):
                         self._tested_params.append(
                             {
                                 "url": c.get("url", ""),
@@ -230,7 +237,12 @@ class XssEngine:
                             }
                         )
                     findings += await self._scan_reflected(
-                        page, target_url, endpoints, forms, _cancelled
+                        page,
+                        target_url,
+                        endpoints,
+                        forms,
+                        _cancelled,
+                        allowed_locations,
                     )
                 if self.test_dom and not _cancelled():
                     _progress("XSS: testing DOM sinks…")
@@ -273,7 +285,9 @@ class XssEngine:
             return False
 
     # ── reflected ───────────────────────────────────────────────────────────
-    def _reflected_candidates(self, target_url, endpoints, forms) -> List[dict]:
+    def _reflected_candidates(
+        self, target_url, endpoints, forms, allowed_locations: set | None = None
+    ) -> List[dict]:
         """
         (url, method, param, base_params) tuples worth testing, richest first.
 
@@ -281,6 +295,7 @@ class XssEngine:
         fields come from discovered forms. Mirrors build_injection_targets so
         the XSS engine tests the same surface sqlmap does.
         """
+        allowed_locations = allowed_locations or {"query", "form", "json", "path"}
         cands: List[dict] = []
         seen: set = set()
 
@@ -306,11 +321,147 @@ class XssEngine:
                     }
                 )
 
-        _add_query(target_url, "GET")
+        if "query" in allowed_locations:
+            _add_query(target_url, "GET")
         for ep in endpoints or []:
-            if isinstance(ep, dict) and ep.get("url"):
-                _add_query(ep["url"], "GET")
+            if not isinstance(ep, dict) or not ep.get("url"):
+                continue
+            url = ep["url"]
+            method = str(ep.get("method") or "GET").upper()
+            if "query" in allowed_locations:
+                _add_query(url, method)
+            if not self._in_scope(url):
+                continue
 
+            try:
+                from core.web.surface import (
+                    describe_parameters,
+                    json_param_names,
+                    parse_json_object,
+                    path_id_segments,
+                )
+
+                pmodel = ep.get("parameters") or describe_parameters(ep)
+            except Exception:
+                pmodel = ep.get("parameters") or {}
+
+            if "path" in allowed_locations:
+                try:
+                    from core.web.surface import path_id_segments
+
+                    ids = path_id_segments(url)
+                except Exception:
+                    ids = []
+                pnames = list((pmodel or {}).get("path") or [])
+                for i, seg in enumerate(ids[: self.max_params_per_target]):
+                    pname = str(pnames[i]) if i < len(pnames) else str(seg["index"])
+                    try:
+                        pindex = int(pname)
+                        display = pname
+                    except (TypeError, ValueError):
+                        pindex = int(seg["index"])
+                        display = pname
+                    key = (method, url, "path:" + display, pindex)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": display,
+                            "path_index": pindex,
+                            "kind": "path",
+                        }
+                    )
+
+            if "header" in allowed_locations:
+                for name in list((pmodel or {}).get("header") or [])[
+                    : self.max_params_per_target
+                ]:
+                    hname = str(name)
+                    key = (method, url, "header:" + hname.lower())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": hname,
+                            "body": ep.get("request_body"),
+                            "content_type": ep.get("request_content_type")
+                            or ep.get("content_type"),
+                            "kind": "header",
+                        }
+                    )
+
+            if "cookie" in allowed_locations:
+                for name in list((pmodel or {}).get("cookie") or [])[
+                    : self.max_params_per_target
+                ]:
+                    cname = str(name)
+                    key = (method, url, "cookie:" + cname)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": cname,
+                            "body": ep.get("request_body"),
+                            "content_type": ep.get("request_content_type")
+                            or ep.get("content_type"),
+                            "kind": "cookie",
+                        }
+                    )
+
+            # JSON request-body XSS. The crawler/API importer may capture a
+            # request body and its parameter names; deliver the same request
+            # through the browser context so script execution is still proven by
+            # the normal sentinel, not by string reflection.
+            if "json" not in allowed_locations or method not in {
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+            }:
+                continue
+            try:
+                body_obj = parse_json_object(ep.get("request_body"))
+            except Exception:
+                body_obj = None
+            if body_obj is None:
+                continue
+            names = list((pmodel or {}).get("json") or [])
+            if not names:
+                try:
+                    names = json_param_names(body_obj)
+                except Exception:
+                    names = []
+            for name in names[: self.max_params_per_target]:
+                if not name or str(name).lower() in _SKIP_FIELD_NAMES:
+                    continue
+                key = (method, url, name, "json")
+                if key in seen:
+                    continue
+                seen.add(key)
+                cands.append(
+                    {
+                        "url": url,
+                        "method": method,
+                        "param": name,
+                        "json_obj": body_obj,
+                        "content_type": ep.get("request_content_type")
+                        or ep.get("content_type")
+                        or "application/json",
+                        "kind": "json",
+                    }
+                )
+
+        if "form" not in allowed_locations:
+            return cands[: self.max_targets * self.max_params_per_target]
         for form in forms or []:
             if not isinstance(form, dict):
                 continue
@@ -344,9 +495,13 @@ class XssEngine:
         # Most-parameterised targets first, then cap.
         return cands[: self.max_targets * self.max_params_per_target]
 
-    async def _scan_reflected(self, page, target_url, endpoints, forms, cancelled):
+    async def _scan_reflected(
+        self, page, target_url, endpoints, forms, cancelled, allowed_locations=None
+    ):
         findings: List[dict] = []
-        candidates = self._reflected_candidates(target_url, endpoints, forms)
+        candidates = self._reflected_candidates(
+            target_url, endpoints, forms, allowed_locations
+        )
         tested_targets: set = set()
         for cand in candidates:
             if cancelled():
@@ -368,6 +523,14 @@ class XssEngine:
             try:
                 if cand["kind"] == "query":
                     await self._deliver_query(page, cand, payload)
+                elif cand["kind"] == "json":
+                    await self._deliver_json(page, cand, payload)
+                elif cand["kind"] == "path":
+                    await self._deliver_path(page, cand, payload)
+                elif cand["kind"] == "header":
+                    await self._deliver_header(page, cand, payload)
+                elif cand["kind"] == "cookie":
+                    await self._deliver_cookie(page, cand, payload)
                 else:
                     if cand["method"] == "POST":
                         await self._deliver_form_post(page, cand, payload)
@@ -429,6 +592,154 @@ class XssEngine:
             pass
         await self._settle(page)
         self.stats["requests"] += 1
+
+    async def _deliver_json(self, page, cand, payload):
+        from core.web.surface import inject_json
+
+        body = inject_json(cand.get("json_obj") or {}, cand["param"], payload)
+        parsed = urlparse(cand["url"])
+        await self._ensure_origin(page, parsed)
+        self._reset()
+        await self._throttle()
+        await self._fetch_into_document(
+            page,
+            cand["url"],
+            method=cand.get("method") or "POST",
+            headers={"Content-Type": cand.get("content_type") or "application/json"},
+            body=body,
+        )
+        await self._settle(page)
+        self.stats["requests"] += 1
+
+    async def _deliver_path(self, page, cand, payload):
+        from core.web.surface import swap_path_segment
+
+        path_payload = quote(payload, safe="")
+        url = swap_path_segment(
+            cand["url"], int(cand.get("path_index", 0)), path_payload
+        )
+        await self._navigate(page, url)
+
+    async def _deliver_header(self, page, cand, payload):
+        parsed = urlparse(cand["url"])
+        await self._ensure_origin(page, parsed)
+        headers = {cand["param"]: payload}
+        body = cand.get("body")
+        if body and cand.get("content_type"):
+            headers["Content-Type"] = cand.get("content_type")
+        self._reset()
+        await self._throttle()
+        await self._fetch_into_document(
+            page,
+            cand["url"],
+            method=cand.get("method") or "GET",
+            headers=headers,
+            body=body,
+        )
+        await self._settle(page)
+        self.stats["requests"] += 1
+
+    async def _deliver_cookie(self, page, cand, payload):
+        parsed = urlparse(cand["url"])
+        await self._ensure_origin(page, parsed)
+        prior = []
+        try:
+            prior = [
+                c
+                for c in await page.context.cookies([cand["url"]])
+                if c.get("name") == cand["param"]
+            ]
+        except Exception:
+            prior = []
+        try:
+            await page.context.add_cookies(
+                [
+                    {
+                        "name": cand["param"],
+                        "value": payload,
+                        "url": cand["url"],
+                        "path": "/",
+                    }
+                ]
+            )
+        except Exception:
+            encoded = quote(payload, safe="")
+            await page.evaluate(
+                "([name, value]) => { document.cookie = `${name}=${value}; path=/`; }",
+                [cand["param"], encoded],
+            )
+        try:
+            self._reset()
+            await self._throttle()
+            await self._fetch_into_document(
+                page,
+                cand["url"],
+                method=cand.get("method") or "GET",
+                headers=(
+                    {"Content-Type": cand.get("content_type") or "text/plain"}
+                    if cand.get("body")
+                    else {}
+                ),
+                body=cand.get("body"),
+            )
+            await self._settle(page)
+        finally:
+            try:
+                if prior:
+                    restore = dict(prior[0])
+                    restore.pop("sameSite", None)
+                    await page.context.add_cookies([restore])
+                else:
+                    await page.context.add_cookies(
+                        [
+                            {
+                                "name": cand["param"],
+                                "value": "",
+                                "url": cand["url"],
+                                "path": "/",
+                                "expires": 0,
+                            }
+                        ]
+                    )
+            except Exception:
+                pass
+        self.stats["requests"] += 1
+
+    async def _ensure_origin(self, page, parsed):
+        origin = f"{parsed.scheme}://{parsed.netloc}/"
+        try:
+            current = urlparse(page.url)
+            if current.scheme == parsed.scheme and current.netloc == parsed.netloc:
+                return
+        except Exception:
+            pass
+        await page.goto(origin, wait_until="domcontentloaded", timeout=self.timeout_ms)
+
+    async def _fetch_into_document(
+        self, page, url, *, method="GET", headers=None, body=None
+    ):
+        method = str(method or "GET").upper()
+        fetch_body = None if method in {"GET", "HEAD"} else body
+        await page.evaluate(
+            """
+            async ({url, method, headers, body}) => {
+              const opts = {method, credentials: 'include', headers: headers || {}};
+              if (body !== null && body !== undefined) opts.body = body;
+              const resp = await fetch(url, opts);
+              const text = await resp.text();
+              document.open();
+              document.write(text);
+              document.close();
+              return {status: resp.status, contentType: resp.headers.get('content-type') || ''};
+            }
+            """,
+            {
+                "url": url,
+                "method": method,
+                "headers": headers or {},
+                "body": fetch_body,
+            },
+        )
 
     # ── DOM ─────────────────────────────────────────────────────────────────
     async def _scan_dom(self, page, target_url, endpoints, cancelled):
@@ -633,8 +944,13 @@ class XssEngine:
             "matched_at": url,
             "request_url": url,
             "request_method": method,
+            "parameter": param,
+            "parameter_location": cand.get("kind", "query"),
             "payload_used": payload,
-            "request_evidence": f"parameter={param}; context={ctx_label}; variant={variant}",
+            "request_evidence": (
+                f"location={cand.get('kind', 'query')}; parameter={param}; "
+                f"context={ctx_label}; variant={variant}"
+            ),
             "response_evidence": (
                 f"Browser executed the injected script (sentinel token {token})."
                 + (f" DOM sink(s): {sinks}." if sinks else "")

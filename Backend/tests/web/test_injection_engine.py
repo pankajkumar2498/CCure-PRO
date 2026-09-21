@@ -19,7 +19,7 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
@@ -62,6 +62,23 @@ def _make_handler():
                 x = val("name")
                 out = _TPL.sub(lambda m: str(int(m.group(1)) * int(m.group(2))), x)
                 self._send(f"<html>Hello {out}</html>")
+            elif p.startswith("/tplpath/"):
+                x = unquote(p.rsplit("/", 1)[-1])
+                out = _TPL.sub(lambda m: str(int(m.group(1)) * int(m.group(2))), x)
+                self._send(f"<html>Path {out}</html>")
+            elif p == "/header_tpl":
+                x = self.headers.get("X-Name", "")
+                out = _TPL.sub(lambda m: str(int(m.group(1)) * int(m.group(2))), x)
+                self._send(f"<html>Header {out}</html>")
+            elif p == "/cookie_tpl":
+                cookies = {}
+                for part in (self.headers.get("Cookie") or "").split(";"):
+                    if "=" in part:
+                        k, v = part.strip().split("=", 1)
+                        cookies[k] = v
+                x = cookies.get("theme", "")
+                out = _TPL.sub(lambda m: str(int(m.group(1)) * int(m.group(2))), x)
+                self._send(f"<html>Cookie {out}</html>")
             elif p == "/ldap":  # LDAP: parser error on a broken filter
                 x = val("u")
                 if x.count("(") != x.count(")") or "*)(" in x:
@@ -178,6 +195,80 @@ def test_ssti_detected(target):
         "computed" in fs[0]["description"].lower()
         or "evaluat" in fs[0]["description"].lower()
     )
+
+
+def test_path_parameter_ssti_detected(target):
+    eng = _engine(classes=("ssti",))
+    ep = {
+        "url": f"{target}/tplpath/123",
+        "method": "GET",
+        "parameters": {"path": ["name"]},
+    }
+    res = _run(eng.scan(target, [ep], []))
+    fs = [f for f in res["findings"] if f["finding_type"] == "ssti"]
+    assert fs, "SSTI in path parameter not detected"
+    assert any(
+        p["location"] == "path" and p["param"] == "name"
+        for p in res["stats"]["tested_params"]
+    )
+
+
+def test_header_parameter_ssti_detected_when_policy_allows(target):
+    eng = _engine(classes=("ssti",))
+    ep = {
+        "url": f"{target}/header_tpl",
+        "method": "GET",
+        "parameters": {"header": ["X-Name"]},
+    }
+    res = _run(eng.scan(target, [ep], [], options={"allowed_locations": ["header"]}))
+    fs = [f for f in res["findings"] if f["finding_type"] == "ssti"]
+    assert fs, "SSTI in header parameter not detected when headers are enabled"
+    assert any(
+        p["location"] == "header" and p["param"] == "X-Name"
+        for p in res["stats"]["tested_params"]
+    )
+
+
+def test_cookie_parameter_ssti_detected_when_policy_allows(target):
+    eng = _engine(classes=("ssti",))
+    ep = {
+        "url": f"{target}/cookie_tpl",
+        "method": "GET",
+        "parameters": {"cookie": ["theme"]},
+    }
+    res = _run(eng.scan(target, [ep], [], options={"allowed_locations": ["cookie"]}))
+    fs = [f for f in res["findings"] if f["finding_type"] == "ssti"]
+    assert fs, "SSTI in cookie parameter not detected when cookies are enabled"
+    assert any(
+        p["location"] == "cookie" and p["param"] == "theme"
+        for p in res["stats"]["tested_params"]
+    )
+
+
+def test_header_cookie_parameters_are_policy_gated(target):
+    eng = _engine(classes=("ssti",))
+    eps = [
+        {
+            "url": f"{target}/header_tpl",
+            "method": "GET",
+            "parameters": {"header": ["X-Name"]},
+        },
+        {
+            "url": f"{target}/cookie_tpl",
+            "method": "GET",
+            "parameters": {"cookie": ["theme"]},
+        },
+    ]
+    res = _run(
+        eng.scan(
+            target,
+            eps,
+            [],
+            options={"allowed_locations": ["query", "form", "json", "path"]},
+        )
+    )
+    assert res["stats"]["parameters_tested"] == 0
+    assert res["findings"] == []
 
 
 def test_xxe_detected(target):

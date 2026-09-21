@@ -106,6 +106,61 @@ def test_insecure_cookie_maps_to_cwe_and_owasp():
     assert map_compliance("insecure_cookie")["owasp"].startswith("A05")
 
 
+def _cookie_server(cookies_by_path: dict):
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            self.send_response(200)
+            cookie = cookies_by_path.get(path)
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>ok</body></html>")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, srv.server_address[1]
+
+
+def test_cookie_check_samples_discovered_endpoints_without_value_leak():
+    import asyncio
+
+    from orchestrator.web_orchestrator import WebScanOrchestrator
+
+    secret = "SUPERSECRET"
+    srv, port = _cookie_server(
+        {
+            "/login": f"sessionid={secret}; Path=/",
+            "/account": f"sessionid={secret}; Path=/",
+        }
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        findings = asyncio.run(
+            WebScanOrchestrator(silent=True)._check_cookies(
+                f"{base}/",
+                endpoints=[
+                    {"url": f"{base}/login", "method": "GET"},
+                    {"url": f"{base}/account", "method": "GET"},
+                ],
+            )
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert len(findings) == 1
+    assert findings[0]["title"] == "Session cookie 'sessionid' missing HttpOnly"
+    assert "/login" in findings[0]["response_evidence"]
+    assert "/account" in findings[0]["response_evidence"]
+    assert "Sampled 3" in findings[0]["request_evidence"]
+    assert secret not in str(findings[0])
+
+
 # ── TLS normalization (no network) ───────────────────────────────────────────
 def test_tls_finding_normalization():
     from core.web.standards_mapping import map_compliance, resolve_cwe

@@ -158,7 +158,14 @@ class InjectionEngine:
                 cookies=cookies or None,
             ) as client:
                 self._client = client
-                param_cands = self._param_candidates(target_url, endpoints, forms)
+                allowed_locations = set(
+                    (options or {}).get("allowed_locations")
+                    or (options or {}).get("_allowed_locations")
+                    or {"query", "form", "json", "path", "soap"}
+                )
+                param_cands = self._param_candidates(
+                    target_url, endpoints, forms, allowed_locations
+                )
                 post_targets = self._post_targets(target_url, forms)
 
                 for i, cand in enumerate(param_cands):
@@ -205,25 +212,36 @@ class InjectionEngine:
         except Exception:
             return False
 
-    def _param_candidates(self, target_url, endpoints, forms) -> List[dict]:
+    def _param_candidates(
+        self, target_url, endpoints, forms, allowed_locations: set | None = None
+    ) -> List[dict]:
         cands: List[dict] = []
         seen: set = set()
+        allowed_locations = allowed_locations or {
+            "query",
+            "form",
+            "json",
+            "path",
+            "soap",
+        }
 
-        def _add_query(url: str):
+        def _add_query(url: str, method: str = "GET"):
+            if "query" not in allowed_locations:
+                return
             parsed = urlparse(url)
             params = parse_qsl(parsed.query, keep_blank_values=True)
             if not params:
                 return
             base = parsed._replace(query="").geturl()
             for name in [n for n, _ in params][: self.max_params_per_target]:
-                key = ("GET", base, name)
+                key = (method, base, name, "query")
                 if key in seen or not self._in_scope(url):
                     continue
                 seen.add(key)
                 cands.append(
                     {
                         "url": base,
-                        "method": "GET",
+                        "method": method,
                         "param": name,
                         "params": params,
                         "kind": "query",
@@ -231,73 +249,146 @@ class InjectionEngine:
                 )
 
         _add_query(target_url)
-        for ep in endpoints or []:
-            if isinstance(ep, dict) and ep.get("url"):
-                _add_query(ep["url"])
 
-        # JSON request-body parameters (Phase 22). A captured JSON API body is
-        # injected field-by-field, so command/SSTI/XXE/LDAP/XPath probes reach
-        # JSON APIs, not just query strings and HTML forms.
         from core.web.surface import (
+            describe_parameters,
             is_json_request,
             json_param_names,
             parse_json_object,
+            path_id_segments,
         )
 
         for ep in endpoints or []:
-            if not isinstance(ep, dict):
+            if not isinstance(ep, dict) or not ep.get("url"):
                 continue
             url = ep.get("url", "")
-            if not url or not self._in_scope(url) or not is_json_request(ep):
-                continue
-            body_obj = parse_json_object(ep.get("request_body"))
-            if not body_obj:
-                continue
-            method = str(ep.get("method") or "POST").upper()
-            for name in json_param_names(body_obj)[: self.max_params_per_target]:
-                key = (method, url, "json:" + name)
-                if key in seen:
-                    continue
-                seen.add(key)
-                cands.append(
-                    {
-                        "url": url,
-                        "method": method,
-                        "param": name,
-                        "json_obj": body_obj,
-                        "kind": "json",
-                    }
-                )
-
-        for form in forms or []:
-            if not isinstance(form, dict):
-                continue
-            url = form.get("url", "")
             if not url or not self._in_scope(url):
                 continue
-            method = str(form.get("method") or "GET").upper()
-            fields = [
-                inp.get("name")
-                for inp in form.get("inputs") or []
-                if isinstance(inp, dict)
-                and inp.get("name")
-                and str(inp.get("type", "")).lower() not in _NON_INJECTABLE_INPUT_TYPES
-                and str(inp.get("name", "")).lower() not in _SKIP_FIELD_NAMES
-            ][: self.max_params_per_target]
-            for name in fields:
-                key = (method, url, name)
-                if key in seen:
+            method = str(ep.get("method") or "GET").upper()
+            body = ep.get("request_body")
+            content_type = ep.get("request_content_type") or ep.get("content_type")
+            _add_query(url, method)
+            param_model = ep.get("parameters") or describe_parameters(ep)
+
+            if "json" in allowed_locations and is_json_request(ep):
+                body_obj = parse_json_object(body)
+                if body_obj:
+                    names = list((param_model or {}).get("json") or [])
+                    if not names:
+                        names = json_param_names(body_obj)
+                    for name in names[: self.max_params_per_target]:
+                        key = (method, url, "json:" + str(name))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        cands.append(
+                            {
+                                "url": url,
+                                "method": method,
+                                "param": str(name),
+                                "json_obj": body_obj,
+                                "kind": "json",
+                            }
+                        )
+
+            if "path" in allowed_locations:
+                ids = path_id_segments(url)
+                pnames = list((param_model or {}).get("path") or [])
+                for i, seg in enumerate(ids[: self.max_params_per_target]):
+                    pname = str(pnames[i]) if i < len(pnames) else str(seg["index"])
+                    try:
+                        pindex = int(pname)
+                        display = pname
+                    except (TypeError, ValueError):
+                        pindex = int(seg["index"])
+                        display = pname
+                    key = (method, url, "path:" + display, pindex)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": display,
+                            "path_index": pindex,
+                            "body": body,
+                            "content_type": content_type,
+                            "kind": "path",
+                        }
+                    )
+
+            if "header" in allowed_locations:
+                for name in list((param_model or {}).get("header") or [])[
+                    : self.max_params_per_target
+                ]:
+                    hname = str(name)
+                    key = (method, url, "header:" + hname.lower())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": hname,
+                            "body": body,
+                            "content_type": content_type,
+                            "kind": "header",
+                        }
+                    )
+
+            if "cookie" in allowed_locations:
+                for name in list((param_model or {}).get("cookie") or [])[
+                    : self.max_params_per_target
+                ]:
+                    cname = str(name)
+                    key = (method, url, "cookie:" + cname)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": cname,
+                            "body": body,
+                            "content_type": content_type,
+                            "kind": "cookie",
+                        }
+                    )
+
+        if "form" in allowed_locations:
+            for form in forms or []:
+                if not isinstance(form, dict):
                     continue
-                seen.add(key)
-                cands.append(
-                    {
-                        "url": url,
-                        "method": method,
-                        "param": name,
-                        "fields": fields,
-                        "kind": "form",
-                    }
-                )
+                url = form.get("url", "")
+                if not url or not self._in_scope(url):
+                    continue
+                method = str(form.get("method") or "GET").upper()
+                fields = [
+                    inp.get("name")
+                    for inp in form.get("inputs") or []
+                    if isinstance(inp, dict)
+                    and inp.get("name")
+                    and str(inp.get("type", "")).lower()
+                    not in _NON_INJECTABLE_INPUT_TYPES
+                    and str(inp.get("name", "")).lower() not in _SKIP_FIELD_NAMES
+                ][: self.max_params_per_target]
+                for name in fields:
+                    key = (method, url, name, "form")
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cands.append(
+                        {
+                            "url": url,
+                            "method": method,
+                            "param": name,
+                            "fields": fields,
+                            "kind": "form",
+                        }
+                    )
         return cands[: self.max_targets * self.max_params_per_target]
 
     def _post_targets(self, target_url, forms) -> List[str]:
@@ -332,10 +423,24 @@ class InjectionEngine:
                 from core.web.surface import inject_json
 
                 body = inject_json(cand["json_obj"], cand["param"], value)
-                resp = await self._client.post(
+                resp = await self._client.request(
+                    method,
                     cand["url"],
                     content=body.encode(),
                     headers={"Content-Type": "application/json"},
+                )
+            elif cand["kind"] == "path":
+                from core.web.surface import swap_path_segment
+
+                url = swap_path_segment(cand["url"], int(cand["path_index"]), value)
+                resp = await self._send_reconstructed(cand, url)
+            elif cand["kind"] == "header":
+                resp = await self._send_reconstructed(
+                    cand, cand["url"], headers={cand["param"]: value}
+                )
+            elif cand["kind"] == "cookie":
+                resp = await self._send_reconstructed(
+                    cand, cand["url"], cookies={cand["param"]: value}
                 )
             elif method == "POST":
                 data = {
@@ -355,6 +460,28 @@ class InjectionEngine:
             elapsed = time.monotonic() - t
             self.stats["requests"] += 1
             return 0, elapsed, ""
+
+    async def _send_reconstructed(self, cand, url, headers=None, cookies=None):
+        method = cand.get("method") or "GET"
+        hdrs = dict(headers or {})
+        body = cand.get("body")
+        ctype = cand.get("content_type")
+        if cookies:
+            merged = {}
+            try:
+                for c in self._client.cookies.jar:
+                    merged[c.name] = c.value
+            except Exception:
+                pass
+            merged.update(cookies)
+            hdrs["Cookie"] = "; ".join(f"{k}={v}" for k, v in merged.items())
+        kwargs = {"headers": hdrs or None}
+        if body is not None and method in ("POST", "PUT", "PATCH", "DELETE"):
+            if ctype:
+                hdrs.setdefault("Content-Type", ctype)
+                kwargs["headers"] = hdrs
+            kwargs["content"] = str(body).encode()
+        return await self._client.request(method, url, **kwargs)
 
     async def _baseline(self, cand) -> tuple[float, str]:
         marker = "ccbase" + secrets.token_hex(4)
@@ -556,6 +683,8 @@ class InjectionEngine:
             "matched_at": url,
             "request_url": url,
             "request_method": method,
+            "parameter": param,
+            "parameter_location": cand.get("kind", "query"),
             "payload_used": payload[:2000],
             "request_evidence": f"parameter={param}; class={cls}; technique={technique}",
             "response_evidence": evidence[:4000],

@@ -16,13 +16,17 @@ import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
 import CVELink from "../../components/common/CVELink";
+import ConfigAuditSection from "../../components/scan/ConfigAuditSection";
+import FindingsListSection from "../../components/scan/FindingsListSection";
+import PackageCoverageSection from "../../components/scan/PackageCoverageSection";
+import PackageInventorySection from "../../components/scan/PackageInventorySection";
+import SuppressedFindingsSection from "../../components/scan/SuppressedFindingsSection";
 import {
   CcureAlert,
   CcureBadge,
   CcureButton,
   CcureInput,
   CcureProgress,
-  CcureSeverityBadge,
   CcureTable,
 } from "../../design-system";
 import "../../styles/credentialed-results.css";
@@ -175,7 +179,6 @@ export default function CredentialedResults() {
   const [scanStatus, setScanStatus] = useState(
     stateResult?.status || "running",
   );
-  const [cveFilter, setCveFilter] = useState("All");
   const [showSystemUsers, setShowSystemUsers] = useState(false);
   const [servicesSearch, setServicesSearch] = useState("");
   const [portsSearch, setPortsSearch] = useState("");
@@ -526,6 +529,14 @@ export default function CredentialedResults() {
     scan_duration,
     detected_os = "linux",
     os_type_was_auto = false,
+    // Six fields the API has always returned and nothing rendered. See
+    // docs/api_ui_coverage/PHASE1_BASELINE.md for how that was measured.
+    scan_type = "",
+    config_audit = null,
+    package_coverage = null,
+    packages_enumerated = null,
+    candidates_evaluated = null,
+    suppressed_cves = [],
     // How the authenticated session was actually opened. Recorded by the
     // engine, not chosen by the operator — "credentialed access succeeded" is
     // not a useful answer on its own when the scanner picked the service.
@@ -610,8 +621,9 @@ export default function CredentialedResults() {
   })();
 
   const SEV_ORDER = ["All", "Critical", "High", "Medium", "Low", "Info"];
-  const filteredCves =
-    cveFilter === "All" ? cves : cves.filter((c) => c.severity === cveFilter);
+  // The findings list owns its own severity filter and paging now; the page
+  // only supplies the rows. See FindingsListSection for why it had to move.
+  const filteredCvesSource = cves;
   const vulnerablePackageNames = new Set(
     cves.map((c) => String(c.package || "").toLowerCase()).filter(Boolean),
   );
@@ -884,6 +896,9 @@ export default function CredentialedResults() {
                   · Scan No. {scan_no ?? display_id ?? "-"}
                 </span>
               )}
+              {scan_type && (
+                <span className="cr-muted"> · {scan_type} scan</span>
+              )}
               {os_type_was_auto && (
                 <CcureBadge variant="info" className="cr-os-badge">
                   <Glyph>{osIcon}</Glyph> {osLabel} (auto-detected)
@@ -891,7 +906,7 @@ export default function CredentialedResults() {
               )}
               {access?.transport && (
                 <CcureBadge variant="success" className="cr-os-badge">
-                  <Glyph>&#128274;</Glyph> Authenticated over{" "}
+                  <Glyph>🔒</Glyph> Authenticated over{" "}
                   {String(access.transport).toUpperCase()} on port {access.port}
                   {access.how === "discovered" ? " (detected)" : ""}
                 </CcureBadge>
@@ -963,6 +978,13 @@ export default function CredentialedResults() {
           >
             <strong>{cve_count}</strong> CVE{cve_count !== 1 ? "s" : ""}
           </li>
+          {candidates_evaluated !== null &&
+            candidates_evaluated !== undefined && (
+              <li className="cr-summary__item cr-muted">
+                <strong>{Number(candidates_evaluated).toLocaleString()}</strong>{" "}
+                candidates evaluated
+              </li>
+            )}
           {brute_force_warning && (
             <li className="cr-summary__item cr-tone-danger">
               <Glyph>⚠</Glyph> Brute-force activity detected
@@ -1189,74 +1211,62 @@ export default function CredentialedResults() {
         {/* CVEs */}
         {cve_count > 0 && (
           <Section icon="⚠" title={`CVE Findings (${cve_count})`} defaultOpen>
-            {/* Severity summary */}
-            <ul className="cr-sev-summary" aria-label="Findings by severity">
-              {Object.entries(severity_summary)
-                .filter(([, n]) => n > 0)
-                .map(([sev, n]) => (
-                  <li key={sev} className="cr-sev-summary__item">
-                    <span
-                      className={`cr-sev-dot cr-sev-dot--${String(sev).toLowerCase()}`}
-                      aria-hidden="true"
-                    />
-                    {n} {sev}
-                  </li>
-                ))}
-            </ul>
-
-            {/* Severity filter */}
-            <div
-              className="cr-filter"
-              role="group"
-              aria-label="Filter findings by severity"
-            >
-              {SEV_ORDER.map((sev) => (
-                <CcureButton
-                  key={sev}
-                  variant="secondary"
-                  size="sm"
-                  className="cr-toggle"
-                  aria-pressed={cveFilter === sev}
-                  onClick={() => setCveFilter(sev)}
-                >
-                  {sev}
-                  {sev !== "All" && severity_summary[sev] > 0 && (
-                    <span className="cr-toggle__count">
-                      ({severity_summary[sev]})
-                    </span>
-                  )}
-                </CcureButton>
-              ))}
-            </div>
-
-            <ul className="cr-findings">
-              {filteredCves.map((cve, i) => (
-                <li key={i} className="cr-finding">
-                  <div className="cr-finding__head">
-                    <CVELink cveId={cve.cve_id} className="cr-finding__id" />
-                    <CcureSeverityBadge severity={cve.severity} />
-                    {cve.cvss_score && (
-                      <span className="cr-mono cr-muted">
-                        CVSS {cve.cvss_score}
-                      </span>
-                    )}
-                    {cve.package && (
-                      <span className="cr-mono cr-muted">
-                        {cve.package} {cve.installed_ver}
-                      </span>
-                    )}
-                    {cve.fixed_ver && (
-                      <span className="cr-tone-success">
-                        <Glyph>→</Glyph> fixed in {cve.fixed_ver}
-                      </span>
-                    )}
-                  </div>
-                  <p className="cr-finding__desc">{cve.description}</p>
-                </li>
-              ))}
-            </ul>
+            <FindingsListSection
+              cves={filteredCvesSource}
+              severitySummary={severity_summary}
+              severityOrder={SEV_ORDER}
+              glyph={Glyph}
+            />
           </Section>
         )}
+
+        {/* Configuration Audit. Always rendered, never gated on there being
+            results: the component draws the distinction between "not
+            assessed" and "assessed, nothing failed", and a section that
+            disappears when an audit did not run tells the operator nothing
+            about why. */}
+        <Section
+          icon="🧾"
+          title={
+            config_audit && config_audit.assessed !== false
+              ? `Configuration Audit (${config_audit.checks_assessed ?? (config_audit.results || []).length} assessed)`
+              : "Configuration Audit"
+          }
+          defaultOpen={Boolean(
+            config_audit && (config_audit.counts || {}).fail > 0,
+          )}
+        >
+          <ConfigAuditSection configAudit={config_audit} />
+        </Section>
+
+        {/* Package coverage — the denominator for every package finding. */}
+        <Section icon="📊" title="Package Coverage">
+          <PackageCoverageSection coverage={package_coverage} />
+        </Section>
+
+        {/* The whole inventory, not only the packages that matched a CVE. */}
+        <Section
+          icon="📦"
+          title={`Installed Software (${Number(packages_enumerated ?? packages.length).toLocaleString()})`}
+        >
+          <PackageInventorySection
+            packages={packages}
+            cves={cves}
+            packagesEnumerated={packages_enumerated}
+          />
+        </Section>
+
+        {/* Candidates evaluated and then ruled out. */}
+        <Section
+          icon="🚫"
+          title={`Suppressed Findings (${(suppressed_cves || []).length})`}
+        >
+          <SuppressedFindingsSection
+            suppressed={suppressed_cves}
+            candidatesEvaluated={candidates_evaluated}
+            reportedCount={cve_count}
+          />
+        </Section>
 
         {/* Security Audit */}
         <Section

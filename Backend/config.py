@@ -104,12 +104,15 @@ class ScanConfig:
     NMAP_PROCESS_WAIT_TIMEOUT: int = int(os.getenv("NMAP_PROCESS_WAIT_TIMEOUT", "900"))
     NMAP_CACHE_ENABLED: bool = os.getenv("NMAP_CACHE_ENABLED", "True").lower() == "true"
     NMAP_CACHE_TTL_HOURS: int = int(os.getenv("NMAP_CACHE_TTL_HOURS", "72"))
-    # A scan left in 'running' with nothing working on it. `task_time_limit`
-    # above cannot cover this: Celery's hard time limit is implemented by
-    # signalling a billiard worker process, so it is silently inert under the
-    # `--pool=threads` worker this deployment runs on Windows -- and it can do
-    # nothing at all about a worker that has died, been restarted, or is
-    # failing before it reaches any of the task's own error handling.
+    # A scan left in 'running' with nothing working on it. The per-task Celery
+    # limits above cannot cover this: they can only act on a task that is still
+    # running, and can do nothing at all about a worker that has died, been
+    # restarted, or is failing before it reaches any of the task's own error
+    # handling. Note they were additionally inert on the old Windows host
+    # worker, which ran `--pool=threads`, where Celery's hard limit -- delivered
+    # by signalling a billiard *process* -- cannot fire at all. The Linux VM
+    # worker runs prefork, where it does fire; this sweep remains the backstop
+    # for the cases Celery cannot see.
     #
     # Measured against the deployment's own history: the slowest scan on
     # record is a /24 vulnerability audit at roughly 25 minutes. 90 minutes is
@@ -121,6 +124,50 @@ class ScanConfig:
     # Separate from the running timeout because it is a different fault with a
     # different message: "no scanner is running" rather than "the scan hung".
     SCAN_QUEUE_TIMEOUT_MINUTES: int = int(os.getenv("SCAN_QUEUE_TIMEOUT_MINUTES", "15"))
+    # ── Per-task scan time budgets ───────────────────────────────────────
+    # These replace the global `task_time_limit = NMAP_TIMEOUT + 60` that
+    # `core/celery_app.py` used to set for every task in the application.
+    #
+    # That formula was a unit error. NMAP_TIMEOUT is the lease on a *single*
+    # nmap invocation (`core/nmap/wrapper.py` passes it as `lease_seconds`),
+    # and a scan task spawns many of them -- it can also wait up to
+    # NMAP_PROCESS_WAIT_TIMEOUT (900s) just to acquire one slot. So the budget
+    # for the whole task was set to 360s, below the queue wait for one of its
+    # subprocesses.
+    #
+    # It did no harm on the Windows host worker, which ran `--pool=threads`,
+    # where Celery's hard limit cannot fire. The Linux VM worker runs prefork,
+    # where it does: measured on 22 Sep 2026, a task was SIGKILLed at exactly
+    # 360s. Against this deployment's own history that would have killed 11 of
+    # 48 completed scans, and the average was already 426s.
+    #
+    # Each value is a *soft* limit with a hard limit 300s behind it. The soft
+    # limit is the load-bearing half: SoftTimeLimitExceeded subclasses
+    # Exception, so each task's own `except Exception -> _settle_failure`
+    # catches it and records an honest failure. The hard limit delivers
+    # SystemExit, which `except Exception` does *not* catch -- so a scan killed
+    # by it is never settled and sits 'running' until reap_stalled_scans fails
+    # it SCAN_STALL_TIMEOUT_MINUTES later. The hard limit is the backstop for a
+    # task wedged in uninterruptible code, not the working deadline.
+    #
+    # Phases chain as separate Celery tasks, so each budget covers one phase.
+    # Sized from measured durations, not guessed: nuclei alone is 129-289s
+    # against a single host, and a credentialed audit resolves up to 955 rules.
+    SCAN_TIME_LIMIT_DISCOVERY: int = int(os.getenv("SCAN_TIME_LIMIT_DISCOVERY", "1800"))
+    SCAN_TIME_LIMIT_PORT_SCAN: int = int(os.getenv("SCAN_TIME_LIMIT_PORT_SCAN", "7200"))
+    SCAN_TIME_LIMIT_VULN_AUDIT: int = int(
+        os.getenv("SCAN_TIME_LIMIT_VULN_AUDIT", "14400")
+    )
+    SCAN_TIME_LIMIT_CREDENTIALED: int = int(
+        os.getenv("SCAN_TIME_LIMIT_CREDENTIALED", "7200")
+    )
+    SCAN_TIME_LIMIT_TOPOLOGY: int = int(os.getenv("SCAN_TIME_LIMIT_TOPOLOGY", "1800"))
+    # How far the hard limit sits behind the soft one. It only has to be long
+    # enough for the task's own except/finally to settle the scan and commit.
+    SCAN_TIME_LIMIT_HARD_MARGIN: int = int(
+        os.getenv("SCAN_TIME_LIMIT_HARD_MARGIN", "300")
+    )
+
     SCAN_IP_BLACKLIST: str = os.getenv("SCAN_IP_BLACKLIST", "")
     PASSIVE_FIRST_DEFAULT: bool = (
         os.getenv("PASSIVE_FIRST_DEFAULT", "False").lower() == "true"
@@ -852,6 +899,12 @@ class AppConfig:
     NMAP_CACHE_TTL_HOURS = ScanConfig.NMAP_CACHE_TTL_HOURS
     SCAN_STALL_TIMEOUT_MINUTES = ScanConfig.SCAN_STALL_TIMEOUT_MINUTES
     SCAN_QUEUE_TIMEOUT_MINUTES = ScanConfig.SCAN_QUEUE_TIMEOUT_MINUTES
+    SCAN_TIME_LIMIT_DISCOVERY = ScanConfig.SCAN_TIME_LIMIT_DISCOVERY
+    SCAN_TIME_LIMIT_PORT_SCAN = ScanConfig.SCAN_TIME_LIMIT_PORT_SCAN
+    SCAN_TIME_LIMIT_VULN_AUDIT = ScanConfig.SCAN_TIME_LIMIT_VULN_AUDIT
+    SCAN_TIME_LIMIT_CREDENTIALED = ScanConfig.SCAN_TIME_LIMIT_CREDENTIALED
+    SCAN_TIME_LIMIT_TOPOLOGY = ScanConfig.SCAN_TIME_LIMIT_TOPOLOGY
+    SCAN_TIME_LIMIT_HARD_MARGIN = ScanConfig.SCAN_TIME_LIMIT_HARD_MARGIN
 
     # OT safety config
     PASSIVE_FIRST_DEFAULT = ScanConfig.PASSIVE_FIRST_DEFAULT

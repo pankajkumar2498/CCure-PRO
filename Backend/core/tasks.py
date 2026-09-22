@@ -10,6 +10,7 @@ import os
 import time
 from typing import Dict, List, Optional
 
+from config import AppConfig
 from core.celery_app import celery_app
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
@@ -1179,7 +1180,13 @@ def _sync_credentialed_vulnerabilities(
         db.execute(fnd_upsert)
 
 
-@celery_app.task(name="ccure.tasks.sync_asset_discovery_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_asset_discovery_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_asset_discovery_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1205,7 +1212,13 @@ def sync_asset_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.sync_vulnerability_audit_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_vulnerability_audit_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_vulnerability_audit_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1231,7 +1244,13 @@ def sync_vulnerability_audit_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.sync_host_discovery_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_host_discovery_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_host_discovery_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1257,7 +1276,14 @@ def sync_host_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_host_discovery", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_host_discovery",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_host_discovery_task(
     self,
     user_id: str,
@@ -1481,7 +1507,14 @@ def run_host_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_asset_discovery", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_asset_discovery",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_asset_discovery_task(
     self,
     user_id: str,
@@ -2334,7 +2367,14 @@ def _apply_credentialed_enrichment(
     }
 
 
-@celery_app.task(name="ccure.tasks.run_vulnerability_audit", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_vulnerability_audit",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_VULN_AUDIT,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_VULN_AUDIT
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_vulnerability_audit_task(
     self,
     user_id: str,
@@ -2578,7 +2618,14 @@ def _chain_topology_if_needed(
     return next_task.id
 
 
-@celery_app.task(name="ccure.tasks.run_topology_mapping", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_topology_mapping",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_TOPOLOGY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_TOPOLOGY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_topology_mapping_task(
     self,
     scan_id: str,
@@ -2738,7 +2785,13 @@ def run_topology_mapping_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_traditional_scan", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.run_traditional_scan",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_traditional_scan_task(
     user_id: str,
     targets: list[str],
@@ -4358,7 +4411,13 @@ def _audit_host_over_transport(**kwargs):
         return audit_credentialed_host(**retry)
 
 
-@celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.run_credentialed_scan",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_credentialed_scan_task(
     user_id: str,
     ip: str | None = None,

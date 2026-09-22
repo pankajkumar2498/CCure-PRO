@@ -39,7 +39,33 @@ celery_app.conf.update(
     task_track_started=True,
     worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY,  # Limits parallel heavy scans
     worker_prefetch_multiplier=AppConfig.SCANNER_WORKER_PREFETCH_MULTIPLIER,
-    task_time_limit=AppConfig.NMAP_TIMEOUT + 60,  # Kill tasks if they hang
+    # No global task_time_limit.
+    #
+    # This was `AppConfig.NMAP_TIMEOUT + 60` (360s) and applied to *every* task
+    # in the application. NMAP_TIMEOUT is the lease on a single nmap invocation,
+    # not a budget for a task that spawns many of them -- and a scan can wait up
+    # to NMAP_PROCESS_WAIT_TIMEOUT (900s) just to acquire one nmap slot, so the
+    # whole-task budget sat below the queue wait for one of its own subprocesses.
+    #
+    # It was invisible on the Windows host worker, which ran `--pool=threads`,
+    # where Celery's hard limit cannot fire -- which is what the comments here
+    # and in config.py used to mean by calling it "inert". The Linux VM worker
+    # runs prefork, where it fires: measured 22 Sep 2026, a task was killed at
+    # exactly 360s with TimeLimitExceeded(360). Against this deployment's own
+    # history that would have killed 11 of 48 completed scans; the average
+    # completed scan was already 426s.
+    #
+    # A global default is deliberately not set in its place. A limit that covers
+    # every task has to be sized for the longest one, at which point it bounds
+    # nothing that matters -- and the failure it produces is silent, because the
+    # hard limit delivers SystemExit, which the tasks' `except Exception`
+    # handlers do not catch. Each scan task declares its own soft and hard limit
+    # from the SCAN_TIME_LIMIT_* budgets in config.py; the mail, purge and
+    # bookkeeping tasks are bounded by what they do.
+    #
+    # `reap_stalled_scans` on beat remains the deployment's real scan timeout,
+    # for the reason given beside it below: it is the only mechanism that can
+    # settle a scan whose worker died or was restarted.
 )
 
 from celery.schedules import crontab
@@ -117,12 +143,14 @@ celery_app.conf.beat_schedule = {
         "task": "ccure.tasks.run_due_scan_schedules",
         "schedule": crontab(minute="*"),
     },
-    # The deployment's real scan timeout. `task_time_limit` above is inert on
-    # the `--pool=threads` host worker -- Celery's hard limit signals a
-    # billiard *process* -- and in any case it can only act on a task that is
-    # still running. It cannot settle a scan whose worker died, was restarted,
-    # or failed inside its own error handling, which is how scans 60-62 came to
-    # sit in 'running' indefinitely on 4 Sep 2026 against a host that was up.
+    # The deployment's real scan timeout. Celery's own per-task limits (set on
+    # each scan task from the SCAN_TIME_LIMIT_* budgets) can only act on a task
+    # that is still running. They cannot settle a scan whose worker died, was
+    # restarted, or failed inside its own error handling, which is how scans
+    # 60-62 came to sit in 'running' indefinitely on 4 Sep 2026 against a host
+    # that was up. Note the limits were additionally inert on the old Windows
+    # `--pool=threads` host worker; on the Linux prefork worker they do fire,
+    # but this sweep is still the only backstop for a dead worker.
     #
     # Every two minutes: the deadlines are measured in tens of minutes, so the
     # tick only decides how promptly a stuck scan is reported, and the cost of

@@ -768,17 +768,53 @@ compounded, and each is worth keeping in mind separately:
   the ORM first (an audit entry and a notification are worth having) and falls
   back to it. **Never call `mark_scan_failed` directly from an `except` block.**
 
-- **`task_time_limit` in `core/celery_app.py` is inert on this deployment.**
-  Celery's hard limit is delivered by signalling a billiard *process*, so it
-  does nothing under the `--pool=threads` host worker, and it can do nothing at
-  all about a worker that has died or been restarted. The comment beside it
-  ("Kill tasks if they hang") is wrong here. The real timeout is
-  `ccure.tasks.reap_stalled_scans`, on beat every two minutes:
-  `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running scan and
-  `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected — two
-  deadlines because "the scan hung" and "no scanner is running" send the
+- **`task_time_limit` was inert on Windows and is not inert on the VM.** This
+  is the one item in this section the Linux move invalidated, and it was a
+  latent kill switch for nine months. Celery's hard limit is delivered by
+  signalling a billiard *process*, so it did nothing under the Windows
+  `--pool=threads` host worker — which is why the comment beside it and the
+  `test_scan_stall_recovery` docstring both called it inert. The VM worker
+  passes no `--pool`, so it runs **prefork, where the limit fires**. Measured
+  22 Sep 2026 on this VM: a task was SIGKILLed at exactly 360s with
+  `TimeLimitExceeded(360)`.
+
+  The global was `NMAP_TIMEOUT + 60`, and that formula is a **unit error**.
+  `NMAP_TIMEOUT` is the lease on a *single* nmap invocation
+  (`core/nmap/wrapper.py` passes it as `lease_seconds`); a scan task spawns
+  many, and can wait up to `NMAP_PROCESS_WAIT_TIMEOUT` (900s) just to acquire
+  one slot. So the budget for a whole task sat below the queue wait for one of
+  its own subprocesses. Against this deployment's own history it would have
+  killed **11 of 48** completed scans, the longest 11,714s (3h15m); the
+  average completed scan was already 426s, and the longest credentialed scan
+  358s — two seconds under the cliff.
+
+  **The hard limit cannot settle a scan, and that is why the soft limit is the
+  load-bearing half.** A hard kill delivers `SystemExit`, which is a
+  `BaseException` and **not** caught by the `except Exception` handler every
+  scan task uses to call `_settle_failure` — so a scan killed by it is never
+  marked failed and sits `running` until the reaper. `SoftTimeLimitExceeded`
+  *is* an `Exception`, so the soft limit routes through the task's own error
+  handling and records an honest failure. Each scan task therefore declares
+  both, from `SCAN_TIME_LIMIT_*` in `config.py`, with the hard limit
+  `SCAN_TIME_LIMIT_HARD_MARGIN` (300s) behind the soft one as a backstop for a
+  task wedged in uninterruptible code — never as the working deadline.
+
+  **There is deliberately no global `task_time_limit` any more.** One value
+  covering every task has to be sized for the longest, at which point it bounds
+  nothing that matters, and the failure it produces is the silent kind above.
+  Phases chain as *separate* tasks (`run_host_discovery` → `run_asset_discovery`
+  → `run_vulnerability_audit` via `.delay()`), so each budget covers one phase,
+  not the pipeline — the 11,714s scan was wall-clock across three tasks.
+  **A new scan task must declare its own limits**; nothing inherits one now.
+
+  `ccure.tasks.reap_stalled_scans` remains the deployment's real scan timeout,
+  on beat every two minutes: `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running
+  scan and `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected —
+  two deadlines because "the scan hung" and "no scanner is running" send the
   operator to different places. It only ever moves a scan *out of* a
-  non-terminal state; a real outcome always wins.
+  non-terminal state; a real outcome always wins. It is still the only
+  mechanism that can settle a scan whose worker died or was restarted, which
+  no Celery limit of any kind can see.
 
 - **`run_asset_discovery_task` did not settle the scan at all.** Its `except`
   handler just returned. That is the same defect whose fix is documented in a

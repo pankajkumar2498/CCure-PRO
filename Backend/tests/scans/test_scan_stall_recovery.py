@@ -24,11 +24,14 @@ properties defended here are
   3. `reap_stalled_scans` settles what nothing else did, on a deadline, and
      leaves everything inside that deadline alone.
 
-Note (3) is what makes this a *timeout* rather than a cleanup script:
-`task_time_limit` in `core/celery_app.py` reads like a scan timeout and cannot
-act as one here — Celery's hard limit signals a billiard process, so it is
-inert under the `--pool=threads` host worker, and it can do nothing at all
-about a worker that has already died.
+Note (3) is what makes this a *timeout* rather than a cleanup script: the
+per-task Celery limits set from the SCAN_TIME_LIMIT_* budgets bound a task that
+is still running, and can do nothing at all about a worker that has already
+died. They were additionally inert on the old Windows `--pool=threads` host
+worker, since Celery's hard limit signals a billiard process; on the Linux
+prefork worker they do fire, which is why each scan task now carries a soft
+limit its own error handling can catch rather than the single 360s global that
+would have SIGKILLed it.
 """
 
 from __future__ import annotations

@@ -164,6 +164,16 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "scan_schedules", action: "read" },
       },
       {
+        id: "scan-policies",
+        label: "Scan Policies",
+        Icon: IcoFile,
+        route: "/scan-policies",
+        // scan_policies:read, not scans:read. "May this person run a scan" and
+        // "may this person decide what every scan assesses" are different
+        // authorisations, and the backend keeps them apart.
+        permission: { resource: "scan_policies", action: "read" },
+      },
+      {
         id: "scan-credentials",
         label: "Scan Credentials",
         Icon: IcoFile,

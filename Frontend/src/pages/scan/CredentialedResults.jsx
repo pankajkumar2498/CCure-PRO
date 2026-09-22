@@ -18,6 +18,7 @@ import api from "../../api/axiosInstance";
 import CVELink from "../../components/common/CVELink";
 import ConfigAuditSection from "../../components/scan/ConfigAuditSection";
 import ReportExportPanel from "../../components/scan/ReportExportPanel";
+import ScanPolicySnapshot from "../../components/scan/ScanPolicySnapshot";
 import FindingsListSection from "../../components/scan/FindingsListSection";
 import PackageCoverageSection from "../../components/scan/PackageCoverageSection";
 import PackageInventorySection from "../../components/scan/PackageInventorySection";
@@ -1269,6 +1270,14 @@ export default function CredentialedResults() {
             cves={cves}
             packagesEnumerated={packages_enumerated}
           />
+        </Section>
+
+        {/* What this scan actually assessed. Read from the scan's own
+            record rather than the policy row it names, because the policy may
+            have been edited, versioned, archived or deleted since and none of
+            that changes what this scan did. */}
+        <Section icon="📋" title="Scan policy — what this scan assessed">
+          <ScanPolicySnapshot scanId={scan_id} />
         </Section>
 
         {/* Reports and exports. Placed after the findings and before the

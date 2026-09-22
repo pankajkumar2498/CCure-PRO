@@ -51,6 +51,7 @@ import Phase3Results from "./pages/scan/Phase3Results";
 import CredentialedScan from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
 import ScanComparison from "./pages/scan/ScanComparison";
+import ScanPolicies from "./pages/scan/ScanPolicies";
 import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
@@ -124,6 +125,7 @@ export default function App() {
           <Route path="/history" element={<ScanHistory mode="history" />} />
           <Route path="/scan-schedules" element={<ScanSchedules />} />
           <Route path="/scan-credentials" element={<ScanCredentials />} />
+          <Route path="/scan-policies" element={<ScanPolicies />} />
           <Route
             path="/configuration-checks"
             element={<ConfigurationChecks />}

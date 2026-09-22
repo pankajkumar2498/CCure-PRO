@@ -539,7 +539,12 @@ afterEach(() => {
     expect(call).toEqual(["/auth/ticket"]);
   for (const call of api.get.mock.calls) {
     expect(call).toHaveLength(1);
-    expect(call[0]).toMatch(/^\/scans\/[^/?]+$/);
+    // The scan record, and its policy sub-resource. The latter was added when
+    // the page grew the "what this scan assessed" section, which reads the
+    // scan's own immutable configuration snapshot. Widened by one named path
+    // rather than relaxed: the property this guard exists for is that the page
+    // reads scans and nothing else, and writes nothing at all.
+    expect(call[0]).toMatch(/^\/scans\/[^/?]+(\/policy)?$/);
   }
   for (const s of sockets) {
     expect(s.url).toMatch(/\/scans\/[^/]+\/progress\?ticket=[^&]+$/);

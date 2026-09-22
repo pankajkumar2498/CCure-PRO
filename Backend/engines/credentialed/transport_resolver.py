@@ -453,3 +453,157 @@ def resolve_endpoint(
         f"nothing accepted a TCP connection for {label} — considered {tried}"
     )
     return result
+
+
+# ── Transport discovery ──────────────────────────────────────────────────────
+#
+# Everything above answers "which *port* for this transport". This answers the
+# question in front of it: "which transport at all".
+#
+# Until this existed the transport was whatever the credential row said, and a
+# Windows credential therefore had to be created twice — once for WinRM and
+# once for SMB — by an operator who had to know in advance which one the target
+# would accept. WinRM is off by default on Windows *client* editions and on by
+# default on Server; SMB is on almost everywhere. So the operator was being
+# asked for the one fact the scanner is better placed to establish than they
+# are, and getting it wrong reads as "the credential was refused".
+#
+# The order is preference, not fallback-only: each is *probed*, and the first
+# that answers is used.
+
+#: Transports to try for a credential type that does not name one, in the order
+#: they are preferred.
+#:
+#: WinRM leads for Windows because it is the deeper transport — it runs
+#: arbitrary PowerShell, so every collector item is served, where SMB serves 18
+#: of 31 natively and records the rest in ``collection_errors``. SMB follows
+#: because it reaches the hosts WinRM does not.
+DISCOVERY_ORDER = {
+    "windows": (TRANSPORT_WINRM, TRANSPORT_SMB),
+    "ssh": (TRANSPORT_SSH,),
+    # A credential whose type says nothing: try everything, Windows first only
+    # because its two transports are cheap TCP probes on distinctive ports.
+    "auto": (TRANSPORT_WINRM, TRANSPORT_SMB, TRANSPORT_SSH),
+}
+
+
+@dataclass
+class AccessResolution:
+    """Which transport and port an authenticated session should use.
+
+    ``attempted`` records every transport considered and why it was or was not
+    chosen, because "the credential was refused" and "nothing was listening for
+    any transport we support" send the operator to completely different places.
+    """
+
+    transport: Optional[str] = None
+    endpoint: Optional[TransportEndpoint] = None
+    attempted: List[tuple] = field(default_factory=list)
+    reason: str = ""
+
+    @property
+    def resolved(self) -> bool:
+        return self.transport is not None and self.endpoint is not None
+
+    def describe(self) -> str:
+        """One line naming the mechanism, for the scan record and the UI."""
+        if not self.resolved:
+            return self.reason or "no supported authentication service was reachable"
+        return f"{self.transport.upper()} on {self.endpoint.describe()}"
+
+    def as_dict(self) -> dict:
+        return {
+            "transport": self.transport,
+            "port": self.endpoint.port if self.endpoint else None,
+            "use_tls": self.endpoint.use_tls if self.endpoint else None,
+            "source": self.endpoint.source if self.endpoint else None,
+            "summary": self.describe(),
+            "considered": [
+                {"transport": t, "resolved": ok, "reason": why}
+                for t, ok, why in self.attempted
+            ],
+        }
+
+
+def resolve_access(
+    *,
+    ip: str,
+    credential_type: str = "auto",
+    stated_transport: Optional[str] = None,
+    prefer: Optional[str] = None,
+    stated_port: Optional[int] = None,
+    use_tls: Optional[bool] = None,
+    open_ports: Optional[Sequence] = None,
+    include_fallbacks: bool = True,
+    probe: Optional[Callable[..., bool]] = None,
+    timeout: int = 5,
+) -> AccessResolution:
+    """
+    Decide *how* to reach this host, not merely where.
+
+    **A stated transport is honoured and is not second-guessed.** An operator
+    who chose WinRM gets WinRM; discovery exists for the operator who chose
+    nothing, which after this change is the normal case. ``prefer`` is the
+    middle ground a stored credential needs -- see the note on ordering below. What discovery must
+    never become is "try each transport with the credential until one accepts
+    it" — that is credential spraying with an account the lockout policy is
+    watching. Selection here is by **TCP reachability only**; exactly one
+    authentication attempt is made afterwards, against the winner.
+
+    **A stated port does not pin the transport.** 5985 states WinRM as clearly
+    as it states a port, but 22 on a Windows credential is the model default
+    (``compliance_credentials.port`` is NOT NULL default 22) and means nothing
+    at all — which is the whole reason this module exists. So a stated port is
+    offered to each transport in turn and simply fails to resolve for the ones
+    it does not belong to.
+    """
+    result = AccessResolution()
+
+    if stated_transport:
+        order = (stated_transport.strip().lower(),)
+    else:
+        key = (credential_type or "auto").strip().lower()
+        order = DISCOVERY_ORDER.get(key) or DISCOVERY_ORDER["auto"]
+        # A stored credential always carries a transport -- the column is NOT
+        # NULL -- so it cannot say "I do not mind". Treating it as a *pin*
+        # would silently override an operator who chose SMB because WinRM is
+        # listening here but misconfigured; ignoring it would throw away a
+        # deliberate choice. It is therefore a preference: tried first, with
+        # the others still available behind it.
+        chosen = (prefer or "").strip().lower()
+        if chosen and chosen in order:
+            order = (chosen,) + tuple(t for t in order if t != chosen)
+
+    for transport in order:
+        # The stated port is only meaningful to the transport it belongs to.
+        # Offering 5985 to SSH would have SSH resolve a WinRM port and open an
+        # SSH handshake against a WinRM listener -- the exact defect the
+        # module docstring above describes, reached from a new direction.
+        port_for_this = stated_port
+        if stated_port is not None and len(order) > 1:
+            conventional = FALLBACK_PORTS.get(transport, ())
+            if stated_port not in conventional:
+                port_for_this = None
+
+        resolution = resolve_endpoint(
+            ip=ip,
+            transport=transport,
+            stated_port=port_for_this,
+            use_tls=use_tls,
+            open_ports=open_ports,
+            include_fallbacks=include_fallbacks,
+            probe=probe,
+            timeout=timeout,
+        )
+        if resolution.resolved:
+            result.transport = transport
+            result.endpoint = resolution.endpoint
+            result.attempted.append((transport, True, resolution.endpoint.describe()))
+            log.info("Credentialed access to %s resolved to %s", ip, result.describe())
+            return result
+        result.attempted.append((transport, False, resolution.reason))
+
+    tried = "; ".join(f"{t}: {why}" for t, _, why in result.attempted)
+    result.reason = f"no supported authentication service answered on {ip} — {tried}"
+    log.info("Credentialed access to %s unresolved: %s", ip, result.reason)
+    return result

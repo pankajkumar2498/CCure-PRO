@@ -1479,6 +1479,45 @@ def _bare_trustee(name: str) -> str:
 _SEC_INI = "INI::"
 _SEC_SID = "SID::"
 
+#: Well-known SIDs whose *on-target* translation routinely fails, and the name
+#: Windows documents for each.
+#:
+#: Translation is done on the target for a reason (see
+#: ``_collect_security_policy``): a non-English install resolves its own group
+#: names correctly, which a table could not. This does not replace that — it is
+#: consulted **only** where the target returned nothing, so the on-target answer
+#: always wins and the non-English property is preserved.
+#:
+#: The gap is real and not an edge case. ``S-1-5-83-0`` is the Hyper-V virtual
+#: machines group, and Windows 11 grants it ``SeCreateSymbolicLinkPrivilege``
+#: out of the box — but ``SecurityIdentifier.Translate`` throws for it unless
+#: the Hyper-V management service is running. Measured on a real Windows 11 Pro
+#: host, 22 Sep 2026: the right is held by ``*S-1-5-32-544,*S-1-5-83-0``, the
+#: first resolved and the second did not.
+#:
+#: An item that carries no ``trustee_name`` cannot be compared against a state
+#: that names one, so the comparison returned UNKNOWN and WN11-UR-000060
+#: reported **ERROR on a host whose configuration is perfectly readable**. That
+#: is the wrong answer twice over: it is not a product gap, and the rule has a
+#: determinate verdict (DISA's automated content admits only ``""`` and
+#: ``Administrators``, so a host also granting the Hyper-V group fails it —
+#: the Hyper-V allowance lives in the STIG's manual check text, not the OVAL).
+#:
+#: A SID that is in neither the target's answer nor this table still yields an
+#: item with no ``trustee_name``, and still reads UNKNOWN. That is deliberate:
+#: naming a trustee we could not identify would assert something about the host
+#: that nothing established, and substituting the SID string itself would
+#: compare a SID against a group name and fail every rule it appears in.
+_WELL_KNOWN_SIDS = {
+    # Hyper-V. Holds SeCreateSymbolicLinkPrivilege on a stock Windows 11.
+    "S-1-5-83-0": "NT VIRTUAL MACHINE\\Virtual Machines",
+    # The desktop window manager's group; holds several rights by default and
+    # translates only intermittently.
+    "S-1-5-90-0": "Window Manager\\Window Manager Group",
+    # The user-mode driver framework host.
+    "S-1-5-84-0-0-0-0-0": "NT AUTHORITY\\UMFD",
+}
+
 
 def _collect_security_policy(ctx: CollectionContext) -> Any:
     """
@@ -1535,7 +1574,11 @@ def _collect_security_policy(ctx: CollectionContext) -> Any:
             _, _, rest = line.partition(_SEC_SID)
             sid, _, display = rest.partition("::")
             if sid:
-                sids[sid.strip()] = display.strip()
+                sid = sid.strip()
+                # The target's own answer wins wherever it gave one; the table
+                # only fills a blank. See _WELL_KNOWN_SIDS for why a blank is
+                # common and why an unknown SID is still left blank.
+                sids[sid] = display.strip() or _WELL_KNOWN_SIDS.get(sid, "")
     if not ini:
         return "the exported security policy contained no settings"
     return {"ini": ini, "sids": sids}

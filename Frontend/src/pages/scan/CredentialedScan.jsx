@@ -89,7 +89,10 @@ export default function CredentialedScan() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [keyPath, setKeyPath] = useState("");
-  const [port, setPort] = useState("22");
+  // Empty means "discover it". The engine probes the authentication
+  // services the host actually offers (WinRM, SMB, SSH) and picks one;
+  // a value here pins it, for a listener on a port nothing would guess.
+  const [port, setPort] = useState("");
   const [authMethod, setAuthMethod] = useState("password");
   const [osType, setOsType] = useState("auto");
   const [showPass, setShowPass] = useState(false);
@@ -174,7 +177,10 @@ export default function CredentialedScan() {
           credentialSource === "jit" && authMethod === "key"
             ? keyPath.trim()
             : undefined,
-        port: parseInt(port, 10) || 22,
+        // Undefined, not 22. The API treats a stated port as a pin and
+        // its absence as "discover", so sending a default here would
+        // silently turn discovery off for every scan.
+        port: port.trim() ? parseInt(port, 10) : undefined,
         authMethod: credentialSource === "jit" ? authMethod : undefined,
         sections: allSelected ? null : Array.from(sections),
         osType,
@@ -306,14 +312,16 @@ export default function CredentialedScan() {
                 }
               />
               <CcureInput
-                label="SSH port"
+                label="Port (optional)"
                 type="number"
                 min={1}
                 max={65535}
                 fieldClassName="cs-field cs-field--narrow"
+                placeholder="Auto"
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
                 disabled={formDisabled}
+                hint="Leave blank to detect the service automatically."
               />
               <CcureSelect
                 label="Target OS"
@@ -332,18 +340,18 @@ export default function CredentialedScan() {
                 response to the operator changing the OS — so it announces. */}
             {osType === "windows" && (
               <CcureAlert
-                variant="warning"
-                title="Windows support — beta"
+                variant="info"
+                title="How Windows hosts are reached"
                 className="cs-inline-alert"
               >
-                Windows credentialed scanning requires{" "}
-                <strong>OpenSSH Server</strong> to be enabled on the target and
-                PowerShell set as the default shell. WMI/registry-based commands
-                work over SSH, but some queries (e.g. large package lists, event
-                log) may time out on heavily patched systems.{" "}
-                <strong>
-                  Test on your environment before deploying to production.
-                </strong>
+                Supply the username and password only — the scanner detects
+                which authentication service the host offers and uses it.{" "}
+                <strong>WinRM</strong> (5985/5986) is preferred because it
+                serves every collector item; <strong>SMB</strong> with Remote
+                Registry and WMI (445/139) is used where WinRM is off, which is
+                the default on Windows client editions. OpenSSH on the target is
+                supported but not required. The report names the service that
+                accepted the credential.
               </CcureAlert>
             )}
           </section>

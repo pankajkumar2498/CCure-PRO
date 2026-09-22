@@ -1070,6 +1070,44 @@ so "the operator chose 22" and "nobody said anything" are the same row.
   transport failure*. `FALLBACK_PORTS` is deliberately two entries per
   transport, not a port scan.
 
+- **The transport is discovered too, not only the port.**
+  `resolve_access` answers the question in front of "which port": *which
+  authentication service does this host actually offer*. Until it existed the
+  transport was whatever `compliance_credentials.transport` said, so a Windows
+  credential had to be created twice — once for WinRM, once for SMB — by an
+  operator who had to know in advance which the target would accept. WinRM is
+  off by default on Windows **client** editions and on by default on Server,
+  which is exactly the fact the scanner is better placed to establish than the
+  person filling in the form.
+
+  Four properties hold it together:
+
+  - **Discovery runs when no port was stated**, and that decision is made in
+    the router, not the worker — by the time the worker sees `port` it has
+    already fallen back to the stored credential's, which is NOT NULL and
+    defaults to 22, so it can no longer tell "the operator asked for 22" from
+    "nobody said anything". `discover_transport` overrides either way.
+  - **A stored credential's transport is a *preference*, not a pin.** The
+    column cannot express "I do not mind", so reading it as a decision would
+    override an operator who never made one; ignoring it would discard a
+    deliberate choice of SMB on a host where WinRM listens but is
+    misconfigured. `prefer=` puts it first and leaves the others behind it. An
+    explicitly *stated* transport is still never second-guessed.
+  - **Selection is by TCP reachability, never by attempting authentication** —
+    the same rule the port resolver already held, and for the same reason:
+    trying the credential against each candidate turns one failed logon into
+    several against an account the lockout control must not trip.
+  - **A stated port does not pin the transport.** 5985 states WinRM as clearly
+    as it states a port; 22 on a Windows credential is the model default and
+    states nothing. So a stated port is offered only to the transports it
+    conventionally belongs to.
+
+  The resolved mechanism is recorded on the report as `access` and named in the
+  UI, because "credentialed access succeeded" is not a useful answer on its
+  own — the operator needs to know *what* accepted the credential. Nothing
+  reachable is reported as such, naming every transport considered, rather than
+  falling through to an attempt that can only fail with a worse message.
+
 - **`use_tls` is carried, not re-derived.** `WinRMExecutor` infers TLS from
   `port == 5986` when it is not told, which is right for the conventional layout
   and wrong for every other one. 5985/5986 are settled by convention; anything
@@ -2012,6 +2050,44 @@ declared unimplemented with reasons in `WINDOWS_NOT_IMPLEMENTED`.
     items.** Every userright rule here uses `at_least_one_exists`, and "must
     not be assigned" is expressed as `trustee_name equals ''`. Zero items makes
     those rules fail on hosts that satisfy them — 0 of 25 could pass.
+
+- **A test's `state_operator` is read, and ANDing alternatives is
+  unsatisfiable rather than merely strict.** OVAL lets a test reference several
+  states combined by `state_operator`, whose default is AND — but DISA writes
+  **OR** wherever a setting has more than one acceptable answer ("this right is
+  unassigned *or* held only by Administrators"). The attribute was not read at
+  all, so every multi-state test was ANDed, and where the states are
+  alternatives no item can satisfy them both: the rule could not pass on any
+  host in any configuration.
+
+  Measured, not inferred. The DISA Windows 11 V2R10 benchmark contains **43
+  `state_operator="OR"`** tests against 3 `AND`, and the loaded pack carried 44
+  multi-state rules. On a real Windows 11 Pro host those rules passed **2 of
+  42**, against 61 of 147 for the single-state rules; after the fix they pass
+  **26 of 42** and the single-state figures are untouched. That is **24 false
+  FAIL findings on one host**, all reported against a machine that complies.
+
+  `ONE` and `XOR` are refused at compile time rather than approximated —
+  `_STATE_OPERATORS` is the vocabulary and `UnsupportedConstruct` is the
+  refusal, for the usual reason: a wrong fold is indistinguishable from a right
+  one once it reaches the report. **A pack compiled before this was carried has
+  no `state_operator` key and defaults to AND, so it stays wrong until it is
+  re-loaded** — re-run `scripts/benchmarks/load_stig.py` against the original
+  datastream, with `--code` naming the existing framework or the loader creates
+  a second one beside it.
+
+- **A well-known SID Windows itself cannot translate still needs a name.**
+  Translation is done *on the target* so a non-English install resolves its own
+  group names, which a table could not — but `SecurityIdentifier.Translate`
+  throws for the virtual-account families. `S-1-5-83-0` (Hyper-V's
+  `NT VIRTUAL MACHINE\Virtual Machines`) holds `SeCreateSymbolicLinkPrivilege`
+  on a stock Windows 11, so `WN11-UR-000060` collected an item with a
+  `trustee_sid` and **no `trustee_name`**, could not be compared against a state
+  naming one, and reported **ERROR on a perfectly readable host**.
+  `_WELL_KNOWN_SIDS` fills only what the target left blank, so the on-target
+  answer always wins. A SID in neither is still left unnamed and still reads
+  UNKNOWN: substituting the SID string would compare a SID against a group name
+  and fail every rule it appears in.
 
 - **`record` is an OVAL datatype, and a missing column is UNKNOWN.**
   `wmi57_state` compares a WMI row against `<field name=…>` children.

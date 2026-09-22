@@ -526,6 +526,10 @@ export default function CredentialedResults() {
     scan_duration,
     detected_os = "linux",
     os_type_was_auto = false,
+    // How the authenticated session was actually opened. Recorded by the
+    // engine, not chosen by the operator — "credentialed access succeeded" is
+    // not a useful answer on its own when the scanner picked the service.
+    access = null,
     system_info = {},
     packages = [],
     package_count = 0,
@@ -883,6 +887,13 @@ export default function CredentialedResults() {
               {os_type_was_auto && (
                 <CcureBadge variant="info" className="cr-os-badge">
                   <Glyph>{osIcon}</Glyph> {osLabel} (auto-detected)
+                </CcureBadge>
+              )}
+              {access?.transport && (
+                <CcureBadge variant="success" className="cr-os-badge">
+                  <Glyph>&#128274;</Glyph> Authenticated over{" "}
+                  {String(access.transport).toUpperCase()} on port {access.port}
+                  {access.how === "discovered" ? " (detected)" : ""}
                 </CcureBadge>
               )}
             </p>

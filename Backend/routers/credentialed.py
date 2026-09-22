@@ -75,6 +75,14 @@ class CredentialedScanRequest(BaseModel):
     #: was no way to run one credential against a host whose listener had moved.
     port: int | None = Field(None, ge=1, le=65535)
     auth_method: str = Field("password")
+    #: Let the engine establish which authentication service the host offers,
+    #: rather than making the operator know. ``None`` means "decide", and the
+    #: decision is: discover whenever no ``port`` was stated. The UI sends no
+    #: port by default, so this is the normal path -- the operator supplies a
+    #: credential and the scanner works out whether to speak WinRM, SMB or SSH
+    #: and on which port. Setting a port pins it, which is the escape hatch for
+    #: a listener on a port nothing would guess.
+    discover_transport: bool | None = Field(None)
     sections: list[str] | None = Field(None)
     os_type: str = Field("auto", description="'linux' | 'windows' | 'auto'")
     credential_id: str | None = Field(None)
@@ -393,6 +401,16 @@ async def scan_credentialed(
         ),
         key_path=req.key_path if req.auth_method == "key" else None,
         port=target_port,
+        # Decided here rather than in the worker, because by the time the
+        # worker sees `port` it has already fallen back to the stored
+        # credential's -- which is NOT NULL and defaults to 22, so it can no
+        # longer tell "the operator asked for 22" from "nobody said anything".
+        # That distinction is exactly what this feature turns on.
+        discover_transport=(
+            req.discover_transport
+            if req.discover_transport is not None
+            else req.port is None
+        ),
         auth_method=req.auth_method,
         # The policy's section list where it names one, the request's
         # otherwise. The worker reads the rest of the configuration back from

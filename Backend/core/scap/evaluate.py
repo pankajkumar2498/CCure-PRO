@@ -223,6 +223,26 @@ def _entity_check(results: Sequence[Optional[bool]], mode: str) -> Optional[bool
     return None
 
 
+def _fold_three_valued(
+    outcomes: Sequence[Optional[bool]], operator: str
+) -> Optional[bool]:
+    """Combine tri-state results under an OVAL operator.
+
+    ``None`` is "not established", and it is absorbing only where it could
+    still change the answer: an OR already holding a True is True whatever the
+    rest turned out to be, and an AND already holding a False is False.
+    """
+    if not outcomes:
+        return None
+    if str(operator).upper() == "OR":
+        if any(value is True for value in outcomes):
+            return True
+        return None if any(value is None for value in outcomes) else False
+    if any(value is False for value in outcomes):
+        return False
+    return None if any(value is None for value in outcomes) else True
+
+
 def _item_satisfies(
     item: Mapping[str, Any], state: Mapping[str, Any]
 ) -> Optional[bool]:
@@ -263,15 +283,7 @@ def _item_satisfies(
                 per_value.append(False)
         outcomes.append(_entity_check(per_value, mode))
 
-    if not outcomes:
-        return None
-    if operator == "OR":
-        if any(value is True for value in outcomes):
-            return True
-        return None if any(value is None for value in outcomes) else False
-    if any(value is False for value in outcomes):
-        return False
-    return None if any(value is None for value in outcomes) else True
+    return _fold_three_valued(outcomes, operator)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -393,12 +405,15 @@ def _evaluate_test(
                 )
             )
             return Outcome.UNKNOWN
-        if any(value is False for value in item_results):
-            per_item.append(False)
-        elif any(value is None for value in item_results):
-            per_item.append(None)
-        else:
-            per_item.append(True)
+        # `state_operator`, not a hard AND. See the note in oval.py: the DISA
+        # content writes OR wherever a setting has more than one acceptable
+        # answer, and ANDing alternatives is unsatisfiable rather than merely
+        # strict. Rules compiled before this was carried have no such key and
+        # default to AND, which is OVAL's own default -- those packs must be
+        # re-loaded to pick the operator up.
+        per_item.append(
+            _fold_three_valued(item_results, str(test.get("state_operator") or "AND"))
+        )
 
     check = str(test.get("check") or "all")
     folded = _entity_check(per_item, check)

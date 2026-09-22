@@ -252,6 +252,12 @@ _SUPPORTED_DATATYPES: Tuple[str, ...] = (
     "record",
 )
 
+#: How a test's several states combine. OVAL defines AND, ONE, OR and XOR;
+#: AND and OR are implemented and the other two are refused at compile time
+#: rather than approximated, because a wrong fold is indistinguishable from
+#: a right one once it reaches the report.
+_STATE_OPERATORS: Tuple[str, ...] = ("AND", "OR")
+
 _CHECK_EXISTENCE: Tuple[str, ...] = (
     "all_exist",
     "any_exist",
@@ -710,12 +716,38 @@ class OvalDocument:
         for state_ref in state_refs:
             self._compile_state(state_ref, states, values)
 
+        # How a test's several states combine. OVAL's default is AND, but the
+        # DISA content writes `state_operator="OR"` wherever a setting has more
+        # than one acceptable answer -- "this right is unassigned OR held only
+        # by Administrators", "this value is 1 OR 2".
+        #
+        # This was not read at all, so every multi-state test was ANDed. Where
+        # the states are alternatives that is not a near-miss, it is
+        # unsatisfiable: no single item can equal "" *and* equal
+        # "Administrators", so the rule could not pass on any host in any
+        # configuration. Measured against the DISA Windows 11 STIG on a real
+        # host, 22 Sep 2026: 44 of 198 rules carry a multi-state test (up to six
+        # states), and they passed at 2/42 against 61/147 for the single-state
+        # rules -- roughly forty findings that were false.
+        #
+        # ONE and XOR are refused rather than approximated. They are absent from
+        # the content measured here, and a wrong fold is indistinguishable from
+        # a right one in the report -- which is the whole reason
+        # UnsupportedConstruct exists.
+        state_operator = (node.get("state_operator") or "AND").strip().upper()
+        if state_operator not in _STATE_OPERATORS:
+            raise UnsupportedConstruct(
+                f"test {test_id!r} uses state_operator={state_operator!r}, "
+                f"which is not one of {sorted(_STATE_OPERATORS)}"
+            )
+
         tests[test_id] = {
             "type": test_type,
             "object": object_ref,
             "states": state_refs,
             "check": check,
             "check_existence": existence,
+            "state_operator": state_operator,
         }
 
     def _compile_object(

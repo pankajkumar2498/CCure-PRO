@@ -556,6 +556,109 @@ def test_state_operations(operation, datatype, actual, expected_value, expected)
     assert evaluate_definition(ctx(shell), compiled).outcome is expected
 
 
+# ── state_operator ───────────────────────────────────────────────────────────
+
+
+def _two_state_definition(state_operator=None):
+    """One test, two mutually exclusive states — the DISA alternatives shape."""
+    compiled = one_test_definition(states=["s1", "s2"])
+    compiled["states"]["s2"] = {
+        "operator": "AND",
+        "fields": [
+            {
+                "name": "subexpression",
+                "operation": "equals",
+                "datatype": "string",
+                "entity_check": "all",
+                "value": {"values": ["off"]},
+            }
+        ],
+    }
+    if state_operator is not None:
+        compiled["tests"]["t1"]["state_operator"] = state_operator
+    return compiled
+
+
+def test_alternative_states_are_ored_when_the_content_says_so():
+    """The defect this exists for: ANDing alternatives is unsatisfiable.
+
+    A test naming two states that cannot both hold -- "unassigned OR held only
+    by Administrators", "the value is on OR off" -- is written by DISA with
+    ``state_operator="OR"``. That attribute was not read, so every such rule
+    was ANDed and could not pass on any host in any configuration.
+
+    Measured against the DISA Windows 11 STIG on a real host, 22 Sep 2026: 44
+    of 198 rules carry a multi-state test, and they passed at 2/42 where the
+    single-state rules passed at 61/147.
+    """
+    shell = FakeShell([("example.conf", found("Setting on\n"))])
+    assert (
+        evaluate_definition(ctx(shell), _two_state_definition("OR")).outcome
+        is Outcome.TRUE
+    )
+
+
+def test_or_is_false_only_when_no_state_holds():
+    shell = FakeShell([("example.conf", found("Setting maybe\n"))])
+    assert (
+        evaluate_definition(ctx(shell), _two_state_definition("OR")).outcome
+        is Outcome.FALSE
+    )
+
+
+def test_and_remains_the_default_for_content_that_names_no_operator():
+    """OVAL's own default, and what a pack compiled before this was carried has.
+
+    Defaulting to OR instead would silently loosen every rule that genuinely
+    means "all of these must hold".
+    """
+    shell = FakeShell([("example.conf", found("Setting on\n"))])
+    assert (
+        evaluate_definition(ctx(shell), _two_state_definition(None)).outcome
+        is Outcome.FALSE
+    )
+    assert (
+        evaluate_definition(ctx(shell), _two_state_definition("AND")).outcome
+        is Outcome.FALSE
+    )
+
+
+def test_an_unknown_state_cannot_decide_an_or_that_already_holds():
+    """Tri-state, not boolean: a True short-circuits an OR.
+
+    Reading the uncomparable one as False would be asserting something about
+    the host; reading the whole fold as UNKNOWN would discard an answer the
+    content already gave.
+    """
+    shell = FakeShell([("example.conf", found("Setting on\n"))])
+    compiled = _two_state_definition("OR")
+    # A state naming an entity the probe does not produce is UNKNOWN.
+    compiled["states"]["s2"]["fields"][0]["name"] = "no_such_entity"
+    assert evaluate_definition(ctx(shell), compiled).outcome is Outcome.TRUE
+
+
+def test_the_compiler_refuses_an_operator_it_does_not_implement():
+    """ONE and XOR are recorded as unimplemented, never approximated.
+
+    OVAL defines four operators. A wrong fold is indistinguishable from a right
+    one once it reaches the report, which is what UnsupportedConstruct exists
+    to prevent -- so the two that are not implemented must fail to compile
+    rather than fall through to AND.
+    """
+    import inspect
+
+    from core.scap import oval
+
+    assert set(oval._STATE_OPERATORS) == {"AND", "OR"}
+
+    source = inspect.getsource(oval.OvalDocument._compile_test)
+    assert "state_operator" in source, "the compiler no longer reads state_operator"
+    assert "_STATE_OPERATORS" in source, (
+        "the compiler no longer validates state_operator against the vocabulary, "
+        "so ONE and XOR would silently be treated as AND"
+    )
+
+
 def test_an_uncomparable_value_is_unknown_not_false():
     """
     A comparison that could not run has established nothing about the host.

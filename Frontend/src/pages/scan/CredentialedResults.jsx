@@ -897,6 +897,25 @@ export default function CredentialedResults() {
                 </CcureBadge>
               )}
             </p>
+            {/* What else was tried. The badge alone says which service
+                accepted the credential and silently loses the fact that
+                another was probed and refused -- which is the half an
+                operator needs when the answer surprises them ("why SMB? I
+                thought WinRM was on"). Shown only when there is something to
+                say, so the ordinary single-candidate case stays quiet. */}
+            {access?.considered?.length > 1 && (
+              <p className="cr-muted cr-access-considered">
+                Services probed:{" "}
+                {access.considered
+                  .map(
+                    (c) =>
+                      `${String(c.transport).toUpperCase()} — ${
+                        c.resolved ? "used" : "no answer"
+                      }`,
+                  )
+                  .join(" · ")}
+              </p>
+            )}
           </div>
           <div className="cr-header__actions">
             <CcureButton

@@ -17,6 +17,7 @@ import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
 import CVELink from "../../components/common/CVELink";
 import ConfigAuditSection from "../../components/scan/ConfigAuditSection";
+import ReportExportPanel from "../../components/scan/ReportExportPanel";
 import FindingsListSection from "../../components/scan/FindingsListSection";
 import PackageCoverageSection from "../../components/scan/PackageCoverageSection";
 import PackageInventorySection from "../../components/scan/PackageInventorySection";
@@ -28,6 +29,7 @@ import {
   CcureInput,
   CcureProgress,
   CcureTable,
+  CcureToastProvider,
 } from "../../design-system";
 import "../../styles/credentialed-results.css";
 
@@ -1254,6 +1256,20 @@ export default function CredentialedResults() {
             cves={cves}
             packagesEnumerated={packages_enumerated}
           />
+        </Section>
+
+        {/* Reports and exports. Placed after the findings and before the
+            supporting detail: an operator who has read the verdict is the one
+            who wants to take it away. */}
+        <Section icon="📤" title="Reports & Export" defaultOpen={false}>
+          {/* This app mounts no global toast provider -- each page that wants
+              to announce brings its own, as SecurityReports does. The panel
+              announces the outcome of a download, so it supplies one here.
+              The provider portals its regions to document.body, so sitting
+              inside a collapsible section does not affect where they appear. */}
+          <CcureToastProvider>
+            <ReportExportPanel scanId={scan_id} scanNo={scan_no} />
+          </CcureToastProvider>
         </Section>
 
         {/* Candidates evaluated and then ruled out. */}

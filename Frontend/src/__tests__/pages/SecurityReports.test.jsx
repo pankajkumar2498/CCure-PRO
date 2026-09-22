@@ -295,9 +295,17 @@ describe("SecurityReports — functional", () => {
    DOWNLOAD CONTRACT
    ══════════════════════════════════════════════════════════════════════════ */
 describe("SecurityReports — download contract", () => {
-  it("fetches the report as an authenticated arraybuffer, never a bare link", async () => {
+  it("fetches the report as an authenticated binary response, never a bare link", async () => {
     /* The endpoint is bearer-authenticated: an <a href> would be an
-       unauthenticated request and answer 403. */
+       unauthenticated request and answer 403.
+
+       The response type changed from `arraybuffer` to `blob` when this page
+       moved onto the shared `downloadReport` / `saveResponseAsFile` helpers,
+       so that it, the scan-results export panel and any future caller handle
+       Content-Disposition and object-URL release in one place rather than
+       three. The property this test exists for is unchanged — the request is
+       an authenticated XHR carrying `fmt`, not a link — and a Blob is what
+       `saveResponseAsFile` saves without re-wrapping. */
     const user = userEvent.setup();
     await renderPage();
     const card = await cardFor("10.180.5.10");
@@ -309,7 +317,7 @@ describe("SecurityReports — download contract", () => {
         String(c[0]).startsWith("/reports/download/"),
       );
       expect(call).toBeTruthy();
-      expect(call[1]).toMatchObject({ responseType: "arraybuffer" });
+      expect(call[1]).toMatchObject({ responseType: "blob" });
       expect(call[1].params).toHaveProperty("fmt");
     });
   });

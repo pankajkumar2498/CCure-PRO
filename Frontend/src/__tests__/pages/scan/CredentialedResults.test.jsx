@@ -41,6 +41,21 @@ import { fileURLToPath } from "node:url";
 import CredentialedResults from "../../../pages/scan/CredentialedResults";
 import api from "../../../api/axiosInstance";
 
+/*
+ * The page gained an auth dependency when the Reports & Export panel was added
+ * to it: exporting a scan needs `reports:read`, which is a different grant from
+ * permission to view the scan. Without a provider the panel throws and every
+ * accessibility contract below fails on the exception rather than on anything
+ * it is meant to measure.
+ *
+ * A superadmin is used so the panel renders in full, which is the state those
+ * contracts need to see -- gated behind a denial it would render one alert and
+ * assert nothing about the controls.
+ */
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
+}));
+
 vi.mock("../../../api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
@@ -2001,10 +2016,18 @@ describe("CredentialedResults — batch 23", () => {
 
   it("renders no inline style of its own in any state", async () => {
     const styled = () =>
-      [...document.body.querySelectorAll("[style]")].filter(
-        // A progress bar's width is the one per-instance value, set by CcureProgress.
-        (el) => !el.classList.contains("cc-progress__bar"),
-      );
+      [...document.body.querySelectorAll("[style]")]
+        .filter(
+          // A progress bar's width is the one per-instance value, set by CcureProgress.
+          (el) => !el.classList.contains("cc-progress__bar"),
+        )
+        .filter(
+          // Same carve-out, second component: CcureToastProvider portals its
+          // regions to document.body and sets their offset inline. The contract
+          // here is that *this page* hand-rolls no styles, not that no design
+          // system component ever sets one on itself.
+          (el) => !el.classList.contains("cc-toaster"),
+        );
 
     await runningWithFrames();
     expect(styled()).toEqual([]);

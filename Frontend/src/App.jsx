@@ -50,6 +50,7 @@ import Phase2Results from "./pages/scan/Phase2Results";
 import Phase3Results from "./pages/scan/Phase3Results";
 import CredentialedScan from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
+import ScanComparison from "./pages/scan/ScanComparison";
 import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
@@ -148,6 +149,9 @@ export default function App() {
             path="/scan/advanced-scan"
             element={<Navigate to="/scan/vulnerability-audit" replace />}
           />
+          {/* One route, scan chosen by query string, so a comparison can be
+              linked to and shared. */}
+          <Route path="/scan/comparison" element={<ScanComparison />} />
           <Route path="/scan/credentialed" element={<CredentialedScan />} />
           <Route
             path="/scan/credentialed/results"

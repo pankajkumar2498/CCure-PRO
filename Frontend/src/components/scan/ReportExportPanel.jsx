@@ -137,7 +137,7 @@ function CheckboxGroup({ legend, options, selected, onChange, disabled }) {
   );
 }
 
-export default function ReportExportPanel({ scanId, scanNo }) {
+export default function ReportExportPanel({ scanId, scanNo, baselineScanId }) {
   const { user } = useAuth();
   const toast = useCcureToast();
   const canReadReports = can(user, "reports", "read");
@@ -205,6 +205,14 @@ export default function ReportExportPanel({ scanId, scanNo }) {
         verdict,
         status,
         overdueOnly,
+        // Phase 2 deferred this for want of a scan picker. The comparison page
+        // now has one, so a comparison exported from here is against the same
+        // baseline the operator was looking at rather than whichever scan the
+        // backend would have defaulted to.
+        baseline:
+          dataset === "comparison" || dataset === "all"
+            ? baselineScanId
+            : undefined,
       });
       saveResponseAsFile(
         response,

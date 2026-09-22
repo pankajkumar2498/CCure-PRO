@@ -935,6 +935,19 @@ export default function CredentialedResults() {
             )}
           </div>
           <div className="cr-header__actions">
+            {/* The comparison is a question about this scan, so it is reached
+                from this scan rather than from a separate destination the
+                operator has to find and re-identify the scan in. */}
+            <CcureButton
+              variant="secondary"
+              onClick={() =>
+                navigate(
+                  `/scan/comparison?scan_id=${encodeURIComponent(scan_id)}`,
+                )
+              }
+            >
+              <Glyph>⇄</Glyph> Compare with a previous scan
+            </CcureButton>
             <CcureButton
               variant="secondary"
               onClick={() => navigate("/scan/credentialed")}

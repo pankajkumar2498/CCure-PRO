@@ -1150,6 +1150,27 @@ export default function ScanHistory({ mode = "history" }) {
           </CcureButton>
         )}
 
+        {/* Compare — a running scan has no findings to compare yet, and a
+            failed one produced none, so the control is offered only where the
+            question has an answer. The accessible name carries the scan
+            number: every action in this list must be distinguishable across
+            rows, or a reader picks the wrong scan's comparison. */}
+        {canReadScans && !isRunning && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              navigate(
+                `/scan/comparison?scan_id=${encodeURIComponent(scan.id)}`,
+              )
+            }
+            title="Compare this scan with a previous one"
+            aria-label={`Compare scan ${number} with a previous scan`}
+          >
+            Compare
+          </CcureButton>
+        )}
+
         {/* Re-run — disabled for running scans */}
         {canExecuteScans && (
           <CcureButton

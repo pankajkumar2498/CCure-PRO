@@ -188,6 +188,23 @@ FINDING_EXPORT_COLUMNS: Tuple[str, ...] = (
     "Remediation Notes",
     "Policy Name",
     "Configuration ID",
+    # Appended, after the policy columns, for the reason every addition to an
+    # export in this product is appended: a consumer reading by index keeps
+    # working.
+    #
+    # "In CISA KEV" above is catalogue membership with a federal deadline
+    # behind it. This is whether any public exploit exists at all, which on
+    # this installation is true of 27,640 CVEs CISA does not list - so it is
+    # not a duplicate of the column three places to its left.
+    #
+    # There is deliberately **no Priority column here**, and that asymmetry
+    # with the scan findings CSV is on purpose. Priority is not stored on
+    # `asset_vulnerabilities`; the findings API derives it in a SQL CASE at
+    # read time. Emitting it here would mean a second derivation, and the one
+    # rule this whole field is governed by is that the report carries the
+    # backend's value rather than computing its own.
+    "Exploit Availability",
+    "Vendor Remediation",
 )
 
 COMPARISON_COLUMNS: Tuple[str, ...] = (
@@ -966,6 +983,15 @@ def finding_export_rows(
                 _text(finding.remediation_notes),
                 policy_name,
                 configuration_id,
+                # Three-valued, like everywhere else this field is rendered.
+                # The column is NOT NULL on the table with a server default of
+                # false, so a row written before the exploit feeds were wired
+                # carries `false` meaning "never looked" - but that is the
+                # column's own history and not something this export can
+                # correct. What it can do is not add a second layer of
+                # guessing on top: the stored value is printed as stored.
+                _text(bool(finding.has_exploit)),
+                _text(finding.vendor_remediation),
             ]
         )
     return rows

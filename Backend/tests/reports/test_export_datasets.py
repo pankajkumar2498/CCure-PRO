@@ -927,6 +927,7 @@ class TestFindingsCsvCompatibility:
         import csv
 
         from reporting.csv_generator import (
+            INTEL_HEADERS,
             NETWORK_HEADERS,
             REMEDIATION_HEADERS,
             generate_scan_csv,
@@ -938,10 +939,30 @@ class TestFindingsCsvCompatibility:
         with open(path, newline="", encoding="utf-8-sig") as handle:
             rows = list(csv.reader(handle))
 
-        assert rows[0] == [*NETWORK_HEADERS, *REMEDIATION_HEADERS]
+        # The exploitation block was appended after the remediation block in the
+        # September 2026 report gap closure. The assertion below is deliberately
+        # *stronger* than the one it replaces rather than merely updated: it used
+        # to pin the remediation columns only by their being the tail of the row,
+        # which any later append would have satisfied by accident. It now pins
+        # their start index, so a block inserted in front of them — the change
+        # that would silently shift nine columns under every existing reader —
+        # fails here.
+        remediation_start = len(NETWORK_HEADERS)
+        remediation_end = remediation_start + len(REMEDIATION_HEADERS)
+
+        assert rows[0][:remediation_start] == list(NETWORK_HEADERS)
+        assert rows[0][remediation_start:remediation_end] == list(REMEDIATION_HEADERS)
+        assert rows[0][remediation_end:] == list(INTEL_HEADERS)
+
         assert len(rows) == 2, "the finding must survive into the export"
         assert rows[1][NETWORK_HEADERS.index("Host")] == HOST
-        assert rows[1][len(NETWORK_HEADERS) :] == [""] * len(REMEDIATION_HEADERS)
+        # The point of the test is unchanged: with no remediation context the
+        # remediation cells are empty rather than absent, so the shape does not
+        # change between two scans.
+        assert rows[1][remediation_start:remediation_end] == [""] * len(
+            REMEDIATION_HEADERS
+        )
+        assert len(rows[1]) == len(rows[0])
 
     def test_the_context_map_keys_on_host_and_identifier(
         self, db_session, world, finding

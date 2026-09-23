@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "files": ["Frontend/src/pages/SecurityDashboard.jsx", "Frontend/src/api/dashboard.js"],
+    "payloads": ["dash_summary","dash_risk-breakdown","dash_asset-breakdown","dash_scan-activity","dash_top-assets","dash_top-cves","dash_vuln-trends","dash_services-exposure","dash_tls-health","dash_http-headers","dash_insights","dash_compliance"]
+  },
+  "compliance": {
+    "files": ["Frontend/src/pages/ComplianceWorkspace.jsx"],
+    "payloads": ["cmp_summary","cmp_findings","cmp_policies","cmp_scans","cmp_gap","cmp_marketplace","cmp_creds","cmp_remed"]
+  },
+  "asset_registry": {
+    "files": ["Frontend/src/pages/AssetRegistry.jsx","Frontend/src/pages/AssetDetail.jsx","Frontend/src/api/assets.js","Frontend/src/components/assets/AuditTimeline.jsx"],
+    "payloads": ["asset_list","asset_detail","asset_services","svc_global","certs_global","cmp_coverage"]
+  },
+  "vuln_browser": {
+    "files": ["Frontend/src/pages/VulnerabilityBrowser.jsx","Frontend/src/api/findings.js","Frontend/src/components/remediation/FindingRemediationPanel.jsx"],
+    "payloads": ["find_list","find_detail","find_grouped"]
+  },
+  "host_discovery": {
+    "files": ["Frontend/src/pages/scan/Phase1Results.jsx"],
+    "payloads": ["host_discovery"]
+  },
+  "asset_discovery": {
+    "files": ["Frontend/src/pages/scan/Phase2Results.jsx"],
+    "payloads": ["asset_discovery"]
+  },
+  "vuln_audit": {
+    "files": ["Frontend/src/pages/scan/Phase3Results.jsx","Frontend/src/components/scan/RiskBadge.jsx"],
+    "payloads": ["vuln_audit"]
+  },
+  "credentialed": {
+    "files": ["Frontend/src/pages/scan/CredentialedResults.jsx","Frontend/src/components/scan/ConfigAuditSection.jsx","Frontend/src/components/scan/PackageCoverageSection.jsx","Frontend/src/components/scan/PackageInventorySection.jsx","Frontend/src/components/scan/SuppressedFindingsSection.jsx","Frontend/src/components/scan/FindingsListSection.jsx"],
+    "payloads": ["credentialed"]
+  },
+  "scan_envelope": {
+    "files": ["Frontend/src/pages/ScanHistory.jsx","Frontend/src/api/scans.js","Frontend/src/pages/scan/Phase3Results.jsx"],
+    "payloads": ["scan_envelope","scan_list"]
+  }
+}

@@ -33,6 +33,10 @@ both are meant to be re-run rather than trusted from this document.
   page render? Walks a live response rather than a model class, because a
   declared field that is never populated and a populated field that is never
   declared misreport coverage in opposite directions.
+- [`scripts/audit/api_field_coverage.py`](../../scripts/audit/api_field_coverage.py) —
+  **field level, across surfaces**: of every key a live response carries, which
+  does the renderer reference? Drives
+  [`FIELD_LEVEL_AUDIT.md`](FIELD_LEVEL_AUDIT.md).
 - [`scripts/audit/api_surface_inventory.py`](../../scripts/audit/api_surface_inventory.py)
   \+ [`api_ui_matrix.py`](../../scripts/audit/api_ui_matrix.py) —
   **operation level**: of every route the API serves, how many does the

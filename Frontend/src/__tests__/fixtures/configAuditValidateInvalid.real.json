@@ -1,0 +1,8 @@
+{
+  "valid": false,
+  "errors": [
+    "expected is not a valid regular expression: unterminated character set at position 1"
+  ],
+  "warnings": [],
+  "check_definition": null
+}

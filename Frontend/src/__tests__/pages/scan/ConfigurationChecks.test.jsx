@@ -28,6 +28,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 import ConfigurationChecks from "../../../pages/scan/ConfigurationChecks";
 import axiosInstance from "../../../api/axiosInstance";
@@ -121,8 +122,14 @@ const routeGet = (url) => {
   return Promise.resolve({ data: {} });
 };
 
+/* Wrapped since Phase 6: the page links to the rule validator, and a router
+   link needs a router. The page still takes no route parameters. */
 const renderPage = async () => {
-  const r = render(<ConfigurationChecks />);
+  const r = render(
+    <MemoryRouter>
+      <ConfigurationChecks />
+    </MemoryRouter>,
+  );
   await waitFor(() => expect(axiosInstance.get).toHaveBeenCalled());
   return r;
 };
@@ -153,13 +160,28 @@ describe("ConfigurationChecks — functional", () => {
     });
   });
 
-  it("defaults to the windows platform", async () => {
+  it("defaults to the whole catalogue, not to one platform", async () => {
+    /* It used to default to `windows`, with the selector hardcoded to
+       windows and linux. Measured against the live API that reached 106 of
+       155 checks: the 49 `database` checks — the whole of the Phase 7
+       database assessment — could not be reached from this page at all. The
+       first load now asks for everything and the filters narrow it. */
     await renderPage();
-    await waitFor(() =>
-      expect(checksCall()[1]).toMatchObject({
-        params: { platform: "windows" },
-      }),
-    );
+    await waitFor(() => expect(checksCall()[1]).toEqual({ params: {} }));
+  });
+
+  it("derives the platform buttons from the capability report", async () => {
+    /* Not from a constant here. `capabilities.supported` is keyed by exactly
+       the platforms that return rows, so a platform the backend gains appears
+       without a frontend change — and one it removes stops being offered. */
+    await renderPage();
+    await screen.findByText(/SMBv1 must not be installed/i);
+    for (const name of Object.keys(CAPS.supported)) {
+      expect(platformBtn(name)).toBeInTheDocument();
+    }
+    /* `any` is a targeting value on a check, not a platform to ask about —
+       the API answers `platform=any` with nothing. */
+    expect(screen.queryByRole("button", { name: /^any$/i })).toBeNull();
   });
 
   it("re-requests when the platform changes", async () => {
@@ -233,7 +255,11 @@ describe("ConfigurationChecks — functional", () => {
   it("does not poll", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      render(<ConfigurationChecks />);
+      render(
+        <MemoryRouter>
+          <ConfigurationChecks />
+        </MemoryRouter>,
+      );
       await vi.advanceTimersByTimeAsync(120000);
       const checkCalls = axiosInstance.get.mock.calls.filter(
         (c) => c[0] === "/config-audit/checks",
@@ -357,13 +383,16 @@ describe("ConfigurationChecks — accessibility", () => {
   it("states which platform is selected, not only by colour", async () => {
     await renderPage();
     await screen.findByText(/SMBv1 must not be installed/i);
+    const all = platformBtn("all platforms");
     const win = platformBtn("windows");
     const lin = platformBtn("linux");
-    const pressed = [win, lin].map(
+    const pressed = [all, win, lin].map(
       (b) => b.getAttribute("aria-pressed") ?? b.getAttribute("aria-current"),
     );
-    expect(pressed.filter(Boolean).length).toBe(2);
+    expect(pressed.filter(Boolean).length).toBe(3);
+    // "all platforms" is the default, so it is the one pressed on load.
     expect(pressed).toContain("true");
+    expect(all.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("marks an expandable check row as expandable", async () => {

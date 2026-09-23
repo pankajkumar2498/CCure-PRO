@@ -1,0 +1,25 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "check_definition": {
+    "config_check": true,
+    "check_id": "example.win.uac.enabled",
+    "title": "User Account Control is enabled",
+    "check_type": "registry",
+    "collect": {
+      "hive": "HKLM",
+      "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "value": "EnableLUA"
+    },
+    "absent": "manual_review",
+    "domain": "host_configuration",
+    "platforms": ["windows"],
+    "requires_credentials": true,
+    "intrusive": false,
+    "qod": 95,
+    "finding_type": "config_check",
+    "operator": "equals",
+    "expected": 1
+  }
+}

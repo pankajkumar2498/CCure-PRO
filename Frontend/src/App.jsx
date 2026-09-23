@@ -39,6 +39,7 @@ import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
 import ScanHistory from "./pages/ScanHistory";
 import ScanSchedules from "./pages/scan/ScanSchedules";
 import ConfigurationChecks from "./pages/scan/ConfigurationChecks";
+import ConfigurationRuleValidator from "./pages/scan/ConfigurationRuleValidator";
 import ScanCredentials from "./pages/scan/ScanCredentials";
 import ArchivedScans from "./pages/ArchivedScans";
 import RecycleBin from "./pages/RecycleBin";
@@ -132,6 +133,13 @@ export default function App() {
           <Route
             path="/configuration-checks"
             element={<ConfigurationChecks />}
+          />
+          {/* Its own route rather than a panel on the catalogue: that page's
+              contract is no POST of any kind, pinned by a test that drives
+              every control on it. */}
+          <Route
+            path="/configuration-checks/validate"
+            element={<ConfigurationRuleValidator />}
           />
           <Route
             path="/scan-history"

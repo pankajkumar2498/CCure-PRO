@@ -1,0 +1,25 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "no collector implements check_type 'api' on platform 'cloud' in this build; the check would report an error rather than a verdict"
+  ],
+  "check_definition": {
+    "config_check": true,
+    "check_id": "example.api",
+    "title": "api",
+    "check_type": "api",
+    "collect": {
+      "endpoint": "/x"
+    },
+    "absent": "pass",
+    "domain": "host_configuration",
+    "platforms": ["cloud"],
+    "requires_credentials": true,
+    "intrusive": false,
+    "qod": 95,
+    "finding_type": "config_check",
+    "operator": "equals",
+    "expected": 1
+  }
+}

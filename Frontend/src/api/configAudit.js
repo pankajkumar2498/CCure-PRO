@@ -42,3 +42,33 @@ export const validateConfigRule = async (rule) => {
   const response = await axiosInstance.post("/config-audit/validate", rule);
   return response.data;
 };
+
+/**
+ * The platforms the catalogue can actually be queried for.
+ *
+ * `capabilities.supported` is keyed by every platform except `any`, which is
+ * the set that returns rows — and `any` is a *targeting* value on a check
+ * ("applies to every platform"), not a platform to ask about: the API answers
+ * `platform=any` with zero checks, because a check declared for `windows` does
+ * not apply to a thing called "any".
+ *
+ * Derived rather than hardcoded. The page used to name `windows` and `linux`
+ * in a constant, which put the 49 `database` checks — the whole of the Phase 7
+ * database assessment — beyond reach of the UI, and would have done the same
+ * to every platform added afterwards.
+ */
+export const queryablePlatforms = (capabilities) =>
+  Object.keys(capabilities?.supported || {});
+
+/** The backend's own wording for a failure, rather than a generic sentence. */
+export const configAuditErrorMessage = (error, fallback) => {
+  const body = error?.response?.data;
+  const rows = body?.errors;
+  if (Array.isArray(rows) && rows.length) {
+    return rows
+      .map((row) => String(row?.msg || "").replace(/^Value error,\s*/, ""))
+      .filter(Boolean)
+      .join(" ");
+  }
+  return body?.message || body?.detail || fallback;
+};

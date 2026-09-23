@@ -117,12 +117,25 @@ const PriBadge = ({ label }) =>
     </CcureBadge>
   ) : null;
 
+/**
+ * The severity bands, and `unscored` is one of them.
+ *
+ * It was omitted while the donut still divided by `severity.total`, which
+ * includes it — measured live at 370+2102+2063+193+2 = 4730 against a total of
+ * 4740, so the arcs were ten findings short and nothing said why.
+ *
+ * It is **not** folded into Info or None. `normalize_severity()` keeps it
+ * separate on the backend because "no rating published is a different fact
+ * from a published rating of zero", and collapsing it here would undo that at
+ * the last step.
+ */
 const SEVERITY_BANDS = [
   ["critical", "Critical"],
   ["high", "High"],
   ["medium", "Medium"],
   ["low", "Low"],
   ["info", "Info"],
+  ["unscored", "Unscored — no rating published"],
 ];
 
 /* A single letter is what a sighted reader scans; the word is what a screen
@@ -442,7 +455,25 @@ function SevBar({ summary }) {
 
 // ── 3. Risk Score Panel ───────────────────────────────────────────────────────
 
-function RiskScorePanel({ summary, breakdown, loading }) {
+/**
+ * Org risk, from the backend's own numbers only.
+ *
+ * This panel used to render four bars labelled "CVE CVSS", "Port risk",
+ * "HTTP hdrs" and "TLS grade" as `score * 0.72`, `* 0.55`, `* 0.38` and
+ * `* 0.6` — constants multiplied by the one score, presented as a component
+ * breakdown of it. The backend publishes no such breakdown, so those bars were
+ * the UI asserting something nobody measured.
+ *
+ * What it does publish on the same endpoint is `http_avg_security_score` and
+ * the four `tls_issues` counts, and those are rendered instead. The subtitle
+ * no longer claims a composition the payload does not carry.
+ *
+ * `httpHeaders` is read for one reason: `http_avg_security_score` is 0 both
+ * when every HTTP service scores zero and when there was no HTTP service to
+ * score. `total_http_services` is the only field that separates them, and a
+ * zero printed for the second case is the same defect one field over.
+ */
+function RiskScorePanel({ summary, breakdown, httpHeaders, loading }) {
   if (loading) {
     return (
       <Panel title="Org Risk Score">
@@ -466,38 +497,63 @@ function RiskScorePanel({ summary, breakdown, loading }) {
   const pd = bd.priority_distribution || {};
   const fs = bd.finding_status || {};
 
+  /* Every entry here is a value the API returned. `??` rather than `||`
+     throughout: 0 is a measurement and absent is not, and folding them is the
+     defect this panel was rewritten to remove. */
+  const httpScore = bd.http_avg_security_score;
+  const httpServices = httpHeaders?.total_http_services;
+  const httpAssessed = typeof httpScore === "number" && (httpServices ?? 0) > 0;
+
+  const tls = bd.tls_issues || {};
+  const TLS_ISSUES = [
+    ["expired_certs", "Expired certs"],
+    ["self_signed", "Self-signed"],
+    ["weak_ciphers", "Weak ciphers"],
+    ["grade_f", "Grade F"],
+  ];
+  const tlsRows = TLS_ISSUES.filter(([key]) => typeof tls[key] === "number");
+
   return (
     <Panel
       title="Org Risk Score"
-      subtitle="Composite: ports + CVE CVSS + HTTP headers + TLS grade"
+      subtitle="Mean asset risk. The API publishes no component breakdown of it."
     >
       <div className="sd-risk">
         <RiskRing score={score} level={level} />
         <div className="sd-risk__bars">
-          <BarRow
-            label="CVE CVSS"
-            value={Math.round(score * 0.72)}
-            max={100}
-            tone="critical"
-          />
-          <BarRow
-            label="Port risk"
-            value={Math.round(score * 0.55)}
-            max={100}
-            tone="high"
-          />
-          <BarRow
-            label="HTTP hdrs"
-            value={Math.round(score * 0.38)}
-            max={100}
-            tone="medium"
-          />
-          <BarRow
-            label="TLS grade"
-            value={Math.round(score * 0.6)}
-            max={100}
-            tone="high"
-          />
+          {httpAssessed ? (
+            <BarRow
+              label="HTTP header score"
+              value={Math.round(httpScore)}
+              max={100}
+              tone={httpScore >= 70 ? "success" : "medium"}
+              valDisplay={`${Math.round(httpScore)} / 100`}
+            />
+          ) : (
+            <div className="sd-bar">
+              <div className="sd-bar__label">HTTP header score</div>
+              <div className="sd-muted">
+                {/* Not zero. Nothing was assessed. */}
+                Not assessed
+              </div>
+            </div>
+          )}
+          {tlsRows.length > 0 ? (
+            tlsRows.map(([key, label]) => (
+              <BarRow
+                key={key}
+                label={label}
+                value={tls[key]}
+                max={Math.max(...tlsRows.map(([k]) => tls[k]), 1)}
+                tone={tls[key] > 0 ? "critical" : "neutral"}
+              />
+            ))
+          ) : (
+            <div className="sd-bar">
+              <div className="sd-bar__label">TLS issues</div>
+              <div className="sd-muted">Not assessed</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1717,6 +1773,7 @@ export default function SecurityDashboard() {
               <RiskScorePanel
                 summary={db.summary}
                 breakdown={db.breakdown}
+                httpHeaders={db.httpHeaders}
                 loading={db.loading}
               />
               <FindingsDonut
@@ -1831,6 +1888,7 @@ export default function SecurityDashboard() {
                   <RiskScorePanel
                     summary={db.summary}
                     breakdown={db.breakdown}
+                    httpHeaders={db.httpHeaders}
                     loading={db.loading}
                   />
                 </div>

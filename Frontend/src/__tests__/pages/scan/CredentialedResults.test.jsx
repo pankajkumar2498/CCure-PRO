@@ -609,12 +609,29 @@ describe("CredentialedResults — contract", () => {
       expect(bodyText()).toMatch(/Scan No\. CR-3107/);
     });
 
-    it("a finished record with no credentialed report keeps following the scan", async () => {
+    /* This assertion was inverted by P0-1, and what it used to protect was the
+       defect itself.
+
+       It read "a finished record with no credentialed report KEEPS FOLLOWING
+       the scan", against a record whose own `status` is `complete`: the page
+       opened a progress socket and rendered "Credentialed Scan In Progress"
+       for a scan that had already finished. On the vulnerability-audit
+       pipeline — where the report is nested under
+       `results.phase3.data[].credentialed_report` and the old hydrate could
+       not see it — that is what produced an indefinite spinner on a scan that
+       had worked.
+
+       A completed scan is a terminal answer. The corrected behaviour is the
+       same shape as the `failed`/`cancelled` cases below: no ticket, no
+       socket, and a state that says what happened. */
+    it("a finished record with no credentialed report reaches a terminal state", async () => {
       replyWith(record({ results: {} }));
       await loaded();
-      expect(api.post.mock.calls).toEqual([["/auth/ticket"]]);
-      expect(sockets).toHaveLength(1);
-      expect(bodyText()).toMatch(/Credentialed Scan In Progress/);
+      expect(bodyText()).toMatch(/No credentialed report/);
+      expect(bodyText()).toMatch(/nothing was assessed over a credentialed/i);
+      expect(bodyText()).not.toMatch(/Credentialed Scan In Progress/);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(sockets).toHaveLength(0);
     });
 
     it.each([

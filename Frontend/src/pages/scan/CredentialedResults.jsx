@@ -15,6 +15,10 @@ import AppLayout from "../../components/layout/AppLayout";
 import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
+import {
+  collectCredentialedReports,
+  collectFailedHosts,
+} from "../../utils/credentialedReport";
 import CVELink from "../../components/common/CVELink";
 import ConfigAuditSection from "../../components/scan/ConfigAuditSection";
 import ReportExportPanel from "../../components/scan/ReportExportPanel";
@@ -109,6 +113,58 @@ function KV({ k, v, danger, warn, mono }) {
   );
 }
 
+/**
+ * What a transport could not collect, and which part of this page it belongs
+ * to.
+ *
+ * The credentialed report records an unserved item under an `item:` prefix in
+ * `collection_errors` — CLAUDE.md: recorded there "rather than left to look
+ * like an empty reading from the host". Nothing surfaced them per section, so
+ * a host whose password policy was never collected rendered exactly like a
+ * host with no password-policy finding: `UNASSESSED ≠ PASS`.
+ *
+ * The map exists so the state is reported against the section a reader would
+ * have looked in. An item with no entry here is still listed, under its own
+ * key — an unmapped item must not disappear.
+ */
+const ITEM_SECTIONS = {
+  password_policy: "Password Policy",
+  privilege_context: "Privilege Context",
+  firewall: "Firewall",
+  telnet_status: "Telnet",
+  netbios_status: "NetBIOS",
+  tls_status: "TLS",
+  open_ports: "Listening Sockets",
+  scheduled_tasks: "Scheduled Tasks",
+  failed_logins: "Login History",
+  uptime: "System Information",
+  services: "Running Services",
+  users: "Users",
+  local_groups: "Local Groups",
+};
+
+/**
+ * The `item:`-prefixed entries of `collection_errors`, as
+ * `{ item, section, reason }`.
+ *
+ * The reason is the backend's own sentence and is rendered verbatim — it says
+ * why the transport could not serve the item, which is the part an operator
+ * acts on.
+ */
+function unservedItems(collectionErrors) {
+  return Object.entries(collectionErrors || {})
+    .filter(([key]) => key.startsWith("item:"))
+    .map(([key, reason]) => {
+      const item = key.slice("item:".length);
+      return {
+        item,
+        section: ITEM_SECTIONS[item] || item.replace(/_/g, " "),
+        reason: String(reason ?? ""),
+      };
+    })
+    .sort((a, b) => a.section.localeCompare(b.section));
+}
+
 /* A report section: a heading whose button shows or hides the body. The body
    is rendered only while open, as before — raw evidence, and the masked
    environment variables in it, are not in the page until asked for. */
@@ -148,22 +204,30 @@ const maskSecretLine = (value) => {
   return `${text.slice(0, eq + 1)}********`;
 };
 
+/**
+ * Build the page's view model from a stored scan, whichever shape its
+ * credentialed report was written in.
+ *
+ * This used to read `results.credentialed.report` alone. A vulnerability-audit
+ * scan nests one report per host under `results.phase3.data[]` instead, so it
+ * returned null there — and because the caller read null on a *completed* scan
+ * as "keep polling", the page spun for ever on a scan that had worked.
+ * `collectCredentialedReports` walks the same three shapes the export layer
+ * does; see Frontend/src/utils/credentialedReport.js.
+ *
+ * Returns null only when the scan genuinely carries no credentialed report,
+ * which the caller renders as a terminal state rather than as progress.
+ */
 function hydrateFromHistory(detail) {
-  const credentialed = detail?.results?.credentialed;
-  const report = credentialed?.report;
-  if (!report) return null;
-  // `reports` holds every audited host; `report` repeats the first for
-  // consumers written before a scan could cover more than one.
-  const reports =
-    Array.isArray(credentialed.reports) && credentialed.reports.length
-      ? credentialed.reports
-      : [report];
+  const reports = collectCredentialedReports(detail);
+  if (!reports.length) return null;
+  const [first] = reports;
   return {
     scan_id: detail.id,
     scan_no: detail.scan_no ?? detail.display_id,
     _reports: reports,
-    _hostsFailed: credentialed.hosts_failed || [],
-    ...report,
+    _hostsFailed: collectFailedHosts(detail),
+    ...first,
   };
 }
 
@@ -179,6 +243,11 @@ export default function CredentialedResults() {
   const [result, setResult] = useState(hasReport ? stateResult : null);
   const [loading, setLoading] = useState(hasReport ? false : !!scanIdParam);
   const [error, setError] = useState("");
+  /* A completed scan that carries no credentialed report in any shape. Its own
+     state rather than an error: nothing failed, and "the scan ran and
+     authenticated to nothing" is a real answer an operator needs to be given
+     rather than left waiting for. */
+  const [noReport, setNoReport] = useState(false);
   const [scanStatus, setScanStatus] = useState(
     stateResult?.status || "running",
   );
@@ -252,6 +321,14 @@ export default function CredentialedResults() {
             if (ws) ws.close();
             return true;
           }
+          /* Completed, and no credentialed report in any of the shapes a scan
+             can store one in. That is a terminal answer about the scan, not a
+             reason to keep waiting: falling through to `return false` here is
+             what left a successful scan rendering an indefinite spinner. */
+          setNoReport(true);
+          setLoading(false);
+          if (ws) ws.close();
+          return true;
         } else if (
           normalizedStatus === "failed" ||
           normalizedStatus === "cancelled" ||
@@ -450,6 +527,36 @@ export default function CredentialedResults() {
     );
   }
 
+  /* ── completed, but this scan carries no credentialed report ── */
+  if (noReport && !result) {
+    return (
+      <AppLayout pageTitle="Credentialed Results">
+        <div className="cr-page">
+          <header className="cr-header">
+            <h1 className="cr-title">Credentialed Scan Results</h1>
+            <div className="cr-header__actions">
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/history")}
+              >
+                History
+              </CcureButton>
+              <CcureButton onClick={() => navigate("/scan/credentialed")}>
+                New Scan
+              </CcureButton>
+            </div>
+          </header>
+
+          <CcureAlert variant="info" title="No credentialed report">
+            This scan completed, and it recorded no authenticated collection for
+            any host. That is not the same as a host with no findings — nothing
+            was assessed over a credentialed session here.
+          </CcureAlert>
+        </div>
+      </AppLayout>
+    );
+  }
+
   /* ── error ── */
   if (error || scanStatus === "unreachable") {
     const isUnreachable =
@@ -572,6 +679,11 @@ export default function CredentialedResults() {
     collection_errors = {},
     inventory_complete = true,
   } = view;
+
+  /* Items this transport could not collect. Derived once: the page renders
+     them as their own section and the reader needs them before the sections
+     that would have shown the data. */
+  const unserved = unservedItems(collection_errors);
 
   // Parse network_interfaces_raw if it is in JSON format
   const parsedInterfaces = (() => {
@@ -1161,6 +1273,47 @@ export default function CredentialedResults() {
         )}
 
         {/* System Info */}
+        {unserved.length > 0 && (
+          <Section
+            icon="🚫"
+            title={`Not assessed (${unserved.length})`}
+            defaultOpen
+          >
+            <p className="cr-note">
+              This transport could not collect the items below. They are
+              <strong> not</strong> findings-free sections — nothing was
+              established about them on this host, and each reason is the
+              scanner&apos;s own.
+            </p>
+            <CcureTable
+              caption="Items this transport could not collect"
+              density="compact"
+              rows={unserved}
+              rowKey={(row) => row.item}
+              columns={[
+                {
+                  key: "section",
+                  header: "Section",
+                  isRowHeader: true,
+                  cell: (row) => row.section,
+                },
+                {
+                  key: "state",
+                  header: "State",
+                  cell: () => (
+                    <CcureBadge variant="warning">Not assessed</CcureBadge>
+                  ),
+                },
+                {
+                  key: "reason",
+                  header: "Reason",
+                  cell: (row) => row.reason || "—",
+                },
+              ]}
+            />
+          </Section>
+        )}
+
         <Section icon="🖥" title="System Information" defaultOpen>
           <dl className="cr-kv-grid">
             <KV k="OS" v={system_info.os_name || "—"} />
@@ -1495,6 +1648,20 @@ export default function CredentialedResults() {
                   <strong className="cr-tone-success">
                     {exposure_summary.listeners_host_only || 0} host-only
                   </strong>
+                  {/* Listeners the correlation could not place on either side
+                      of the boundary. Its own figure, never folded into
+                      exposed, host-only or zero: `UNKNOWN != ZERO`. Rendered
+                      only when the backend supplied it, so an older payload
+                      shows nothing rather than a fabricated 0. */}
+                  {typeof exposure_summary.listeners_undetermined ===
+                  "number" ? (
+                    <>
+                      {", "}
+                      <strong className="cr-tone-warning">
+                        {exposure_summary.listeners_undetermined} undetermined
+                      </strong>
+                    </>
+                  ) : null}
                   .
                 </>
               ) : (

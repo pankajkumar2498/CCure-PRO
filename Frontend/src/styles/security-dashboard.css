@@ -253,6 +253,27 @@
   background: var(--ccure-border-strong);
 }
 
+/* "No rating published" is its own state, so it gets its own mark rather than
+   borrowing Info's or None's. Hatched rather than a flat severity colour,
+   because it is an absence of a rating and not a low one. */
+.sd-fill--unscored {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--ccure-border-strong),
+    var(--ccure-border-strong) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+  background-color: var(--ccure-surface-sunken, transparent);
+}
+
+/* Used where a value is deliberately not a number — "Not assessed" beside a
+   metric the backend could not measure. */
+.sd-muted {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-font-size-sm);
+}
+
 .sd-tone--critical {
   color: var(--ccure-sev-critical);
 }

@@ -28,6 +28,32 @@ import {
   CcureSeverityBadge,
 } from "../../design-system";
 import usePagedRows from "../../hooks/usePagedRows";
+import { FindingSignals, FindingDetail } from "./FindingEnrichment";
+
+/**
+ * The row's own disclosure for everything below the headline.
+ *
+ * A component rather than inline state, because a credentialed scan renders
+ * up to a page of these and a hook cannot be called inside `map`.
+ */
+function FindingMore({ cve }) {
+  const [open, setOpen] = useState(false);
+  const detail = <FindingDetail cve={cve} />;
+  if (!detail) return null;
+  return (
+    <div className="cr-finding__more">
+      <button
+        type="button"
+        className="cr-finding__moretoggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Hide detail" : "Detail"}
+      </button>
+      {open ? detail : null}
+    </div>
+  );
+}
 
 export default function FindingsListSection({
   cves = [],
@@ -108,7 +134,13 @@ export default function FindingsListSection({
                     </span>
                   )}
                 </div>
+                {/* KEV, exploit availability, ransomware use and the computed
+                    priority — the fields that decide which of a thousand
+                    findings is worked first, and which reached no screen
+                    before this. */}
+                <FindingSignals cve={cve} />
                 <p className="cr-finding__desc">{cve.description}</p>
+                <FindingMore cve={cve} />
               </li>
             ))}
           </ul>

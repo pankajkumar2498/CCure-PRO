@@ -1075,7 +1075,7 @@ describe("ComplianceWorkspace views — contract", () => {
           norm("web-01Reboot Required10.70.0.11"),
           "credentialed",
           "fail",
-          norm("RemediateWaiverEdit Rule"),
+          norm("EvidenceRemediateWaiverEdit Rule"),
         ],
         [
           "a.5.24",
@@ -1084,7 +1084,7 @@ describe("ComplianceWorkspace views — contract", () => {
           "global",
           "manual",
           norm("manual_reviewNo credential was in scope for this host."),
-          "verify",
+          norm("Evidenceverify"),
         ],
         [
           "a.8.2",
@@ -1093,7 +1093,7 @@ describe("ComplianceWorkspace views — contract", () => {
           "10.70.0.12",
           "network",
           "pass",
-          norm("Edit Rule"),
+          norm("EvidenceEdit Rule"),
         ],
         [
           "a.8.9",
@@ -1102,7 +1102,7 @@ describe("ComplianceWorkspace views — contract", () => {
           norm("db-0110.70.0.13"),
           "credentialed",
           "fail",
-          norm("RemediateWaiver"),
+          norm("EvidenceRemediateWaiver"),
         ],
       ]);
       expect(
@@ -1121,14 +1121,24 @@ describe("ComplianceWorkspace views — contract", () => {
     it("Remediate and Waiver for a failure, Verify for manual review, Edit Rule wherever there is a rule", async () => {
       await mount();
       await openTab("Findings");
+      /* P1-3 added Evidence to every row, before the status-dependent
+         controls. What this test protects is unchanged: which *status*
+         earns Remediate, Waiver, Verify and Edit Rule. Evidence is offered
+         on every verdict because what a pass rested on is as much a
+         reviewer's question as what a failure did. */
       expect(actionNames(rowOf("A.8.8"))).toEqual([
+        "Evidence",
         "Remediate",
         "Waiver",
         "Edit Rule",
       ]);
-      expect(actionNames(rowOf("A.5.24"))).toEqual(["Verify"]);
-      expect(actionNames(rowOf("A.8.2"))).toEqual(["Edit Rule"]);
-      expect(actionNames(rowOf("A.8.9"))).toEqual(["Remediate", "Waiver"]);
+      expect(actionNames(rowOf("A.5.24"))).toEqual(["Evidence", "Verify"]);
+      expect(actionNames(rowOf("A.8.2"))).toEqual(["Evidence", "Edit Rule"]);
+      expect(actionNames(rowOf("A.8.9"))).toEqual([
+        "Evidence",
+        "Remediate",
+        "Waiver",
+      ]);
     });
 
     it("filters in the browser, without reading again", async () => {

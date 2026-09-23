@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import axiosInstance from "../api/axiosInstance";
 import AppLayout from "../components/layout/AppLayout";
+import ComplianceEvidence from "../components/compliance/ComplianceEvidence";
 import { useAuth } from "../context/AuthContext";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import {
@@ -3554,6 +3555,21 @@ export default function ComplianceWorkspace() {
                     header: "Actions",
                     cell: (f) => (
                       <span className="cwv-actions">
+                        {/* Offered on every verdict, not only a failure: what
+                            a pass rested on is as much a reviewer's question
+                            as what a failure did, and a manual_review carries
+                            the reason in the same block. */}
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedFinding(f);
+                            setModalType("evidence");
+                            setModalOpen(true);
+                          }}
+                        >
+                          Evidence
+                        </CcureButton>
                         {f.status === "fail" && (
                           <>
                             <CcureButton
@@ -4248,6 +4264,7 @@ export default function ComplianceWorkspace() {
             rollback: "Roll Back Remediation",
             log_viewer: "Execution Log",
             gap_analysis: "Gap Analysis",
+            evidence: "Evidence behind this verdict",
           }[modalType]
         }
         aria-label="Compliance dialog"
@@ -4268,6 +4285,15 @@ export default function ComplianceWorkspace() {
             : "cwh-modal--wide"
         }
       >
+        {modalType === "evidence" && selectedFinding && (
+          <>
+            <p className="cww-modal__lede">
+              {selectedFinding.control_id} · {selectedFinding.rule_name}
+            </p>
+            <ComplianceEvidence finding={selectedFinding} />
+          </>
+        )}
+
         {modalType === "policy" && (
           <form onSubmit={handleCreatePolicy} className="cww-form">
             <CcureInput

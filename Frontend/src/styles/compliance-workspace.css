@@ -223,3 +223,56 @@
 .cwh-ev-muted {
   color: var(--ccure-color-text-secondary, var(--ccure-text-secondary));
 }
+
+/* ── P3-2: compliance schedules and the waiver decision ──────────────────── */
+
+.cwh-sch__lede {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-font-size-sm);
+  margin: 0 0 var(--ccure-space-sm);
+}
+
+.cwh-sch__muted {
+  color: var(--ccure-text-secondary);
+}
+
+.cwh-sch__new {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form > * {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one control pinned at a width the others no longer share. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.cwh-sch__formactions {
+  display: flex;
+  gap: var(--ccure-space-xs);
+  flex: 0 0 auto;
+}
+
+.cwh-sch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-decide {
+  display: flex;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-muted {
+  color: var(--ccure-text-secondary);
+}

@@ -200,7 +200,10 @@ const GAP_URL = (source, target) =>
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
     (d) =>
-      d.children.length === 8 &&
+      /* Nine since P3-2 added the Schedules tab. The identity of the bar is
+         the two labels below; the count is incidental and is kept exact so a
+         wrapper cannot satisfy it. */
+      d.children.length === 9 &&
       /Approvals Queue/.test(d.textContent || "") &&
       /Marketplace/.test(d.textContent || ""),
   );
@@ -606,12 +609,17 @@ describe("ComplianceWorkspace gap analysis and pagination — batch 31", () => {
       "Crosswalk Mapped",
       "Estimated Pass",
       "Estimated Fail",
+      /* P3-2: pass and fail alone imply the remainder is one or the other.
+         On the live installation 100 of 106 controls are neither. */
+      "Pending manual assessment",
     ]);
     expect([...list.querySelectorAll("dd")].map((e) => squash(e))).toEqual([
       "4",
       "3",
       "1",
       "1",
+      // The fixture's own `pending_manual`, alongside pass and fail.
+      "2",
     ]);
   });
 

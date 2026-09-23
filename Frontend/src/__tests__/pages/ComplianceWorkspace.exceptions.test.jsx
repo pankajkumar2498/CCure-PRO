@@ -146,7 +146,10 @@ const bodyText = () => squash(document.body);
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
     (d) =>
-      d.children.length === 8 &&
+      /* Nine since P3-2 added the Schedules tab. The identity of the bar is
+         the two labels below; the count is incidental and is kept exact so a
+         wrapper cannot satisfy it. */
+      d.children.length === 9 &&
       /Approvals Queue/.test(d.textContent || "") &&
       /Marketplace/.test(d.textContent || ""),
   );
@@ -298,10 +301,15 @@ describe("ComplianceWorkspace Exceptions — contract", () => {
     it("lists each pending finding: control, asset or Global, the note before the reason, else a dash, and status", async () => {
       await mount();
       await openExceptions();
+      /* P3-2 added "Decided by": a waiver is an accepted risk and the record
+         of who accepted it is the point of the workflow. These fixtures carry
+         no `approved_by`, so it renders as a dash — the decision has not been
+         taken, which is not the same as nobody being named. The "Decision"
+         column is permission-gated and absent here. */
       expect(rows()).toEqual([
-        ["A.5.1", "asset-7", "Compensating control documented", "pending"],
-        ["A.8.2", "Global", "Legacy system, retired in Q4", "pending"],
-        ["A.8.8", "Global", "—", "pending"],
+        ["A.5.1", "asset-7", "Compensating control documented", "pending", "—"],
+        ["A.8.2", "Global", "Legacy system, retired in Q4", "pending", "—"],
+        ["A.8.8", "Global", "—", "pending", "—"],
       ]);
       const headers = [...table().querySelectorAll("thead th")].map(squash);
       expect(headers).toEqual([
@@ -309,6 +317,7 @@ describe("ComplianceWorkspace Exceptions — contract", () => {
         "Asset ID",
         "Waiver Reason",
         "Status",
+        "Decided by",
       ]);
     });
 

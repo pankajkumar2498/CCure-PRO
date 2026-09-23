@@ -182,7 +182,10 @@ const evidenceUrl = (id) => `/compliance/controls/${id}/evidence`;
 const tabBar = () =>
   [...document.querySelectorAll("div")].find(
     (d) =>
-      d.children.length === 8 &&
+      /* Nine since P3-2 added the Schedules tab. The identity of the bar is
+         the two labels below; the count is incidental and is kept exact so a
+         wrapper cannot satisfy it. */
+      d.children.length === 9 &&
       /Approvals Queue/.test(d.textContent || "") &&
       /Marketplace/.test(d.textContent || ""),
   );

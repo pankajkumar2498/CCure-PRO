@@ -128,11 +128,56 @@ beforeEach(() => {
        `data?.[key] || data`, so an unlisted endpoint's `{}` reaches a `.map`
        and takes the whole tree down before the panels under test render. */
     "/dashboard/top-assets": { assets: [] },
-    "/dashboard/top-cves": { cves: [] },
+    "/dashboard/top-cves": {
+      cves: [
+        {
+          id: "CVE-2026-1",
+          title: "t",
+          severity: "Critical",
+          cvss_v3_score: 9.8,
+          affected_assets: 3,
+          priority_label: "urgent",
+          in_kev: true,
+          has_exploit: true,
+          epss_score: 0.94429,
+        },
+        {
+          id: "CVE-2026-2",
+          title: "u",
+          severity: "High",
+          cvss_v3_score: 7.5,
+          affected_assets: 1,
+          priority_label: "high",
+          in_kev: false,
+        },
+      ],
+    },
     "/dashboard/services-exposure": { services: [] },
-    "/dashboard/scan-activity": { scans: [] },
+    "/dashboard/scan-activity": {
+      scans: [
+        {
+          id: "scn_1",
+          status: "complete",
+          target_str: "10.180.6.0/24",
+          pipeline_mode: "vulnerability_audit",
+          queued_at: "2026-09-23T12:41:00Z",
+          started_at: "2026-09-23T12:41:13.404706Z",
+          completed_at: "2026-09-23T12:41:17.425252Z",
+          duration_seconds: 3.888261318206787,
+          total_hosts: 1,
+          intensity: "normal",
+        },
+      ],
+    },
     "/dashboard/insights": { insights: [] },
-    "/dashboard/asset-breakdown": { os_distribution: [] },
+    "/dashboard/asset-breakdown": {
+      totals: { total: 18, managed: 1, unmanaged: 17 },
+      os_distribution: [{ os_family: "Linux", count: 12 }],
+      category_distribution: [
+        { category: "server", count: 11 },
+        { category: "Unknown", count: 7 },
+      ],
+    },
     "/dashboard/compliance": { frameworks: [] },
   };
   axiosInstance.get.mockImplementation((url) =>
@@ -241,12 +286,19 @@ describe("P0-3 — unscored findings are their own band", () => {
   });
 
   it("does not fold unscored into Info", async () => {
-    await mount();
-    // 2 info and 10 unscored are different facts; if they had been merged the
-    // Info figure would read 12.
-    const bands = screen.getAllByText(/Unscored — no rating published/);
-    expect(bands.length).toBeGreaterThan(0);
-    expect(screen.queryByText("12")).toBeNull();
+    const { container } = await mount();
+    // 2 info and 10 unscored are different facts. Read off the legend rows
+    // themselves rather than by a bare "12" anywhere in the document, which
+    // an unrelated OS-distribution count also matches.
+    const legend = [...container.querySelectorAll(".sd-legend__row")].map(
+      (el) => el.textContent,
+    );
+    expect(legend.some((t) => /^Info2$/.test(t.replace(/\s/g, "")))).toBe(true);
+    expect(
+      legend.some((t) =>
+        /Unscored—noratingpublished10/.test(t.replace(/\s/g, "")),
+      ),
+    ).toBe(true);
   });
 
   it("makes the visible bands sum to severity.total", async () => {
@@ -273,5 +325,111 @@ describe("P0-3 — unscored findings are their own band", () => {
     await mount();
     // Rendered as zero rather than throwing, and the other bands are intact.
     expect(screen.getAllByText(/Critical/).length).toBeGreaterThan(0);
+  });
+});
+
+/* ══ P3-1 ══════════════════════════════════════════════════════════════════ */
+
+describe("P3-1 — dashboard completeness", () => {
+  it("renders the backend's own asset risk-level distribution", async () => {
+    await mount();
+    expect(screen.getAllByText("Assets by risk level").length).toBeGreaterThan(
+      0,
+    );
+    // 4 critical / 11 info on the live payload, and nothing else on the page
+    // carried a count per level.
+    expect(screen.getAllByText("critical").length).toBeGreaterThan(0);
+  });
+
+  it("renders the scan's own duration, hosts and intensity", async () => {
+    await mount();
+    expect(screen.getAllByText("1 hosts").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("3.9s").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("normal").length).toBeGreaterThan(0);
+  });
+
+  it("omits a duration the scan has not got rather than printing 0s", async () => {
+    routes["/dashboard/scan-activity"] = {
+      scans: [
+        {
+          id: "scn_2",
+          status: "running",
+          target_str: "10.0.0.1",
+          queued_at: "2026-09-23T12:41:00Z",
+        },
+      ],
+    };
+    await mount();
+    expect(screen.queryByText("0.0s")).toBeNull();
+  });
+
+  it("names the HTTP population and the count behind each percentage", async () => {
+    await mount();
+    expect(screen.getAllByText(/Over 12 HTTP services/).length).toBeGreaterThan(
+      0,
+    );
+    // "75%" over 12 services and over 4 are different facts.
+    expect(screen.getAllByText("75% (9)").length).toBeGreaterThan(0);
+  });
+
+  it("says nothing was assessed rather than showing 0% coverage", async () => {
+    routes["/dashboard/http-headers"] = {
+      total_http_services: 0,
+      coverage: { hsts: { count: 0, pct: 0 } },
+    };
+    await mount();
+    expect(
+      screen.getAllByText(/No HTTP service was assessed/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("0%")).toBeNull();
+  });
+
+  it("renders the device-category distribution beside the OS one", async () => {
+    await mount();
+    expect(screen.getAllByText("By device category").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("server").length).toBeGreaterThan(0);
+  });
+
+  it("shows exploit availability and EPSS on the top CVEs, not only KEV", async () => {
+    await mount();
+    expect(screen.getAllByText("Exploit").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("94.4%").length).toBeGreaterThan(0);
+  });
+
+  it("shows no exploit or EPSS mark for a CVE the API did not enrich", async () => {
+    // A missing `has_exploit` is not "no exploit exists"; a missing EPSS is
+    // not a zero probability. Two CVE rows, one enriched.
+    const { container } = await mount();
+    expect(container.querySelectorAll(".sd-cveflags").length).toBe(2);
+    expect(screen.getAllByText("Exploit").length).toBe(1);
+    expect(screen.queryByText("0.0%")).toBeNull();
+  });
+
+  it("does not invent a daily scan quota", async () => {
+    // This read `quota_limit_24h || 50`, so an installation with no limit
+    // recorded was told its plan allows 50 scans a day.
+    await mount();
+    expect(
+      screen.getAllByText(/No daily scan quota recorded/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/Plan limit 50\/day/)).toBeNull();
+  });
+
+  it("states the quota as a share when the API records a limit", async () => {
+    routes["/dashboard/summary"] = {
+      ...SUMMARY,
+      scans: { ...SUMMARY.scans, quota_limit_24h: 50, quota_used_pct: 72 },
+    };
+    await mount();
+    expect(
+      screen.getAllByText(/Scan quota: 72% of 50\/day used/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows the week's new assets beside the unmanaged count", async () => {
+    await mount();
+    expect(
+      screen.getAllByText(/17 unmanaged · 2 new in 7 days/).length,
+    ).toBeGreaterThan(0);
   });
 });

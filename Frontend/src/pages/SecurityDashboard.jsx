@@ -118,6 +118,19 @@ const PriBadge = ({ label }) =>
   ) : null;
 
 /**
+ * The tone for an asset risk level, which is a different vocabulary from a
+ * finding severity even where the words coincide: these count *assets* by the
+ * level the backend assigned them.
+ */
+const RISK_LEVEL_TONE = {
+  critical: "critical",
+  high: "high",
+  medium: "medium",
+  low: "low",
+  info: "info",
+};
+
+/**
  * The severity bands, and `unscored` is one of them.
  *
  * It was omitted while the donut still divided by `severity.total`, which
@@ -354,7 +367,13 @@ function MetricCards({ summary, loading }) {
       value: fmt(ast.total),
       variant: "blue",
       trend: tAssets,
-      sub: `${ast.unmanaged || 0} unmanaged`,
+      /* `new_7d` is the week's arrivals and was on the payload unused; the
+         trend chip already carries the 24-hour figure, so the two do not
+         repeat each other. */
+      sub:
+        typeof ast.new_7d === "number"
+          ? `${ast.unmanaged || 0} unmanaged · ${ast.new_7d} new in 7 days`
+          : `${ast.unmanaged || 0} unmanaged`,
       nav: "/assets",
     },
     {
@@ -365,7 +384,14 @@ function MetricCards({ summary, loading }) {
         label: `${scn.running || 0} running · ${scn.queued || 0} queued`,
         tone: "neutral",
       },
-      sub: `Plan limit ${scn.quota_limit_24h || 50}/day`,
+      /* This read `quota_limit_24h || 50`, so an installation with no limit
+         recorded — which is what the live one sends — was told its plan
+         allows 50 scans a day. Nobody set that number. Where a limit does
+         exist the API's own `quota_used_pct` says how much of it is gone. */
+      sub:
+        typeof scn.quota_limit_24h === "number"
+          ? `Scan quota: ${scn.quota_used_pct ?? 0}% of ${scn.quota_limit_24h}/day used`
+          : "No daily scan quota recorded",
       nav: "/history",
     },
     {
@@ -513,6 +539,11 @@ function RiskScorePanel({ summary, breakdown, httpHeaders, loading }) {
   ];
   const tlsRows = TLS_ISSUES.filter(([key]) => typeof tls[key] === "number");
 
+  /* `risk_level_distribution` as the API sent it, in its own order. Absent
+     levels are not invented and a level of zero is kept — it is a measured
+     count, not a missing one. */
+  const rld = Object.entries(bd.risk_level_distribution || {});
+
   return (
     <Panel
       title="Org Risk Score"
@@ -556,6 +587,24 @@ function RiskScorePanel({ summary, breakdown, httpHeaders, loading }) {
           )}
         </div>
       </div>
+
+      {/* The backend's own distribution of asset risk levels. Not recreated
+          from any figure on this page — it is a count per level and nothing
+          else here carries it. */}
+      {rld.length > 0 ? (
+        <div className="sd-mb-sm">
+          <h3 className="sd-subhead">Assets by risk level</h3>
+          {rld.map(([level, count]) => (
+            <BarRow
+              key={level}
+              label={level}
+              value={count}
+              max={Math.max(...rld.map(([, n]) => n), 1)}
+              tone={RISK_LEVEL_TONE[level] || "neutral"}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <div className="sd-tiles">
         {[
@@ -747,6 +796,30 @@ function ScanActivity({ scans, loading }) {
                         ? `${scan.active_hosts} hosts · C:${scan.critical_count} H:${scan.high_count}`
                         : scan.scan_name || scan.id}
                   </div>
+                  {/* The backend's own figures for what the scan did. They
+                      were on the payload and the feed showed none of them, so
+                      a four-second scan and a sixteen-minute one read the
+                      same. Each is printed only where the API sent it —
+                      `duration_seconds` is absent on a scan that has not
+                      finished, which is not a duration of zero. */}
+                  <div className="sd-feed__facts">
+                    {typeof scan.total_hosts === "number" ? (
+                      <span>{scan.total_hosts} hosts</span>
+                    ) : null}
+                    {typeof scan.duration_seconds === "number" ? (
+                      <span>{scan.duration_seconds.toFixed(1)}s</span>
+                    ) : null}
+                    {scan.intensity ? <span>{scan.intensity}</span> : null}
+                    {scan.completed_at ? (
+                      <span title={`Completed ${scan.completed_at}`}>
+                        completed {ago(scan.completed_at)}
+                      </span>
+                    ) : scan.started_at ? (
+                      <span title={`Started ${scan.started_at}`}>
+                        started {ago(scan.started_at)}
+                      </span>
+                    ) : null}
+                  </div>
                   {/* The percentage is in the line above; the bar is its
                       picture. */}
                   {scan.status === "running" && (
@@ -840,10 +913,23 @@ function TopAssetsTable({ assets, loading, onNavigate }) {
                   {a.hostname && (
                     <div className="sd-cell-sub">{a.hostname}</div>
                   )}
+                  {/* The fully-qualified name only where it says something the
+                      hostname does not — on the live estate the two are often
+                      the same string, and printing it twice is noise. */}
+                  {a.fqdn && a.fqdn !== a.hostname ? (
+                    <div className="sd-cell-sub">{a.fqdn}</div>
+                  ) : null}
                 </td>
                 <td>
                   <span className="sd-chip">
                     {a.os_name || a.os_family || "Unknown"}
+                    {/* What kind of device, which the OS alone does not say. */}
+                    {a.device_category ? (
+                      <span className="sd-cell-muted">
+                        {" "}
+                        · {a.device_category}
+                      </span>
+                    ) : null}
                   </span>
                 </td>
                 <td>
@@ -957,9 +1043,33 @@ function TopCVEsTable({ cves, loading, onNavigate }) {
                 </td>
                 <td className="sd-cell-muted">{c.affected_assets} assets</td>
                 <td>
-                  {c.in_kev && (
-                    <span className="sd-flag sd-flag--kev">KEV</span>
-                  )}
+                  {/* KEV was the only enrichment shown. Exploit availability
+                      and EPSS are on the same payload and decide which of two
+                      equally-scored CVEs is worked first. Each appears only
+                      where the API sent it — a missing EPSS is not a zero
+                      probability, and a missing `has_exploit` is not "no
+                      exploit exists". */}
+                  <span className="sd-cveflags">
+                    {c.in_kev ? (
+                      <span className="sd-flag sd-flag--kev">KEV</span>
+                    ) : null}
+                    {c.has_exploit === true ? (
+                      <span
+                        className="sd-flag sd-flag--exploit"
+                        title="A public exploit exists for this CVE. It does not mean any host here is exploitable."
+                      >
+                        Exploit
+                      </span>
+                    ) : null}
+                    {typeof c.epss_score === "number" ? (
+                      <span
+                        className="sd-cell-muted"
+                        title="EPSS — the modelled probability of exploitation in the next 30 days."
+                      >
+                        {(c.epss_score * 100).toFixed(1)}%
+                      </span>
+                    ) : null}
+                  </span>
                 </td>
               </tr>
             );
@@ -989,6 +1099,7 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
 
   const t = assetBreakdown?.totals || {};
   const os = assetBreakdown?.os_distribution || [];
+  const cat = assetBreakdown?.category_distribution || [];
 
   return (
     <Panel
@@ -1007,6 +1118,22 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
           </li>
         ))}
       </ul>
+      {/* What kind of device, which the OS list cannot answer. */}
+      {cat.length > 0 ? (
+        <>
+          <h3 className="sd-subhead">By device category</h3>
+          {cat.slice(0, 6).map((c) => (
+            <BarRow
+              key={c.category}
+              label={c.category}
+              value={c.count}
+              max={Math.max(...cat.map((x) => x.count), 1)}
+              tone="primary"
+            />
+          ))}
+        </>
+      ) : null}
+
       <BarRow
         label="Managed"
         value={t.managed || 0}
@@ -1136,19 +1263,46 @@ function TLSHealthPanel({ tlsHealth, httpHeaders, loading }) {
       </div>
 
       <h3 className="sd-subhead">HTTP Security Headers Coverage</h3>
-      {Object.entries(httpCoverage).map(([key, { pct: p }]) => (
-        <BarRow
-          key={key}
-          label={key
-            .replace(/_/g, "-")
-            .toUpperCase()
-            .replace("REFERRER", "Referrer")}
-          value={p}
-          max={100}
-          tone={coverageTone(p)}
-          valDisplay={`${p}%`}
-        />
-      ))}
+      {/* The population the percentages are over. Without it every bar reads
+          0% on an estate with no HTTP service at all, which says "no host sets
+          HSTS" where the truth is "nothing was assessed". */}
+      {typeof http.total_http_services === "number" &&
+      http.total_http_services === 0 ? (
+        <p className="sd-muted">
+          No HTTP service was assessed, so there is no coverage to report.
+        </p>
+      ) : (
+        <>
+          {typeof http.total_http_services === "number" ? (
+            <p className="sd-muted">
+              Over {http.total_http_services} HTTP service
+              {http.total_http_services === 1 ? "" : "s"}
+              {typeof http.avg_security_score === "number"
+                ? ` · mean header score ${Math.round(http.avg_security_score)}/100`
+                : ""}
+            </p>
+          ) : null}
+          {Object.entries(httpCoverage).map(([key, entry]) => (
+            <BarRow
+              key={key}
+              label={key
+                .replace(/_/g, "-")
+                .toUpperCase()
+                .replace("REFERRER", "Referrer")}
+              value={entry?.pct ?? 0}
+              max={100}
+              tone={coverageTone(entry?.pct ?? 0)}
+              /* The count as well as the share: "75%" over 12 services and
+                 over 4 are different facts. */
+              valDisplay={
+                typeof entry?.count === "number"
+                  ? `${entry.pct}% (${entry.count})`
+                  : `${entry?.pct ?? 0}%`
+              }
+            />
+          ))}
+        </>
+      )}
     </Panel>
   );
 }

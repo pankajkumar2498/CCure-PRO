@@ -1134,3 +1134,25 @@ a.sd-metric:focus-visible {
     left: 0;
   }
 }
+
+/* ── P3-1: dashboard completeness ────────────────────────────────────────── */
+
+.sd-feed__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-font-size-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sd-cveflags {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+}
+
+.sd-flag--exploit {
+  background: var(--ccure-warning-bg);
+  color: var(--ccure-warning-text);
+}

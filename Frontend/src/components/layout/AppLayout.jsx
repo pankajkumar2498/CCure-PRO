@@ -234,6 +234,18 @@ const SIDEBAR_SECTIONS = [
         badgeColor: "danger",
       },
       {
+        id: "remediation",
+        label: "Remediation",
+        Icon: IcoAlert,
+        route: "/remediation",
+        // findings:read, the same grant the vulnerability browser takes.
+        // Assigning and moving work take findings:update, accepting a risk
+        // takes findings:accept_risk, and setting the deadlines takes
+        // settings:update — all three are enforced inside the page, because
+        // an operator who may read the queue should still be able to see it.
+        permission: { resource: "findings", action: "read" },
+      },
+      {
         id: "asset-registry",
         label: "Asset Registry",
         Icon: IcoMonitor,

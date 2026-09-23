@@ -11,6 +11,7 @@
  *   /assets     → AssetRegistry
  *   /assets/:id → AssetDetail
  *   /vulnerabilities → VulnerabilityBrowser
+ *   /remediation → Remediation
  *
  * All original pages kept exactly. Missing pages (ScanDetail, NotFound,
  * NotificationsPage) are replaced with the pages that actually exist.
@@ -52,6 +53,7 @@ import CredentialedScan from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
 import ScanComparison from "./pages/scan/ScanComparison";
 import ScanPolicies from "./pages/scan/ScanPolicies";
+import Remediation from "./pages/Remediation";
 import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
@@ -126,6 +128,7 @@ export default function App() {
           <Route path="/scan-schedules" element={<ScanSchedules />} />
           <Route path="/scan-credentials" element={<ScanCredentials />} />
           <Route path="/scan-policies" element={<ScanPolicies />} />
+          <Route path="/remediation" element={<Remediation />} />
           <Route
             path="/configuration-checks"
             element={<ConfigurationChecks />}

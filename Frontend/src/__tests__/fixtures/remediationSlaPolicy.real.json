@@ -1,0 +1,22 @@
+{
+  "days_by_severity": {
+    "critical": 15,
+    "high": 30,
+    "medium": 90,
+    "low": 180,
+    "none": 0,
+    "unscored": 0
+  },
+  "due_soon_window_days": 7,
+  "honour_kev_due_date": true,
+  "org_id": "org_default",
+  "unit": "calendar days",
+  "defaults": {
+    "critical": 15,
+    "high": 30,
+    "medium": 90,
+    "low": 180,
+    "none": 0,
+    "unscored": 0
+  }
+}

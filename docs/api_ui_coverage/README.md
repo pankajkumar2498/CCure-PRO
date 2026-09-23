@@ -1,5 +1,10 @@
 # API → UI coverage
 
+**Programme complete.** The closeout — baseline, classification, the eleven
+genuine gaps, the backend authorisation defect and the backlog — is
+[`PROGRAMME_CLOSEOUT.md`](PROGRAMME_CLOSEOUT.md). Read that first; the phase
+documents below are the working record behind it.
+
 Seven phases, Sep 2026. The question throughout: **does every operator-relevant
 API capability this product implements have a UI representation**, and where it
 does not, is that a decision or an omission?

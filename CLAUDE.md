@@ -85,6 +85,65 @@ Baseline as of 11 Aug 2026: the suites touching scans, findings, reports,
 credentialed scanning, compliance and schema run clean apart from the eager-mode
 test above.
 
+## UI semantic integrity
+
+**The frontend must never convert an unknown or absent answer into a known
+state.** This is a mandatory design rule for all CCure Audit UI work, not a
+preference, and it is the single defect the whole Sep 2026 API → UI coverage
+programme kept finding in different clothes —
+[`docs/api_ui_coverage/PROGRAMME_CLOSEOUT.md`](docs/api_ui_coverage/PROGRAMME_CLOSEOUT.md).
+
+    UNKNOWN         ≠  ZERO
+    UNASSESSED      ≠  PASS
+    UNSUPPORTED     ≠  NO FINDINGS
+    NOT CONFIGURED  ≠  WITHIN SLA
+    WITHDRAWN       ≠  ACCEPTED
+    NO DATA         ≠  EMPTY RESULT
+    NO COLLECTOR    ≠  NO CHECKS
+
+Where the backend says something is unknown, unavailable, unsupported,
+unassessed, withdrawn or not configured, **render that state explicitly**.
+Never infer a successful, empty or safe state merely because data is absent.
+
+The backend is built around this distinction everywhere — `CheckOutcome` keeps
+`error` out of the verdict vocabulary, `AbsencePolicy` refuses to default,
+`_reading()` returns `None` rather than `False`, `NOT_ASSESSED` is a
+classification of its own, `sla_state` answers `not_applicable` rather than
+`within_sla`. Every one of those distinctions is destroyed by a UI that renders
+the absent case as a blank, a zero or a tick.
+
+Each line above is a defect that reached this product, not a hypothetical:
+
+- **UNASSESSED ≠ PASS** — a scan whose configuration audit never ran produced
+  an empty findings list, which reads as a clean host. The export now emits an
+  explicit `NOT_ASSESSED` row carrying the engine's own reason.
+- **NOT CONFIGURED ≠ WITHIN SLA** — 5,791 of this installation's 8,633 findings
+  carry no deadline at all. Folding `no_sla` into `within_sla` reports an
+  organisation as comfortably compliant on findings that carry no obligation in
+  either direction.
+- **WITHDRAWN ≠ ACCEPTED** — withdrawing a risk acceptance clears `expires_at`
+  and leaves `reason`, `accepted_by` and `accepted_at` in place. A panel keying
+  on a non-null reason labels an *open* finding as one the organisation decided
+  to carry. Test the state, never the residue.
+- **NO COLLECTOR ≠ NO CHECKS** — an empty catalogue for a platform this build
+  cannot assess is a statement about the product; an empty catalogue for one it
+  can is a statement about the content. Read `capabilities.supported` and say
+  which.
+- **UNKNOWN ≠ ZERO** — the mission view mapped `timeout` and `unknown` to
+  `complete`, reporting a scan as finished when nothing had been heard from it
+  for ten minutes.
+
+Two corollaries worth stating, because both were violated:
+
+- **A vocabulary is fetched, not copied.** A UI holding its own list of
+  platforms, check types, operators, severities or states silently omits what
+  the backend gained and offers what it removed. The configuration-check page
+  hardcoded two of six platforms and put 49 database checks beyond reach.
+- **An action the backend structurally refuses must not be offered.** A control
+  that can only ever produce a 400 is worse than its absence — say what the
+  state is and why a person cannot reach it. `verified_fixed` is set by a scan,
+  never by a person, and the UI says so where the control would have been.
+
 ## Test layout
 
 `Backend/tests/` is grouped by module: `auth/`, `security/`, `compliance/`,

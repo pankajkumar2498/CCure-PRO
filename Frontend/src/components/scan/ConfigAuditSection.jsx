@@ -149,6 +149,25 @@ function CheckDetail({ row }) {
           <dd className="ca-mono">{meta.check_type || "—"}</dd>
         </div>
         <div>
+          {/* What a successful reading of "the item is not present" means for
+              this check. CLAUDE.md: absence is a PASS for "SMBv1 must not be
+              installed", a FAIL for "auditd must be installed" and
+              NOT_APPLICABLE for a conditional one — so `AbsencePolicy` has no
+              default, and it is the field a reviewer lands on when a check
+              comes back MANUAL_REVIEW. Most results carry none; that is
+              stated rather than filled in. */}
+          <dt>If the item is absent</dt>
+          <dd>
+            {meta.absent_policy ? (
+              <span title="What this check concludes when the thing it looks for is genuinely not there.">
+                {String(meta.absent_policy).replace(/_/g, " ")}
+              </span>
+            ) : (
+              <span className="ca-muted">not declared on this result</span>
+            )}
+          </dd>
+        </div>
+        <div>
           <dt>Domain</dt>
           <dd>{meta.domain || "—"}</dd>
         </div>

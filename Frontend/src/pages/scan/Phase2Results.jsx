@@ -30,6 +30,13 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
+import {
+  HostMeasurements,
+  PortLabel,
+  PortStates,
+  ScanContext,
+  TcpFingerprint,
+} from "../../components/scan/AssessmentContext";
 import { useAuth } from "../../context/AuthContext";
 import { can, denyMessage } from "../../auth/permissions";
 import {
@@ -138,19 +145,39 @@ const Fact = ({ label, children }) => (
   </div>
 );
 
+/**
+ * How precisely the version was established, which qualifies the version and
+ * must travel with it: `exact` and a guess read identically otherwise.
+ */
+const PRECISION_TONE = {
+  exact: "success",
+  approximate: "warning",
+  range: "warning",
+  unknown: "neutral",
+};
+
 const TCP_COLUMNS = [
   {
     key: "port",
     header: "Port",
     mono: true,
     nowrap: true,
-    cell: (port) => `${port.port}/tcp`,
+    /* The scanner's own protocol. This list is the TCP table, but the row
+       carries its transport and the row is what is believed. */
+    cell: (port) => <PortLabel row={port} />,
   },
   {
     key: "service",
     header: "Service",
     cell: (port) => (
-      <span className="p2-service">{textValue(port.service)}</span>
+      <>
+        <span className="p2-service">
+          {textValue(port.service || port.service_name)}
+        </span>
+        {port.product ? (
+          <span className="p2-muted p2-small"> {port.product}</span>
+        ) : null}
+      </>
     ),
   },
   {
@@ -158,9 +185,44 @@ const TCP_COLUMNS = [
     header: "Banner / Version",
     mono: true,
     cell: (port) => (
-      <span className="p2-muted p2-small">
-        {textValue(port.banner || port.version)}
-      </span>
+      <>
+        <span className="p2-muted p2-small">
+          {textValue(port.banner || port.version)}
+        </span>
+        {/* A version without its precision reads as exact. */}
+        {port.version_precision ? (
+          <CcureBadge
+            variant={PRECISION_TONE[port.version_precision] || "neutral"}
+            title="How precisely the scanner established this version."
+          >
+            {port.version_precision}
+          </CcureBadge>
+        ) : null}
+        {port.extra ? (
+          <span className="p2-muted p2-small"> · {port.extra}</span>
+        ) : null}
+      </>
+    ),
+  },
+  {
+    key: "identification",
+    header: "Identified by",
+    cell: (port) => (
+      <>
+        {port.fingerprint_source ? (
+          <span className="p2-small">{port.fingerprint_source}</span>
+        ) : (
+          <span className="p2-muted">not reported</span>
+        )}
+        {Array.isArray(port.cpe) && port.cpe.length ? (
+          <span
+            className="p2-muted p2-small p2-cpe"
+            title={port.cpe.join("\n")}
+          >
+            {port.cpe[0]}
+          </span>
+        ) : null}
+      </>
     ),
   },
   {
@@ -188,12 +250,23 @@ const UDP_COLUMNS = [
     header: "Port",
     mono: true,
     nowrap: true,
-    cell: (svc) => `${svc.port}/udp`,
+    /* This table is the UDP one, so `udp` is the fallback when the row does
+       not carry its own protocol — but a row that *does* is believed. */
+    cell: (svc) => <PortLabel row={svc} fallbackProtocol="udp" />,
   },
   {
     key: "service",
     header: "Service",
-    cell: (svc) => <span className="p2-service">{textValue(svc.service)}</span>,
+    cell: (svc) => (
+      <>
+        <span className="p2-service">
+          {textValue(svc.service || svc.service_name)}
+        </span>
+        {svc.product ? (
+          <span className="p2-muted p2-small"> {svc.product}</span>
+        ) : null}
+      </>
+    ),
   },
   {
     key: "state",
@@ -914,6 +987,12 @@ export default function Phase2Results() {
 
               {isExpanded && (
                 <div id={bodyId} className="p2-host__body">
+                  {/* What the scan measured about the host itself, and the
+                      per-port states — including the ones it could not
+                      resolve, which the open-ports list cannot carry. */}
+                  <HostMeasurements host={host} />
+                  <TcpFingerprint fingerprint={host.tcp_fingerprint} />
+                  <PortStates portStates={host.port_states} />
                   {(showOs || showIdentity) && (
                     <div className="p2-host__facts">
                       {showOs && (
@@ -1112,6 +1191,11 @@ export default function Phase2Results() {
             </article>
           );
         })}
+
+        {/* The scan's own parameters. A reader cannot tell a clean host from
+            an unscanned range without them, and they were on the summary the
+            page already held. */}
+        {summary ? <ScanContext summary={summary} /> : null}
 
         {summary &&
           results.length > 0 &&

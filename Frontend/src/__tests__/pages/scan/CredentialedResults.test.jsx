@@ -1294,11 +1294,17 @@ describe("CredentialedResults — contract", () => {
       await loaded();
       await open(/Running Services \(2\)/);
       const table = () => tableWith("Service", "Description");
+      /* Updated by P2-5, and the change is the point. `cron.service` carries
+         no `sub_state` in this fixture, and the cell was
+         `svc.sub_state || "running"` — so it asserted a running state the scan
+         never reported. It now reads "not reported". The rows also gained the
+         start-type column, empty here because the fixture carries none. */
       expect(cellsOf(table())).toEqual([
-        ["ssh.service", "running", "OpenBSD Secure Shell server"],
+        ["ssh.service", "running", "—", "OpenBSD Secure Shell server"],
         [
           "cron.service",
-          "running",
+          "not reported",
+          "—",
           "Regular background program processing daemon",
         ],
       ]);

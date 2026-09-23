@@ -35,6 +35,13 @@ import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
 import api from "../../api/axiosInstance";
+import {
+  HostMeasurements,
+  OsIdentification,
+  PortStates,
+  ScanContext,
+  TcpFingerprint,
+} from "../../components/scan/AssessmentContext";
 import { useAuth } from "../../context/AuthContext";
 import { can } from "../../auth/permissions";
 import { parseExcludeIpsJS } from "../../utils/ipValidation";
@@ -213,6 +220,10 @@ export default function Phase1Results() {
     () =>
       new Set(phase1Hosts.filter((h) => h.is_active).map((h) => h.ip_address)),
   );
+  /* Which host's discovery evidence is open. One at a time: the detail row
+     carries fingerprints and port states, and several open at once buries the
+     table it belongs to. */
+  const [openHost, setOpenHost] = useState(null);
   const [assetLoading, setAssetLoading] = useState(false);
   const [error, setError] = useState("");
   const [customPortsError, setCustomPortsError] = useState("");
@@ -697,6 +708,14 @@ export default function Phase1Results() {
   const excludeIpsId = `${idBase}-exclude-ips-input`;
   const excludeIpsErrorId = `${idBase}-exclude-ips-error`;
 
+  /* The scanner reports confidence as a word, not a number, so it is never
+     converted to a percentage and a missing one is never 0%. */
+  const OS_CONFIDENCE_TONE = {
+    High: "success",
+    Medium: "warning",
+    Low: "neutral",
+  };
+
   const hostColumns = [
     ...(showCheckboxes
       ? [
@@ -730,6 +749,9 @@ export default function Phase1Results() {
     { key: "mac", header: "MAC" },
     { key: "vendor", header: "Vendor" },
     { key: "method", header: "Method" },
+    /* Host discovery infers an OS from the responses it got. The page showed
+       none of it, so a guess and an identification were equally invisible. */
+    { key: "os", header: "OS (inferred)" },
     ...(!isBasicScan ? [{ key: "response", header: "Response" }] : []),
     { key: "status", header: "Status" },
   ];
@@ -1236,6 +1258,33 @@ export default function Phase1Results() {
                       <span className="p1-quiet">—</span>,
                     )}
                   </td>
+                  <td>
+                    {h.os_guess ? (
+                      <>
+                        <span>{h.os_guess}</span>
+                        {/* The strength of the inference travels with it. An
+                            OS guess shown bare reads as an identification. */}
+                        {h.os_confidence ? (
+                          <CcureBadge
+                            variant={
+                              OS_CONFIDENCE_TONE[String(h.os_confidence)] ||
+                              "neutral"
+                            }
+                            title="How strongly the scanner holds this inference."
+                          >
+                            {String(h.os_confidence)}
+                          </CcureBadge>
+                        ) : (
+                          <span className="p1-quiet">
+                            {" "}
+                            confidence not reported
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="p1-quiet">not inferred</span>
+                    )}
+                  </td>
                   {!isBasicScan && (
                     <td>
                       {h.response_time_ms != null ? (
@@ -1252,12 +1301,40 @@ export default function Phase1Results() {
                       <span className="p1-status__dot" aria-hidden="true" />
                       {h.is_active ? "Active" : "Inactive"}
                     </span>
+                    <button
+                      type="button"
+                      className="p1-detailtoggle"
+                      aria-expanded={openHost === h.ip_address}
+                      onClick={() =>
+                        setOpenHost(
+                          openHost === h.ip_address ? null : h.ip_address,
+                        )
+                      }
+                    >
+                      {openHost === h.ip_address ? "Hide detail" : "Detail"}
+                    </button>
                   </td>
                 </tr>
               );
             })}
+            {/* One detail row per open host, carrying the evidence the
+                discovery phase recorded and the table has no column for. */}
+            {(isAssetPipeline ? activeHosts : displayHosts)
+              .filter((h) => h.ip_address === openHost)
+              .map((h) => (
+                <tr key={`${h.ip_address}-detail`}>
+                  <td colSpan={hostColumns.length}>
+                    <OsIdentification host={h} />
+                    <HostMeasurements host={h} />
+                    <TcpFingerprint fingerprint={h.tcp_fingerprint} />
+                    <PortStates portStates={h.port_states} />
+                  </td>
+                </tr>
+              ))}
           </CcureTable>
         </div>
+
+        {phase1Summary ? <ScanContext summary={phase1Summary} /> : null}
 
         {phase1Summary && !canProceedToPhase2 && (
           <>

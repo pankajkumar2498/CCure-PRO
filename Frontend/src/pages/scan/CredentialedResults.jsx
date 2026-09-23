@@ -1026,6 +1026,35 @@ export default function CredentialedResults() {
                   {access.how === "discovered" ? " (detected)" : ""}
                 </CcureBadge>
               )}
+              {/* TLS on the authenticated session is three-valued. The engine
+                  carries `use_tls` rather than re-deriving it, because it
+                  infers TLS from the port only for the conventional layout —
+                  so `null` means "not settled by convention", which is neither
+                  on nor off. Collapsing it to a boolean asserts one of them. */}
+              {access?.transport && (
+                <CcureBadge
+                  variant={
+                    access.use_tls === true
+                      ? "success"
+                      : access.use_tls === false
+                        ? "warning"
+                        : "neutral"
+                  }
+                  className="cr-os-badge"
+                  title={
+                    access.use_tls === null || access.use_tls === undefined
+                      ? "The scan did not record whether the session used TLS. 5985 and 5986 are settled by convention; anything else is not, and a guess would address an HTTPS listener as http://."
+                      : "Whether the authenticated session was carried over TLS."
+                  }
+                >
+                  TLS:{" "}
+                  {access.use_tls === true
+                    ? "yes"
+                    : access.use_tls === false
+                      ? "no"
+                      : "not recorded"}
+                </CcureBadge>
+              )}
             </p>
             {/* What else was tried. The badge alone says which service
                 accepted the credential and silently loses the fact that
@@ -1227,6 +1256,13 @@ export default function CredentialedResults() {
               {coverage.os_detection && (
                 <KV k="OS detection" v={coverage.os_detection} />
               )}
+              {/* Part of the assessment context, and on the live credentialed
+                  report it says "Not applicable — no network probing
+                  performed", which is exactly the sort of sentence a reader
+                  needs and a shorter label would lose. */}
+              {coverage.timing_template && (
+                <KV k="Timing" v={coverage.timing_template} />
+              )}
               {coverage.discovery_scan_method && (
                 <KV k="Host discovery" v={coverage.discovery_scan_method} />
               )}
@@ -1330,6 +1366,24 @@ export default function CredentialedResults() {
             <KV k="BIOS Version" v={system_info.bios_version || "—"} mono />
             <KV k="MAC Address" v={system_info.mac_address || "—"} mono />
             <KV k="Subnet" v={system_info.subnet || "—"} mono />
+            {/* Three readings the collector records and the grid dropped.
+                `os_confidence` arrives as a number here and as a word on the
+                discovery phases, so it is printed as it came rather than
+                converted; an absent one is never 0. `mac_vendor` arrives as an
+                empty string on a host whose OUI did not resolve, which is not
+                the same as a vendor called "". */}
+            <KV k="OS Family" v={system_info.os_family || "not reported"} />
+            <KV
+              k="OS Confidence"
+              v={
+                system_info.os_confidence === null ||
+                system_info.os_confidence === undefined ||
+                system_info.os_confidence === ""
+                  ? "not reported"
+                  : String(system_info.os_confidence)
+              }
+            />
+            <KV k="MAC Vendor" v={system_info.mac_vendor || "not resolved"} />
             <KV k="Domain" v={system_info.domain || "—"} mono />
             <KV k="FQDN" v={system_info.fqdn || "—"} mono />
             {system_info.memory_summary?.total && (
@@ -1607,11 +1661,35 @@ export default function CredentialedResults() {
                   {
                     key: "sub_state",
                     header: "Status",
-                    cell: (svc) => (
-                      <span className="cr-tone-success">
-                        {svc.sub_state || "running"}
-                      </span>
-                    ),
+                    /* `svc.sub_state || "running"` printed "running" for every
+                       service on a transport that does not report one — all
+                       174 on the live Windows host — which is a state the scan
+                       never established. Absent is absent. */
+                    cell: (svc) =>
+                      svc.sub_state ? (
+                        <span className="cr-tone-success">{svc.sub_state}</span>
+                      ) : (
+                        <span className="cr-muted">not reported</span>
+                      ),
+                  },
+                  {
+                    key: "start_type",
+                    header: "Start type",
+                    /* How the service is configured to start, which is not
+                       whether it is running: `Auto` on a stopped service and
+                       `Manual` on a running one are both ordinary. Labelled so
+                       the two cannot be read as one. */
+                    cell: (svc) =>
+                      svc.start_type ? (
+                        <span
+                          className="cr-mono"
+                          title="How the service is configured to start. It does not say whether the service is running."
+                        >
+                          {svc.start_type}
+                        </span>
+                      ) : (
+                        <span className="cr-muted">—</span>
+                      ),
                   },
                   {
                     key: "description",

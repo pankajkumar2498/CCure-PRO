@@ -1,0 +1,128 @@
+{
+  "finding_id": "fnd_ast_defa_c522b539_127_0_0_1_credentialed_package_CVE-2026-40224",
+  "count": 9,
+  "events": [
+    {
+      "id": "fre_634491fdefe20e4d_sla_set_20260904133847037169_ab59d9",
+      "event_type": "sla_set",
+      "from_state": null,
+      "to_state": null,
+      "actor_id": null,
+      "actor_label": "system:sla",
+      "note": null,
+      "scan_id": null,
+      "details": {
+        "to": "2026-10-02T18:48:45.926323+00:00",
+        "days": 30,
+        "from": null,
+        "basis": "high"
+      },
+      "occurred_at": "2026-09-04T13:38:47.037169+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_assigned_20260923042054243418_b5af78",
+      "event_type": "assigned",
+      "from_state": "open",
+      "to_state": "assigned",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "Phase 5 UI audit probe",
+      "scan_id": null,
+      "details": {
+        "owner": "usr_defa_c522b539_admin_u9qr",
+        "previous_owner": null
+      },
+      "occurred_at": "2026-09-23T04:20:54.243418+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_state_change_20260923042055508675_72cb93",
+      "event_type": "state_changed",
+      "from_state": "assigned",
+      "to_state": "in_remediation",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: work started",
+      "scan_id": null,
+      "details": {},
+      "occurred_at": "2026-09-23T04:20:55.508675+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_note_added_20260923042056767657_d43957",
+      "event_type": "note_added",
+      "from_state": null,
+      "to_state": null,
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: patch staged for the next window",
+      "scan_id": null,
+      "details": {},
+      "occurred_at": "2026-09-23T04:20:56.767657+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_state_change_20260923042058022382_9da902",
+      "event_type": "state_changed",
+      "from_state": "in_remediation",
+      "to_state": "pending_verification",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: fix applied",
+      "scan_id": null,
+      "details": {},
+      "occurred_at": "2026-09-23T04:20:58.022382+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_state_change_20260923042059279253_2a073e",
+      "event_type": "state_changed",
+      "from_state": "pending_verification",
+      "to_state": "in_remediation",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: fix was incomplete",
+      "scan_id": null,
+      "details": {},
+      "occurred_at": "2026-09-23T04:20:59.279253+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_risk_accepte_20260923042101764198_eda32a",
+      "event_type": "risk_accepted",
+      "from_state": "in_remediation",
+      "to_state": "risk_accepted",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: compensating control on the segment gateway",
+      "scan_id": null,
+      "details": {
+        "expires_at": "2026-12-31T00:00:00+00:00",
+        "indefinite": false
+      },
+      "occurred_at": "2026-09-23T04:21:01.764198+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_state_change_20260923042104236344_4fb193",
+      "event_type": "state_changed",
+      "from_state": "risk_accepted",
+      "to_state": "assigned",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe: control removed",
+      "scan_id": null,
+      "details": {},
+      "occurred_at": "2026-09-23T04:21:04.236344+00:00"
+    },
+    {
+      "id": "fre_634491fdefe20e4d_unassigned_20260923042106714452_1d896f",
+      "event_type": "unassigned",
+      "from_state": "assigned",
+      "to_state": "open",
+      "actor_id": "usr_defa_c522b539_superadmin_xlft",
+      "actor_label": null,
+      "note": "probe complete",
+      "scan_id": null,
+      "details": {
+        "owner": null,
+        "previous_owner": "usr_defa_c522b539_admin_u9qr"
+      },
+      "occurred_at": "2026-09-23T04:21:06.714452+00:00"
+    }
+  ]
+}

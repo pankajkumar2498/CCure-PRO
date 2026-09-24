@@ -783,3 +783,77 @@
 .ad-ref:hover {
   text-decoration: underline;
 }
+
+/* ── P1-4: authenticated posture ─────────────────────────────────────────── */
+
+.ad-posture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.ad-posture__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.ad-posture__h {
+  font-size: var(--ccure-font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: var(--ccure-space-xs) 0 var(--ccure-space-3xs);
+  color: var(--ccure-text-secondary);
+}
+
+.ad-posture__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs) var(--ccure-space-sm);
+}
+
+.ad-posture__row {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  /* Reset the basis when the row stacks. */
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: var(--ccure-font-size-sm);
+}
+
+.ad-posture__kv {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs) var(--ccure-space-lg);
+  font-size: var(--ccure-font-size-sm);
+}
+
+.ad-posture__kv > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.ad-posture__kv dt {
+  color: var(--ccure-text-secondary);
+}
+
+.ad-posture__kv dd {
+  margin: 0;
+}
+
+.ad-posture__alert {
+  color: var(--ccure-danger-text, inherit);
+  font-weight: var(--ccure-font-weight-bold, 700);
+}
+
+.ad-posture__tasks {
+  margin: 0;
+  padding-left: var(--ccure-space-md);
+  font-size: var(--ccure-font-size-xs);
+}

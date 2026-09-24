@@ -10,36 +10,54 @@ separate store loaded by the feed scripts, and this endpoint neither reads nor
 writes it; its freshness is reported alongside so drift between the two is
 visible rather than assumed.
 
-Endpoints:
+Endpoints (both superadmin-only — see ``_superadmin_only`` below):
   POST /api/v1/admin/sync-nvd        → Trigger an incremental sync, or a backfill
   GET  /api/v1/admin/nvd-sync-status → Check NVD sync status and catalogue metrics
 """
 
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
-from auth.dependencies import get_current_user_flexible
+from auth.rbac import require_role
 from db.base import get_db
 from db.models import User
 from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin NVD Catalog"])
 
-
-def _verify_admin(user: User = Depends(get_current_user_flexible)) -> User:
-    """Ensure caller has admin privileges."""
-    is_admin = getattr(user, "is_superadmin", False) or getattr(user, "role", "") in (
-        "superadmin",
-        "org_admin",
-    )
-    if not is_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Admin privileges required to manage NVD catalog sync.",
-        )
-    return user
+#: Both routes here are superadmin-only, through the application's own role
+#: guard. Three things about that, because the guard these replaced was wrong
+#: in a way that was invisible:
+#:
+#: **It refused everybody, including a superadmin.** The previous local
+#: ``_verify_admin`` tested ``getattr(user, "is_superadmin", False)`` and
+#: ``getattr(user, "role", "") in ("superadmin", "org_admin")``. ``User`` has no
+#: ``is_superadmin`` attribute, and ``User.role`` is a relationship to a
+#: ``Role`` object, so the membership test compared a ``Role`` instance against
+#: two strings and was false for every account there is. It failed closed, which
+#: is the right direction to fail — but a permanently closed door is still a
+#: broken one, and nothing said so: the endpoint answered 403 with
+#: "Admin privileges required", which reads as a correct refusal.
+#:
+#: **Superadmin-only is the established policy, not a choice made here.** The
+#: catalogue this syncs — ``vulnerability_definitions`` — carries no ``org_id``
+#: and is shared by every tenant, so one workspace's administrator triggering a
+#: sync acts on all of them. That is the same reasoning recorded for
+#: ``/admin/email-domains``, which is superadmin-only for exactly this reason
+#: and deliberately guarded by role rather than by permission: superadmin holds
+#: every permission, so any atom an org_admin also held would let them through.
+#: ``tests/security/test_endpoint_limit_inventory.py`` already records these two
+#: routes as "Feed synchronisation. Superadmin-only" in the rationale for not
+#: rate-limiting them.
+#:
+#: **``require_role`` authenticates with ``get_current_user``, not
+#: ``get_current_user_flexible``**, and that narrowing is deliberate. The
+#: flexible dependency also accepts a short-lived download ticket, which exists
+#: so a browser can fetch a report from a URL. A ticket that can be put in a URL
+#: must not be able to start an outbound synchronisation.
+_superadmin_only = require_role("superadmin")
 
 
 @router.post("/sync-nvd")
@@ -57,7 +75,7 @@ async def trigger_nvd_sync(
             "frontier past anything it failed to retrieve."
         ),
     ),
-    current_user: User = Depends(_verify_admin),
+    current_user: User = Depends(_superadmin_only),
 ):
     """
     Trigger a live NVD 2.0 sync into the application vulnerability catalogue.
@@ -104,7 +122,7 @@ async def trigger_nvd_sync(
 
 @router.get("/nvd-sync-status")
 async def get_sync_status(
-    current_user: User = Depends(_verify_admin),
+    current_user: User = Depends(_superadmin_only),
 ):
     """
     Check NVD 2.0 sync progress, last sync timestamp, and the catalogue count.

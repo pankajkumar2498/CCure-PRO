@@ -144,3 +144,128 @@
 .cfg-refs a {
   color: var(--ccure-text-link);
 }
+
+/* ── Phase 6: filters, capability matrix, lookup and the rule validator ──── */
+
+.cfg-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cfg-filters > * {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one control pinned at a width the others no longer share. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.cfg-caplist {
+  margin: var(--ccure-space-2xs) 0 0;
+  padding-left: var(--ccure-space-md);
+  line-height: 1.6;
+}
+
+.cfg-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+}
+
+.cfg-lookup {
+  margin-top: var(--ccure-space-xl);
+  border-top: 1px solid var(--ccure-color-border);
+  padding-top: var(--ccure-space-md);
+}
+
+.cfg-lookup__h {
+  font-size: var(--ccure-font-size-lg);
+  margin: 0 0 var(--ccure-space-3xs);
+}
+
+.cfg-lookup__lede {
+  color: var(--ccure-color-text-secondary);
+  font-size: var(--ccure-font-size-sm);
+  margin: 0 0 var(--ccure-space-sm);
+}
+
+.cfg-lookup__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cfg-lookup__row > *:first-child {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.cfg-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cfg-form > * {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.cfg-form__actions {
+  display: flex;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-md);
+}
+
+.cfg-collect {
+  display: block;
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cfg-collect__label {
+  display: block;
+  margin-bottom: var(--ccure-space-3xs);
+  font-size: var(--ccure-font-size-sm);
+  color: var(--ccure-color-text-secondary);
+}
+
+.cfg-collect__area {
+  width: 100%;
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-font-size-sm);
+  color: var(--ccure-color-text-primary);
+  background: var(--ccure-color-surface);
+  border: 1px solid var(--ccure-color-border);
+  border-radius: var(--ccure-radius-sm);
+  padding: var(--ccure-space-xs);
+}
+
+.cfg-result {
+  margin-top: var(--ccure-space-md);
+}
+
+.cfg-result__h {
+  font-size: var(--ccure-font-size-md);
+  margin: var(--ccure-space-sm) 0 var(--ccure-space-3xs);
+}
+
+.cfg-result__list {
+  margin: 0;
+  padding-left: var(--ccure-space-md);
+  line-height: 1.6;
+}
+
+.cfg-result__json {
+  overflow-x: auto;
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-font-size-xs);
+  background: var(--ccure-color-surface-sunken, var(--ccure-color-surface));
+  border: 1px solid var(--ccure-color-border);
+  border-radius: var(--ccure-radius-sm);
+  padding: var(--ccure-space-sm);
+}

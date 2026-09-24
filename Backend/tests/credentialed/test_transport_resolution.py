@@ -21,6 +21,7 @@ from engines.credentialed.transport_resolver import (
     DEFAULT_PORT,
     TransportEndpoint,
     candidate_endpoints,
+    resolve_access,
     resolve_endpoint,
 )
 
@@ -506,3 +507,157 @@ def test_endpoint_description_is_readable_in_a_skip_reason():
     endpoint = TransportEndpoint(port=5986, use_tls=True, source="discovered")
     assert endpoint.describe() == "5986/tcp TLS [discovered]"
     assert TransportEndpoint(port=22).describe() == "22/tcp [credential]"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Choosing the transport, not merely the port
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The operator supplies a credential; the engine establishes which
+# authentication service the host offers. WinRM is off by default on Windows
+# *client* editions and on by default on Server, so "which one does this host
+# accept" is precisely the fact the scanner is better placed to answer than the
+# person filling in the form.
+
+
+def _listening(*ports):
+    """A probe that answers for exactly these ports and nothing else."""
+    allowed = set(ports)
+
+    def probe(ip, port, timeout=5):
+        return port in allowed
+
+    return probe
+
+
+def test_a_windows_credential_finds_winrm_without_being_told():
+    result = resolve_access(
+        ip="10.0.0.1", credential_type="windows", probe=_listening(5985)
+    )
+    assert result.resolved
+    assert result.transport == "winrm"
+    assert result.endpoint.port == 5985
+
+
+def test_a_windows_credential_falls_through_to_smb_when_winrm_is_off():
+    """The Windows client default, and the reach gap SMB was added to close."""
+    result = resolve_access(
+        ip="10.0.0.1", credential_type="windows", probe=_listening(445)
+    )
+    assert result.resolved
+    assert result.transport == "smb"
+    assert result.endpoint.port == 445
+
+
+def test_winrm_is_preferred_where_both_answer():
+    """It serves every collector item; SMB serves 18 of 31 natively."""
+    result = resolve_access(
+        ip="10.0.0.1", credential_type="windows", probe=_listening(445, 5985)
+    )
+    assert result.transport == "winrm"
+
+
+def test_the_model_default_port_does_not_pin_a_windows_credential_to_ssh():
+    """``compliance_credentials.port`` is NOT NULL, default 22.
+
+    So "the operator chose 22" and "nobody said anything" are the same row, and
+    offering 22 to every transport would have a Windows credential open an SSH
+    handshake against a host whose WinRM listener was the thing to use.
+    """
+    result = resolve_access(
+        ip="10.0.0.1",
+        credential_type="windows",
+        stated_port=22,
+        probe=_listening(22, 5985),
+    )
+    assert result.transport == "winrm"
+    assert result.endpoint.port == 5985
+
+
+def test_a_stated_transport_is_never_second_guessed():
+    result = resolve_access(
+        ip="10.0.0.1",
+        credential_type="windows",
+        stated_transport="smb",
+        probe=_listening(445, 5985),
+    )
+    assert result.transport == "smb"
+    assert [t for t, _, _ in result.attempted] == ["smb"]
+
+
+def test_a_stored_transport_is_a_preference_not_a_pin():
+    """It cannot express "I do not mind", so it must not override discovery.
+
+    An operator who chose SMB — because WinRM is listening here but
+    misconfigured — keeps that choice; an operator who never chose anything is
+    not stuck with the column default.
+    """
+    preferred = resolve_access(
+        ip="10.0.0.1",
+        credential_type="windows",
+        prefer="smb",
+        probe=_listening(445, 5985),
+    )
+    assert preferred.transport == "smb"
+
+    # ...but it still falls through when the preferred service is not there.
+    fallen = resolve_access(
+        ip="10.0.0.1",
+        credential_type="windows",
+        prefer="smb",
+        probe=_listening(5985),
+    )
+    assert fallen.transport == "winrm"
+
+
+def test_nothing_reachable_is_explained_rather_than_guessed():
+    result = resolve_access(
+        ip="10.0.0.1", credential_type="windows", probe=_listening()
+    )
+    assert not result.resolved
+    assert result.transport is None
+    # Every transport considered is named, because "the credential was refused"
+    # and "nothing was listening" send the operator to different places.
+    assert {t for t, _, _ in result.attempted} == {"winrm", "smb"}
+    assert "10.0.0.1" in result.reason
+
+
+def test_discovery_presents_no_credential():
+    """Selection is by TCP reachability only.
+
+    Trying the credential against each candidate would turn one failed logon
+    into several against an account the lockout control must not trip.
+    """
+    seen = []
+
+    def probe(ip, port, timeout=5):
+        seen.append((ip, port))
+        return port == 5985
+
+    resolve_access(ip="10.0.0.1", credential_type="windows", probe=probe)
+    # Ports only — no username, password or hash is in scope here at all.
+    assert all(len(call) == 2 for call in seen)
+
+
+def test_the_resolved_mechanism_is_reportable():
+    """The operator needs to know *what* accepted the credential."""
+    result = resolve_access(
+        ip="10.0.0.1", credential_type="windows", probe=_listening(5985)
+    )
+    payload = result.as_dict()
+    assert payload["transport"] == "winrm"
+    assert payload["port"] == 5985
+    assert "WINRM" in payload["summary"]
+    assert payload["considered"]
+
+
+def test_an_ssh_credential_does_not_probe_windows_ports():
+    """Cost, and noise in the target's logs, for a question already answered."""
+    seen = []
+
+    def probe(ip, port, timeout=5):
+        seen.append(port)
+        return port == 22
+
+    resolve_access(ip="10.0.0.1", credential_type="ssh", probe=probe)
+    assert 5985 not in seen and 445 not in seen

@@ -6,7 +6,10 @@
 import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import axiosInstance from "../api/axiosInstance";
 import AppLayout from "../components/layout/AppLayout";
+import ComplianceEvidence from "../components/compliance/ComplianceEvidence";
+import ComplianceSchedules from "../components/compliance/ComplianceSchedules";
 import { useAuth } from "../context/AuthContext";
+import { canPermission } from "../auth/permissions";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import {
   CcureAlert,
@@ -351,7 +354,14 @@ const FALLBACK_ACTIVE_FRAMEWORK_IDS = ["cfw_iso27001_2022", "cfw_nist_csf_v2"];
 // paged in the browser. Nothing here writes. CcurePagination has no first or
 // last page control, which the tab has always offered, so those two buttons
 // sit beside it.
-function ExceptionsPanel({ exceptions, pagination, loading }) {
+function ExceptionsPanel({
+  exceptions,
+  pagination,
+  loading,
+  canApprove = false,
+  onDecide,
+  deciding = false,
+}) {
   const headingId = useId();
   const {
     page,
@@ -386,8 +396,62 @@ function ExceptionsPanel({ exceptions, pagination, loading }) {
     {
       key: "status",
       header: "Status",
-      cell: (exc) => <CcureBadge variant="info">{exc.status}</CcureBadge>,
+      cell: (exc) => (
+        <CcureBadge
+          variant={
+            exc.status === "approved"
+              ? "success"
+              : exc.status === "rejected"
+                ? "danger"
+                : "warning"
+          }
+        >
+          {exc.status}
+        </CcureBadge>
+      ),
     },
+    {
+      key: "approved_by",
+      header: "Decided by",
+      /* Who carried the decision. A waiver is an accepted risk and the
+         record of who accepted it is the point of the workflow. */
+      cell: (exc) => exc.approved_by || <span className="cwh-muted">—</span>,
+    },
+    ...(canApprove
+      ? [
+          {
+            key: "decide",
+            header: "Decision",
+            /* `PATCH /compliance/exceptions/{id}` has existed with its own
+               permission and no screen: the workspace listed waiver requests
+               and nothing could act on one. The backend refuses anything that
+               is not already `pending`, so the controls appear only there. */
+            cell: (exc) =>
+              exc.status === "pending" ? (
+                <span className="cwh-decide">
+                  <CcureButton
+                    size="sm"
+                    variant="primary"
+                    disabled={deciding}
+                    onClick={() => onDecide?.(exc, "approved")}
+                  >
+                    Approve
+                  </CcureButton>
+                  <CcureButton
+                    size="sm"
+                    variant="secondary"
+                    disabled={deciding}
+                    onClick={() => onDecide?.(exc, "rejected")}
+                  >
+                    Reject
+                  </CcureButton>
+                </span>
+              ) : (
+                <span className="cwh-muted">settled</span>
+              ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -665,6 +729,19 @@ export default function ComplianceWorkspace() {
     .replace(/\s+/g, "_");
   const isComplianceAdmin =
     roleName === "superadmin" || roleName === "org_admin";
+  /* Two atoms this workspace had no screen for. Measured on the live grants:
+     `manage_schedules` is analyst and above, `approve_exception` is org_admin
+     and above — deciding that the organisation will carry a compliance gap is
+     a narrower authorisation than configuring a recurring scan. */
+  const canManageSchedules = canPermission(user, {
+    resource: "compliance",
+    action: "manage_schedules",
+  });
+  const canApproveException = canPermission(user, {
+    resource: "compliance",
+    action: "approve_exception",
+  });
+  const [decidingException, setDecidingException] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -1324,6 +1401,37 @@ export default function ComplianceWorkspace() {
           (e.response?.data?.detail || e.response?.data?.message || e.message),
         "error",
       );
+    }
+  };
+
+  /**
+   * Approve or reject a pending waiver.
+   *
+   * The backend refuses anything that is not already `pending` and records the
+   * decider itself, so nothing is written here but the verdict; the list is
+   * re-read afterwards rather than patched, so what is shown is what the
+   * server stored.
+   */
+  const handleDecideException = async (exc, status) => {
+    setDecidingException(true);
+    try {
+      await axiosInstance.patch(
+        `/compliance/exceptions/${encodeURIComponent(exc.id)}`,
+        { status },
+      );
+      pushToast(
+        status === "approved" ? "Waiver approved." : "Waiver rejected.",
+        "success",
+      );
+      await fetchTabData(true);
+    } catch (e) {
+      pushToast(
+        "Could not record the decision: " +
+          (e.response?.data?.detail || e.message),
+        "error",
+      );
+    } finally {
+      setDecidingException(false);
     }
   };
 
@@ -2329,6 +2437,10 @@ export default function ComplianceWorkspace() {
             { id: "controls", label: "Controls" },
             { id: "findings", label: "Findings" },
             { id: "exceptions", label: "Exceptions" },
+            // Recurring compliance scans. Beat has polled these every sixty
+            // seconds since the first compliance migration with nothing able
+            // to create one.
+            { id: "schedules", label: "Schedules" },
             { id: "credentials", label: "Credentials Manager" },
             { id: "approvals", label: "Approvals Queue" },
           ]}
@@ -3554,6 +3666,21 @@ export default function ComplianceWorkspace() {
                     header: "Actions",
                     cell: (f) => (
                       <span className="cwv-actions">
+                        {/* Offered on every verdict, not only a failure: what
+                            a pass rested on is as much a reviewer's question
+                            as what a failure did, and a manual_review carries
+                            the reason in the same block. */}
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedFinding(f);
+                            setModalType("evidence");
+                            setModalOpen(true);
+                          }}
+                        >
+                          Evidence
+                        </CcureButton>
                         {f.status === "fail" && (
                           <>
                             <CcureButton
@@ -3611,7 +3738,21 @@ export default function ComplianceWorkspace() {
               exceptions={exceptions}
               pagination={exceptionsPagination}
               loading={loading}
+              canApprove={canApproveException}
+              deciding={decidingException}
+              onDecide={handleDecideException}
             />
+          )}
+
+          {activeTab === "schedules" && (
+            <section className="cwv-view" aria-label="Compliance schedules">
+              <h2 className="cwv-view__title">Schedules</h2>
+              <ComplianceSchedules
+                canManage={canManageSchedules}
+                frameworks={activeFrameworks}
+                policies={policies}
+              />
+            </section>
           )}
 
           {activeTab === "credentials" && (
@@ -4248,6 +4389,7 @@ export default function ComplianceWorkspace() {
             rollback: "Roll Back Remediation",
             log_viewer: "Execution Log",
             gap_analysis: "Gap Analysis",
+            evidence: "Evidence behind this verdict",
           }[modalType]
         }
         aria-label="Compliance dialog"
@@ -4268,6 +4410,15 @@ export default function ComplianceWorkspace() {
             : "cwh-modal--wide"
         }
       >
+        {modalType === "evidence" && selectedFinding && (
+          <>
+            <p className="cww-modal__lede">
+              {selectedFinding.control_id} · {selectedFinding.rule_name}
+            </p>
+            <ComplianceEvidence finding={selectedFinding} />
+          </>
+        )}
+
         {modalType === "policy" && (
           <form onSubmit={handleCreatePolicy} className="cww-form">
             <CcureInput
@@ -4639,6 +4790,21 @@ export default function ComplianceWorkspace() {
                     {gapAnalysis.summary?.estimated_fail}
                   </dd>
                 </div>
+                {/* The rest. Pass and fail alone imply the remainder is one or
+                    the other, and on this installation 100 of 106 controls are
+                    neither: they await a human. Reading that as a pass would
+                    inflate the score and as a fail would invent findings. */}
+                {typeof gapAnalysis.summary?.pending_manual === "number" ? (
+                  <div className="cwg-stat">
+                    <dt>Pending manual assessment</dt>
+                    <dd
+                      className="cwg-stat__pending"
+                      title="Neither passed nor failed: these controls need a person to attest them."
+                    >
+                      {gapAnalysis.summary.pending_manual}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </div>
 

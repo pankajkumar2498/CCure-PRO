@@ -3262,3 +3262,112 @@
   padding: 6px 12px;
   font-size: 0.75rem;
 }
+
+/* ── P2: assessment context, shared by the discovery phases ──────────────── */
+
+.asc-block {
+  margin: var(--ccure-space-sm) 0;
+}
+
+.asc-h {
+  font-size: var(--ccure-font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ccure-text-secondary);
+  margin: 0 0 var(--ccure-space-3xs);
+}
+
+.asc-h--sub {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.asc-note {
+  font-size: var(--ccure-font-size-xs);
+  color: var(--ccure-text-secondary);
+  margin: 0 0 var(--ccure-space-2xs);
+  line-height: 1.5;
+}
+
+.asc-muted {
+  color: var(--ccure-text-secondary);
+}
+
+.asc-facts {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs) var(--ccure-space-lg);
+  font-size: var(--ccure-font-size-sm);
+}
+
+.asc-fact {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one fact pinned at a width the others no longer share. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.asc-facts--wide .asc-fact {
+  flex-basis: 18rem;
+}
+
+.asc-fact dt {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-font-size-xs);
+}
+
+.asc-fact dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.asc-spec {
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-font-size-xs);
+  word-break: break-all;
+}
+
+.asc-states {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+}
+
+.asc-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-font-size-xs);
+}
+
+.asc-raw {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-font-size-xs);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-sm);
+  padding: var(--ccure-space-xs);
+  margin: 0 0 var(--ccure-space-xs);
+}
+
+.p1-detailtoggle {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: var(--ccure-space-2xs);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--ccure-font-size-xs);
+  color: var(--ccure-text-link, var(--ccure-primary));
+}
+
+.p2-cpe {
+  display: block;
+  word-break: break-all;
+}

@@ -164,6 +164,16 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "scan_schedules", action: "read" },
       },
       {
+        id: "scan-policies",
+        label: "Scan Policies",
+        Icon: IcoFile,
+        route: "/scan-policies",
+        // scan_policies:read, not scans:read. "May this person run a scan" and
+        // "may this person decide what every scan assesses" are different
+        // authorisations, and the backend keeps them apart.
+        permission: { resource: "scan_policies", action: "read" },
+      },
+      {
         id: "scan-credentials",
         label: "Scan Credentials",
         Icon: IcoFile,
@@ -222,6 +232,18 @@ const SIDEBAR_SECTIONS = [
         permission: { resource: "findings", action: "read" },
         badgeKey: "criticalCount",
         badgeColor: "danger",
+      },
+      {
+        id: "remediation",
+        label: "Remediation",
+        Icon: IcoAlert,
+        route: "/remediation",
+        // findings:read, the same grant the vulnerability browser takes.
+        // Assigning and moving work take findings:update, accepting a risk
+        // takes findings:accept_risk, and setting the deadlines takes
+        // settings:update — all three are enforced inside the page, because
+        // an operator who may read the queue should still be able to see it.
+        permission: { resource: "findings", action: "read" },
       },
       {
         id: "asset-registry",

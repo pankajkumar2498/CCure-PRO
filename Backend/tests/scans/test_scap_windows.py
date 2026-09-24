@@ -441,6 +441,89 @@ class TestUserRight:
         )
         assert not result.ok
 
+    def test_a_well_known_sid_the_host_cannot_translate_still_gets_a_name(self):
+        """WN11-UR-000060 reported ERROR on a perfectly readable host.
+
+        Windows 11 grants ``SeCreateSymbolicLinkPrivilege`` to
+        ``*S-1-5-32-544,*S-1-5-83-0`` out of the box, and
+        ``SecurityIdentifier.Translate`` throws for the second unless the
+        Hyper-V management service is running — so the export carried an empty
+        display name, the item carried no ``trustee_name``, and the comparison
+        against a state naming one returned UNKNOWN. Measured on a real
+        Windows 11 Pro host, 22 Sep 2026.
+        """
+        shell = FakeShell(
+            [
+                (
+                    "secedit",
+                    FakeResult(
+                        "INI::SeCreateSymbolicLinkPrivilege = *S-1-5-32-544,*S-1-5-83-0\r\n"
+                        "SID::S-1-5-32-544::BUILTIN\\Administrators\r\n"
+                        # Exactly what the host returns: translated to nothing.
+                        "SID::S-1-5-83-0::\r\n"
+                    ),
+                )
+            ]
+        )
+        result = _probe_userright(
+            ctx(shell),
+            obj("windows:userright_object", userright="SE_CREATE_SYMBOLIC_LINK_NAME"),
+        )
+        assert result.ok
+        names = sorted(i.get("trustee_name", "<<missing>>") for i in result.items)
+        assert names == ["Administrators", "NT VIRTUAL MACHINE\\Virtual Machines"]
+
+    def test_the_hosts_own_translation_beats_the_table(self):
+        """The table fills blanks; it never overrides.
+
+        Translation happens on the target so a non-English install resolves its
+        own group names. A table that won would undo exactly that.
+        """
+        shell = FakeShell(
+            [
+                (
+                    "secedit",
+                    FakeResult(
+                        "INI::SeCreateSymbolicLinkPrivilege = *S-1-5-83-0\r\n"
+                        "SID::S-1-5-83-0::NT VIRTUELLE MASCHINE\\Virtuelle Computer\r\n"
+                    ),
+                )
+            ]
+        )
+        result = _probe_userright(
+            ctx(shell),
+            obj("windows:userright_object", userright="SE_CREATE_SYMBOLIC_LINK_NAME"),
+        )
+        assert [i["trustee_name"] for i in result.items] == [
+            "NT VIRTUELLE MASCHINE\\Virtuelle Computer"
+        ]
+
+    def test_a_sid_in_neither_the_host_nor_the_table_stays_unnamed(self):
+        """UNKNOWN is the right answer for a trustee nothing identified.
+
+        Substituting the SID string would compare a SID against a group name
+        and fail every rule it appears in; inventing a name would assert
+        something about the host that nothing established.
+        """
+        shell = FakeShell(
+            [
+                (
+                    "secedit",
+                    FakeResult(
+                        "INI::SeCreateSymbolicLinkPrivilege = *S-1-5-21-99-99-99-1234\r\n"
+                        "SID::S-1-5-21-99-99-99-1234::\r\n"
+                    ),
+                )
+            ]
+        )
+        result = _probe_userright(
+            ctx(shell),
+            obj("windows:userright_object", userright="SE_CREATE_SYMBOLIC_LINK_NAME"),
+        )
+        assert result.ok
+        assert "trustee_name" not in result.items[0]
+        assert result.items[0]["trustee_sid"] == "S-1-5-21-99-99-99-1234"
+
     def test_only_builtin_authorities_are_stripped(self):
         assert _bare_trustee("BUILTIN\\Administrators") == "Administrators"
         assert _bare_trustee("NT AUTHORITY\\LOCAL SERVICE") == "LOCAL SERVICE"

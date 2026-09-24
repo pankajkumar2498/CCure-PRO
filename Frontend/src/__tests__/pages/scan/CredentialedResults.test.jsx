@@ -41,6 +41,21 @@ import { fileURLToPath } from "node:url";
 import CredentialedResults from "../../../pages/scan/CredentialedResults";
 import api from "../../../api/axiosInstance";
 
+/*
+ * The page gained an auth dependency when the Reports & Export panel was added
+ * to it: exporting a scan needs `reports:read`, which is a different grant from
+ * permission to view the scan. Without a provider the panel throws and every
+ * accessibility contract below fails on the exception rather than on anything
+ * it is meant to measure.
+ *
+ * A superadmin is used so the panel renders in full, which is the state those
+ * contracts need to see -- gated behind a denial it would render one alert and
+ * assert nothing about the controls.
+ */
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
+}));
+
 vi.mock("../../../api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
@@ -524,7 +539,12 @@ afterEach(() => {
     expect(call).toEqual(["/auth/ticket"]);
   for (const call of api.get.mock.calls) {
     expect(call).toHaveLength(1);
-    expect(call[0]).toMatch(/^\/scans\/[^/?]+$/);
+    // The scan record, and its policy sub-resource. The latter was added when
+    // the page grew the "what this scan assessed" section, which reads the
+    // scan's own immutable configuration snapshot. Widened by one named path
+    // rather than relaxed: the property this guard exists for is that the page
+    // reads scans and nothing else, and writes nothing at all.
+    expect(call[0]).toMatch(/^\/scans\/[^/?]+(\/policy)?$/);
   }
   for (const s of sockets) {
     expect(s.url).toMatch(/\/scans\/[^/]+\/progress\?ticket=[^&]+$/);
@@ -589,12 +609,29 @@ describe("CredentialedResults — contract", () => {
       expect(bodyText()).toMatch(/Scan No\. CR-3107/);
     });
 
-    it("a finished record with no credentialed report keeps following the scan", async () => {
+    /* This assertion was inverted by P0-1, and what it used to protect was the
+       defect itself.
+
+       It read "a finished record with no credentialed report KEEPS FOLLOWING
+       the scan", against a record whose own `status` is `complete`: the page
+       opened a progress socket and rendered "Credentialed Scan In Progress"
+       for a scan that had already finished. On the vulnerability-audit
+       pipeline — where the report is nested under
+       `results.phase3.data[].credentialed_report` and the old hydrate could
+       not see it — that is what produced an indefinite spinner on a scan that
+       had worked.
+
+       A completed scan is a terminal answer. The corrected behaviour is the
+       same shape as the `failed`/`cancelled` cases below: no ticket, no
+       socket, and a state that says what happened. */
+    it("a finished record with no credentialed report reaches a terminal state", async () => {
       replyWith(record({ results: {} }));
       await loaded();
-      expect(api.post.mock.calls).toEqual([["/auth/ticket"]]);
-      expect(sockets).toHaveLength(1);
-      expect(bodyText()).toMatch(/Credentialed Scan In Progress/);
+      expect(bodyText()).toMatch(/No credentialed report/);
+      expect(bodyText()).toMatch(/nothing was assessed over a credentialed/i);
+      expect(bodyText()).not.toMatch(/Credentialed Scan In Progress/);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(sockets).toHaveLength(0);
     });
 
     it.each([
@@ -1257,11 +1294,17 @@ describe("CredentialedResults — contract", () => {
       await loaded();
       await open(/Running Services \(2\)/);
       const table = () => tableWith("Service", "Description");
+      /* Updated by P2-5, and the change is the point. `cron.service` carries
+         no `sub_state` in this fixture, and the cell was
+         `svc.sub_state || "running"` — so it asserted a running state the scan
+         never reported. It now reads "not reported". The rows also gained the
+         start-type column, empty here because the fixture carries none. */
       expect(cellsOf(table())).toEqual([
-        ["ssh.service", "running", "OpenBSD Secure Shell server"],
+        ["ssh.service", "running", "—", "OpenBSD Secure Shell server"],
         [
           "cron.service",
-          "running",
+          "not reported",
+          "—",
           "Regular background program processing daemon",
         ],
       ]);
@@ -2001,10 +2044,18 @@ describe("CredentialedResults — batch 23", () => {
 
   it("renders no inline style of its own in any state", async () => {
     const styled = () =>
-      [...document.body.querySelectorAll("[style]")].filter(
-        // A progress bar's width is the one per-instance value, set by CcureProgress.
-        (el) => !el.classList.contains("cc-progress__bar"),
-      );
+      [...document.body.querySelectorAll("[style]")]
+        .filter(
+          // A progress bar's width is the one per-instance value, set by CcureProgress.
+          (el) => !el.classList.contains("cc-progress__bar"),
+        )
+        .filter(
+          // Same carve-out, second component: CcureToastProvider portals its
+          // regions to document.body and sets their offset inline. The contract
+          // here is that *this page* hand-rolls no styles, not that no design
+          // system component ever sets one on itself.
+          (el) => !el.classList.contains("cc-toaster"),
+        );
 
     await runningWithFrames();
     expect(styled()).toEqual([]);

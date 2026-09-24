@@ -295,6 +295,9 @@
   --ccure-sev-low: var(--ux4g-color-green-700);
   --ccure-sev-info: var(--ux4g-color-cyan-800);
   --ccure-sev-none: var(--ux4g-color-neutral-600);
+  /* "No rating published" is not a rating of none. Its own token so the
+     donut's conic-gradient can draw it and the two stay distinguishable. */
+  --ccure-sev-unscored: var(--ux4g-color-neutral-600);
 
   --ccure-sev-critical-bg: var(--ux4g-bg-error);
   --ccure-sev-high-bg: var(--ux4g-bg-warning);
@@ -328,4 +331,7 @@
   --ccure-sev-low: var(--ux4g-color-green-300);
   --ccure-sev-info: var(--ux4g-color-cyan-300);
   --ccure-sev-none: var(--ux4g-color-neutral-400);
+  /* "No rating published" is not a rating of none. Its own token so the
+     donut's conic-gradient can draw it and the two stay distinguishable. */
+  --ccure-sev-unscored: var(--ux4g-color-neutral-400);
 }

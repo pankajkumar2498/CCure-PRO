@@ -7,7 +7,9 @@
  * credentialed scan — there is no "run" button here, because a second way to
  * start a scan against a named target would need its own scope check, quota
  * check and audit entry, and would produce scan rows that Scan History and the
- * reports would have to learn about.
+ * reports would have to learn about. The rule validator is a separate page for
+ * the same reason: this one issues no POST of any kind, and a test drives every
+ * control on it to keep that true.
  *
  * Two things this page exists to make visible:
  *
@@ -20,17 +22,30 @@
  * **The capability gap.** The rule vocabulary admits check types and platforms
  * ahead of the phases that implement them, so a rule can exist that nothing in
  * this build can execute. The engine reports that as an error rather than
- * skipping it, but only after a scan has run. The banner says it up front.
+ * skipping it, but only after a scan has run. The matrix says it up front.
+ *
+ * ── Phase 6 (API → UI coverage) ─────────────────────────────────────────────
+ * The platform selector was a two-entry constant, `["windows", "linux"]`,
+ * while `/capabilities` serves six queryable platforms. Measured against the
+ * live API: windows returns 56 checks and linux 86, of 155 — so **49 database
+ * checks, the whole of the Phase 7 database assessment, could not be reached
+ * from this page at all**, and every platform added later would have inherited
+ * the same fate. The list is now derived from `capabilities.supported`, whose
+ * keys are exactly the platforms that return rows.
+ *
+ * `any` is excluded and that is not an omission: it is a *targeting* value on
+ * a check ("applies to every platform"), not a platform to ask about, and the
+ * API answers `platform=any` with zero rows.
  *
  * ── Migration note (Checkpoint 3C, batch 10) ────────────────────────────────
- * Read-only is the contract, and it is unchanged: same two endpoints, same
- * platform parameter, same severity ordering, no mutation of any kind. What
- * changed is the surface — every colour literal was a light-theme palette on a
- * page that renders in whichever theme the account chose — plus one correctness
- * fix recorded in full below.
+ * Read-only is the contract, and it is unchanged: no mutation of any kind.
+ * What changed then was the surface — every colour literal was a light-theme
+ * palette on a page that renders in whichever theme the account chose — plus
+ * one correctness fix recorded in full below.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { ToastContainer, useToasts } from "../../components/common/Toast";
 import {
@@ -38,10 +53,18 @@ import {
   CcureBadge,
   CcureButton,
   CcureEmptyState,
+  CcureInput,
   CcureLoader,
+  CcureSelect,
 } from "../../design-system";
 import "../../styles/configuration-checks.css";
-import { getConfigCapabilities, listConfigChecks } from "../../api/configAudit";
+import {
+  configAuditErrorMessage,
+  getConfigCapabilities,
+  getConfigCheck,
+  listConfigChecks,
+  queryablePlatforms,
+} from "../../api/configAudit";
 
 /** Severity is a CCure vocabulary; the page no longer keeps a private palette. */
 const SEVERITY_VARIANT = {
@@ -52,6 +75,15 @@ const SEVERITY_VARIANT = {
   none: "neutral",
   unscored: "neutral",
 };
+
+const SEVERITY_ORDER = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "none",
+  "unscored",
+];
 
 /**
  * Each policy needs its own wording. Collapsing them into "absent handling"
@@ -84,8 +116,8 @@ const ABSENCE_TEXT = {
   },
 };
 
-const CheckRow = ({ check }) => {
-  const [open, setOpen] = useState(false);
+const CheckRow = ({ check, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
   const absence =
     ABSENCE_TEXT[check.absent_policy] || ABSENCE_TEXT.manual_review;
 
@@ -107,6 +139,12 @@ const CheckRow = ({ check }) => {
         <CcureBadge variant={absence.variant} title={absence.hint}>
           {absence.label}
         </CcureBadge>
+        {/* An intrusive check may disturb the host it runs on, which on an OT
+            segment is the difference between an audit and an outage. It is
+            shown when true rather than being left to the detail nobody opens. */}
+        {check.intrusive ? (
+          <CcureBadge variant="danger">Intrusive</CcureBadge>
+        ) : null}
         <span className="cfg-row-caret" aria-hidden="true">
           {open ? "−" : "+"}
         </span>
@@ -141,6 +179,28 @@ const CheckRow = ({ check }) => {
               <dt>If the item is not present</dt>
               <dd>{absence.hint}</dd>
             </div>
+            <div>
+              <dt>Domain</dt>
+              {/* The check family the engine files this under, and the field a
+                  scan policy selects on. */}
+              <dd>{check.domain}</dd>
+            </div>
+            <div>
+              <dt>Disturbs the host</dt>
+              <dd>{check.intrusive ? "Yes — intrusive" : "No"}</dd>
+            </div>
+            {check.tags?.length > 0 && (
+              <div>
+                <dt>Tags</dt>
+                <dd className="cfg-tags">
+                  {check.tags.map((tag) => (
+                    <CcureBadge key={tag} variant="neutral">
+                      {tag}
+                    </CcureBadge>
+                  ))}
+                </dd>
+              </div>
+            )}
             <div className="cfg-meta">
               <code>{check.check_id}</code> · {check.platforms.join(", ")} · QoD{" "}
               {check.qod}
@@ -162,7 +222,7 @@ const CheckRow = ({ check }) => {
   );
 };
 
-const PLATFORMS = ["windows", "linux"];
+const ALL = "";
 
 const ConfigurationChecks = () => {
   /* `useToasts()` returns { toasts, push, dismiss }. This page destructured
@@ -182,23 +242,44 @@ const ConfigurationChecks = () => {
   const { toasts, push: addToast, dismiss: removeToast } = useToasts();
   const [checks, setChecks] = useState([]);
   const [capabilities, setCapabilities] = useState(null);
-  const [platform, setPlatform] = useState("windows");
+  const [platform, setPlatform] = useState(ALL);
+  const [checkType, setCheckType] = useState(ALL);
+  const [domain, setDomain] = useState(ALL);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  /* Captured from the first, unfiltered load and never overwritten by a
+     filtered one. The API serves no domain vocabulary, so the options have to
+     come from the catalogue — and reading them from a filtered response would
+     narrow the list to whatever is already selected. */
+  const [domains, setDomains] = useState([]);
+
+  const [lookupId, setLookupId] = useState("");
+  const [lookup, setLookup] = useState(null);
+  const [lookupError, setLookupError] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+
+  useEffect(() => {
+    getConfigCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [rows, caps] = await Promise.all([
-        listConfigChecks({ platform }),
-        getConfigCapabilities(),
-      ]);
+      const rows = await listConfigChecks({ platform, checkType, domain });
       setChecks(rows);
-      setCapabilities(caps);
+      if (!platform && !checkType && !domain) {
+        setDomains([...new Set(rows.map((r) => r.domain).filter(Boolean))]);
+      }
     } catch (err) {
-      const detail =
-        err?.response?.data?.detail || "Could not load configuration checks";
+      const detail = configAuditErrorMessage(
+        err,
+        "Could not load configuration checks",
+      );
       /* Held in state as well as announced. A toast disappears; the reason the
          catalogue is empty must not. */
       setError(detail);
@@ -207,21 +288,60 @@ const ConfigurationChecks = () => {
     } finally {
       setLoading(false);
     }
-  }, [platform, addToast]);
+  }, [platform, checkType, domain, addToast]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const bySeverity = useMemo(() => {
-    const order = ["critical", "high", "medium", "low", "none", "unscored"];
-    return [...checks].sort(
-      (a, b) => order.indexOf(a.severity) - order.indexOf(b.severity),
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const matched = needle
+      ? checks.filter((c) =>
+          [c.title, c.check_id, c.description, ...(c.tags || [])]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(needle),
+        )
+      : checks;
+    return [...matched].sort(
+      (a, b) =>
+        SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
     );
-  }, [checks]);
+  }, [checks, search]);
 
+  const platforms = queryablePlatforms(capabilities);
   const supported = capabilities?.supported?.[platform] || [];
   const unimplemented = capabilities?.declared_without_collector || [];
+
+  /* An empty catalogue for a platform this build has no collector for is a
+     different statement from an empty catalogue for one it does — the first is
+     about the product, the second about the content. */
+  const platformHasNoCollector =
+    Boolean(platform) &&
+    Array.isArray(capabilities?.supported?.[platform]) &&
+    capabilities.supported[platform].length === 0;
+
+  const runLookup = async () => {
+    const id = lookupId.trim();
+    if (!id) return;
+    setLookingUp(true);
+    setLookupError("");
+    setLookup(null);
+    try {
+      setLookup(await getConfigCheck(id));
+    } catch (err) {
+      setLookupError(
+        configAuditErrorMessage(
+          err,
+          `No check in this build is called "${id}".`,
+        ),
+      );
+    } finally {
+      setLookingUp(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -236,19 +356,32 @@ const ConfigurationChecks = () => {
           its result travels the same path as a CVE finding — severity, risk,
           remediation and the scan report. There is nothing to start here: these
           run automatically on every credentialed scan, over the session the
-          collectors already opened.
+          collectors already opened.{" "}
+          <Link to="/configuration-checks/validate">
+            Validate a rule definition
+          </Link>
+          .
         </p>
 
-        {/* A pair of buttons, not a tab strip: they re-query the same catalogue
-            rather than switching between two panels. `aria-pressed` is what
-            states the choice — the raised styling is the sighted half of the
-            same fact, not the whole of it. */}
+        {/* A group of buttons, not a tab strip: they re-query the same
+            catalogue rather than switching between two panels. `aria-pressed`
+            is what states the choice — the raised styling is the sighted half
+            of the same fact, not the whole of it. */}
         <div
           className="cfg-platforms"
           role="group"
           aria-label="Target platform"
         >
-          {PLATFORMS.map((name) => (
+          <CcureButton
+            variant={platform === ALL ? "primary" : "secondary"}
+            size="sm"
+            className="cfg-platform-btn"
+            aria-pressed={platform === ALL}
+            onClick={() => setPlatform(ALL)}
+          >
+            all platforms
+          </CcureButton>
+          {platforms.map((name) => (
             <CcureButton
               key={name}
               variant={platform === name ? "primary" : "secondary"}
@@ -262,14 +395,64 @@ const ConfigurationChecks = () => {
           ))}
         </div>
 
+        <div className="cfg-filters">
+          <CcureSelect
+            label="Check type"
+            value={checkType}
+            onChange={(e) => setCheckType(e.target.value)}
+          >
+            <option value={ALL}>Any type</option>
+            {(capabilities?.check_types || []).map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </CcureSelect>
+          <CcureSelect
+            label="Domain"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+          >
+            <option value={ALL}>Any domain</option>
+            {domains.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </CcureSelect>
+          <CcureInput
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            hint="Filters the checks already loaded; the API has no search parameter."
+          />
+        </div>
+
         {capabilities && (
           <CcureAlert
             variant="info"
             live={false}
             className="cfg-capability"
-            title={`What this build can read on ${platform}`}
+            title={
+              platform
+                ? `What this build can read on ${platform}`
+                : "What this build can read, per platform"
+            }
           >
-            {supported.join(", ") || "nothing"}.
+            {platform ? (
+              <>{supported.join(", ") || "nothing"}.</>
+            ) : (
+              <ul className="cfg-caplist">
+                {platforms.map((name) => (
+                  <li key={name}>
+                    <strong>{name}</strong>:{" "}
+                    {capabilities.supported[name]?.join(", ") || (
+                      <em>no collector in this build</em>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
             {unimplemented.length > 0 && (
               <>
                 {" "}
@@ -293,21 +476,69 @@ const ConfigurationChecks = () => {
           <div className="cfg-loading">
             <CcureLoader label="Loading configuration checks…" />
           </div>
-        ) : error ? null : bySeverity.length === 0 ? (
+        ) : error ? null : visible.length === 0 ? (
           <CcureEmptyState
-            title="No configuration checks for this platform"
-            description="Checks are registered per platform; none is defined for this one yet."
+            title={
+              platformHasNoCollector
+                ? `This build has no collector for ${platform}`
+                : search.trim()
+                  ? "No check matches this search"
+                  : "No configuration checks for this platform"
+            }
+            description={
+              platformHasNoCollector
+                ? "The platform is named in the rule vocabulary so that content can be written for it, but nothing in this build can execute a check against one. A rule targeting it reports an error rather than a verdict."
+                : search.trim()
+                  ? "The search filters the checks already loaded. Widening the platform, type or domain filter may bring back more."
+                  : "Checks are registered per platform; none is defined for this one yet."
+            }
           />
         ) : (
           <>
             <p className="cfg-count">
-              {bySeverity.length} check{bySeverity.length === 1 ? "" : "s"}
+              {visible.length} check{visible.length === 1 ? "" : "s"}
+              {visible.length !== checks.length
+                ? ` of ${checks.length} loaded`
+                : ""}
             </p>
-            {bySeverity.map((check) => (
+            {visible.map((check) => (
               <CheckRow key={check.check_id} check={check} />
             ))}
           </>
         )}
+
+        {/* `GET /config-audit/checks/{id}` — the one operation the catalogue
+            cannot answer from the list it already holds. A finding names the
+            check that produced it, and that check may sit behind a filter the
+            reader has not selected, so it is fetched by id rather than
+            searched for. */}
+        <section className="cfg-lookup">
+          <h2 className="cfg-lookup__h">Look up a check by id</h2>
+          <p className="cfg-lookup__lede">
+            Findings carry the id of the check that produced them. Paste one
+            here to read it without knowing which platform or type it belongs
+            to.
+          </p>
+          <div className="cfg-lookup__row">
+            <CcureInput
+              label="Check id"
+              value={lookupId}
+              onChange={(e) => setLookupId(e.target.value)}
+              placeholder="ccure.win.uac.enabled"
+            />
+            <CcureButton
+              variant="secondary"
+              disabled={lookingUp || !lookupId.trim()}
+              onClick={runLookup}
+            >
+              Look up
+            </CcureButton>
+          </div>
+          {lookupError && (
+            <CcureAlert variant="warning">{lookupError}</CcureAlert>
+          )}
+          {lookup && <CheckRow check={lookup} defaultOpen />}
+        </section>
       </div>
     </AppLayout>
   );

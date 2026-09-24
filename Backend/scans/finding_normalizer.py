@@ -387,6 +387,38 @@ class StandardizedFinding:
     in_kev: bool = False
     kev_due_date: str = ""
 
+    #: Whether a public exploit is known to exist for the CVE.
+    #:
+    #: **Three-valued, and the third value is the point.** ``True`` and
+    #: ``False`` are what the exploit feeds established; ``None`` means this
+    #: scan recorded nothing, which happens whenever the finding came from a
+    #: path that does not consult them. Defaulting the absent case to ``False``
+    #: would state that no exploit exists on the strength of never having
+    #: looked, and a reader deciding what to patch first cannot tell that
+    #: claim from a real one.
+    #:
+    #: It says a public exploit exists for the *vulnerability*. It says nothing
+    #: about whether this host is exploitable, which depends on configuration
+    #: and reachability the feed knows nothing about.
+    has_exploit: Optional[bool] = None
+
+    #: The remediation priority the backend computed (``P1``-``P4``), carried
+    #: verbatim. Never re-derived here: ``core.vuln_intel.compute_priority``
+    #: folds CVSS, EPSS, KEV membership and exploit availability together, and
+    #: a second implementation in the report layer would drift from the one the
+    #: dashboard and the findings queue show.
+    priority_level: str = ""
+
+    #: The vendor's own remediation wording, as the advisory published it.
+    #:
+    #: Distinct from ``remediation``, which is this product's normalised
+    #: upgrade instruction. A CSAF advisory prefixes its text with the provider
+    #: and advisory id, and that prefix is load-bearing: a Chrome CVE reaches a
+    #: CISA ICS advisory because an ICS product embeds Chrome, and that
+    #: advisory's mitigation is written for the ICS context. Rendered verbatim
+    #: so it can never read as the desktop vendor's own advice.
+    vendor_remediation: str = ""
+
     # ── Feed provenance / lifecycle ──────────────────────────────────────────
     references: List[str] = field(default_factory=list)
     published_at: str = ""
@@ -692,6 +724,31 @@ def _as_observed(value: Any) -> str:
     """Return the value as text, or "" when it is a scanner placeholder."""
     text = _as_str(value)
     return "" if text.lower() in _PLACEHOLDER_VALUES else text
+
+
+def _as_bool_or_none(value: Any) -> Optional[bool]:
+    """
+    A tri-state boolean: the recorded answer, or ``None`` for "not recorded".
+
+    ``bool(value)`` cannot express this. It maps a missing key, an explicit
+    ``False`` and an empty string onto the same answer, and for exploit
+    availability those are two different statements — "the feeds say there is
+    no public exploit" and "nothing consulted the feeds".
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in ("true", "yes", "1", "t", "y"):
+        return True
+    if text in ("false", "no", "0", "f", "n"):
+        return False
+    # Anything else was never a boolean. Reading it either way would invent an
+    # answer out of a value nobody meant as one.
+    return None
 
 
 def _first(mapping: Dict[str, Any], *keys: str) -> Any:
@@ -2147,6 +2204,11 @@ def parse_raw_finding(
         epss_percentile=_as_float(finding_dict.get("epss_percentile")),
         in_kev=bool(finding_dict.get("in_kev") or finding_dict.get("kev")),
         kev_due_date=_as_str(finding_dict.get("kev_due_date")),
+        has_exploit=_as_bool_or_none(
+            _first(finding_dict, "has_exploit", "exploit_available")
+        ),
+        priority_level=_as_observed(finding_dict.get("priority_level")).upper(),
+        vendor_remediation=_as_str(finding_dict.get("vendor_remediation")),
         references=references,
         # The CVE feed names these "published"/"updated_at"; only the report's
         # own vocabulary was being read, so "CVE Published" and "CVE Age" came

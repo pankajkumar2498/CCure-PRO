@@ -15,15 +15,26 @@ import AppLayout from "../../components/layout/AppLayout";
 import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
 import api from "../../api/axiosInstance";
+import {
+  collectCredentialedReports,
+  collectFailedHosts,
+} from "../../utils/credentialedReport";
 import CVELink from "../../components/common/CVELink";
+import ConfigAuditSection from "../../components/scan/ConfigAuditSection";
+import ReportExportPanel from "../../components/scan/ReportExportPanel";
+import ScanPolicySnapshot from "../../components/scan/ScanPolicySnapshot";
+import FindingsListSection from "../../components/scan/FindingsListSection";
+import PackageCoverageSection from "../../components/scan/PackageCoverageSection";
+import PackageInventorySection from "../../components/scan/PackageInventorySection";
+import SuppressedFindingsSection from "../../components/scan/SuppressedFindingsSection";
 import {
   CcureAlert,
   CcureBadge,
   CcureButton,
   CcureInput,
   CcureProgress,
-  CcureSeverityBadge,
   CcureTable,
+  CcureToastProvider,
 } from "../../design-system";
 import "../../styles/credentialed-results.css";
 
@@ -102,6 +113,58 @@ function KV({ k, v, danger, warn, mono }) {
   );
 }
 
+/**
+ * What a transport could not collect, and which part of this page it belongs
+ * to.
+ *
+ * The credentialed report records an unserved item under an `item:` prefix in
+ * `collection_errors` — CLAUDE.md: recorded there "rather than left to look
+ * like an empty reading from the host". Nothing surfaced them per section, so
+ * a host whose password policy was never collected rendered exactly like a
+ * host with no password-policy finding: `UNASSESSED ≠ PASS`.
+ *
+ * The map exists so the state is reported against the section a reader would
+ * have looked in. An item with no entry here is still listed, under its own
+ * key — an unmapped item must not disappear.
+ */
+const ITEM_SECTIONS = {
+  password_policy: "Password Policy",
+  privilege_context: "Privilege Context",
+  firewall: "Firewall",
+  telnet_status: "Telnet",
+  netbios_status: "NetBIOS",
+  tls_status: "TLS",
+  open_ports: "Listening Sockets",
+  scheduled_tasks: "Scheduled Tasks",
+  failed_logins: "Login History",
+  uptime: "System Information",
+  services: "Running Services",
+  users: "Users",
+  local_groups: "Local Groups",
+};
+
+/**
+ * The `item:`-prefixed entries of `collection_errors`, as
+ * `{ item, section, reason }`.
+ *
+ * The reason is the backend's own sentence and is rendered verbatim — it says
+ * why the transport could not serve the item, which is the part an operator
+ * acts on.
+ */
+function unservedItems(collectionErrors) {
+  return Object.entries(collectionErrors || {})
+    .filter(([key]) => key.startsWith("item:"))
+    .map(([key, reason]) => {
+      const item = key.slice("item:".length);
+      return {
+        item,
+        section: ITEM_SECTIONS[item] || item.replace(/_/g, " "),
+        reason: String(reason ?? ""),
+      };
+    })
+    .sort((a, b) => a.section.localeCompare(b.section));
+}
+
 /* A report section: a heading whose button shows or hides the body. The body
    is rendered only while open, as before — raw evidence, and the masked
    environment variables in it, are not in the page until asked for. */
@@ -141,22 +204,30 @@ const maskSecretLine = (value) => {
   return `${text.slice(0, eq + 1)}********`;
 };
 
+/**
+ * Build the page's view model from a stored scan, whichever shape its
+ * credentialed report was written in.
+ *
+ * This used to read `results.credentialed.report` alone. A vulnerability-audit
+ * scan nests one report per host under `results.phase3.data[]` instead, so it
+ * returned null there — and because the caller read null on a *completed* scan
+ * as "keep polling", the page spun for ever on a scan that had worked.
+ * `collectCredentialedReports` walks the same three shapes the export layer
+ * does; see Frontend/src/utils/credentialedReport.js.
+ *
+ * Returns null only when the scan genuinely carries no credentialed report,
+ * which the caller renders as a terminal state rather than as progress.
+ */
 function hydrateFromHistory(detail) {
-  const credentialed = detail?.results?.credentialed;
-  const report = credentialed?.report;
-  if (!report) return null;
-  // `reports` holds every audited host; `report` repeats the first for
-  // consumers written before a scan could cover more than one.
-  const reports =
-    Array.isArray(credentialed.reports) && credentialed.reports.length
-      ? credentialed.reports
-      : [report];
+  const reports = collectCredentialedReports(detail);
+  if (!reports.length) return null;
+  const [first] = reports;
   return {
     scan_id: detail.id,
     scan_no: detail.scan_no ?? detail.display_id,
     _reports: reports,
-    _hostsFailed: credentialed.hosts_failed || [],
-    ...report,
+    _hostsFailed: collectFailedHosts(detail),
+    ...first,
   };
 }
 
@@ -172,10 +243,14 @@ export default function CredentialedResults() {
   const [result, setResult] = useState(hasReport ? stateResult : null);
   const [loading, setLoading] = useState(hasReport ? false : !!scanIdParam);
   const [error, setError] = useState("");
+  /* A completed scan that carries no credentialed report in any shape. Its own
+     state rather than an error: nothing failed, and "the scan ran and
+     authenticated to nothing" is a real answer an operator needs to be given
+     rather than left waiting for. */
+  const [noReport, setNoReport] = useState(false);
   const [scanStatus, setScanStatus] = useState(
     stateResult?.status || "running",
   );
-  const [cveFilter, setCveFilter] = useState("All");
   const [showSystemUsers, setShowSystemUsers] = useState(false);
   const [servicesSearch, setServicesSearch] = useState("");
   const [portsSearch, setPortsSearch] = useState("");
@@ -246,6 +321,14 @@ export default function CredentialedResults() {
             if (ws) ws.close();
             return true;
           }
+          /* Completed, and no credentialed report in any of the shapes a scan
+             can store one in. That is a terminal answer about the scan, not a
+             reason to keep waiting: falling through to `return false` here is
+             what left a successful scan rendering an indefinite spinner. */
+          setNoReport(true);
+          setLoading(false);
+          if (ws) ws.close();
+          return true;
         } else if (
           normalizedStatus === "failed" ||
           normalizedStatus === "cancelled" ||
@@ -444,6 +527,36 @@ export default function CredentialedResults() {
     );
   }
 
+  /* ── completed, but this scan carries no credentialed report ── */
+  if (noReport && !result) {
+    return (
+      <AppLayout pageTitle="Credentialed Results">
+        <div className="cr-page">
+          <header className="cr-header">
+            <h1 className="cr-title">Credentialed Scan Results</h1>
+            <div className="cr-header__actions">
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/history")}
+              >
+                History
+              </CcureButton>
+              <CcureButton onClick={() => navigate("/scan/credentialed")}>
+                New Scan
+              </CcureButton>
+            </div>
+          </header>
+
+          <CcureAlert variant="info" title="No credentialed report">
+            This scan completed, and it recorded no authenticated collection for
+            any host. That is not the same as a host with no findings — nothing
+            was assessed over a credentialed session here.
+          </CcureAlert>
+        </div>
+      </AppLayout>
+    );
+  }
+
   /* ── error ── */
   if (error || scanStatus === "unreachable") {
     const isUnreachable =
@@ -526,6 +639,18 @@ export default function CredentialedResults() {
     scan_duration,
     detected_os = "linux",
     os_type_was_auto = false,
+    // Six fields the API has always returned and nothing rendered. See
+    // docs/api_ui_coverage/PHASE1_BASELINE.md for how that was measured.
+    scan_type = "",
+    config_audit = null,
+    package_coverage = null,
+    packages_enumerated = null,
+    candidates_evaluated = null,
+    suppressed_cves = [],
+    // How the authenticated session was actually opened. Recorded by the
+    // engine, not chosen by the operator — "credentialed access succeeded" is
+    // not a useful answer on its own when the scanner picked the service.
+    access = null,
     system_info = {},
     packages = [],
     package_count = 0,
@@ -554,6 +679,11 @@ export default function CredentialedResults() {
     collection_errors = {},
     inventory_complete = true,
   } = view;
+
+  /* Items this transport could not collect. Derived once: the page renders
+     them as their own section and the reader needs them before the sections
+     that would have shown the data. */
+  const unserved = unservedItems(collection_errors);
 
   // Parse network_interfaces_raw if it is in JSON format
   const parsedInterfaces = (() => {
@@ -606,8 +736,9 @@ export default function CredentialedResults() {
   })();
 
   const SEV_ORDER = ["All", "Critical", "High", "Medium", "Low", "Info"];
-  const filteredCves =
-    cveFilter === "All" ? cves : cves.filter((c) => c.severity === cveFilter);
+  // The findings list owns its own severity filter and paging now; the page
+  // only supplies the rows. See FindingsListSection for why it had to move.
+  const filteredCvesSource = cves;
   const vulnerablePackageNames = new Set(
     cves.map((c) => String(c.package || "").toLowerCase()).filter(Boolean),
   );
@@ -880,14 +1011,85 @@ export default function CredentialedResults() {
                   · Scan No. {scan_no ?? display_id ?? "-"}
                 </span>
               )}
+              {scan_type && (
+                <span className="cr-muted"> · {scan_type} scan</span>
+              )}
               {os_type_was_auto && (
                 <CcureBadge variant="info" className="cr-os-badge">
                   <Glyph>{osIcon}</Glyph> {osLabel} (auto-detected)
                 </CcureBadge>
               )}
+              {access?.transport && (
+                <CcureBadge variant="success" className="cr-os-badge">
+                  <Glyph>🔒</Glyph> Authenticated over{" "}
+                  {String(access.transport).toUpperCase()} on port {access.port}
+                  {access.how === "discovered" ? " (detected)" : ""}
+                </CcureBadge>
+              )}
+              {/* TLS on the authenticated session is three-valued. The engine
+                  carries `use_tls` rather than re-deriving it, because it
+                  infers TLS from the port only for the conventional layout —
+                  so `null` means "not settled by convention", which is neither
+                  on nor off. Collapsing it to a boolean asserts one of them. */}
+              {access?.transport && (
+                <CcureBadge
+                  variant={
+                    access.use_tls === true
+                      ? "success"
+                      : access.use_tls === false
+                        ? "warning"
+                        : "neutral"
+                  }
+                  className="cr-os-badge"
+                  title={
+                    access.use_tls === null || access.use_tls === undefined
+                      ? "The scan did not record whether the session used TLS. 5985 and 5986 are settled by convention; anything else is not, and a guess would address an HTTPS listener as http://."
+                      : "Whether the authenticated session was carried over TLS."
+                  }
+                >
+                  TLS:{" "}
+                  {access.use_tls === true
+                    ? "yes"
+                    : access.use_tls === false
+                      ? "no"
+                      : "not recorded"}
+                </CcureBadge>
+              )}
             </p>
+            {/* What else was tried. The badge alone says which service
+                accepted the credential and silently loses the fact that
+                another was probed and refused -- which is the half an
+                operator needs when the answer surprises them ("why SMB? I
+                thought WinRM was on"). Shown only when there is something to
+                say, so the ordinary single-candidate case stays quiet. */}
+            {access?.considered?.length > 1 && (
+              <p className="cr-muted cr-access-considered">
+                Services probed:{" "}
+                {access.considered
+                  .map(
+                    (c) =>
+                      `${String(c.transport).toUpperCase()} — ${
+                        c.resolved ? "used" : "no answer"
+                      }`,
+                  )
+                  .join(" · ")}
+              </p>
+            )}
           </div>
           <div className="cr-header__actions">
+            {/* The comparison is a question about this scan, so it is reached
+                from this scan rather than from a separate destination the
+                operator has to find and re-identify the scan in. */}
+            <CcureButton
+              variant="secondary"
+              onClick={() =>
+                navigate(
+                  `/scan/comparison?scan_id=${encodeURIComponent(scan_id)}`,
+                )
+              }
+            >
+              <Glyph>⇄</Glyph> Compare with a previous scan
+            </CcureButton>
             <CcureButton
               variant="secondary"
               onClick={() => navigate("/scan/credentialed")}
@@ -933,6 +1135,13 @@ export default function CredentialedResults() {
           >
             <strong>{cve_count}</strong> CVE{cve_count !== 1 ? "s" : ""}
           </li>
+          {candidates_evaluated !== null &&
+            candidates_evaluated !== undefined && (
+              <li className="cr-summary__item cr-muted">
+                <strong>{Number(candidates_evaluated).toLocaleString()}</strong>{" "}
+                candidates evaluated
+              </li>
+            )}
           {brute_force_warning && (
             <li className="cr-summary__item cr-tone-danger">
               <Glyph>⚠</Glyph> Brute-force activity detected
@@ -1047,6 +1256,13 @@ export default function CredentialedResults() {
               {coverage.os_detection && (
                 <KV k="OS detection" v={coverage.os_detection} />
               )}
+              {/* Part of the assessment context, and on the live credentialed
+                  report it says "Not applicable — no network probing
+                  performed", which is exactly the sort of sentence a reader
+                  needs and a shorter label would lose. */}
+              {coverage.timing_template && (
+                <KV k="Timing" v={coverage.timing_template} />
+              )}
               {coverage.discovery_scan_method && (
                 <KV k="Host discovery" v={coverage.discovery_scan_method} />
               )}
@@ -1093,6 +1309,47 @@ export default function CredentialedResults() {
         )}
 
         {/* System Info */}
+        {unserved.length > 0 && (
+          <Section
+            icon="🚫"
+            title={`Not assessed (${unserved.length})`}
+            defaultOpen
+          >
+            <p className="cr-note">
+              This transport could not collect the items below. They are
+              <strong> not</strong> findings-free sections — nothing was
+              established about them on this host, and each reason is the
+              scanner&apos;s own.
+            </p>
+            <CcureTable
+              caption="Items this transport could not collect"
+              density="compact"
+              rows={unserved}
+              rowKey={(row) => row.item}
+              columns={[
+                {
+                  key: "section",
+                  header: "Section",
+                  isRowHeader: true,
+                  cell: (row) => row.section,
+                },
+                {
+                  key: "state",
+                  header: "State",
+                  cell: () => (
+                    <CcureBadge variant="warning">Not assessed</CcureBadge>
+                  ),
+                },
+                {
+                  key: "reason",
+                  header: "Reason",
+                  cell: (row) => row.reason || "—",
+                },
+              ]}
+            />
+          </Section>
+        )}
+
         <Section icon="🖥" title="System Information" defaultOpen>
           <dl className="cr-kv-grid">
             <KV k="OS" v={system_info.os_name || "—"} />
@@ -1109,6 +1366,24 @@ export default function CredentialedResults() {
             <KV k="BIOS Version" v={system_info.bios_version || "—"} mono />
             <KV k="MAC Address" v={system_info.mac_address || "—"} mono />
             <KV k="Subnet" v={system_info.subnet || "—"} mono />
+            {/* Three readings the collector records and the grid dropped.
+                `os_confidence` arrives as a number here and as a word on the
+                discovery phases, so it is printed as it came rather than
+                converted; an absent one is never 0. `mac_vendor` arrives as an
+                empty string on a host whose OUI did not resolve, which is not
+                the same as a vendor called "". */}
+            <KV k="OS Family" v={system_info.os_family || "not reported"} />
+            <KV
+              k="OS Confidence"
+              v={
+                system_info.os_confidence === null ||
+                system_info.os_confidence === undefined ||
+                system_info.os_confidence === ""
+                  ? "not reported"
+                  : String(system_info.os_confidence)
+              }
+            />
+            <KV k="MAC Vendor" v={system_info.mac_vendor || "not resolved"} />
             <KV k="Domain" v={system_info.domain || "—"} mono />
             <KV k="FQDN" v={system_info.fqdn || "—"} mono />
             {system_info.memory_summary?.total && (
@@ -1159,74 +1434,84 @@ export default function CredentialedResults() {
         {/* CVEs */}
         {cve_count > 0 && (
           <Section icon="⚠" title={`CVE Findings (${cve_count})`} defaultOpen>
-            {/* Severity summary */}
-            <ul className="cr-sev-summary" aria-label="Findings by severity">
-              {Object.entries(severity_summary)
-                .filter(([, n]) => n > 0)
-                .map(([sev, n]) => (
-                  <li key={sev} className="cr-sev-summary__item">
-                    <span
-                      className={`cr-sev-dot cr-sev-dot--${String(sev).toLowerCase()}`}
-                      aria-hidden="true"
-                    />
-                    {n} {sev}
-                  </li>
-                ))}
-            </ul>
-
-            {/* Severity filter */}
-            <div
-              className="cr-filter"
-              role="group"
-              aria-label="Filter findings by severity"
-            >
-              {SEV_ORDER.map((sev) => (
-                <CcureButton
-                  key={sev}
-                  variant="secondary"
-                  size="sm"
-                  className="cr-toggle"
-                  aria-pressed={cveFilter === sev}
-                  onClick={() => setCveFilter(sev)}
-                >
-                  {sev}
-                  {sev !== "All" && severity_summary[sev] > 0 && (
-                    <span className="cr-toggle__count">
-                      ({severity_summary[sev]})
-                    </span>
-                  )}
-                </CcureButton>
-              ))}
-            </div>
-
-            <ul className="cr-findings">
-              {filteredCves.map((cve, i) => (
-                <li key={i} className="cr-finding">
-                  <div className="cr-finding__head">
-                    <CVELink cveId={cve.cve_id} className="cr-finding__id" />
-                    <CcureSeverityBadge severity={cve.severity} />
-                    {cve.cvss_score && (
-                      <span className="cr-mono cr-muted">
-                        CVSS {cve.cvss_score}
-                      </span>
-                    )}
-                    {cve.package && (
-                      <span className="cr-mono cr-muted">
-                        {cve.package} {cve.installed_ver}
-                      </span>
-                    )}
-                    {cve.fixed_ver && (
-                      <span className="cr-tone-success">
-                        <Glyph>→</Glyph> fixed in {cve.fixed_ver}
-                      </span>
-                    )}
-                  </div>
-                  <p className="cr-finding__desc">{cve.description}</p>
-                </li>
-              ))}
-            </ul>
+            <FindingsListSection
+              cves={filteredCvesSource}
+              severitySummary={severity_summary}
+              severityOrder={SEV_ORDER}
+              glyph={Glyph}
+            />
           </Section>
         )}
+
+        {/* Configuration Audit. Always rendered, never gated on there being
+            results: the component draws the distinction between "not
+            assessed" and "assessed, nothing failed", and a section that
+            disappears when an audit did not run tells the operator nothing
+            about why. */}
+        <Section
+          icon="🧾"
+          title={
+            config_audit && config_audit.assessed !== false
+              ? `Configuration Audit (${config_audit.checks_assessed ?? (config_audit.results || []).length} assessed)`
+              : "Configuration Audit"
+          }
+          defaultOpen={Boolean(
+            config_audit && (config_audit.counts || {}).fail > 0,
+          )}
+        >
+          <ConfigAuditSection configAudit={config_audit} />
+        </Section>
+
+        {/* Package coverage — the denominator for every package finding. */}
+        <Section icon="📊" title="Package Coverage">
+          <PackageCoverageSection coverage={package_coverage} />
+        </Section>
+
+        {/* The whole inventory, not only the packages that matched a CVE. */}
+        <Section
+          icon="📦"
+          title={`Installed Software (${Number(packages_enumerated ?? packages.length).toLocaleString()})`}
+        >
+          <PackageInventorySection
+            packages={packages}
+            cves={cves}
+            packagesEnumerated={packages_enumerated}
+          />
+        </Section>
+
+        {/* What this scan actually assessed. Read from the scan's own
+            record rather than the policy row it names, because the policy may
+            have been edited, versioned, archived or deleted since and none of
+            that changes what this scan did. */}
+        <Section icon="📋" title="Scan policy — what this scan assessed">
+          <ScanPolicySnapshot scanId={scan_id} />
+        </Section>
+
+        {/* Reports and exports. Placed after the findings and before the
+            supporting detail: an operator who has read the verdict is the one
+            who wants to take it away. */}
+        <Section icon="📤" title="Reports & Export" defaultOpen={false}>
+          {/* This app mounts no global toast provider -- each page that wants
+              to announce brings its own, as SecurityReports does. The panel
+              announces the outcome of a download, so it supplies one here.
+              The provider portals its regions to document.body, so sitting
+              inside a collapsible section does not affect where they appear. */}
+          <CcureToastProvider>
+            <ReportExportPanel scanId={scan_id} scanNo={scan_no} />
+          </CcureToastProvider>
+        </Section>
+
+        {/* Candidates evaluated and then ruled out. */}
+        <Section
+          icon="🚫"
+          title={`Suppressed Findings (${(suppressed_cves || []).length})`}
+        >
+          <SuppressedFindingsSection
+            suppressed={suppressed_cves}
+            candidatesEvaluated={candidates_evaluated}
+            reportedCount={cve_count}
+          />
+        </Section>
 
         {/* Security Audit */}
         <Section
@@ -1376,11 +1661,35 @@ export default function CredentialedResults() {
                   {
                     key: "sub_state",
                     header: "Status",
-                    cell: (svc) => (
-                      <span className="cr-tone-success">
-                        {svc.sub_state || "running"}
-                      </span>
-                    ),
+                    /* `svc.sub_state || "running"` printed "running" for every
+                       service on a transport that does not report one — all
+                       174 on the live Windows host — which is a state the scan
+                       never established. Absent is absent. */
+                    cell: (svc) =>
+                      svc.sub_state ? (
+                        <span className="cr-tone-success">{svc.sub_state}</span>
+                      ) : (
+                        <span className="cr-muted">not reported</span>
+                      ),
+                  },
+                  {
+                    key: "start_type",
+                    header: "Start type",
+                    /* How the service is configured to start, which is not
+                       whether it is running: `Auto` on a stopped service and
+                       `Manual` on a running one are both ordinary. Labelled so
+                       the two cannot be read as one. */
+                    cell: (svc) =>
+                      svc.start_type ? (
+                        <span
+                          className="cr-mono"
+                          title="How the service is configured to start. It does not say whether the service is running."
+                        >
+                          {svc.start_type}
+                        </span>
+                      ) : (
+                        <span className="cr-muted">—</span>
+                      ),
                   },
                   {
                     key: "description",
@@ -1417,6 +1726,20 @@ export default function CredentialedResults() {
                   <strong className="cr-tone-success">
                     {exposure_summary.listeners_host_only || 0} host-only
                   </strong>
+                  {/* Listeners the correlation could not place on either side
+                      of the boundary. Its own figure, never folded into
+                      exposed, host-only or zero: `UNKNOWN != ZERO`. Rendered
+                      only when the backend supplied it, so an older payload
+                      shows nothing rather than a fabricated 0. */}
+                  {typeof exposure_summary.listeners_undetermined ===
+                  "number" ? (
+                    <>
+                      {", "}
+                      <strong className="cr-tone-warning">
+                        {exposure_summary.listeners_undetermined} undetermined
+                      </strong>
+                    </>
+                  ) : null}
                   .
                 </>
               ) : (

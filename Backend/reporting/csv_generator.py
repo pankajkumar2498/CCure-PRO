@@ -105,6 +105,29 @@ REMEDIATION_CONTEXT_KEYS = [
     "exception_expires_at",
 ]
 
+#: Exploitation and vendor-advisory columns, appended after the remediation
+#: block.
+#:
+#: **Appended last, and that position is the whole compatibility argument.**
+#: Adding them to the end of ``NETWORK_HEADERS`` - which reads better, since
+#: they belong beside the KEV and EPSS columns - would push all nine
+#: remediation columns three places to the right under every existing reader.
+#: The two blocks that already exist keep their exact indices; this one starts
+#: where the row used to end.
+#:
+#: They are not duplicates of anything already exported. "In CISA KEV" is a
+#: catalogue membership with a federal deadline behind it; "Exploit
+#: Availability" is whether any public exploit exists at all, which on this
+#: installation is true of 27,640 CVEs CISA does not list. "Remediation" is
+#: this product's normalised upgrade instruction; "Vendor Remediation" is the
+#: advisory's own wording.
+INTEL_HEADERS = [
+    "Exploit Availability",
+    "Priority",
+    "Vendor Remediation",
+]
+
+
 #: Columns for the suppressed-candidate sheet. The PDF appendix now samples
 #: these; the complete audit trail lives here, where there is no page budget.
 SUPPRESSED_HEADERS = [
@@ -218,6 +241,36 @@ def _remediation_cells(
             return [str(record.get(key, "") or "") for key in REMEDIATION_CONTEXT_KEYS]
 
     return [""] * len(REMEDIATION_HEADERS)
+
+
+def _intel_cells(f: StandardizedFinding) -> List[str]:
+    """
+    The exploitation and vendor-advisory columns for one finding.
+
+    ``has_exploit`` is rendered three ways, not two. "Yes" and "No" are what
+    the exploit feeds established; an empty cell means this scan recorded
+    nothing, and that is the established convention of this file - an empty
+    cell is data that was not published, never a value that was. Writing "No"
+    for the absent case would report "no public exploit exists" on the
+    strength of never having looked, and the reader triaging from the
+    spreadsheet cannot tell that from a real negative.
+
+    Note the column is named *availability*, not exploitability: a public
+    exploit existing for the CVE says nothing about whether this host is
+    exploitable, which depends on configuration and reachability no feed
+    knows about.
+    """
+    if f.has_exploit is True:
+        exploit = "Yes"
+    elif f.has_exploit is False:
+        exploit = "No"
+    else:
+        exploit = ""
+    return [
+        exploit,
+        f.priority_level,
+        f.vendor_remediation,
+    ]
 
 
 def _web_row(f: StandardizedFinding) -> List[str]:
@@ -419,8 +472,9 @@ def generate_scan_csv(
     pipeline has no session to look a remediation record up with.
 
     The network export keeps its full column set either way - the remediation
-    columns are always present, empty where nothing is known - so a consumer
-    parsing by header never sees the shape change between two scans.
+    and exploitation columns are always present, empty where nothing is known -
+    so a consumer parsing by header never sees the shape change between two
+    scans.
     """
     report: ScanFindings = build_scan_report(result_dict)
 
@@ -441,7 +495,11 @@ def generate_scan_csv(
     # The web export is deliberately left alone. It is rendered by the
     # /web-scans path, a remediation record is per host finding rather than per
     # URL, and altering an existing report was not this phase's business.
-    headers = WEB_HEADERS if is_web else [*NETWORK_HEADERS, *REMEDIATION_HEADERS]
+    headers = (
+        WEB_HEADERS
+        if is_web
+        else [*NETWORK_HEADERS, *REMEDIATION_HEADERS, *INTEL_HEADERS]
+    )
     build_row = _web_row if is_web else _network_row
 
     # utf-8-sig so Excel detects the encoding and renders non-ASCII correctly.
@@ -451,7 +509,11 @@ def generate_scan_csv(
         for finding in findings:
             row = build_row(finding)
             if not is_web:
-                row = [*row, *_remediation_cells(finding, remediation_context)]
+                row = [
+                    *row,
+                    *_remediation_cells(finding, remediation_context),
+                    *_intel_cells(finding),
+                ]
             writer.writerow(row)
 
     if write_suppressed and not is_web and report.excluded:

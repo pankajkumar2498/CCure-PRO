@@ -157,3 +157,122 @@
     padding: 0 var(--ccure-space-md);
   }
 }
+
+/* ── P1-3: the evidence behind a verdict ─────────────────────────────────── */
+
+.cwh-ev-kv {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-font-size-sm);
+}
+
+.cwh-ev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-3xs) 0;
+}
+
+.cwh-ev-row dt {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one term pinned at a width the others no longer share. */
+  flex: 0 0 11rem;
+  min-width: 0;
+  color: var(--ccure-color-text-secondary, var(--ccure-text-secondary));
+}
+
+.cwh-ev-row dd {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  word-break: break-word;
+}
+
+.cwh-ev-h {
+  font-size: var(--ccure-font-size-md);
+  margin: var(--ccure-space-md) 0 var(--ccure-space-2xs);
+}
+
+.cwh-ev-obs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.cwh-ev-obs__item {
+  border-left: 2px solid var(--ccure-border, currentColor);
+  padding-left: var(--ccure-space-sm);
+}
+
+.cwh-ev-obs__desc {
+  margin: 0 0 var(--ccure-space-2xs);
+}
+
+.cwh-ev-raw {
+  overflow-x: auto;
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-font-size-xs);
+  padding: var(--ccure-space-xs);
+  border: 1px solid var(--ccure-border, currentColor);
+  border-radius: var(--ccure-radius-sm);
+  white-space: pre-wrap;
+}
+
+.cwh-ev-muted {
+  color: var(--ccure-color-text-secondary, var(--ccure-text-secondary));
+}
+
+/* ── P3-2: compliance schedules and the waiver decision ──────────────────── */
+
+.cwh-sch__lede {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-font-size-sm);
+  margin: 0 0 var(--ccure-space-sm);
+}
+
+.cwh-sch__muted {
+  color: var(--ccure-text-secondary);
+}
+
+.cwh-sch__new {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form > * {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one control pinned at a width the others no longer share. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.cwh-sch__formactions {
+  display: flex;
+  gap: var(--ccure-space-xs);
+  flex: 0 0 auto;
+}
+
+.cwh-sch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-decide {
+  display: flex;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-muted {
+  color: var(--ccure-text-secondary);
+}

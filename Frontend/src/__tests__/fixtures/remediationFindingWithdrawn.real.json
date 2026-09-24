@@ -1,0 +1,36 @@
+{
+  "finding_id": "fnd_ast_defa_c522b539_127_0_0_1_credentialed_package_CVE-2026-40224",
+  "asset_id": "ast_defa_c522b539_127_0_0_1",
+  "vuln_id": "CVE-2026-40224",
+  "severity": "high",
+  "status": "open",
+  "remediation": {
+    "state": "open",
+    "owner": null,
+    "assigned_at": null,
+    "assigned_by": null,
+    "notes": "probe: patch staged for the next window",
+    "reopened_count": 0,
+    "reopened_at": null
+  },
+  "sla": {
+    "due_at": "2026-10-02T18:48:45.926323+00:00",
+    "basis": "high",
+    "state": "within_sla",
+    "days_remaining": 9,
+    "unit": "calendar days"
+  },
+  "verification": {
+    "verified_at": null,
+    "verified_scan_id": null,
+    "first_found_at": "2026-09-02T18:48:45.926323+00:00",
+    "last_found_at": "2026-09-04T13:55:35.752895+00:00"
+  },
+  "exception": {
+    "reason": "probe: compensating control on the segment gateway",
+    "accepted_by": "usr_defa_c522b539_superadmin_xlft",
+    "accepted_at": "2026-09-23T04:21:01.764164+00:00",
+    "expires_at": null,
+    "indefinite": false
+  }
+}

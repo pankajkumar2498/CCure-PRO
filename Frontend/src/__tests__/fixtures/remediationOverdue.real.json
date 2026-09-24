@@ -1,0 +1,114 @@
+{
+  "total": 156,
+  "count": 3,
+  "findings": [
+    {
+      "finding_id": "fnd_ast_org_4f9fd31e_10_180_6_45_credentialed_package_CCURE-PRV-CCURE-PRIV-LINUX-SYSTEMD-UNIT-WRITABLE",
+      "asset_id": "ast_org_4f9fd31e_10_180_6_45",
+      "vuln_id": "CCURE-PRV-CCURE-PRIV-LINUX-SYSTEMD-UNIT-WRITABLE",
+      "severity": "critical",
+      "status": "open",
+      "remediation": {
+        "state": "open",
+        "owner": null,
+        "assigned_at": null,
+        "assigned_by": null,
+        "notes": null,
+        "reopened_count": 0,
+        "reopened_at": null
+      },
+      "sla": {
+        "due_at": "2026-09-16T15:00:09.433215+00:00",
+        "basis": "critical",
+        "state": "overdue",
+        "days_remaining": -7,
+        "unit": "calendar days"
+      },
+      "verification": {
+        "verified_at": null,
+        "verified_scan_id": null,
+        "first_found_at": "2026-09-01T15:00:09.433215+00:00",
+        "last_found_at": "2026-09-22T07:08:06.448740+00:00"
+      },
+      "exception": {
+        "reason": null,
+        "accepted_by": null,
+        "accepted_at": null,
+        "expires_at": null,
+        "indefinite": false
+      }
+    },
+    {
+      "finding_id": "fnd_ast_org_4f9fd31e_10_180_6_14_credentialed_package_CVE-2025-10585",
+      "asset_id": "ast_org_4f9fd31e_10_180_6_14",
+      "vuln_id": "CVE-2025-10585",
+      "severity": "critical",
+      "status": "open",
+      "remediation": {
+        "state": "open",
+        "owner": null,
+        "assigned_at": null,
+        "assigned_by": null,
+        "notes": null,
+        "reopened_count": 0,
+        "reopened_at": null
+      },
+      "sla": {
+        "due_at": "2026-09-17T06:30:02.976124+00:00",
+        "basis": "critical",
+        "state": "overdue",
+        "days_remaining": -6,
+        "unit": "calendar days"
+      },
+      "verification": {
+        "verified_at": null,
+        "verified_scan_id": null,
+        "first_found_at": "2026-09-02T06:30:02.976124+00:00",
+        "last_found_at": "2026-09-22T08:00:41.171827+00:00"
+      },
+      "exception": {
+        "reason": null,
+        "accepted_by": null,
+        "accepted_at": null,
+        "expires_at": null,
+        "indefinite": false
+      }
+    },
+    {
+      "finding_id": "fnd_ast_org_4f9fd31e_10_180_6_14_credentialed_package_CVE-2026-13782",
+      "asset_id": "ast_org_4f9fd31e_10_180_6_14",
+      "vuln_id": "CVE-2026-13782",
+      "severity": "critical",
+      "status": "open",
+      "remediation": {
+        "state": "open",
+        "owner": null,
+        "assigned_at": null,
+        "assigned_by": null,
+        "notes": null,
+        "reopened_count": 0,
+        "reopened_at": null
+      },
+      "sla": {
+        "due_at": "2026-09-17T06:30:03.820729+00:00",
+        "basis": "critical",
+        "state": "overdue",
+        "days_remaining": -6,
+        "unit": "calendar days"
+      },
+      "verification": {
+        "verified_at": null,
+        "verified_scan_id": null,
+        "first_found_at": "2026-09-02T06:30:03.820729+00:00",
+        "last_found_at": "2026-09-22T08:00:41.263408+00:00"
+      },
+      "exception": {
+        "reason": null,
+        "accepted_by": null,
+        "accepted_at": null,
+        "expires_at": null,
+        "indefinite": false
+      }
+    }
+  ]
+}

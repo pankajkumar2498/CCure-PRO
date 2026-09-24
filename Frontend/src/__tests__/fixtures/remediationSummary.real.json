@@ -1,0 +1,24 @@
+{
+  "org_id": "org_default",
+  "by_state": {
+    "open": 7763,
+    "assigned": 0,
+    "in_remediation": 1,
+    "pending_verification": 1,
+    "verified_fixed": 867,
+    "reopened": 0,
+    "risk_accepted": 1
+  },
+  "overdue": 156,
+  "within_sla": 1818,
+  "no_sla": 5791,
+  "summary_line": "Open: 7763 | In remediation: 1 | Pending verification: 1 | Overdue: 156 | Verified fixed: 867",
+  "sla_states": [
+    "within_sla",
+    "due_soon",
+    "overdue",
+    "resolved",
+    "pending_verification",
+    "not_applicable"
+  ]
+}

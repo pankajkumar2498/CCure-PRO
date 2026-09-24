@@ -164,6 +164,27 @@ const getScanDisplayDate = (scan) =>
     ? scan.completed_at || scan.started_at || scan.created_at
     : scan.started_at || scan.created_at;
 
+/**
+ * The scan's lifecycle, from its own timestamps.
+ *
+ * The Date column shows one instant, chosen by status — which is right for a
+ * column, and loses the sequence. A scan that waited eleven minutes for a
+ * worker and ran for four seconds reads identically to one that started at
+ * once, and `queued_at` is on every row and was displayed nowhere.
+ *
+ * Only the stages the record actually carries appear. A scan that never
+ * started has no start, and inventing one would be the opposite of the point.
+ */
+const lifecycleTitle = (scan) => {
+  const stages = [
+    ["Queued", scan?.queued_at],
+    ["Started", scan?.started_at],
+    ["Completed", scan?.completed_at],
+  ].filter(([, iso]) => Boolean(iso));
+  if (!stages.length) return undefined;
+  return stages.map(([label, iso]) => `${label}: ${fmtDate(iso)}`).join("\n");
+};
+
 const fmtDur = (sec) =>
   !sec
     ? "—"
@@ -1150,6 +1171,27 @@ export default function ScanHistory({ mode = "history" }) {
           </CcureButton>
         )}
 
+        {/* Compare — a running scan has no findings to compare yet, and a
+            failed one produced none, so the control is offered only where the
+            question has an answer. The accessible name carries the scan
+            number: every action in this list must be distinguishable across
+            rows, or a reader picks the wrong scan's comparison. */}
+        {canReadScans && !isRunning && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              navigate(
+                `/scan/comparison?scan_id=${encodeURIComponent(scan.id)}`,
+              )
+            }
+            title="Compare this scan with a previous one"
+            aria-label={`Compare scan ${number} with a previous scan`}
+          >
+            Compare
+          </CcureButton>
+        )}
+
         {/* Re-run — disabled for running scans */}
         {canExecuteScans && (
           <CcureButton
@@ -1278,7 +1320,9 @@ export default function ScanHistory({ mode = "history" }) {
       mono: true,
       nowrap: true,
       cell: (scan) => (
-        <span className="sh-muted">{fmtDate(getScanDisplayDate(scan))}</span>
+        <span className="sh-muted" title={lifecycleTitle(scan)}>
+          {fmtDate(getScanDisplayDate(scan))}
+        </span>
       ),
     },
     {

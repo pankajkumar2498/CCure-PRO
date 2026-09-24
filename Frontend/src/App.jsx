@@ -11,6 +11,7 @@
  *   /assets     → AssetRegistry
  *   /assets/:id → AssetDetail
  *   /vulnerabilities → VulnerabilityBrowser
+ *   /remediation → Remediation
  *
  * All original pages kept exactly. Missing pages (ScanDetail, NotFound,
  * NotificationsPage) are replaced with the pages that actually exist.
@@ -38,6 +39,7 @@ import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
 import ScanHistory from "./pages/ScanHistory";
 import ScanSchedules from "./pages/scan/ScanSchedules";
 import ConfigurationChecks from "./pages/scan/ConfigurationChecks";
+import ConfigurationRuleValidator from "./pages/scan/ConfigurationRuleValidator";
 import ScanCredentials from "./pages/scan/ScanCredentials";
 import ArchivedScans from "./pages/ArchivedScans";
 import RecycleBin from "./pages/RecycleBin";
@@ -50,6 +52,9 @@ import Phase2Results from "./pages/scan/Phase2Results";
 import Phase3Results from "./pages/scan/Phase3Results";
 import CredentialedScan from "./pages/scan/CredentialedScan";
 import CredentialedResults from "./pages/scan/CredentialedResults";
+import ScanComparison from "./pages/scan/ScanComparison";
+import ScanPolicies from "./pages/scan/ScanPolicies";
+import Remediation from "./pages/Remediation";
 import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
@@ -123,9 +128,18 @@ export default function App() {
           <Route path="/history" element={<ScanHistory mode="history" />} />
           <Route path="/scan-schedules" element={<ScanSchedules />} />
           <Route path="/scan-credentials" element={<ScanCredentials />} />
+          <Route path="/scan-policies" element={<ScanPolicies />} />
+          <Route path="/remediation" element={<Remediation />} />
           <Route
             path="/configuration-checks"
             element={<ConfigurationChecks />}
+          />
+          {/* Its own route rather than a panel on the catalogue: that page's
+              contract is no POST of any kind, pinned by a test that drives
+              every control on it. */}
+          <Route
+            path="/configuration-checks/validate"
+            element={<ConfigurationRuleValidator />}
           />
           <Route
             path="/scan-history"
@@ -148,6 +162,9 @@ export default function App() {
             path="/scan/advanced-scan"
             element={<Navigate to="/scan/vulnerability-audit" replace />}
           />
+          {/* One route, scan chosen by query string, so a comparison can be
+              linked to and shared. */}
+          <Route path="/scan/comparison" element={<ScanComparison />} />
           <Route path="/scan/credentialed" element={<CredentialedScan />} />
           <Route
             path="/scan/credentialed/results"

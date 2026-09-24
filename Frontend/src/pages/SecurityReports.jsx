@@ -33,7 +33,8 @@ import { useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { getScans, deleteReport } from "../api/scans";
 import { useAuth } from "../context/AuthContext";
-import api from "../api/axiosInstance";
+import { DOWNLOAD_FORMATS, downloadReport } from "../api/reports";
+import { saveResponseAsFile } from "../utils/download";
 import { dateTimeMs, formatDateTime } from "../utils/date";
 import { can, denyMessage } from "../auth/permissions";
 import {
@@ -172,32 +173,16 @@ function ReportsView() {
       return;
     }
     try {
-      const response = await api.get(`/reports/download/${scanId}`, {
-        params: { fmt: format },
-        responseType: "arraybuffer",
-      });
-
-      // Create a blob URL and trigger download
-      const mimeType =
-        response.headers["content-type"] || "application/octet-stream";
-      const blob = new Blob([response.data], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-
-      // Filename from header or fallback
-      const contentDisposition = response.headers["content-disposition"];
-      let fileName = `report_${scanId}_${format.toLowerCase()}.pdf`;
-      if (contentDisposition) {
-        const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
-        if (matches && matches[1]) fileName = matches[1];
-      }
-
-      link.setAttribute("download", fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      // Shared with the scan-results export panel: one place that honours
+      // the server's Content-Disposition and releases the object URL. The
+      // filename matters -- it carries the scan number, and an artefact that
+      // ends up attached to an audit must keep the scan it came from.
+      const response = await downloadReport(scanId, format);
+      const spec = DOWNLOAD_FORMATS.find((f) => f.value === format);
+      saveResponseAsFile(
+        response,
+        `scan_${scanId}_${format.toLowerCase()}.${spec?.ext ?? "pdf"}`,
+      );
     } catch {
       toast.danger("Failed to download report. The session may have expired.");
     }
@@ -476,6 +461,28 @@ function ReportCard({
           title="Download Technical PDF containing raw audit data"
         >
           <span aria-hidden="true">📝</span> Technical Data
+        </CcureButton>
+        <CcureButton
+          variant="secondary"
+          size="sm"
+          className="rc-action"
+          onClick={() => onDownload(scan.id, "CSV")}
+          disabled={!canReadReports}
+          aria-label={`Download the host inventory for scan number ${no}`}
+          title="Download the host inventory as CSV"
+        >
+          <span aria-hidden="true">📇</span> Host inventory
+        </CcureButton>
+        <CcureButton
+          variant="secondary"
+          size="sm"
+          className="rc-action"
+          onClick={() => onDownload(scan.id, "XLSX")}
+          disabled={!canReadReports}
+          aria-label={`Download the full workbook for scan number ${no}`}
+          title="Download verdicts, findings and the comparison as one workbook"
+        >
+          <span aria-hidden="true">📊</span> Full workbook
         </CcureButton>
         {canDeleteReports && (
           <CcureButton

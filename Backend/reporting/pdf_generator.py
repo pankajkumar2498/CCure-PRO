@@ -63,6 +63,12 @@ from reportlab.platypus import (
     TableStyle,
 )
 from engines.credentialed.coverage import COVERAGE_ROWS
+from reporting.host_assessment import (
+    HostAssessment,
+    ListenerExposure,
+    exposure_sentence,
+    host_assessments,
+)
 from reportlab.platypus.tableofcontents import TableOfContents
 from scans.cvss import SEVERITY_RANK
 from scans.finding_normalizer import (
@@ -535,6 +541,11 @@ def _scan_configuration(
         ),
         ("Port selection", first("port_range", "ports", "port_spec", "scan_ports")),
         ("Host discovery", first("discovery_scan_method", "scan_method", "discovery")),
+        # The orchestrator publishes this on every discovery phase and nothing
+        # read it. FAST and BALANCED probe different things, so two scans of one
+        # host can legitimately disagree about which hosts exist - and without
+        # this row the report gives the reader no way to tell why.
+        ("Discovery profile", first("discovery_profile")),
         # No defaults here. These state what the scan was configured to do, and
         # a default is a claim: "Enabled (banner and probe fingerprinting)" was
         # printed for scans that performed no service detection at all, and an
@@ -609,16 +620,25 @@ def _scan_configuration(
             if _psummary.get(_label):
                 rows.append((_label, str(_psummary[_label])))
 
-    exposed = _first_int(meta, summary, "listeners_exposed")
-    host_only = _first_int(meta, summary, "listeners_host_only")
-    if exposed is not None or host_only is not None:
-        rows.append(
-            (
-                "Service exposure",
-                f"{exposed or 0} listening service(s) confirmed reachable, "
-                f"{host_only or 0} bound to loopback and not reachable off-host",
-            )
-        )
+    # Listener exposure, stated from the counts that were actually recorded.
+    #
+    # This line previously read "{exposed or 0} ... {host_only or 0} ...", which
+    # did two things it must not. `or 0` turns an unrecorded count into a zero —
+    # an assertion that none were found where the truth is that nobody counted —
+    # and naming two of the four categories drops the listeners whose
+    # reachability was never established out of a sentence whose entire job is
+    # to add up. `exposure_sentence` omits a clause it has no number for and
+    # names the undetermined ones explicitly.
+    exposure = ListenerExposure(
+        total=_first_int(meta, summary, "listeners_total"),
+        exposed=_first_int(meta, summary, "listeners_exposed"),
+        host_only=_first_int(meta, summary, "listeners_host_only"),
+        filtered=_first_int(meta, summary, "listeners_filtered"),
+        undetermined=_first_int(meta, summary, "listeners_undetermined"),
+    )
+    sentence = exposure_sentence(exposure)
+    if sentence:
+        rows.append(("Service exposure", sentence))
     return rows
 
 
@@ -973,6 +993,29 @@ def _threat_intel_cell(finding: StandardizedFinding, styles: dict) -> Paragraph:
             f"EPSS <b>{finding.epss_score * 100:.1f}%</b> "
             f"30-day exploitation probability{percentile}"
         )
+    # Exploit availability, three-valued.
+    #
+    # The label is deliberately "availability" and not "exploitable". A public
+    # exploit existing for the CVE says nothing about whether *this host* can
+    # be exploited, which depends on configuration and reachability no feed
+    # knows anything about - so "Exploitable" or "Confirmed exploitation" would
+    # be a claim the evidence does not support.
+    #
+    # `None` adds no line at all. It means the scan recorded nothing, and
+    # printing "no public exploit" on that basis states a negative finding on
+    # the strength of never having looked.
+    if finding.has_exploit is True:
+        bits.append(
+            "<b>Exploit availability:</b> a public exploit exists for this "
+            "vulnerability <font color='#64748B'>(not a statement that this "
+            "host is exploitable)</font>"
+        )
+    elif finding.has_exploit is False:
+        bits.append(
+            "<b>Exploit availability:</b> no public exploit known to the "
+            "exploit feeds"
+        )
+
     if not bits:
         bits.append("<font color='#94A3B8'>No exploit intelligence available</font>")
     return _p("<br/>".join(bits), styles["body"], escape=False)
@@ -1775,6 +1818,203 @@ def _comparison_section(comparison, styles) -> List[Any]:
     return story
 
 
+#: Colours for a hardening verdict. NOT_ASSESSED is grey rather than green:
+#: it is not a milder pass, it is the absence of one.
+_HARDENING_TONE = {
+    "PASS": ("#F0FDF4", "#86EFAC"),
+    "FAIL": ("#FEF2F2", "#FECACA"),
+    "WARN": ("#FFF7ED", "#FDBA74"),
+    "NOT_ASSESSED": ("#F1F5F9", "#CBD5E1"),
+}
+
+
+def _host_assessment_sections(record: HostAssessment, styles: dict) -> List[Any]:
+    """
+    What the authenticated session examined on this host, and what it could not.
+
+    Three readings the credentialed pipeline has recorded for a long time and
+    no report has ever printed. They share a section because they answer one
+    question between them — *how much of this host was actually assessed* — and
+    because each of them, left out, makes the page read more reassuring than
+    the scan was.
+
+    Returns an empty list when the scan recorded none of them, so a report for
+    an unauthenticated scan is byte-for-byte what it was before. The same
+    property `_comparison_section`, `_policy_section` and `_remediation_section`
+    each hold, and for the same reason.
+    """
+    if record is None or not record.has_content:
+        return []
+
+    story: List[Any] = []
+
+    # ── Hardening posture ────────────────────────────────────────────────────
+    if record.hardening:
+        story.append(_heading("Host hardening posture", styles["h2"], 1))
+
+        counts = record.hardening_counts()
+        unassessed = counts.get("NOT_ASSESSED", 0)
+        # The count of controls nobody read is stated in the lede, not buried
+        # in the table. A reader who takes in one line per section has to be
+        # told that this one is partial.
+        headline = " · ".join(
+            f"{count} {status.replace('_', ' ').lower()}"
+            for status, count in sorted(counts.items())
+            if count
+        )
+        story.append(
+            _p(
+                f"{headline}."
+                + (
+                    " A control this scan did not read carries no verdict: it is "
+                    "reported as not assessed rather than as a pass."
+                    if unassessed
+                    else ""
+                ),
+                styles["small"],
+            )
+        )
+        story.append(Spacer(1, 2 * mm))
+
+        rows = [
+            [
+                _p("<b>Control</b>", styles["th"], escape=False),
+                _p("<b>Verdict</b>", styles["th"], escape=False),
+                _p("<b>What the scan established</b>", styles["th"], escape=False),
+            ]
+        ]
+        for control in record.hardening_sorted():
+            verdict = control.status.replace("_", " ")
+            # The detail is the collector's own sentence. Where it is missing,
+            # the verdict's meaning is printed instead of an empty cell - an
+            # empty cell beside "NOT ASSESSED" reads as a missing value rather
+            # than as the state itself.
+            rows.append(
+                [
+                    _p(escape_for_reportlab(control.label), styles["body"]),
+                    _p(escape_for_reportlab(verdict), styles["body"]),
+                    _p(
+                        escape_for_reportlab(control.detail or control.meaning),
+                        styles["body"],
+                    ),
+                ]
+            )
+        story.append(_grid(rows, [42 * mm, 26 * mm, 93 * mm]))
+        story.append(Spacer(1, 4 * mm))
+
+    # ── Collection failures ──────────────────────────────────────────────────
+    #
+    # The section that stops a failed collection reading as a clean host. A
+    # host whose package inventory could not be read produces no package
+    # findings, and on the page that is byte-identical to a host with nothing
+    # wrong with it.
+    if record.collection_failures:
+        story.append(_heading("Data this scan could not collect", styles["h2"], 1))
+
+        attempted = [f for f in record.collection_failures if not f.is_unserved_item]
+        unserved = [f for f in record.collection_failures if f.is_unserved_item]
+
+        if attempted:
+            story.append(
+                _p(
+                    "These sections were attempted and failed. Anything they "
+                    "would have reported is <b>not assessed</b> on this host — "
+                    "it is not an absence of findings.",
+                    styles["small"],
+                    escape=False,
+                )
+            )
+            story.append(Spacer(1, 2 * mm))
+            rows = [
+                [
+                    _p("<b>Collection section</b>", styles["th"], escape=False),
+                    _p("<b>Reason reported</b>", styles["th"], escape=False),
+                ]
+            ]
+            for failure in sorted(attempted, key=lambda f: f.display_section):
+                rows.append(
+                    [
+                        _p(
+                            escape_for_reportlab(failure.display_section),
+                            styles["body"],
+                        ),
+                        _p(
+                            escape_for_reportlab(failure.reason)
+                            or "No reason was recorded.",
+                            styles["body"],
+                        ),
+                    ]
+                )
+            story.append(_grid(rows, [52 * mm, 109 * mm]))
+            story.append(Spacer(1, 3 * mm))
+
+        if unserved:
+            # A different statement from a failure: the transport used here
+            # structurally does not serve these items. Merging the two would
+            # make a transport's known limits read as a broken scan.
+            story.append(
+                _p(
+                    "<b>Not served by the transport used:</b> "
+                    + escape_for_reportlab(
+                        ", ".join(
+                            sorted(failure.display_section for failure in unserved)
+                        )
+                    )
+                    + ". These were not attempted on this host, so nothing is "
+                    "claimed about them either way.",
+                    styles["small"],
+                    escape=False,
+                )
+            )
+            story.append(Spacer(1, 3 * mm))
+
+    if record.inventory_complete is False:
+        story.append(
+            _boxed(
+                _p(
+                    "<b>The software inventory for this host is incomplete.</b> "
+                    "Package-based findings below cover what was collected, not "
+                    "everything installed.",
+                    styles["small"],
+                    escape=False,
+                ),
+                colors.HexColor("#FEF9C3"),
+                colors.HexColor("#FDE047"),
+            )
+        )
+        story.append(Spacer(1, 3 * mm))
+
+    # ── Listener exposure, including the undetermined ones ───────────────────
+    sentence = exposure_sentence(record.exposure)
+    if sentence:
+        story.append(_heading("Listening service exposure", styles["h2"], 1))
+        story.append(_p(escape_for_reportlab(sentence), styles["body"]))
+        if record.exposure.has_undetermined:
+            # Named, and deliberately not resolved in either direction. A
+            # listener the scan never reached is not thereby filtered, and it
+            # is certainly not exposed.
+            story.append(
+                _p(
+                    "A listener whose reachability was not established is "
+                    "reported as such. It is neither exposed nor filtered — the "
+                    "scan did not probe the port, so nothing was learned about "
+                    "it in either direction.",
+                    styles["small"],
+                )
+            )
+        if record.exposure.correlated is False:
+            story.append(
+                _p(
+                    "No network port scan ran alongside this authenticated pass, "
+                    "so reachability was not correlated for any listener.",
+                    styles["small"],
+                )
+            )
+        story.append(Spacer(1, 4 * mm))
+
+    return story
+
+
 def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     fg = SEVERITY_FG.get(finding.severity, MUTED)
 
@@ -1879,6 +2119,24 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
     if finding.severity_source and finding.severity_source != "unscored":
         elements.append(
             _p(f"Severity basis: {finding.severity_source}.", styles["small"])
+        )
+        elements.append(Spacer(1, 1.2 * mm))
+
+    # ── Remediation priority ─────────────────────────────────────────────────
+    # The backend's own value, printed as it came. It is deliberately not
+    # re-derived here: `core.vuln_intel.compute_priority` folds CVSS, EPSS, KEV
+    # membership and exploit availability together, and a second implementation
+    # in the report layer would sooner or later disagree with the findings
+    # queue and the dashboard about the same finding.
+    if finding.priority_level:
+        elements.append(
+            _p(
+                f"Remediation priority: <b>"
+                f"{escape_for_reportlab(finding.priority_level)}</b>, as assigned "
+                f"by the platform's own prioritisation.",
+                styles["small"],
+                escape=False,
+            )
         )
         elements.append(Spacer(1, 1.2 * mm))
 
@@ -2015,6 +2273,46 @@ def _finding_card(finding: StandardizedFinding, styles: dict) -> List[Any]:
             text += f"<br/><a href='{url}' color='#0284C7'><u>{url}</u></a>"
 
         elements.append(_boxed(_p(text, styles["body"], escape=False), bg, edge))
+        elements.append(Spacer(1, 2 * mm))
+
+    # ── The vendor's own remediation wording ─────────────────────────────────
+    #
+    # Rendered verbatim and in a block of its own, never merged into the
+    # remediation box above. Two reasons, and both have bitten this product:
+    #
+    #   * The advisory prefix is load-bearing. An enriched advisory covers the
+    #     same *CVE*, not necessarily the same *product*: a Chrome CVE appears
+    #     in a CISA ICS advisory because an ICS product embeds Chrome, and that
+    #     advisory's mitigation is written for the ICS context. The identifier
+    #     in front of the text is what stops it reading as the desktop vendor's
+    #     own advice, so it is preserved exactly as the matcher composed it.
+    #
+    #   * It is a different claim from the box above. That one is this
+    #     product's normalised upgrade instruction; this one is what the vendor
+    #     published. Where they differ, the reader needs to see both and know
+    #     which is which.
+    #
+    # It is its own block rather than a line inside the remediation box because
+    # a finding can carry vendor wording and no normalised remediation at all -
+    # which is the common case on the CSAF path, where the advisory is the only
+    # fix information that exists.
+    if finding.vendor_remediation:
+        body, truncated = truncate_with_notice(finding.vendor_remediation, 1200)
+        text = escape_for_reportlab(body).replace("\n", "<br/>")
+        if truncated:
+            text += " <font color='#94A3B8'>[advisory text truncated]</font>"
+        elements.append(
+            _boxed(
+                _p(
+                    f"<b>Vendor remediation (the advisory's own wording):</b>"
+                    f"<br/>{text}",
+                    styles["body"],
+                    escape=False,
+                ),
+                colors.HexColor("#EFF6FF"),
+                colors.HexColor("#BFDBFE"),
+            )
+        )
         elements.append(Spacer(1, 2 * mm))
 
     # ── References ───────────────────────────────────────────────────────────
@@ -2727,6 +3025,14 @@ class ScanReportGenerator:
 
         story.append(Spacer(1, 5 * mm))
 
+        # The credentialed assessment records this scan stored, one per host.
+        # Read from the raw payload rather than from `findings`, because
+        # `HostReport` carries the network view and these are readings only an
+        # authenticated session produces.
+        assessment_by_host = {
+            record.host: record for record in host_assessments(result) if record.host
+        }
+
         # ── Per-host sections ────────────────────────────────────────────────
         cards_rendered = 0
 
@@ -2819,6 +3125,13 @@ class ScanReportGenerator:
                     )
                 story.append(_grid(rows, [22 * mm, 20 * mm, 40 * mm, 94 * mm]))
                 story.append(Spacer(1, 4 * mm))
+
+            # What the authenticated session examined on this host, and
+            # what it could not. Keyed on the host's own address so a walk can
+            # never attribute one machine's collection failures to another.
+            story.extend(
+                _host_assessment_sections(assessment_by_host.get(host.ip), styles)
+            )
 
             vulnerabilities = host.vulnerability_findings
             inventory = [

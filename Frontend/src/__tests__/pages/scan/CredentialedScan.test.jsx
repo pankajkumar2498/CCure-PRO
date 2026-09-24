@@ -134,12 +134,23 @@ describe("CredentialedScan — functional", () => {
     expect(boxes.every((b) => b.checked)).toBe(true);
   });
 
-  it("defaults the port to 22 and OS detection to auto", () => {
+  it("leaves the port empty so the engine can discover the service", () => {
+    /*
+     * This asserted a default of 22 until the scanner learned to establish
+     * which authentication service a host offers. A pre-filled 22 is
+     * indistinguishable from an operator asking for 22, so it pinned every
+     * scan to SSH and silently turned discovery off -- which is the whole
+     * defect `compliance_credentials.port` already has on the stored side.
+     *
+     * The field is still there: a value in it is the escape hatch for a
+     * listener on a port nothing would guess.
+     */
     const { container } = renderPage();
-    const port = [...container.querySelectorAll("input")].find(
-      (el) => el.value === "22",
-    );
+    const port = container.querySelector('input[type="number"]');
     expect(port).toBeTruthy();
+    expect(port.value).toBe("");
+    expect(port.getAttribute("placeholder")).toMatch(/auto/i);
+
     const selects = [...container.querySelectorAll("select")];
     expect(selects.some((s) => s.value === "auto")).toBe(true);
   });
@@ -221,12 +232,31 @@ describe("CredentialedScan — dispatch contract", () => {
     expect(sections.length).toBe(boxes.length - 1);
   });
 
-  it("coerces the port to a number, defaulting to 22", async () => {
+  it("sends no port when the operator states none", async () => {
+    /*
+     * `undefined`, not 22. The API reads a stated port as a pin and its
+     * absence as "discover which service this host offers", so a default
+     * here would disable discovery for every scan without anyone choosing
+     * that.
+     */
     const user = userEvent.setup();
     const { container } = renderPage();
     await fillAndRun(user, container);
     await waitFor(() => expect(axiosInstance.post).toHaveBeenCalled());
-    expect(axiosInstance.post.mock.calls[0][1].port).toBe(22);
+    expect(axiosInstance.post.mock.calls[0][1].port).toBeUndefined();
+  });
+
+  it("coerces a stated port to a number", async () => {
+    /* The escape hatch still works, and still sends a number rather than the
+       string the input holds. */
+    const user = userEvent.setup();
+    const { container } = renderPage();
+    const port = container.querySelector('input[type="number"]');
+    await user.clear(port);
+    await user.type(port, "2222");
+    await fillAndRun(user, container);
+    await waitFor(() => expect(axiosInstance.post).toHaveBeenCalled());
+    expect(axiosInstance.post.mock.calls[0][1].port).toBe(2222);
   });
 
   it("navigates to the results page with the scan id", async () => {

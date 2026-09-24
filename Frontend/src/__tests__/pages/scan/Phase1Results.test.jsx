@@ -28,7 +28,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useState } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -1141,14 +1141,20 @@ describe("Phase1Results — contract", () => {
         seed(context());
         const { unmount } = renderPage();
         expect(screen.getByText("12.8s")).toBeInTheDocument();
-        expect(screen.queryByText("BALANCED")).toBeNull();
+        /* Scoped to the summary strip since P2-4. The chip rule this test
+           protects is unchanged — the profile chip belongs to asset discovery
+           only — but the scan-parameters block below the results now states
+           the profile on every discovery, because a reader cannot tell a
+           clean range from an unscanned one without it. */
+        const strip = () => document.querySelector(".p1-summary");
+        expect(within(strip()).queryByText("BALANCED")).toBeNull();
         expect(screen.queryByText(/Fallback:/)).toBeNull();
         unmount();
 
         sessionStorage.clear();
         seed(context({ mode: "asset" }));
         renderPage();
-        expect(screen.getByText("BALANCED")).toBeInTheDocument();
+        expect(within(strip()).getByText("BALANCED")).toBeInTheDocument();
         expect(textShown("Fallback: 1/2 resolved")).toBe(true);
       } finally {
         vi.useRealTimers();

@@ -85,6 +85,65 @@ Baseline as of 11 Aug 2026: the suites touching scans, findings, reports,
 credentialed scanning, compliance and schema run clean apart from the eager-mode
 test above.
 
+## UI semantic integrity
+
+**The frontend must never convert an unknown or absent answer into a known
+state.** This is a mandatory design rule for all CCure Audit UI work, not a
+preference, and it is the single defect the whole Sep 2026 API → UI coverage
+programme kept finding in different clothes —
+[`docs/api_ui_coverage/PROGRAMME_CLOSEOUT.md`](docs/api_ui_coverage/PROGRAMME_CLOSEOUT.md).
+
+    UNKNOWN         ≠  ZERO
+    UNASSESSED      ≠  PASS
+    UNSUPPORTED     ≠  NO FINDINGS
+    NOT CONFIGURED  ≠  WITHIN SLA
+    WITHDRAWN       ≠  ACCEPTED
+    NO DATA         ≠  EMPTY RESULT
+    NO COLLECTOR    ≠  NO CHECKS
+
+Where the backend says something is unknown, unavailable, unsupported,
+unassessed, withdrawn or not configured, **render that state explicitly**.
+Never infer a successful, empty or safe state merely because data is absent.
+
+The backend is built around this distinction everywhere — `CheckOutcome` keeps
+`error` out of the verdict vocabulary, `AbsencePolicy` refuses to default,
+`_reading()` returns `None` rather than `False`, `NOT_ASSESSED` is a
+classification of its own, `sla_state` answers `not_applicable` rather than
+`within_sla`. Every one of those distinctions is destroyed by a UI that renders
+the absent case as a blank, a zero or a tick.
+
+Each line above is a defect that reached this product, not a hypothetical:
+
+- **UNASSESSED ≠ PASS** — a scan whose configuration audit never ran produced
+  an empty findings list, which reads as a clean host. The export now emits an
+  explicit `NOT_ASSESSED` row carrying the engine's own reason.
+- **NOT CONFIGURED ≠ WITHIN SLA** — 5,791 of this installation's 8,633 findings
+  carry no deadline at all. Folding `no_sla` into `within_sla` reports an
+  organisation as comfortably compliant on findings that carry no obligation in
+  either direction.
+- **WITHDRAWN ≠ ACCEPTED** — withdrawing a risk acceptance clears `expires_at`
+  and leaves `reason`, `accepted_by` and `accepted_at` in place. A panel keying
+  on a non-null reason labels an *open* finding as one the organisation decided
+  to carry. Test the state, never the residue.
+- **NO COLLECTOR ≠ NO CHECKS** — an empty catalogue for a platform this build
+  cannot assess is a statement about the product; an empty catalogue for one it
+  can is a statement about the content. Read `capabilities.supported` and say
+  which.
+- **UNKNOWN ≠ ZERO** — the mission view mapped `timeout` and `unknown` to
+  `complete`, reporting a scan as finished when nothing had been heard from it
+  for ten minutes.
+
+Two corollaries worth stating, because both were violated:
+
+- **A vocabulary is fetched, not copied.** A UI holding its own list of
+  platforms, check types, operators, severities or states silently omits what
+  the backend gained and offers what it removed. The configuration-check page
+  hardcoded two of six platforms and put 49 database checks beyond reach.
+- **An action the backend structurally refuses must not be offered.** A control
+  that can only ever produce a 400 is worse than its absence — say what the
+  state is and why a person cannot reach it. `verified_fixed` is set by a scan,
+  never by a person, and the UI says so where the control would have been.
+
 ## Test layout
 
 `Backend/tests/` is grouped by module: `auth/`, `security/`, `compliance/`,
@@ -768,17 +827,53 @@ compounded, and each is worth keeping in mind separately:
   the ORM first (an audit entry and a notification are worth having) and falls
   back to it. **Never call `mark_scan_failed` directly from an `except` block.**
 
-- **`task_time_limit` in `core/celery_app.py` is inert on this deployment.**
-  Celery's hard limit is delivered by signalling a billiard *process*, so it
-  does nothing under the `--pool=threads` host worker, and it can do nothing at
-  all about a worker that has died or been restarted. The comment beside it
-  ("Kill tasks if they hang") is wrong here. The real timeout is
-  `ccure.tasks.reap_stalled_scans`, on beat every two minutes:
-  `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running scan and
-  `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected — two
-  deadlines because "the scan hung" and "no scanner is running" send the
+- **`task_time_limit` was inert on Windows and is not inert on the VM.** This
+  is the one item in this section the Linux move invalidated, and it was a
+  latent kill switch for nine months. Celery's hard limit is delivered by
+  signalling a billiard *process*, so it did nothing under the Windows
+  `--pool=threads` host worker — which is why the comment beside it and the
+  `test_scan_stall_recovery` docstring both called it inert. The VM worker
+  passes no `--pool`, so it runs **prefork, where the limit fires**. Measured
+  22 Sep 2026 on this VM: a task was SIGKILLed at exactly 360s with
+  `TimeLimitExceeded(360)`.
+
+  The global was `NMAP_TIMEOUT + 60`, and that formula is a **unit error**.
+  `NMAP_TIMEOUT` is the lease on a *single* nmap invocation
+  (`core/nmap/wrapper.py` passes it as `lease_seconds`); a scan task spawns
+  many, and can wait up to `NMAP_PROCESS_WAIT_TIMEOUT` (900s) just to acquire
+  one slot. So the budget for a whole task sat below the queue wait for one of
+  its own subprocesses. Against this deployment's own history it would have
+  killed **11 of 48** completed scans, the longest 11,714s (3h15m); the
+  average completed scan was already 426s, and the longest credentialed scan
+  358s — two seconds under the cliff.
+
+  **The hard limit cannot settle a scan, and that is why the soft limit is the
+  load-bearing half.** A hard kill delivers `SystemExit`, which is a
+  `BaseException` and **not** caught by the `except Exception` handler every
+  scan task uses to call `_settle_failure` — so a scan killed by it is never
+  marked failed and sits `running` until the reaper. `SoftTimeLimitExceeded`
+  *is* an `Exception`, so the soft limit routes through the task's own error
+  handling and records an honest failure. Each scan task therefore declares
+  both, from `SCAN_TIME_LIMIT_*` in `config.py`, with the hard limit
+  `SCAN_TIME_LIMIT_HARD_MARGIN` (300s) behind the soft one as a backstop for a
+  task wedged in uninterruptible code — never as the working deadline.
+
+  **There is deliberately no global `task_time_limit` any more.** One value
+  covering every task has to be sized for the longest, at which point it bounds
+  nothing that matters, and the failure it produces is the silent kind above.
+  Phases chain as *separate* tasks (`run_host_discovery` → `run_asset_discovery`
+  → `run_vulnerability_audit` via `.delay()`), so each budget covers one phase,
+  not the pipeline — the 11,714s scan was wall-clock across three tasks.
+  **A new scan task must declare its own limits**; nothing inherits one now.
+
+  `ccure.tasks.reap_stalled_scans` remains the deployment's real scan timeout,
+  on beat every two minutes: `SCAN_STALL_TIMEOUT_MINUTES` (90) for a running
+  scan and `SCAN_QUEUE_TIMEOUT_MINUTES` (15) for one no worker ever collected —
+  two deadlines because "the scan hung" and "no scanner is running" send the
   operator to different places. It only ever moves a scan *out of* a
-  non-terminal state; a real outcome always wins.
+  non-terminal state; a real outcome always wins. It is still the only
+  mechanism that can settle a scan whose worker died or was restarted, which
+  no Celery limit of any kind can see.
 
 - **`run_asset_discovery_task` did not settle the scan at all.** Its `except`
   handler just returned. That is the same defect whose fix is documented in a
@@ -1033,6 +1128,44 @@ so "the operator chose 22" and "nobody said anything" are the same row.
   the stated port directly and probes the conventional alternates *only after a
   transport failure*. `FALLBACK_PORTS` is deliberately two entries per
   transport, not a port scan.
+
+- **The transport is discovered too, not only the port.**
+  `resolve_access` answers the question in front of "which port": *which
+  authentication service does this host actually offer*. Until it existed the
+  transport was whatever `compliance_credentials.transport` said, so a Windows
+  credential had to be created twice — once for WinRM, once for SMB — by an
+  operator who had to know in advance which the target would accept. WinRM is
+  off by default on Windows **client** editions and on by default on Server,
+  which is exactly the fact the scanner is better placed to establish than the
+  person filling in the form.
+
+  Four properties hold it together:
+
+  - **Discovery runs when no port was stated**, and that decision is made in
+    the router, not the worker — by the time the worker sees `port` it has
+    already fallen back to the stored credential's, which is NOT NULL and
+    defaults to 22, so it can no longer tell "the operator asked for 22" from
+    "nobody said anything". `discover_transport` overrides either way.
+  - **A stored credential's transport is a *preference*, not a pin.** The
+    column cannot express "I do not mind", so reading it as a decision would
+    override an operator who never made one; ignoring it would discard a
+    deliberate choice of SMB on a host where WinRM listens but is
+    misconfigured. `prefer=` puts it first and leaves the others behind it. An
+    explicitly *stated* transport is still never second-guessed.
+  - **Selection is by TCP reachability, never by attempting authentication** —
+    the same rule the port resolver already held, and for the same reason:
+    trying the credential against each candidate turns one failed logon into
+    several against an account the lockout control must not trip.
+  - **A stated port does not pin the transport.** 5985 states WinRM as clearly
+    as it states a port; 22 on a Windows credential is the model default and
+    states nothing. So a stated port is offered only to the transports it
+    conventionally belongs to.
+
+  The resolved mechanism is recorded on the report as `access` and named in the
+  UI, because "credentialed access succeeded" is not a useful answer on its
+  own — the operator needs to know *what* accepted the credential. Nothing
+  reachable is reported as such, naming every transport considered, rather than
+  falling through to an attempt that can only fail with a worse message.
 
 - **`use_tls` is carried, not re-derived.** `WinRMExecutor` infers TLS from
   `port == 5986` when it is not told, which is right for the conventional layout
@@ -1976,6 +2109,44 @@ declared unimplemented with reasons in `WINDOWS_NOT_IMPLEMENTED`.
     items.** Every userright rule here uses `at_least_one_exists`, and "must
     not be assigned" is expressed as `trustee_name equals ''`. Zero items makes
     those rules fail on hosts that satisfy them — 0 of 25 could pass.
+
+- **A test's `state_operator` is read, and ANDing alternatives is
+  unsatisfiable rather than merely strict.** OVAL lets a test reference several
+  states combined by `state_operator`, whose default is AND — but DISA writes
+  **OR** wherever a setting has more than one acceptable answer ("this right is
+  unassigned *or* held only by Administrators"). The attribute was not read at
+  all, so every multi-state test was ANDed, and where the states are
+  alternatives no item can satisfy them both: the rule could not pass on any
+  host in any configuration.
+
+  Measured, not inferred. The DISA Windows 11 V2R10 benchmark contains **43
+  `state_operator="OR"`** tests against 3 `AND`, and the loaded pack carried 44
+  multi-state rules. On a real Windows 11 Pro host those rules passed **2 of
+  42**, against 61 of 147 for the single-state rules; after the fix they pass
+  **26 of 42** and the single-state figures are untouched. That is **24 false
+  FAIL findings on one host**, all reported against a machine that complies.
+
+  `ONE` and `XOR` are refused at compile time rather than approximated —
+  `_STATE_OPERATORS` is the vocabulary and `UnsupportedConstruct` is the
+  refusal, for the usual reason: a wrong fold is indistinguishable from a right
+  one once it reaches the report. **A pack compiled before this was carried has
+  no `state_operator` key and defaults to AND, so it stays wrong until it is
+  re-loaded** — re-run `scripts/benchmarks/load_stig.py` against the original
+  datastream, with `--code` naming the existing framework or the loader creates
+  a second one beside it.
+
+- **A well-known SID Windows itself cannot translate still needs a name.**
+  Translation is done *on the target* so a non-English install resolves its own
+  group names, which a table could not — but `SecurityIdentifier.Translate`
+  throws for the virtual-account families. `S-1-5-83-0` (Hyper-V's
+  `NT VIRTUAL MACHINE\Virtual Machines`) holds `SeCreateSymbolicLinkPrivilege`
+  on a stock Windows 11, so `WN11-UR-000060` collected an item with a
+  `trustee_sid` and **no `trustee_name`**, could not be compared against a state
+  naming one, and reported **ERROR on a perfectly readable host**.
+  `_WELL_KNOWN_SIDS` fills only what the target left blank, so the on-target
+  answer always wins. A SID in neither is still left unnamed and still reads
+  UNKNOWN: substituting the SID string would compare a SID against a group name
+  and fail every rule it appears in.
 
 - **`record` is an OVAL datatype, and a missing column is UNKNOWN.**
   `wmi57_state` compares a WMI row against `<field name=…>` children.

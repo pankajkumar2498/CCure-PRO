@@ -32,6 +32,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
+import HostPosturePanel from "../components/assets/HostPosturePanel";
 import { useAuth } from "../context/AuthContext";
 import { canPermission } from "../auth/permissions";
 import {
@@ -1469,6 +1470,12 @@ export default function AssetDetail() {
                     />
                   </InfoGrid>
                 </CcureCard>
+
+                {/* What an authenticated scan established. Everything in it
+                    was already on the asset record and none of it reached the
+                    page — the hardening switches, the credentialed status and
+                    the collected inventories. */}
+                <HostPosturePanel customAttributes={asset.custom_attributes} />
 
                 {/* Panel: CCure AMT Reference */}
                 {(asset.custom_attributes?.amt_asset_tag ||

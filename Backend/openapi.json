@@ -752,6 +752,17 @@
             ],
             "title": "Credential Id"
           },
+          "discover_transport": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discover Transport"
+          },
           "ip": {
             "anyOf": [
               {
@@ -8927,17 +8938,6 @@
       "get": {
         "description": "Check NVD 2.0 sync progress, last sync timestamp, and the catalogue count.\n\n``database_total_cves`` is the application catalogue. The intelligence feed\nis reported separately as ``scanner_feed_total_cves`` /\n``scanner_feed_last_modified``; the two are different stores and neither\nnumber stands in for the other.",
         "operationId": "get_sync_status_api_v1_admin_nvd_sync_status_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ticket",
-            "required": false,
-            "schema": {
-              "title": "Ticket",
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -8946,16 +8946,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "security": [
@@ -8992,15 +8982,6 @@
               ],
               "description": "Historical lookback in days. Omit to run the normal incremental sync, which resumes from the stored checkpoint. Supply a value to backfill exactly that many days: the checkpoint is then ignored and never advanced, so a backfill cannot move the incremental frontier past anything it failed to retrieve.",
               "title": "Days Back"
-            }
-          },
-          {
-            "in": "query",
-            "name": "ticket",
-            "required": false,
-            "schema": {
-              "title": "Ticket",
-              "type": "string"
             }
           }
         ],

@@ -188,3 +188,8 @@
     align-items: flex-start;
   }
 }
+
+/* P3-2: neither passed nor failed — a control awaiting a person. */
+.cwg-stat__pending {
+  color: var(--ccure-warning-text);
+}

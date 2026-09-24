@@ -21,7 +21,10 @@ export const runCredentialedScan = ({
   username,
   password,
   keyPath,
-  port = 22,
+  // No default. `undefined` tells the API to discover which authentication
+  // service the host offers; defaulting to 22 here would pin every scan to
+  // SSH and silently turn that off.
+  port,
   authMethod = "password",
   sections = null,
   osType = "auto",

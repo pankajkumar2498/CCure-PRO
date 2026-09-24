@@ -10,6 +10,7 @@ import os
 import time
 from typing import Dict, List, Optional
 
+from config import AppConfig
 from core.celery_app import celery_app
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
@@ -31,7 +32,10 @@ from engines.credentialed.coverage import (
 from engines.credentialed.transport_resolver import (
     DEFAULT_PORT as DEFAULT_TRANSPORT_PORT,
 )
-from engines.credentialed.transport_resolver import resolve_endpoint
+from engines.credentialed.transport_resolver import (
+    resolve_access,
+    resolve_endpoint,
+)
 from orchestrator.scan_orchestrator import ScanOrchestrator
 from scan_helpers import (
     carry_scan_coverage,
@@ -1179,7 +1183,13 @@ def _sync_credentialed_vulnerabilities(
         db.execute(fnd_upsert)
 
 
-@celery_app.task(name="ccure.tasks.sync_asset_discovery_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_asset_discovery_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_asset_discovery_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1205,7 +1215,13 @@ def sync_asset_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.sync_vulnerability_audit_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_vulnerability_audit_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_vulnerability_audit_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1231,7 +1247,13 @@ def sync_vulnerability_audit_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.sync_host_discovery_task", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.sync_host_discovery_task",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def sync_host_discovery_task(
     scan_id: str, org_id: str, user_id: str | None, hosts: list[dict]
 ):
@@ -1257,7 +1279,14 @@ def sync_host_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_host_discovery", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_host_discovery",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_host_discovery_task(
     self,
     user_id: str,
@@ -1481,7 +1510,14 @@ def run_host_discovery_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_asset_discovery", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_asset_discovery",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_asset_discovery_task(
     self,
     user_id: str,
@@ -2334,7 +2370,14 @@ def _apply_credentialed_enrichment(
     }
 
 
-@celery_app.task(name="ccure.tasks.run_vulnerability_audit", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_vulnerability_audit",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_VULN_AUDIT,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_VULN_AUDIT
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_vulnerability_audit_task(
     self,
     user_id: str,
@@ -2578,7 +2621,14 @@ def _chain_topology_if_needed(
     return next_task.id
 
 
-@celery_app.task(name="ccure.tasks.run_topology_mapping", queue="scanner", bind=True)
+@celery_app.task(
+    name="ccure.tasks.run_topology_mapping",
+    queue="scanner",
+    bind=True,
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_TOPOLOGY,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_TOPOLOGY
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_topology_mapping_task(
     self,
     scan_id: str,
@@ -2738,7 +2788,13 @@ def run_topology_mapping_task(
         db.close()
 
 
-@celery_app.task(name="ccure.tasks.run_traditional_scan", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.run_traditional_scan",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_PORT_SCAN
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_traditional_scan_task(
     user_id: str,
     targets: list[str],
@@ -4299,7 +4355,7 @@ def _is_transport_failure(exc: Exception) -> bool:
 
 def _audit_host_over_transport(**kwargs):
     """
-    Audit one host, resolving the endpoint if the stated one does not answer.
+    Audit one host, resolving the endpoint — and where asked, the transport.
 
     The stated port is attempted directly, so a scan against a conventionally
     configured host costs exactly what it always did — no probe, one
@@ -4307,13 +4363,75 @@ def _audit_host_over_transport(**kwargs):
     and then selects by TCP reachability, so the second attempt is made against
     a port something is actually listening on.
 
-    **A rejected credential is never retried on another port.** That would turn
-    one failed logon into three against the same account, which is the lockout
-    this product documents as a control it must not trip.
+    **A rejected credential is never retried on another port or transport.**
+    That would turn one failed logon into three against the same account, which
+    is the lockout this product documents as a control it must not trip. Only a
+    transport failure — nothing answered — advances, which is what
+    ``_is_transport_failure`` decides.
+
+    ``discover_transport`` is the Nessus-shaped entry point: the caller supplies
+    a credential and no port, and the engine establishes which authentication
+    service the host actually offers. It is opt-in rather than the default for
+    a stored credential, because ``compliance_credentials.transport`` is NOT
+    NULL and an operator who deliberately chose SMB — on a host where WinRM is
+    listening but misconfigured — would otherwise have that choice silently
+    overridden by a probe that only knows which ports are open.
+
+    Either way the resolved mechanism is recorded in
+    ``kwargs["access"]["resolved"]`` for the caller to put in the scan record,
+    because "which service accepted this credential" is an answer the operator
+    needs and could not previously get.
     """
     ip = kwargs["ip"]
     transport = (kwargs.get("transport") or "ssh").strip().lower()
     stated_port = kwargs.get("port")
+    discover = bool(kwargs.pop("discover_transport", False))
+    record = kwargs.pop("access", None)
+
+    def _remember(resolution, how):
+        if record is None or resolution is None:
+            return
+        payload = resolution.as_dict()
+        payload["how"] = how
+        record["resolved"] = payload
+
+    if discover:
+        # Reachability only. No credential is presented here, so an unreachable
+        # host costs a connect timeout rather than a failed logon.
+        try:
+            access = resolve_access(
+                ip=ip,
+                credential_type=kwargs.get("credential_type") or "auto",
+                prefer=kwargs.get("stated_transport"),
+                stated_port=stated_port,
+                use_tls=(kwargs.get("credential_options") or {}).get("use_tls"),
+                open_ports=kwargs.get("open_ports"),
+                include_fallbacks=True,
+            )
+        except Exception:  # noqa: BLE001 — discovery must never be the error
+            log.debug("Transport discovery for %s failed", ip, exc_info=True)
+            access = None
+        if access is not None and access.resolved:
+            transport = access.transport
+            kwargs["transport"] = transport
+            kwargs["port"] = access.endpoint.port
+            if access.endpoint.use_tls is not None:
+                options = dict(kwargs.get("credential_options") or {})
+                options["use_tls"] = access.endpoint.use_tls
+                kwargs["credential_options"] = options
+            stated_port = kwargs["port"]
+            _remember(access, "discovered")
+            log.info("Credentialed scan: %s — %s", ip, access.describe())
+        elif access is not None:
+            # Nothing was listening for any transport this build supports. Say
+            # so rather than falling through to an attempt that can only fail
+            # with a less useful message.
+            _remember(access, "unresolved")
+            raise ConnectionError(access.reason)
+
+    kwargs.pop("credential_type", None)
+    kwargs.pop("stated_transport", None)
+    kwargs.pop("open_ports", None)
 
     try:
         return audit_credentialed_host(**kwargs)
@@ -4358,7 +4476,13 @@ def _audit_host_over_transport(**kwargs):
         return audit_credentialed_host(**retry)
 
 
-@celery_app.task(name="ccure.tasks.run_credentialed_scan", queue="scanner")
+@celery_app.task(
+    name="ccure.tasks.run_credentialed_scan",
+    queue="scanner",
+    soft_time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED,
+    time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED
+    + AppConfig.SCAN_TIME_LIMIT_HARD_MARGIN,
+)
 def run_credentialed_scan_task(
     user_id: str,
     ip: str | None = None,
@@ -4372,6 +4496,7 @@ def run_credentialed_scan_task(
     scan_id: str | None = None,
     credential_id: str | None = None,
     targets: list[str] | None = None,
+    discover_transport: bool | None = None,
 ):
     """
     Credentialed Scan Task — authenticated audit of one or more hosts.
@@ -4482,6 +4607,26 @@ def run_credentialed_scan_task(
             # instance as unreachable.
             credential_type = material.get("credential_type") or CREDENTIAL_TYPE_SSH
 
+        # Which authentication service to use is the engine's job unless the
+        # caller pinned a port. `None` means "decide": discovery runs exactly
+        # when no port was stated, which is what the UI now sends by default.
+        #
+        # The credential's own transport becomes a *preference*, not a pin --
+        # `compliance_credentials.transport` is NOT NULL, so it cannot express
+        # "I do not mind", and reading it as a decision would override an
+        # operator who never made one. See resolve_access.
+        stated_transport = transport
+        # `None` means "no opinion", and the task's answer to that is **no
+        # discovery** -- deliberately, because this task is also reached from
+        # the schedule dispatcher and the main pipeline, and turning a TCP
+        # probe on for every one of their callers is not a change this feature
+        # asked for. The HTTP route decides the question there, where "the
+        # operator stated no port" is still knowable; by the time it reaches
+        # here `port` has already fallen back to the stored credential's.
+        discover_transport = bool(discover_transport) and (
+            credential_type != CREDENTIAL_TYPE_DATABASE
+        )
+
         reports: list[dict] = []
         collected: list[tuple[dict, dict, str]] = []
         failed_hosts: list[dict] = []
@@ -4516,6 +4661,13 @@ def run_credentialed_scan_task(
                         policy=policy,
                     )
                 else:
+                    # Where the caller stated no port, the engine establishes
+                    # which authentication service the host actually offers
+                    # rather than making the operator know. `access_record` is
+                    # filled in by the resolver and reported below, because
+                    # "credentialed access succeeded" is not a useful answer on
+                    # its own -- the operator needs to know *what* accepted it.
+                    access_record: dict = {}
                     stored_report, system_data, os_type = _audit_host_over_transport(
                         config_checks=benchmark_checks,
                         policy=policy,
@@ -4534,7 +4686,13 @@ def run_credentialed_scan_task(
                         auth_method=auth_method,
                         domain=domain,
                         credential_options=credential_options,
+                        discover_transport=discover_transport,
+                        credential_type=credential_type,
+                        stated_transport=stated_transport,
+                        access=access_record,
                     )
+                    if access_record.get("resolved"):
+                        stored_report["access"] = access_record["resolved"]
                 # A single embedded NUL in any collected string (a UTF-16LE
                 # registry or version-resource value) makes the final
                 # `scans.options` commit unstorable and loses every finding.

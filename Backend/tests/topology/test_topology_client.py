@@ -1,9 +1,3 @@
-import os
-
-os.environ["DATABASE_URL"] = (
-    "postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_test"
-)
-
 from unittest.mock import MagicMock, patch
 
 from core.topology.client import (

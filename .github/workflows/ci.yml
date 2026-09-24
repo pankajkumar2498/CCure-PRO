@@ -56,7 +56,12 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        # The major version must match docker-compose.yml's `db` service.
+        # CI stayed on 15 after production moved to 18 (17 Sep 2026), so
+        # migrations, constraints and query plans were being proven on a
+        # server nobody deploys. Change the two together;
+        # tests/repo/test_ci_postgres_version.py fails if they diverge.
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: ccure_test
           POSTGRES_USER: ccure_user

@@ -61,8 +61,21 @@ def test_token_is_a_valid_dns_label_and_leaks_nothing():
         param="id",
         payload_kind="oob-url",
     )
-    # valid DNS label: lowercase hex, short
-    assert tok.isalnum() and tok.islower() and len(tok) <= 63
+    # valid DNS label: lowercase hex, short.
+    #
+    # `tok.islower()` is not that assertion, and it made this test fail about
+    # one full-suite run in seventeen. The token is random lowercase hex, so it
+    # is sometimes all digits — `2222940001` — and `str.islower()` is False for
+    # a string with no cased characters at all. Measured over 200,000 mints:
+    # 12,130 (6.07%) carry no letter, and every one of them failed here.
+    #
+    # What a DNS label actually has to satisfy is "carries no uppercase", which
+    # is what the comparison says and which an all-digit token passes. It still
+    # rejects an uppercase label, so nothing is weakened.
+    #
+    # This is the second flake in this test; the loop below carries the note on
+    # the first, which was a different cause.
+    assert tok.isalnum() and tok == tok.lower() and len(tok) <= 63
     dom = s.domain_for(tok)
     url = s.http_url_for(tok)
     # nothing about the scan/target is derivable from the callback address.

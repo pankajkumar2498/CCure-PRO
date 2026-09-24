@@ -278,7 +278,11 @@ class SSHScanner:
             )
 
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # ACCEPTED RISK, pending a decision — docs/ci/SECURITY_GATES.md
+        # "Accepted risks". No host key is known for a customer host before
+        # the first scan, so any key is accepted; an interceptor answering as
+        # the target receives the password credential.
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
 
         connect_kwargs = {
             "hostname": self.ip,

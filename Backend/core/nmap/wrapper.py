@@ -418,7 +418,9 @@ class NmapScanner:
         """
         # Create hash of port list for compact key
         port_str = ",".join(sorted(str(p) for p in ports)) if ports else "all"
-        port_hash = hashlib.md5(port_str.encode()).hexdigest()[:8]
+        port_hash = hashlib.md5(port_str.encode(), usedforsecurity=False).hexdigest()[
+            :8
+        ]
         return f"nmap_cache:{target}:{port_hash}:{mode}"
 
     def _get_cache(self, key: str) -> NmapScanResult | None:

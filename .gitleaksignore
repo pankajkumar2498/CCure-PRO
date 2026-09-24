@@ -1,0 +1,40 @@
+# Findings gitleaks reports in this repository's history that have been
+# reviewed and accepted. One fingerprint per line: commit:file:rule:line.
+#
+# A fingerprint names one finding in one commit, so nothing here can hide a
+# secret committed later — a new commit produces a new fingerprint. Add an
+# entry only after the value has been classified; never to make CI pass.
+# Classification and procedure: docs/ci/SECURITY_GATES.md#secret-scanning
+#
+# ── Credentials committed in .env.example files (removed in e5c2dfe, 12 Aug 2026)
+# They stay in history for good; removing a committed secret means rotating it,
+# not editing the file. Verified 24 Sep 2026 without printing any value: none
+# of the six is a value in the VM's current .env or Backend/.env.
+#
+# POSTGRES_PASSWORD (both files) is the development default that CI, conftest
+# and the README still name, and it is refused by the VM's database over the
+# network. It is NOT established that the Windows deployment or anyone's
+# workstation stopped using it — see "Open actions" in SECURITY_GATES.md.
+#
+# SMTP_PASSWORD was a Gmail app password. Rotation can only be confirmed in
+# that Google account; nothing in this repository can prove it.
+
+3d0bfb0bc1ee1fa3b343c5dd1109eb8323f5d5d9:.env.example:env-example-real-secret:3
+3d0bfb0bc1ee1fa3b343c5dd1109eb8323f5d5d9:.env.example:env-example-real-secret:24
+3d0bfb0bc1ee1fa3b343c5dd1109eb8323f5d5d9:.env.example:env-example-real-secret:47
+f4391c12ba852e127eb7f281887ac5f7a0fdae35:Backend/.env.example:env-example-real-secret:15
+f4391c12ba852e127eb7f281887ac5f7a0fdae35:Backend/.env.example:env-example-real-secret:26
+f4391c12ba852e127eb7f281887ac5f7a0fdae35:Backend/.env.example:env-example-real-secret:36
+
+# ── Fabricated credential in a redaction test (false positive, history only)
+# CredentialedResults.test.jsx and the batch-23 doc that tabulates it fed a
+# fabricated AWS_SECRET_ACCESS_KEY through the evidence-redaction component to
+# prove it is masked. Every fake value in that test carries the `hx-` prefix.
+# 09cdd9f replaced it with `placeholder` in both files the same
+# day, so these three fingerprints cannot match again. (The same fake value
+# still sits in Frontend/scripts/ux4g-harness/lib/fixtures.mjs, in a shape no
+# rule flags.)
+
+7166941c19106a3bff3a62cfdc6253e31fb2fb39:docs/ux4g/03c-batch23-credentialed-results.md:generic-api-key:284
+7166941c19106a3bff3a62cfdc6253e31fb2fb39:Frontend/src/__tests__/pages/scan/CredentialedResults.test.jsx:generic-api-key:201
+7166941c19106a3bff3a62cfdc6253e31fb2fb39:Frontend/src/__tests__/pages/scan/CredentialedResults.test.jsx:generic-api-key:1559

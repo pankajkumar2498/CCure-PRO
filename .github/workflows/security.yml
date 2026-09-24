@@ -1,0 +1,231 @@
+name: Security
+
+# Policy, severity thresholds and the triage procedure for everything below:
+# docs/ci/SECURITY_GATES.md. Bandit and ruff stay in ci.yml, where they were.
+#
+# Same trigger shape as ci.yml, for the same reason: push is filtered to master
+# so a PR branch does not run everything twice. The schedule is the part ci.yml
+# does not have. Advisory databases change while the code does not, so a
+# dependency that was clean at merge can be vulnerable a week later with no
+# commit to trigger anything. The nightly run is what notices.
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '30 20 * * *'   # 02:00 IST
+  workflow_dispatch:
+
+# Every job here only reads the repository. No job references a secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
+
+jobs:
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # gitleaks v8.30.1, the version .pre-commit-config.yaml pins, by digest
+      # so a re-pointed tag cannot change what runs. Bump the two together.
+      GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit range below needs the history, not a single commit.
+          fetch-depth: 0
+
+      # This duplicates the pre-commit hook on purpose. That hook runs only on
+      # machines where someone installed pre-commit, and `git commit
+      # --no-verify` skips it; this is the check nothing can skip.
+      #
+      # A PR scans its own commits, a push to master the pushed range, and the
+      # nightly run the whole history. --redact keeps values out of the log:
+      # the file, line, rule and commit are printed, the secret is not.
+      - name: Scan commits for secrets
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          range=""
+          case "$EVENT" in
+            pull_request) range="$PR_BASE..$PR_HEAD" ;;
+            push)
+              # A new branch, or a force push whose old tip is gone, has no
+              # usable "before"; fall back to the full history, not to nothing.
+              if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] \
+                 && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+                range="$PUSH_BEFORE..$PUSH_AFTER"
+              fi ;;
+          esac
+          args=()
+          if [ -n "$range" ]; then
+            args+=(--log-opts="$range")
+            echo "Scanning commits $range"
+          else
+            echo "Scanning the full history"
+          fi
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/repo:ro" "$GITLEAKS_IMAGE" \
+            git /repo "${args[@]}" \
+            --config /repo/.gitleaks.toml \
+            --gitleaks-ignore-path /repo/.gitleaksignore \
+            --redact --no-banner --no-color --verbose
+
+  python-dependencies:
+    name: Python Dependency Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: Backend/requirements.txt
+
+      # requirements.txt pins some packages exactly and gives others a range,
+      # and there is no lock file, so what gets installed depends on the day.
+      # Auditing the file's text would miss everything a range resolves to.
+      # This installs it the way ci.yml and the Dockerfile do and audits the
+      # exact set that came out, transitive packages included.
+      - name: Resolve the runtime dependency set
+        run: |
+          python -m venv "$RUNNER_TEMP/app"
+          "$RUNNER_TEMP/app/bin/pip" install --quiet -r Backend/requirements.txt
+          "$RUNNER_TEMP/app/bin/pip" freeze --exclude-editable > "$RUNNER_TEMP/resolved.txt"
+          echo "Resolved $(wc -l < "$RUNNER_TEMP/resolved.txt") packages."
+
+      # In its own environment so its dependencies are not audited as ours.
+      - name: Install pip-audit
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install --quiet "pip-audit==2.10.1"
+
+      # The accepted list below keeps the gate usable; it must not also make
+      # the backlog invisible. The nightly run therefore audits without it and
+      # writes every open advisory to the job summary. It never fails.
+      - name: Report the full backlog (nightly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          set +e
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r "$RUNNER_TEMP/resolved.txt" \
+            --no-deps --disable-pip --progress-spinner off > "$RUNNER_TEMP/backlog.txt" 2>&1
+          set -e
+          cat "$RUNNER_TEMP/backlog.txt"
+          {
+            echo "### Python advisories, accepted backlog included"
+            echo '```'
+            cat "$RUNNER_TEMP/backlog.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Blocks on any advisory not in the accepted backlog: a new dependency, a
+      # version change, or a new advisory against something already installed.
+      # PyPI advisories mostly carry no severity, so there is no threshold to
+      # apply; every new one is triaged. Procedure in SECURITY_GATES.md.
+      - name: Fail on advisories outside the accepted backlog
+        run: |
+          args=()
+          while read -r id _; do
+            case "$id" in ''|\#*) continue ;; esac
+            args+=(--ignore-vuln "$id")
+          done < .github/security/pip-audit-accepted.txt
+          echo "Accepted backlog: ${#args[@]} arguments ($(( ${#args[@]} / 2 )) advisories)."
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r "$RUNNER_TEMP/resolved.txt" \
+            --no-deps --disable-pip --progress-spinner off "${args[@]}"
+
+  npm-dependencies:
+    name: npm Dependency Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      # Moved here from ci.yml, where it read
+      #   npm audit --audit-level=high || echo "..."
+      # and so could never fail. The split below is the policy it was meant to
+      # have. --package-lock-only audits the committed lock file without an
+      # install, which is what makes this job take seconds.
+      #
+      # Reported first, so it still runs when the gate below fails.
+      - name: Report every advisory, dev dependencies included
+        working-directory: Frontend
+        run: |
+          set +e
+          npm audit --package-lock-only > "$RUNNER_TEMP/npm-audit.txt"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/npm-audit.txt"
+          {
+            echo "### npm audit, all dependencies"
+            echo '```'
+            tail -n 60 "$RUNNER_TEMP/npm-audit.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=npm advisories below the gate::Reported in the job summary. Only high or critical advisories in runtime dependencies fail the build."
+          fi
+
+      # Runtime dependencies are the ones bundled into the JavaScript the
+      # browser runs. Dev dependencies (vite, eslint, vitest) run on the build
+      # machine against our own sources, so they are reported, not gated.
+      - name: Fail on high or critical advisories in runtime dependencies
+        working-directory: Frontend
+        run: npm audit --package-lock-only --omit=dev --audit-level=high
+
+  bandit-report:
+    name: Bandit Medium-Severity Report
+    # Nightly and on demand only; ci.yml's Bandit step is the PR gate.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      # The gate in ci.yml is high severity only. Medium findings (mostly
+      # SQL built from strings, and binds to 0.0.0.0) are too numerous to gate
+      # on today and too important to never look at. This counts them by
+      # rule so a change in the numbers is visible. It never fails.
+      - name: Count medium-and-above findings by rule
+        run: |
+          pip install --quiet "bandit==1.9.4"
+          set +e
+          bandit -q -r Backend/ -x Backend/tests -ll \
+            --format custom --msg-template "{test_id} {severity} {relpath}:{line} {msg}" \
+            > "$RUNNER_TEMP/bandit.txt"
+          set -e
+          cat "$RUNNER_TEMP/bandit.txt"
+          {
+            echo "### Bandit, medium severity and above (report only)"
+            echo '```'
+            awk '{print $1, $2}' "$RUNNER_TEMP/bandit.txt" | sort | uniq -c | sort -rn
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

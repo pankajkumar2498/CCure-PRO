@@ -476,7 +476,7 @@ def group_changelog_by_scan(
         )
 
         # Stable group ID
-        group_id = hashlib.md5(key.encode()).hexdigest()[:12]
+        group_id = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()[:12]
 
         groups.append(
             {

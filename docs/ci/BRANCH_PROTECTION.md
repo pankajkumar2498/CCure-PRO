@@ -54,26 +54,26 @@ fields, but pick one or the other, not both.
   nothing is enforced.
 - **Target branches:** _Include default branch_ (`master`)
 
-| Rule                                                  | Now (one developer)                         | With a team                       | Why                                                                                                              |
-| ----------------------------------------------------- | ------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Restrict deletions                                    | On                                          | On                                | `master` must not be deletable by accident.                                                                      |
-| Block force pushes                                    | On                                          | On                                | A force push rewrites the history the deploy record and every review point at.                                   |
-| Require a pull request before merging                 | On                                          | On                                | Every change to `master` passes the PR gate. No direct pushes.                                                   |
-| ↳ Required approvals                                  | **0**                                       | **1**                             | GitHub does not let an author approve their own PR. At 1, a single developer can never merge.                    |
-| ↳ Dismiss stale approvals when new commits are pushed | On                                          | On                                | An approval covers the code that was reviewed, not what was pushed afterwards.                                   |
-| ↳ Require approval of the most recent reviewable push | Off                                         | On                                | Stops a reviewer's approval carrying over to a commit they didn't see. Only meaningful once there are reviewers. |
-| ↳ Require conversation resolution before merging      | On                                          | On                                | Unresolved review comments block the merge rather than being lost.                                               |
-| Require status checks to pass                         | On                                          | On                                | This is what makes the PR run a gate.                                                                            |
-| ↳ Require branches to be up to date before merging    | On                                          | On, or replace with a merge queue | Makes the PR run test the current `master`, not the `master` from when the branch was cut.                       |
-| ↳ Required checks                                     | `Backend Validation`, `Frontend Validation` | same                              | See below. These are the jobs' `name:` fields.                                                                   |
-| Require linear history                                | Off                                         | Team decision                     | PRs here have always merged with merge commits. Turning this on removes that button.                             |
-| Require signed commits                                | Off                                         | Optional                          | Only useful once every contributor has signing configured.                                                       |
+| Rule                                                  | Now (one developer)                                                                                           | With a team                       | Why                                                                                                                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Restrict deletions                                    | On                                                                                                            | On                                | `master` must not be deletable by accident.                                                                                                                          |
+| Block force pushes                                    | On                                                                                                            | On                                | A force push rewrites the history the deploy record and every review point at.                                                                                       |
+| Require a pull request before merging                 | On                                                                                                            | On                                | Every change to `master` passes the PR gate. No direct pushes.                                                                                                       |
+| ↳ Required approvals                                  | **0**                                                                                                         | **1**                             | GitHub does not let an author approve their own PR. At 1, a single developer can never merge.                                                                        |
+| ↳ Dismiss stale approvals when new commits are pushed | On                                                                                                            | On                                | An approval covers the code that was reviewed, not what was pushed afterwards.                                                                                       |
+| ↳ Require approval of the most recent reviewable push | Off                                                                                                           | On                                | Stops a reviewer's approval carrying over to a commit they didn't see. Only meaningful once there are reviewers.                                                     |
+| ↳ Require conversation resolution before merging      | On                                                                                                            | On                                | Unresolved review comments block the merge rather than being lost.                                                                                                   |
+| Require status checks to pass                         | On                                                                                                            | On                                | This is what makes the PR run a gate.                                                                                                                                |
+| ↳ Require branches to be up to date before merging    | On                                                                                                            | On, or replace with a merge queue | Makes the PR run test the current `master`, not the `master` from when the branch was cut.                                                                           |
+| ↳ Required checks                                     | `Backend Validation`, `Frontend Validation`, `Secret Scan`, `Python Dependency Audit`, `npm Dependency Audit` | same                              | See below. These are the jobs' `name:` fields in `ci.yml` and `security.yml`. `Bandit Medium-Severity Report` runs only at night and is not a gate, so leave it out. |
+| Require linear history                                | Off                                                                                                           | Team decision                     | PRs here have always merged with merge commits. Turning this on removes that button.                                                                                 |
+| Require signed commits                                | Off                                                                                                           | Optional                          | Only useful once every contributor has signing configured.                                                                                                           |
 
 ## Two ways this fails
 
 **1. Renaming a CI job blocks every PR.** A required check is matched by the
-job's `name:` in `ci.yml` (`Backend Validation`, `Frontend Validation`), not by
-its key. Rename a job and GitHub keeps waiting for a check with the old name
+job's `name:` (`Backend Validation`, `Secret Scan`, …), not by its key or by
+the workflow it lives in. Rename a job and GitHub keeps waiting for a check with the old name
 that will never report again. Every PR shows _"Expected — Waiting for status to
 be reported"_ and cannot merge. Change the ruleset in the same change as the
 rename.
@@ -111,7 +111,10 @@ gh api -X POST repos/pankajkumar2498/CCure-Audit-PRO/rulesets --input - <<'JSON'
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           { "context": "Backend Validation" },
-          { "context": "Frontend Validation" } ] } }
+          { "context": "Frontend Validation" },
+          { "context": "Secret Scan" },
+          { "context": "Python Dependency Audit" },
+          { "context": "npm Dependency Audit" } ] } }
   ]
 }
 JSON
@@ -134,9 +137,9 @@ A settings page that accepted the rules proves nothing (see
    This must be rejected with a message naming the ruleset. If it succeeds,
    nothing is enforced. Undo the scratch commit locally.
 
-2. **The PR is gated.** Open a PR. The merge box must list `Backend Validation`
-   and `Frontend Validation` as **Required**, and the merge button must stay
-   disabled until both pass.
+2. **The PR is gated.** Open a PR. The merge box must list all five required
+   checks as **Required**, and the merge button must stay disabled until every
+   one passes.
 
 3. **Stale branches are caught.** Merge something else into `master`, then look
    at the first PR. It must show _"This branch is out-of-date"_ and need an

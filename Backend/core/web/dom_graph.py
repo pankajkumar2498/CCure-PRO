@@ -53,7 +53,12 @@ def state_signature(url: str, fingerprint: str) -> str:
     state is identified by *what it shows*, not only where it is."""
     base = normalize_url(url)
     raw = f"{base}\n{fingerprint or ''}"
-    return "st_" + hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:16]
+    return (
+        "st_"
+        + hashlib.sha1(
+            raw.encode("utf-8", "replace"), usedforsecurity=False
+        ).hexdigest()[:16]
+    )
 
 
 class DomStateGraph:
@@ -190,4 +195,6 @@ def fingerprint_from_probe(probe: Optional[Dict[str, Any]]) -> str:
     sk_part = ",".join(f"{k}:{sk[k]}" for k in sorted(sk))
     heads = "|".join(probe.get("headings") or [])
     raw = f"{probe.get('route', '')}#{heads}#{sk_part}"
-    return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:16]
+    return hashlib.sha1(
+        raw.encode("utf-8", "replace"), usedforsecurity=False
+    ).hexdigest()[:16]

@@ -1232,7 +1232,9 @@ def get_topology_graph(
     seen_edge_ids: set[str] = set()
 
     def _edge_id(a: str, b: str) -> str:
-        return hashlib.md5(f"edge:{a}:{b}".encode("utf-8")).hexdigest()
+        return hashlib.md5(
+            f"edge:{a}:{b}".encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
 
     for link, src_key, tgt_key in resolved:
         src_node = nodes[src_key]

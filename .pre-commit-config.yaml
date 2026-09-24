@@ -46,11 +46,15 @@ repos:
         files: ^Backend/
 
   # Python Static Security Analysis (Bandit)
+  #
+  # Same version and selection as CI's gate: high severity, no --skip.
+  # Deliberate exceptions are `# nosec BXXX` on the line, never a rule
+  # switched off here. docs/ci/SECURITY_GATES.md says when one is acceptable.
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.9
+    rev: 1.9.4
     hooks:
       - id: bandit
-        args: [ "-lll", "-x", "tests", "--skip", "B324,B501,B507" ]
+        args: [ "-lll", "-x", "tests" ]
         files: ^Backend/
 
   # Frontend Formatting (Prettier)

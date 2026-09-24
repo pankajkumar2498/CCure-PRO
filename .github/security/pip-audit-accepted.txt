@@ -1,0 +1,96 @@
+# pip-audit advisories accepted as the pre-existing backlog.
+#
+# Recorded 24 Sep 2026 when the dependency gate was introduced: 48 advisories
+# in 11 packages (pip-audit prints 93; it lists each one twice), resolved from Backend/requirements.txt on Python 3.12.
+# Listing an advisory here does NOT mean it is safe. It means it was known on
+# that date, so the gate can block on anything NEW without staying red until
+# the whole backlog is paid down. The nightly run audits WITHOUT this list, so
+# the backlog stays visible in the job summary instead of disappearing.
+#
+# Remove a block when the package is upgraded past its fixes. Never add an ID
+# to make a PR pass without recording why. Procedure and policy:
+# docs/ci/SECURITY_GATES.md#python-dependencies
+#
+# Format: one advisory ID per line; everything after '#' is ignored.
+
+# ── pillow 10.3.0 — 17 advisories; highest fix 12.3.0
+# Pinned in requirements.txt; no module imports it directly. reportlab uses it for
+# images in PDF reports. The fixes need 10.3.0 -> 12.x, a major upgrade.
+PYSEC-2026-165         # CVE-2026-42308   fixed in 12.2.0
+PYSEC-2026-2249        # CVE-2026-25990   fixed in 12.1.1
+PYSEC-2026-2250        # CVE-2026-40192   fixed in 12.2.0
+PYSEC-2026-2252        # CVE-2026-42311   fixed in 12.2.0
+PYSEC-2026-2253        # CVE-2026-54059   fixed in 12.3.0
+PYSEC-2026-2254        # CVE-2026-54060   fixed in 12.3.0
+PYSEC-2026-2255        # CVE-2026-55379   fixed in 12.3.0
+PYSEC-2026-2256        # CVE-2026-55380   fixed in 12.3.0
+PYSEC-2026-2257        # CVE-2026-55798   fixed in 12.3.0
+PYSEC-2026-2874        # CVE-2026-42310   fixed in 12.2.0
+PYSEC-2026-3451        # CVE-2026-59199   fixed in 12.3.0
+PYSEC-2026-3453        # CVE-2026-59205   fixed in 12.3.0
+PYSEC-2026-3454        # CVE-2026-59197   fixed in 12.3.0
+PYSEC-2026-3493        # CVE-2026-54058   fixed in 12.3.0
+PYSEC-2026-3494        # CVE-2026-59198   fixed in 12.3.0
+PYSEC-2026-3495        # CVE-2026-59200   fixed in 12.3.0
+PYSEC-2026-3496        # CVE-2026-59204   fixed in 12.3.0
+
+# ── python-multipart 0.0.9 — 7 advisories; highest fix 0.0.31
+# Multipart parsing for the two upload endpoints (evidence, AMT import). Pinned 0.0.9.
+PYSEC-2026-1851        # CVE-2024-53981   fixed in 0.0.18
+PYSEC-2026-1852        # CVE-2026-24486   fixed in 0.0.22
+PYSEC-2026-3036        # CVE-2026-53539   fixed in 0.0.30
+PYSEC-2026-3037        # CVE-2026-53538   fixed in 0.0.30
+PYSEC-2026-3038        # CVE-2026-40347   fixed in 0.0.26
+PYSEC-2026-3039        # CVE-2026-42561   fixed in 0.0.27
+PYSEC-2026-3040        # CVE-2026-53540   fixed in 0.0.31
+
+# ── starlette 0.37.2 — 7 advisories; highest fix 1.3.1
+# Pulled in by FastAPI; upgrading it means upgrading FastAPI.
+PYSEC-2026-161         # CVE-2026-48710   fixed in 1.0.1
+PYSEC-2026-1941        # CVE-2025-54121   fixed in 0.47.2
+PYSEC-2026-1943        # CVE-2024-47874   fixed in 0.40.0
+PYSEC-2026-2280        # CVE-2026-48817   fixed in 1.1.0
+PYSEC-2026-2281        # CVE-2026-48818   fixed in 1.1.0
+PYSEC-2026-248         # CVE-2026-54282   fixed in 1.3.0
+PYSEC-2026-249         # CVE-2026-54283   fixed in 1.3.1
+
+# ── pyasn1 0.5.1 — 4 advisories; highest fix 0.6.4
+# Held below 0.6 on purpose for pysnmp-lextudio (see requirements.txt); fixes are in 0.6.x.
+PYSEC-2026-2263        # CVE-2026-30922   fixed in 0.6.3
+PYSEC-2026-3455        # CVE-2026-59884   fixed in 0.6.4
+PYSEC-2026-3456        # CVE-2026-59885   fixed in 0.6.4
+PYSEC-2026-3457        # CVE-2026-59886   fixed in 0.6.4
+
+# ── cryptography 46.0.7 — 4 advisories; highest fix 50.0.0
+# Held <48 by an explicit bound in requirements.txt (sslyze); fixes are later majors.
+GHSA-537c-gmf6-5ccf    # -                fixed in 48.0.1
+PYSEC-2026-3552        # CVE-2026-69247   fixed in 50.0.0
+PYSEC-2026-3553        # CVE-2026-69249   fixed in 49.0.0
+PYSEC-2026-3554        # CVE-2026-69248   fixed in 49.0.0
+
+# ── python-jose 3.3.0 — 3 advisories; highest fix 3.4.0
+# JWT library for authentication. One advisory has no fix in any release.
+PYSEC-2024-232         # CVE-2024-33663   fixed in 3.4.0
+PYSEC-2024-233         # CVE-2024-33664   fixed in 3.4.0
+PYSEC-2025-185         # CVE-2024-29370   no fix published
+
+# ── urllib3 2.6.3 — 2 advisories; highest fix 2.7.0
+# HTTP client; pinned 2.6.3.
+PYSEC-2026-141         # CVE-2026-44431   fixed in 2.7.0
+PYSEC-2026-142         # CVE-2026-44432   fixed in 2.7.0
+
+# ── ecdsa 0.19.2 — 1 advisories; highest fix none published
+# Transitive (python-jose). No fixed release exists.
+PYSEC-2026-1325        # CVE-2024-23342   no fix published
+
+# ── paramiko 4.0.0 — 1 advisories; highest fix none published
+# SSH transport for credentialed scanning. No fixed release exists.
+PYSEC-2026-2858        # CVE-2026-44405   no fix published
+
+# ── pytest 7.4.4 — 1 advisories; highest fix 9.0.3
+# Test runner, but installed from requirements.txt, so it ships in the runtime image.
+PYSEC-2026-1845        # CVE-2025-71176   fixed in 9.0.3
+
+# ── python-dotenv 1.0.0 — 1 advisories; highest fix 1.2.2
+# Loads .env files at startup.
+PYSEC-2026-2270        # CVE-2026-28684   fixed in 1.2.2

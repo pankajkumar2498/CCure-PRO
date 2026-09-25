@@ -1,8 +1,15 @@
 """
-core/config_audit/compliance_sync.py
+core/compliance_sync.py
 ─────────────────────────────────────────────────────────────────────────────
 The link Phase 3 built and did not connect: a configuration verdict becoming a
 compliance finding.
+
+Moved here from ``core/config_audit/`` (Phase 3 of the modular-platform
+programme). It writes ``compliance_findings`` through ``core.compliance_tasks``,
+which made the configuration-audit engine depend on the database and on the
+compliance module. The engine produces verdicts; this is the compliance
+side's adapter that persists them, beside ``core/compliance_evidence.py``.
+The logger name is unchanged.
 
     ConfigAuditEngine result ──> compliance_findings row on every control the
                                  rule covers, in every framework the tenant has

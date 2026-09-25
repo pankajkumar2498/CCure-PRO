@@ -533,7 +533,7 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
                 # These are Phase 3 rules — a registry value, a file mode, a
                 # service state — and they are evaluated by the configuration
                 # audit engine against a *live host* during a credentialed
-                # scan, then written by `core.config_audit.compliance_sync`.
+                # scan, then written by `core.compliance_sync`.
                 #
                 # This loop would find no `key` in the check definition, read
                 # that as missing evidence, and write `manual_review` **over

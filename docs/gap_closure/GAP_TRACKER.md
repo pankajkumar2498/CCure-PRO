@@ -908,7 +908,7 @@ genuinely blocked are named rather than approximated.
 | `core/benchmarks/pack.py`                    | The content format and the parser that refuses to guess            |
 | `core/benchmarks/loader.py`                  | Writing a pack into the compliance catalogue, idempotently         |
 | `core/benchmarks/selection.py`               | Which benchmark checks apply to a scan, resolved from the database |
-| `core/config_audit/compliance_sync.py`       | Verdict → `compliance_findings` — the link Phase 3 left open       |
+| `core/compliance_sync.py`                    | Verdict → `compliance_findings` — the link Phase 3 left open       |
 | `scripts/benchmarks/load_benchmark.py`       | The loader CLI, with `--dry-run`                                   |
 | `scripts/benchmarks/build_baseline_packs.py` | Generates the shipped packs from the built-in rules                |
 | `data/benchmarks/README.md`                  | The format, field by field, for converting a licensed CIS export   |

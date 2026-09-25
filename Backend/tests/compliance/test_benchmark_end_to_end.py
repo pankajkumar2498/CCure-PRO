@@ -29,7 +29,7 @@ from core.benchmarks.selection import benchmark_checks_for_org
 from core.checks.contract import CheckOutcome
 from core.compliance_seeds import seed_path
 from core.config_audit import CollectionContext, ConfigAuditEngine
-from core.config_audit.compliance_sync import sync_config_audit_findings
+from core.compliance_sync import sync_config_audit_findings
 from core.config_audit.findings import findings_from_results
 from db.models.assets import Asset
 from db.models.compliance import (

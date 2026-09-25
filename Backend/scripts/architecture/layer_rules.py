@@ -202,17 +202,11 @@ def violations(edges: list[Edge]) -> list[tuple[str, Edge]]:
     return found
 
 
-#: (rule, importer, imported) — every violation present on 25 Sep 2026.
-#: Delete entries as refactoring removes them. Do not add to this set.
-KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
-    {
-        (
-            "engines-are-libraries",
-            "core.config_audit.compliance_sync",
-            "db.models.compliance",
-        ),
-    }
-)
+#: (rule, importer, imported) — the violations still allowed to exist.
+#: Phase 2 recorded twelve on 25 Sep 2026; Phase 3 removed all of them, so the
+#: set is empty and every rule above now holds without exception. Do not add to
+#: it: a new entry needs an explicit reason in review.
+KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset()
 
 #: Module-level import cycles present on 25 Sep 2026 (measured with lazy imports
 #: counted). A new cycle, or a new module joining one of these, fails CI; a

@@ -1520,7 +1520,7 @@ Format and authoring guide: [`Backend/data/benchmarks/README.md`](Backend/data/b
 - **`run_scan_task` skips configuration rules, and must keep skipping them.**
   A benchmark rule has no evidence `key` — it is evaluated against a live host
   by the configuration audit and synced afterwards by
-  `core/config_audit/compliance_sync.py`. If the compliance scan also evaluated
+  `core/compliance_sync.py`. If the compliance scan also evaluated
   it, it would read the missing key as missing evidence and write
   `manual_review` **over the real verdict**, silently blanking every benchmark
   result the last credentialed scan established.

@@ -63,6 +63,7 @@ _CORE_GROUPS = {
     },
     "core.compliance": {
         "compliance_evidence",
+        "compliance_sync",
         "compliance_frameworks",
         "compliance_seeds",
         "compliance_tasks",

@@ -3103,7 +3103,7 @@ def _sync_configuration_compliance(
         return None
 
     try:
-        from core.config_audit.compliance_sync import sync_config_audit_findings
+        from core.compliance_sync import sync_config_audit_findings
 
         return sync_config_audit_findings(
             db,

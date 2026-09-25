@@ -87,7 +87,7 @@ class User(Base):
     #
     # Nullable because the column is added to a live table and backfilled; the
     # unique index tolerates NULLs, so rows that predate the backfill do not
-    # collide with each other. See auth/email_utils.canonicalize_email for what
+    # collide with each other. See db/email_canonical.canonicalize_email for what
     # is folded and — more importantly — what is not.
     email_canonical = Column(String(320), nullable=True, unique=True, index=True)
 
@@ -612,7 +612,7 @@ def _backfill_email_canonical(conn) -> None:
     """
     import logging
 
-    from auth.email_utils import canonicalize_email
+    from db.email_canonical import canonicalize_email
 
     log = logging.getLogger(__name__)
 

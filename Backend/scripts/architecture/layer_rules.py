@@ -234,7 +234,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
         ("infrastructure-is-foundation", "core.rate_limit_audit", "auth.jwt_handler"),
         ("models-are-leaves", "db.migrate_production_schema", "scans.schema_bootstrap"),
         ("models-are-leaves", "db.models.scan_policies", "core.scan_policy.spec"),
-        ("models-are-leaves", "db.models.users", "auth.email_utils"),
         ("task-hub-is-a-leaf", "core.mail_dispatch", "core.tasks"),
         ("task-hub-is-a-leaf", "core.scheduling.dispatcher", "core.tasks"),
         ("task-hub-is-a-leaf", "scans.db_helpers", "core.tasks"),

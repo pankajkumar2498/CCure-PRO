@@ -655,8 +655,11 @@ class ComplianceScanRun(Base):
 
     __tablename__ = "compliance_scan_runs"
     __table_args__ = (
+        # `not_assessed` (migration d6e7f8a9b0c2): the run's scope resolved to
+        # no assets, so nothing was evaluated. Distinct from `completed`, which
+        # every reader takes to mean "these are the results".
         CheckConstraint(
-            "status IN ('queued', 'running', 'completed', 'failed')",
+            "status IN ('queued', 'running', 'completed', 'failed', 'not_assessed')",
             name="ck_run_status",
         ),
         # Scan history is always read as "this tenant's runs, newest first"

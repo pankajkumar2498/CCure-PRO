@@ -19,8 +19,9 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from auth.dependencies import get_current_user
+from auth.rbac import require_permission, user_has_permission
 from auth.jwt_handler import decode_token
+from core.audit import log_audit_event
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
 from db.models import User
 from core.web.auth.secrets import encrypt_auth_config
@@ -448,7 +449,7 @@ def start_web_scan(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "execute")),
 ):
     """
     Start a new web application scan.
@@ -545,6 +546,31 @@ def start_web_scan(
         started_at=utcnow(),
     )
     db.add(scan)
+    # Recorded in the same commit as the row, so a web scan cannot exist
+    # without the trail saying who launched it, against what, and that they
+    # confirmed authorisation. That confirmation is a client-supplied boolean;
+    # the audit entry is the only durable record that it was given, and by whom.
+    # The auth block is summarised by type only — it carries passwords, tokens,
+    # TOTP secrets and cookies, none of which belongs in an audit row.
+    log_audit_event(
+        db=db,
+        user=user,
+        action="web_scan.created",
+        resource_type="web_scan",
+        resource_id=scan_id,
+        changes={
+            "target_url": target_url,
+            "scan_name": body.scan_name,
+            "authorization_confirmed": True,
+            "auth_type": body.auth.type,
+            "include_subdomains": body.scan_scope.include_subdomains,
+            "max_depth": body.scan_scope.max_depth,
+            "scan_policy": body.options.scan_policy,
+            "rate_limit": body.options.rate_limit,
+        },
+        request=request,
+        org_id=target_org_id,
+    )
     db.commit()
     db.refresh(scan)
 
@@ -582,7 +608,7 @@ def list_web_scans(
     status: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """List web scans for the resolved organization."""
     target_org_id = _resolve_org(user, org_id)
@@ -619,7 +645,7 @@ def get_web_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """Get detailed web scan information including phase progress."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -670,7 +696,7 @@ def get_web_scan_findings(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("findings", "read")),
 ):
     """Get findings for a web scan with filtering and pagination."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -718,7 +744,7 @@ def get_web_scan_assets(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """Get discovered web assets/endpoints for a scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -757,7 +783,7 @@ def get_web_scan_parameters(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """
     The attack surface at parameter granularity (Phase 23b relational model):
@@ -840,7 +866,7 @@ def get_web_scan_forms(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """The discovered form inventory (Codex item 1) — first-class WebForm rows
     with their inputs, file-upload and password flags."""
@@ -888,7 +914,7 @@ def get_web_scan_api_operations(
     per_page: int = Query(200, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
     as first-class WebApiOperation rows, with a per-kind roll-up."""
@@ -938,9 +964,10 @@ def get_web_scan_api_operations(
 @router.post("/{scan_id}/cancel")
 def cancel_web_scan(
     scan_id: str,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "execute")),
 ):
     """Cancel a running web scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -963,6 +990,7 @@ def cancel_web_scan(
         except Exception as exc:
             log.warning("Failed to revoke task %s: %s", scan.current_task_id, exc)
 
+    previous_status = scan.status
     db.query(WebScan).filter(WebScan.id == scan_id).update(
         {
             "status": "cancelled",
@@ -970,10 +998,35 @@ def cancel_web_scan(
             "updated_at": utcnow(),
         }
     )
+    log_audit_event(
+        db=db,
+        user=user,
+        action="web_scan.cancelled",
+        resource_type="web_scan",
+        resource_id=scan_id,
+        changes={"status": {"from": previous_status, "to": "cancelled"}},
+        request=request,
+        org_id=scan.org_id,
+    )
     db.commit()
 
     log.info("Web scan %s cancelled by user %s", scan_id, user.id)
     return {"success": True, "message": "Web scan cancelled"}
+
+
+#: One audit action per triage outcome, so each carries its own severity in
+#: core/audit_taxonomy.py — accepting a risk is what an auditor looks for, and
+#: must not share a severity with reopening a finding. Keys are exactly the
+#: statuses `triage_finding` accepts; the variants are pinned in
+#: tests/audit/test_audit_action_inventory.py.
+_TRIAGE_AUDIT_ACTIONS = {
+    "open": "web_finding.open",
+    "confirmed": "web_finding.confirmed",
+    "false_positive": "web_finding.false_positive",
+    "accepted_risk": "web_finding.accepted_risk",
+    "fixed": "web_finding.fixed",
+    "reopened": "web_finding.reopened",
+}
 
 
 @router.patch("/{scan_id}/findings/{finding_id}")
@@ -981,9 +1034,10 @@ def triage_finding(
     scan_id: str,
     finding_id: str,
     body: TriageFindingRequest,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("findings", "update")),
 ):
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1014,6 +1068,23 @@ def triage_finding(
             detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
+    # Accepting a risk is its own authorisation, as it is for network findings
+    # (`findings:accept_risk`, routers/remediation.py). Without the split,
+    # anyone able to edit a finding could clear their own list by accepting
+    # everything on it. The route's own dependency is `findings:update`; only
+    # the body says which status was asked for, so this check lives here.
+    if body.status == "accepted_risk" and not user_has_permission(
+        db, user, "findings", "accept_risk"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Accepting a risk requires the 'findings:accept_risk' permission, "
+                "which your role does not have."
+            ),
+        )
+
+    previous_status = finding.status
     finding.status = body.status
     finding.updated_at = utcnow()
 
@@ -1026,6 +1097,20 @@ def triage_finding(
         finding.fixed_at = utcnow()
         finding.remediation_notes = body.reason
 
+    log_audit_event(
+        db=db,
+        user=user,
+        action=_TRIAGE_AUDIT_ACTIONS[body.status],
+        resource_type="web_finding",
+        resource_id=finding_id,
+        changes={
+            "web_scan_id": scan_id,
+            "status": {"from": previous_status, "to": body.status},
+            "reason": body.reason,
+        },
+        request=request,
+        org_id=scan.org_id,
+    )
     db.commit()
 
     log.info(
@@ -1045,7 +1130,7 @@ def get_finding_screenshot(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("findings", "read")),
 ):
     """
     Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
@@ -1087,7 +1172,7 @@ def download_web_scan_report(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("scans", "read")),
 ):
     """
     Generate and download a PDF report for a completed web scan.

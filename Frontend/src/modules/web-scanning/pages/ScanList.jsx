@@ -34,6 +34,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
+import { useAuth } from "../../../context/AuthContext";
+import { can } from "../../../auth/permissions";
 import { webScansApi } from "../api/webScansApi";
 import {
   CcureButton,
@@ -47,6 +49,10 @@ import "../styles/web-scanning-pages.css";
 
 export default function ScanList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Launching sends active attack traffic at the target; the API requires
+  // scans:execute, so the control is not offered to a role that lacks it.
+  const canLaunch = can(user, "scans", "execute");
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -171,9 +177,11 @@ export default function ScanList() {
             <h1 className="page-title">Web Scans</h1>
             <p className="page-subtitle">Manage and monitor DAST assessments</p>
           </div>
-          <CcureButton onClick={() => navigate("/web-scans/new")}>
-            + New Scan
-          </CcureButton>
+          {canLaunch && (
+            <CcureButton onClick={() => navigate("/web-scans/new")}>
+              + New Scan
+            </CcureButton>
+          )}
         </div>
 
         <div className="wsp-panel">

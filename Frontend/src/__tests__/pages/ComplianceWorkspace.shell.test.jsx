@@ -24,6 +24,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { readFileSync, existsSync } from "node:fs";
@@ -507,5 +508,41 @@ describe("ComplianceWorkspace shell — batch 32", () => {
       .map((s) => s.split("}").pop().trim())
       .filter((s) => s && !s.startsWith("@"));
     for (const s of selectors) expect(s).toMatch(/\.cwh-/);
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Phase 1, finding F6 — a run over zero assets is "not assessed", not done.
+   ════════════════════════════════════════════════════════════════════════════ */
+describe("ComplianceWorkspace shell — a run that assessed nothing", () => {
+  it("stops polling and says nothing was assessed, instead of announcing a completed scan", async () => {
+    const base = api.get.getMockImplementation();
+    api.get.mockImplementation((url) =>
+      url === "/compliance/scans/run-1"
+        ? Promise.resolve({
+            data: {
+              id: "run-1",
+              status: "not_assessed",
+              error_message: "No assets matched this scan's scope.",
+            },
+          })
+        : base(url),
+    );
+    await mount();
+    await change(frameworkSelect(), NIST);
+    await click(buttonWithText(/Run Compliance Scan/));
+    await waitFor(() =>
+      expect(bodyText()).toContain(
+        "Nothing was assessed: No assets matched this scan's scope. Previous results are unchanged.",
+      ),
+    );
+    expect(bodyText()).not.toContain("Compliance scan completed.");
+    const polls = api.get.mock.calls.filter(
+      ([u]) => u === "/compliance/scans/run-1",
+    ).length;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(
+      api.get.mock.calls.filter(([u]) => u === "/compliance/scans/run-1"),
+    ).toHaveLength(polls);
   });
 });

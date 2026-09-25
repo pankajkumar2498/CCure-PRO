@@ -41,6 +41,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
+import { useAuth } from "../../../context/AuthContext";
+import { can } from "../../../auth/permissions";
 import { webScansApi } from "../api/webScansApi";
 import {
   CcureBadge,
@@ -65,6 +67,11 @@ const RESPONSE_LIMIT = 2000;
 
 export default function FindingsExplorer() {
   const { id } = useParams();
+  const { user } = useAuth();
+  // The API requires findings:update to triage, and findings:accept_risk
+  // on top of it to accept a risk — the same split as network findings.
+  const canTriage = can(user, "findings", "update");
+  const canAcceptRisk = can(user, "findings", "accept_risk");
   const [searchParams] = useSearchParams();
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -289,19 +296,38 @@ export default function FindingsExplorer() {
                   )}
                 </div>
 
-                <CcureSelect
-                  label="Triage status"
-                  value={selectedFinding.status}
-                  onChange={(e) =>
-                    handleStatusChange(selectedFinding.id, e.target.value)
-                  }
-                >
-                  {TRIAGE_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </CcureSelect>
+                {canTriage ? (
+                  <CcureSelect
+                    label="Triage status"
+                    value={selectedFinding.status}
+                    onChange={(e) =>
+                      handleStatusChange(selectedFinding.id, e.target.value)
+                    }
+                  >
+                    {TRIAGE_STATUSES.map((s) => (
+                      <option
+                        key={s.value}
+                        value={s.value}
+                        disabled={s.value === "accepted_risk" && !canAcceptRisk}
+                      >
+                        {s.value === "accepted_risk" && !canAcceptRisk
+                          ? `${s.label} (requires findings:accept_risk)`
+                          : s.label}
+                      </option>
+                    ))}
+                  </CcureSelect>
+                ) : (
+                  <p>
+                    Triage status:{" "}
+                    <strong>
+                      {TRIAGE_STATUSES.find(
+                        (s) => s.value === selectedFinding.status,
+                      )?.label ?? selectedFinding.status}
+                    </strong>
+                    . Your role can view this finding but not change its status,
+                    which requires <code>findings:update</code>.
+                  </p>
+                )}
 
                 <h3>Description</h3>
                 <p>

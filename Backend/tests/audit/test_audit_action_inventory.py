@@ -141,9 +141,9 @@ def test_every_literal_action_is_classified():
 
 def test_dynamic_action_variants_are_classified():
     """
-    Three call sites build the action from a variable: `scan.{status}`,
-    `finding_{body.status}` and the `approve_remediation`/`approve_rollback`
-    label. Their possible values cannot be read statically, so they are pinned
+    Four call sites build the action from a variable: `scan.{status}`,
+    `finding_{body.status}`, the `approve_remediation`/`approve_rollback`
+    label, and the web-finding triage lookup `_TRIAGE_AUDIT_ACTIONS`. Their possible values cannot be read statically, so they are pinned
     here — a new scan state or finding state must be classified too.
     """
     expected = {
@@ -158,6 +158,13 @@ def test_dynamic_action_variants_are_classified():
         "finding_ignored",
         "approve_remediation",
         "approve_rollback",
+        # routers/web_scans.py `_TRIAGE_AUDIT_ACTIONS`, one per triage status
+        "web_finding.open",
+        "web_finding.confirmed",
+        "web_finding.false_positive",
+        "web_finding.accepted_risk",
+        "web_finding.fixed",
+        "web_finding.reopened",
     }
     missing = sorted(expected - set(SEVERITY_BY_ACTION))
     assert not missing, f"dynamic action variants not classified: {missing}"

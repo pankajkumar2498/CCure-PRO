@@ -108,6 +108,23 @@ SEVERITY_BY_ACTION: dict[str, str] = {
     "scan.completed": INFO,
     "scan.failed": MEDIUM,
     "scan.cancelled": LOW,
+    # ── Web application scanning ────────────────────────────────────────────
+    # Launching a web scan sends sqlmap, ffuf and nuclei at a URL the caller
+    # names — active attack traffic from this host against somebody's
+    # application — so it outranks launching a network scan. The entry also
+    # records the authorisation confirmation the caller gave, which is the
+    # only durable evidence it was given.
+    "web_scan.created": MEDIUM,
+    "web_scan.cancelled": LOW,
+    # Triage outcomes, one per status, weighted like their network-finding
+    # counterparts: accepting a risk is the decision an auditor looks for;
+    # marking one false positive removes it from every count built on it.
+    "web_finding.open": INFO,
+    "web_finding.reopened": LOW,
+    "web_finding.confirmed": LOW,
+    "web_finding.fixed": LOW,
+    "web_finding.false_positive": MEDIUM,
+    "web_finding.accepted_risk": HIGH,
     # ── Scan scheduling (Phase 1) ───────────────────────────────────────────
     # Creating or editing a schedule decides what this platform will point at
     # a network unattended, repeatedly, from now on — so it outranks starting
@@ -271,6 +288,11 @@ _SENSITIVE_PATTERN = re.compile(
 #: Without this, `session_id` (which the session-revocation events record so a
 #: reviewer can tell which device was signed out) would be redacted into
 #: uselessness, and the failed-login counter would vanish.
+#:
+#: `authorization_confirmed` matches `authorization` (aimed at an
+#: `Authorization` header) but is a boolean: the caller's statement that they
+#: are authorised to attack the target of a web scan. Redacting it erased the
+#: one fact `web_scan.created` exists to record.
 _SENSITIVE_ALLOWLIST: frozenset[str] = frozenset(
     {
         "session_id",
@@ -278,6 +300,7 @@ _SENSITIVE_ALLOWLIST: frozenset[str] = frozenset(
         "token_id",
         "api_key_id",
         "secret_id",
+        "authorization_confirmed",
     }
 )
 

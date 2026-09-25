@@ -578,16 +578,35 @@ is already `running` with a `current_task_id`, it returns that task ID instead o
 dispatching a duplicate — the backend chains phases itself, so a UI that also
 triggers them would otherwise double-scan.
 
+This route **continues a scan Host Discovery admitted**, and refuses anything
+else:
+
+- `scan_id` is required (`422` without it). The scan is loaded through the same
+  organization- and visibility-scoped lookup as Scan History, so another
+  organization's scan — or a colleague's, without `scans:read_all` — answers
+  `404`. Superadmins name the organization with `?org_id=`.
+- Every host record needs `ip_address` (or `ip`) — `422` otherwise.
+- Every host must lie inside the targets the scan was admitted for
+  (`scans.target_hosts`) **and** inside the organization's current scan scope —
+  `403` otherwise. A continuation cannot widen its own scan.
+- Quota is not re-charged: it was spent when Host Discovery admitted the scan.
+
 ### `POST /scan/vulnerability-audit`
 
 **Body — `VulnerabilityAuditRequest`**: `hosts` (required), `scan_id`,
 `pipeline_mode`, `vulnerability_profile` (`recommended` \| `conservative` \|
-`deep`), `phases`, `exclude_ot_from_nmap`, `exclude_ips`. Same 400 guard and same
-duplicate-trigger suppression.
+`deep`), `phases`, `exclude_ot_from_nmap`, `exclude_ips`. **Query**: `org_id`
+(superadmin only). Same 400 guard, same duplicate-trigger suppression, and the
+same continuation checks as `POST /scan/asset-discovery` above — required
+`scan_id`, scoped scan lookup, hosts inside the admitted targets and the current
+scope.
 
-> **NOTE:** `vulnerability_profile` is accepted and validated by the schema but is
-> not forwarded to `run_vulnerability_audit_task`; plugin selection is driven by
-> the host's open ports (see [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md) §6).
+> **NOTE:** Only `vulnerability_profile: "recommended"` (or omitting it) is
+> accepted; `conservative` and `deep` answer `422`. The profile was never forwarded
+> to `run_vulnerability_audit_task` — plugin selection is driven by the host's open
+> ports (see [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md) §6) — so the other
+> values used to be accepted and silently ignored. The Phase 2 screen shows them
+> disabled and labelled "not yet available".
 
 ### `POST /scan/phases`
 
@@ -1454,9 +1473,14 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. All
-use `Depends(get_current_user)`; authorization is organization scoping inside
-each handler rather than a permission atom.
+Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. Each
+HTTP operation requires the same permission atom as its network-scan counterpart
+(`scans:execute` to start or cancel, `scans:read` to view, `findings:read` for
+findings and screenshots, `findings:update` to triage — plus
+`findings:accept_risk` to set `accepted_risk`), on top of organization scoping
+inside each handler. Starting, cancelling and triaging each write an audit event
+(`web_scan.created`, `web_scan.cancelled`, `web_finding.<status>`). The progress
+WebSocket authenticates by ticket.
 
 | Method | Path                                                    | Purpose                                                |
 | ------ | ------------------------------------------------------- | ------------------------------------------------------ |

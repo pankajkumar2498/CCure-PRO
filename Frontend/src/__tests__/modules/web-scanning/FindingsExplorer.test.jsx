@@ -23,7 +23,7 @@
  * distinction `CcureSeverityBadge` was built at Checkpoint 3B to preserve.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -58,6 +58,33 @@ vi.mock("../../../modules/web-scanning/api/webScansApi", () => ({
   },
   webDashboardApi: {},
 }));
+
+/* ── Permissions (Phase 1, finding F2) ───────────────────────────────────────
+   The API now requires scans:execute to launch or cancel a web scan,
+   findings:update to triage and findings:accept_risk to accept a risk, and the
+   page no longer offers what the API would refuse. Every test runs as a user
+   holding all of them unless it swaps `authState.user` — the deny-path tests
+   at the end of this file do, and restore it afterwards. */
+const FULL_PERMISSION_USER = {
+  role: {
+    name: "analyst",
+    permissions: [
+      "scans:read",
+      "scans:execute",
+      "findings:read",
+      "findings:update",
+      "findings:accept_risk",
+    ],
+  },
+};
+const VIEWER_USER = {
+  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+};
+const authState = vi.hoisted(() => ({ user: null }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: authState.user }),
+}));
+authState.user = FULL_PERMISSION_USER;
 
 vi.mock("../../../components/layout/AppLayout", () => ({
   default: ({ children, pageTitle }) => (
@@ -446,5 +473,38 @@ describe("FindingsExplorer — rendered surface", () => {
     const { container } = render(<FindingsExplorer />);
     await waitFor(() => expect(webScansApi.getFindings).toHaveBeenCalled());
     expect(container.querySelectorAll("style").length).toBe(0);
+  });
+});
+
+describe("FindingsExplorer — permission (F2)", () => {
+  afterEach(() => {
+    authState.user = FULL_PERMISSION_USER;
+  });
+
+  it("shows the status read-only to a role without findings:update", async () => {
+    authState.user = VIEWER_USER;
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(await screen.findByText("SQL injection in login form"));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("findings:update")).toBeInTheDocument();
+  });
+
+  it("does not let a role without findings:accept_risk accept a risk", async () => {
+    authState.user = {
+      role: {
+        name: "triager",
+        permissions: ["scans:read", "findings:read", "findings:update"],
+      },
+    };
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(await screen.findByText("SQL injection in login form"));
+    const option = screen.getByRole("option", { name: /accepted risk/i });
+    expect(option).toBeDisabled();
+    expect(option.textContent).toMatch(/requires findings:accept_risk/i);
+    expect(
+      screen.getByRole("option", { name: /false positive/i }),
+    ).toBeEnabled();
   });
 });

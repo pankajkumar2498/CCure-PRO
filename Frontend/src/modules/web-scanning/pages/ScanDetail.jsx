@@ -44,6 +44,8 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
+import { useAuth } from "../../../context/AuthContext";
+import { can } from "../../../auth/permissions";
 import { useScanPolling } from "../hooks/useScanPolling";
 import { webScansApi } from "../api/webScansApi";
 import {
@@ -80,6 +82,8 @@ const stepState = (isDone, isActive) =>
 
 export default function ScanDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const canCancel = can(user, "scans", "execute");
   const { scan, loading, error, refresh, liveStatus, liveEvents } =
     useScanPolling(id, 5000);
   const [downloading, setDownloading] = useState(false);
@@ -290,7 +294,7 @@ export default function ScanDetail() {
           </div>
 
           <div className="wsp-actions">
-            {isActiveScan && (
+            {isActiveScan && canCancel && (
               <CcureButton variant="danger" onClick={handleCancel}>
                 Cancel Scan
               </CcureButton>

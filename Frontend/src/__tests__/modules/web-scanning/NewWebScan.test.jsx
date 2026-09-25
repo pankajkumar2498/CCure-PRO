@@ -43,6 +43,33 @@ vi.mock("../../../api/axiosInstance", () => ({
   },
 }));
 
+/* ── Permissions (Phase 1, finding F2) ───────────────────────────────────────
+   The API now requires scans:execute to launch or cancel a web scan,
+   findings:update to triage and findings:accept_risk to accept a risk, and the
+   page no longer offers what the API would refuse. Every test runs as a user
+   holding all of them unless it swaps `authState.user` — the deny-path tests
+   at the end of this file do, and restore it afterwards. */
+const FULL_PERMISSION_USER = {
+  role: {
+    name: "analyst",
+    permissions: [
+      "scans:read",
+      "scans:execute",
+      "findings:read",
+      "findings:update",
+      "findings:accept_risk",
+    ],
+  },
+};
+const VIEWER_USER = {
+  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+};
+const authState = vi.hoisted(() => ({ user: null }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: authState.user }),
+}));
+authState.user = FULL_PERMISSION_USER;
+
 vi.mock("../../../components/layout/AppLayout", () => ({
   default: ({ children, pageTitle }) => (
     <div data-testid="app-layout" data-page-title={pageTitle}>
@@ -925,5 +952,20 @@ describe("NewWebScan — rendered surface", () => {
       .getAllByRole("heading")
       .filter((h) => h.tagName === "H1");
     expect(h1s.length).toBe(1);
+  });
+});
+
+describe("NewWebScan — permission (F2)", () => {
+  afterEach(() => {
+    authState.user = FULL_PERMISSION_USER;
+  });
+
+  it("renders no launch form for a role without scans:execute, and says why", () => {
+    authState.user = VIEWER_USER;
+    const { container } = render(<NewWebScan />);
+    expect(screen.getByText(/cannot launch web scans/i)).toBeInTheDocument();
+    expect(screen.getByText("scans:execute")).toBeInTheDocument();
+    expect(container.querySelector("input[type='url']")).toBeNull();
+    expect(axiosInstance.post).not.toHaveBeenCalled();
   });
 });

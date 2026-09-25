@@ -30,6 +30,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
+import { useAuth } from "../../../context/AuthContext";
+import { can } from "../../../auth/permissions";
 import { webDashboardApi } from "../api/webScansApi";
 import {
   CcureAlert,
@@ -68,6 +70,10 @@ function MetricCard({ title, value, to }) {
 
 export default function WebDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Launching sends active attack traffic at the target; the API requires
+  // scans:execute, so the control is not offered to a role that lacks it.
+  const canLaunch = can(user, "scans", "execute");
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
   const [scorecard, setScorecard] = useState(null);
@@ -126,9 +132,11 @@ export default function WebDashboard() {
             >
               View All Scans
             </CcureButton>
-            <CcureButton onClick={() => navigate("/web-scans/new")}>
-              + New Web Scan
-            </CcureButton>
+            {canLaunch && (
+              <CcureButton onClick={() => navigate("/web-scans/new")}>
+                + New Web Scan
+              </CcureButton>
+            )}
           </div>
         </div>
 

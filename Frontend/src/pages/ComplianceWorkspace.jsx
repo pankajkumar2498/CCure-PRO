@@ -1102,6 +1102,20 @@ export default function ComplianceWorkspace() {
           setActiveScanRunId(null);
           pushToast("Compliance scan completed.", "success");
           fetchTabDataRef.current?.(true);
+        } else if (res.data.status === "not_assessed") {
+          // Nothing was assessed: the scope matched no assets (finding F6).
+          // It used to arrive as "completed" and be announced as a finished
+          // scan. Stop polling, say why, and leave the previous results in
+          // place — the server does not treat this run as the latest either.
+          setIsScanning(false);
+          setActiveScanRunId(null);
+          pushToast(
+            `Nothing was assessed: ${
+              res.data.error_message || "no assets matched this scan's scope."
+            } Previous results are unchanged.`,
+            "info",
+            10000,
+          );
         } else if (res.data.status === "failed") {
           setIsScanning(false);
           setActiveScanRunId(null);

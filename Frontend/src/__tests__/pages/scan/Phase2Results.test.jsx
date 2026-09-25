@@ -616,17 +616,26 @@ describe("Phase2Results — contract", () => {
       expect(checkboxFor("10.20.0.11", "table")).toBeEnabled();
     });
 
-    it.each([
-      ["Deep", "deep"],
-      ["Conservative", "conservative"],
-    ])("hands the %s audit profile to phase 3", async (label, value) => {
-      renderPage();
-      await userEvent.click(screen.getByRole("button", { name: label }));
-      await userEvent.click(runAudit());
-      expect(navigate).toHaveBeenCalledWith("/scan/vulnerability-audit", {
-        state: { vulnerabilityProfile: value, startPhase: "VULN_SCAN" },
-      });
-    });
+    // F4: the backend never read the profile and now refuses anything but
+    // `recommended`, so the unimplemented ones cannot be chosen — and they say
+    // why, rather than silently running Recommended under a different name.
+    it.each([["Deep"], ["Conservative"]])(
+      "does not let the unimplemented %s profile be chosen",
+      async (label) => {
+        renderPage();
+        const button = screen.getByRole("button", { name: label });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAccessibleDescription(/not yet available/i);
+        await userEvent.click(button);
+        await userEvent.click(runAudit());
+        expect(navigate).toHaveBeenCalledWith("/scan/vulnerability-audit", {
+          state: {
+            vulnerabilityProfile: "recommended",
+            startPhase: "VULN_SCAN",
+          },
+        });
+      },
+    );
 
     it("without scans:execute nothing can be chosen or started", async () => {
       user = VIEWER;

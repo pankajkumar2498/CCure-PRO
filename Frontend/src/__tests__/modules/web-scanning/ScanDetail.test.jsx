@@ -59,6 +59,33 @@ vi.mock("../../../modules/web-scanning/api/webScansApi", () => ({
   webDashboardApi: {},
 }));
 
+/* ── Permissions (Phase 1, finding F2) ───────────────────────────────────────
+   The API now requires scans:execute to launch or cancel a web scan,
+   findings:update to triage and findings:accept_risk to accept a risk, and the
+   page no longer offers what the API would refuse. Every test runs as a user
+   holding all of them unless it swaps `authState.user` — the deny-path tests
+   at the end of this file do, and restore it afterwards. */
+const FULL_PERMISSION_USER = {
+  role: {
+    name: "analyst",
+    permissions: [
+      "scans:read",
+      "scans:execute",
+      "findings:read",
+      "findings:update",
+      "findings:accept_risk",
+    ],
+  },
+};
+const VIEWER_USER = {
+  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+};
+const authState = vi.hoisted(() => ({ user: null }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: authState.user }),
+}));
+authState.user = FULL_PERMISSION_USER;
+
 vi.mock("../../../components/layout/AppLayout", () => ({
   default: ({ children, pageTitle }) => (
     <div data-testid="app-layout" data-page-title={pageTitle}>
@@ -854,5 +881,18 @@ describe("ScanDetail — rendered surface", () => {
     const { container } = render(<ScanDetail />);
     await waitFor(() => expect(webScansApi.getScan).toHaveBeenCalled());
     expect(container.querySelectorAll("style").length).toBe(0);
+  });
+});
+
+describe("ScanDetail — permission (F2)", () => {
+  afterEach(() => {
+    authState.user = FULL_PERMISSION_USER;
+  });
+
+  it("does not offer Cancel to a role without scans:execute, even while running", async () => {
+    authState.user = VIEWER_USER;
+    render(<ScanDetail />);
+    await screen.findByText("https://portal.example.test");
+    expect(screen.queryByRole("button", { name: /cancel scan/i })).toBeNull();
   });
 });

@@ -51,21 +51,33 @@ import {
 } from "../../design-system";
 import "../../styles/phase2-results.css";
 
+/* Only `recommended` is implemented: the backend selects checks by the host's
+   open ports and never read the profile at all, so "Conservative" ran the full
+   check set against the fragile or OT systems it was chosen to protect, and
+   nothing said so (finding F4). The API now refuses the other two values; they
+   stay visible, disabled and labelled, so the absence is stated rather than
+   hidden — until a profile actually changes what runs. */
+const NOT_IMPLEMENTED =
+  "Not yet available — every vulnerability audit currently runs the Recommended checks.";
+
 const VULN_PROFILES = [
   {
     value: "recommended",
     label: "Recommended",
     desc: "Service-aware checks for discovered open ports",
+    implemented: true,
   },
   {
     value: "conservative",
     label: "Conservative",
-    desc: "Lower-impact checks for fragile or OT systems",
+    desc: `Lower-impact checks for fragile or OT systems. ${NOT_IMPLEMENTED}`,
+    implemented: false,
   },
   {
     value: "deep",
     label: "Deep",
-    desc: "Broader audit scope for approved maintenance windows",
+    desc: `Broader audit scope for approved maintenance windows. ${NOT_IMPLEMENTED}`,
+    implemented: false,
   },
 ];
 
@@ -1237,7 +1249,7 @@ export default function Phase2Results() {
                     aria-describedby={`${profileLabelId}-${profile.value}`}
                     title={profile.desc}
                     onClick={() => setVulnProfile(profile.value)}
-                    disabled={!canExecuteScans}
+                    disabled={!canExecuteScans || !profile.implemented}
                   >
                     {profile.label}
                   </CcureButton>

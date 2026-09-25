@@ -104,6 +104,35 @@ def require_role(allowed_roles: str | Sequence[str]):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def user_has_permission(db: Session, user: User, resource: str, action: str) -> bool:
+    """
+    Whether ``user``'s role holds the (resource, action) permission atom.
+
+    The single implementation behind :func:`require_permission`, exposed for
+    the case a route dependency cannot express: a permission that depends on
+    the request body. Setting a web finding to ``accepted_risk`` needs
+    ``findings:accept_risk`` on top of the ``findings:update`` the route itself
+    requires, and only the handler knows which status was asked for.
+
+    A user with no role holds nothing. Superadmin holds everything.
+    """
+    role = getattr(user, "role", None)
+    if not role:
+        return False
+    if (getattr(role, "name", "") or "").lower() == "superadmin":
+        return True
+    return (
+        db.query(RolePermission)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .filter(
+            RolePermission.role_id == role.id,
+            Permission.resource == resource,
+            Permission.action == action,
+        )
+        .first()
+    ) is not None
+
+
 def require_permission(resource: str, action: str):
     """
     Returns a FastAPI dependency that rejects requests from users whose
@@ -131,25 +160,7 @@ def require_permission(resource: str, action: str):
                 detail="Your account does not have a role assigned.",
             )
 
-        role_name = getattr(role, "name", "unknown")
-
-        # Superadmin bypass: superadmins have all permissions
-        if role_name.lower() == "superadmin":
-            return user
-
-        # Check if the user's role has this specific permission
-        has_perm = (
-            db.query(RolePermission)
-            .join(Permission, Permission.id == RolePermission.permission_id)
-            .filter(
-                RolePermission.role_id == role.id,
-                Permission.resource == resource,
-                Permission.action == action,
-            )
-            .first()
-        ) is not None
-
-        if not has_perm:
+        if not user_has_permission(db, user, resource, action):
             role_name = getattr(role, "name", "unknown")
             logger.warning(
                 "RBAC denied: user %s (role=%s) lacks %s:%s.",

@@ -455,10 +455,24 @@ def run_scan_task(scan_run_id: str, org_id: str) -> dict:
             assets = filtered_assets
 
         if not assets:
-            run.status = "completed"
+            # Nothing was assessed, and the run must say so (finding F6). It was
+            # recorded as `completed`, which the workspace announced as a
+            # finished compliance scan — a run over zero assets is not a clean
+            # result. `not_assessed` also keeps it out of `_latest_run_id`, so
+            # the previous real results stay the ones shown. The reason travels
+            # in `error_message`, the run's only free-text field.
+            run.status = "not_assessed"
             run.finished_at = datetime.now(timezone.utc)
+            run.error_message = (
+                "No assets matched this scan's scope, so nothing was assessed. "
+                "Check the asset selection or tags, or run a network scan first."
+            )
             db.commit()
-            return {"success": True, "message": "No assets in scope."}
+            return {
+                "success": True,
+                "status": "not_assessed",
+                "message": "No assets in scope.",
+            }
 
         # Flush stale Redis evidence cache for targeted assets using pipeline
         resolved_asset_ids = [a.id for a in assets]

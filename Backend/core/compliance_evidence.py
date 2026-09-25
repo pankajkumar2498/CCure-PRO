@@ -18,7 +18,7 @@ from db.models.findings import (
     VulnerabilityDefinition,
 )
 from db.models.topology import NetworkLink
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance.evidence")
@@ -535,12 +535,83 @@ class ComplianceEvidenceProvider:
     # ── 8. Web Vulnerability Audit Mapping ─────────────────────────────────────────
     @staticmethod
     def _adapt_web_vulnerability_audit(db: Session, asset_id: str) -> dict[str, Any]:
-        """Query open WebFinding records for the web asset to drive policy compliance."""
-        from db.models.web_scans import WebFinding
+        """
+        Web-application evidence for a network asset, or an explicit "not assessed".
+
+        This used to filter ``WebFinding.web_asset_id == asset_id``. The id it is
+        handed is a network ``Asset.id`` (``ast_…``); ``web_asset_id`` holds
+        web-scan asset ids (``was_…``). The two never meet, so the query always
+        returned nothing and every web rule read "0 critical findings, no SQLi" —
+        a PASS on evidence nobody had collected (finding F3).
+
+        There is no stored link between a network asset and a web scan, so the
+        link is made explicitly: the most recent **completed** web scan in the
+        same organisation whose target host is this asset's IP address or
+        hostname (port ignored). Only that scan's findings are evidence. With no
+        such scan the answer is ``_evidence_available: False`` — the rules then
+        record ``manual_review`` with the reason, because "no web scan ran against
+        this host" and "a web scan found nothing" are different facts.
+
+        Current conditions are the statuses a finding can hold while still true
+        of the application: ``open``, ``confirmed`` and ``reopened``. The
+        network-finding adapter likewise leaves accepted and fixed findings out.
+        """
+        from db.models.web_scans import WebFinding, WebScan
+
+        asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        if asset is None:
+            return {
+                "_evidence_available": False,
+                "_reason": "Asset not found; web-application evidence cannot be read.",
+            }
+
+        hosts = set()
+        if asset.ip_address:
+            hosts.add(str(asset.ip_address).split("/")[0].lower())
+        if asset.hostname:
+            hosts.add(asset.hostname.strip().lower())
+        hosts.discard("")
+        if not hosts:
+            return {
+                "_evidence_available": False,
+                "_reason": (
+                    "The asset has neither an IP address nor a hostname to match "
+                    "against a web application scan target."
+                ),
+            }
+
+        domain = func.lower(WebScan.target_domain)
+        host_match = or_(
+            *[domain == host for host in hosts],
+            *[domain.like(f"{host}:%") for host in hosts],
+        )
+        latest = (
+            db.query(WebScan)
+            .filter(
+                WebScan.org_id == asset.org_id,
+                WebScan.status == "complete",
+                WebScan.is_deleted == False,  # noqa: E712
+                host_match,
+            )
+            .order_by(WebScan.completed_at.desc().nullslast())
+            .first()
+        )
+        if latest is None:
+            return {
+                "_evidence_available": False,
+                "_reason": (
+                    "No completed web application scan targets this host "
+                    f"({', '.join(sorted(hosts))}); web-application rules are not "
+                    "assessed."
+                ),
+            }
 
         findings = (
             db.query(WebFinding)
-            .filter(WebFinding.web_asset_id == asset_id, WebFinding.status == "open")
+            .filter(
+                WebFinding.web_scan_id == latest.id,
+                WebFinding.status.in_(("open", "confirmed", "reopened")),
+            )
             .all()
         )
 

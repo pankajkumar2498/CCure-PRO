@@ -48,6 +48,8 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
+import { useAuth } from "../../../context/AuthContext";
+import { can } from "../../../auth/permissions";
 import { webScansApi } from "../api/webScansApi";
 import {
   CcureAlert,
@@ -65,6 +67,10 @@ const createLaunchKey = () => {
 
 export default function NewWebScan() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Launching sends active attack traffic at the target; the API requires
+  // scans:execute, so the control is not offered to a role that lacks it.
+  const canLaunch = can(user, "scans", "execute");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [launchMessage, setLaunchMessage] = useState("");
@@ -147,6 +153,26 @@ export default function NewWebScan() {
   };
 
   const authType = formData.auth_config.type;
+
+  /* The page is reachable by URL even with the buttons hidden. Say why the
+     form is absent rather than rendering one whose submit can only fail. */
+  if (!canLaunch) {
+    return (
+      <AppLayout pageTitle="New Web Scan">
+        <div className="page-inner wsp-page wsp-page--form">
+          <div className="wsp-form-intro">
+            <h1 className="page-title">Configure Web Scan</h1>
+          </div>
+          <CcureAlert variant="info" className="wsp-form-message">
+            Your role cannot launch web scans. A web scan sends active test
+            traffic (SQL injection, fuzzing and template probes) at the target,
+            so it requires the <code>scans:execute</code> permission. Ask an
+            organisation administrator if you need it.
+          </CcureAlert>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout pageTitle="New Web Scan">

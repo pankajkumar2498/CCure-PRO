@@ -4223,7 +4223,7 @@
               }
             ],
             "default": "recommended",
-            "description": "recommended | conservative | deep",
+            "description": "Only 'recommended' is implemented: checks are selected by the host's open ports. Any other value is refused.",
             "examples": [
               "recommended"
             ],
@@ -20623,6 +20623,24 @@
       "post": {
         "description": "Vulnerability Audit: Phase 3 (Trigger and Return Immediately).",
         "operationId": "scan_vulnerability_audit_scan_vulnerability_audit_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

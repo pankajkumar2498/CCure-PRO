@@ -19,7 +19,7 @@
  *     a security signal, not decoration.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -51,6 +51,33 @@ vi.mock("../../../modules/web-scanning/api/webScansApi", () => ({
     getTrends: vi.fn(),
   },
 }));
+
+/* ── Permissions (Phase 1, finding F2) ───────────────────────────────────────
+   The API now requires scans:execute to launch or cancel a web scan,
+   findings:update to triage and findings:accept_risk to accept a risk, and the
+   page no longer offers what the API would refuse. Every test runs as a user
+   holding all of them unless it swaps `authState.user` — the deny-path tests
+   at the end of this file do, and restore it afterwards. */
+const FULL_PERMISSION_USER = {
+  role: {
+    name: "analyst",
+    permissions: [
+      "scans:read",
+      "scans:execute",
+      "findings:read",
+      "findings:update",
+      "findings:accept_risk",
+    ],
+  },
+};
+const VIEWER_USER = {
+  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+};
+const authState = vi.hoisted(() => ({ user: null }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: authState.user }),
+}));
+authState.user = FULL_PERMISSION_USER;
 
 vi.mock("../../../components/layout/AppLayout", () => ({
   default: ({ children, pageTitle }) => (
@@ -386,5 +413,25 @@ describe("WebDashboard — rendered surface", () => {
     const { container } = render(<WebDashboard />);
     await waitFor(() => expect(webDashboardApi.getSummary).toHaveBeenCalled());
     expect(container.querySelectorAll("style").length).toBe(0);
+  });
+});
+
+describe("WebDashboard — permission (F2)", () => {
+  afterEach(() => {
+    authState.user = FULL_PERMISSION_USER;
+  });
+
+  it("offers New Web Scan to a role holding scans:execute", async () => {
+    await renderPage();
+    expect(
+      await screen.findByRole("button", { name: /new web scan/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer New Web Scan to a role without scans:execute", async () => {
+    authState.user = VIEWER_USER;
+    await renderPage();
+    await screen.findByRole("button", { name: /view all scans/i });
+    expect(screen.queryByRole("button", { name: /new web scan/i })).toBeNull();
   });
 });

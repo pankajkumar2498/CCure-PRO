@@ -72,6 +72,85 @@ def _org_row(db: Session, org_id: str):
     return db.query(Organization).filter(Organization.id == org_id).first()
 
 
+def _continuation_scan(
+    db: Session, user: User, scan_id: str | None, org_id: str | None
+):
+    """
+    Load the scan a Phase 2 or Phase 3 request continues, as this caller may see it.
+
+    These routes continue a scan that Host Discovery admitted — scope checked,
+    quota charged, row created. They used to load it with a bare
+    ``Scan.id == scan_id``, so a caller in one organisation could name another
+    organisation's scan, overwrite its options and task id, and have results
+    written into it (finding F1). The lookup now goes through the same
+    tenant- and visibility-scoped helper every Scan History route uses, so a
+    scan the caller could not open answers 404 here too — and without a scan
+    id there is nothing admitted to continue.
+    """
+    from routers.scan_history import _get_scan_or_404
+
+    if not scan_id:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "scan_id is required: Asset Discovery and Vulnerability Audit "
+                "continue a scan that Host Discovery admitted."
+            ),
+        )
+    return _get_scan_or_404(scan_id, user, db, org_id)
+
+
+def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
+    """
+    Refuse host records the continued scan was never admitted for.
+
+    The host list arrives from the client. Before this check a caller could
+    hand-build records for any address and have it port-scanned and
+    vulnerability-scanned under a scan admitted for something else — outside
+    the organisation's authorised scope, and outside the size the quota
+    charged for. Two conditions, both required:
+
+    * every address lies inside the targets this scan was admitted for
+      (``scans.target_hosts``) — a continuation cannot widen its own scan;
+    * every address is still inside the organisation's *current* scope, which
+      may have narrowed since admission. ``validate_scan_targets`` answers that
+      with the same 422 / 403 Host Discovery gives.
+
+    Quota is deliberately not re-checked: it was charged when Host Discovery
+    admitted the scan, and its concurrency and daily counters include this very
+    scan, so re-running them would refuse an organisation at its limit the
+    right to finish a scan it has already paid for.
+    """
+    from core.utils import InputValidator
+
+    addresses = []
+    for host in hosts or []:
+        address = (host or {}).get("ip_address") or (host or {}).get("ip")
+        if not address or not str(address).strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Every host record needs an 'ip_address' (or 'ip').",
+            )
+        addresses.append(str(address).strip())
+
+    validate_scan_targets(addresses, org=_org_row(db, scan.org_id))
+
+    admitted: set[str] = set()
+    for target in scan.target_hosts or []:
+        admitted.update(InputValidator.expand_target(str(target)))
+    outside = [address for address in addresses if address not in admitted]
+    if outside:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Not part of the targets this scan was admitted for: "
+                + ", ".join(outside[:10])
+                + (" …" if len(outside) > 10 else "")
+                + ". Start a new Host Discovery scan to assess other hosts."
+            ),
+        )
+
+
 # ── Quota status endpoint ─────────────────────────────────────────────────────
 
 
@@ -287,7 +366,10 @@ class VulnerabilityAuditRequest(BaseModel):
     vulnerability_profile: str | None = Field(
         "recommended",
         examples=["recommended"],
-        description="recommended | conservative | deep",
+        description=(
+            "Only 'recommended' is implemented: checks are selected by the "
+            "host's open ports. Any other value is refused."
+        ),
     )
     phases: list[int] | None = Field(
         None, description="Phase list from frontend (informational)"
@@ -300,6 +382,25 @@ class VulnerabilityAuditRequest(BaseModel):
     )
 
     _check_mode = field_validator("pipeline_mode")(_validate_pipeline_mode)
+
+    @field_validator("vulnerability_profile")
+    @classmethod
+    def _only_implemented_profile(cls, value: str | None) -> str | None:
+        """
+        Refuse the profiles nothing implements (finding F4).
+
+        `conservative` and `deep` were accepted, validated and then never passed
+        to the task, so a caller asking for either got `recommended` behaviour
+        with nothing to say so — a setting nobody honours is worse than a missing
+        one. Refused until a profile actually changes check selection.
+        """
+        if value is None or value.strip().lower() == "recommended":
+            return value
+        raise ValueError(
+            f"vulnerability_profile '{value}' is not implemented. Only "
+            "'recommended' is available; checks are selected by the host's "
+            "open ports."
+        )
 
 
 class PhasesRequest(BaseModel):
@@ -527,20 +628,21 @@ async def scan_asset_discovery(
             detail=f"Asset Discovery is not part of the '{mode}' pipeline.",
         )
 
+    scan = _continuation_scan(db, user, req.scan_id, org_id)
+
     # SaaS Stability: Prevent duplicate phase triggers if the backend is already chaining
-    scan = db.query(Scan).filter(Scan.id == req.scan_id).first()
-    if scan and scan.status == "running" and scan.current_task_id:
+    if scan.status == "running" and scan.current_task_id:
         log.info(
             "Phase 2 already in progress (chained) for scan %s, skipping redundant trigger.",
             req.scan_id,
         )
         return {"success": True, "task_id": scan.current_task_id, "status": "running"}
 
-    resolved_org = _resolve_org(user, org_id)
+    _assert_hosts_admitted(db, scan, req.hosts)
 
     # ── Quota gate for custom ports (Phase 2 manually triggered) ──────────────
     if req.custom_ports:
-        check_scan_quota(db, org_id=resolved_org, custom_ports=req.custom_ports)
+        check_scan_quota(db, org_id=scan.org_id, custom_ports=req.custom_ports)
 
     task = run_asset_discovery_task.delay(
         user_id=str(user.id),
@@ -583,6 +685,7 @@ async def scan_vulnerability_audit(
     request: Request,
     response: Response,
     req: VulnerabilityAuditRequest,
+    org_id: str | None = Query(None),
     user: User = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
@@ -596,14 +699,17 @@ async def scan_vulnerability_audit(
             detail=f"Vulnerability Audit is not part of the '{mode}' pipeline.",
         )
 
+    scan = _continuation_scan(db, user, req.scan_id, org_id)
+
     # SaaS Stability: Prevent duplicate phase triggers if the backend is already chaining
-    scan = db.query(Scan).filter(Scan.id == req.scan_id).first()
-    if scan and scan.status == "running" and scan.current_task_id:
+    if scan.status == "running" and scan.current_task_id:
         log.info(
             "Phase 3 already in progress (chained) for scan %s, skipping redundant trigger.",
             req.scan_id,
         )
         return {"success": True, "task_id": scan.current_task_id, "status": "running"}
+
+    _assert_hosts_admitted(db, scan, req.hosts)
 
     task = run_vulnerability_audit_task.delay(
         user_id=str(user.id),

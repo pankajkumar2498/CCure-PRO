@@ -135,6 +135,41 @@ def test_the_rules_allow_ordinary_downward_dependencies(src, dst):
     assert violations([Edge(src, dst, lazy=False)]) == []
 
 
+def test_task_names_resolve_to_the_hub_tasks(monkeypatch):
+    """
+    Code below core.tasks dispatches by registered name (core/task_names.py)
+    rather than importing the hub. A constant that drifted from its decorator
+    would otherwise surface as NotRegistered on a live dispatch.
+
+    The module attribute is Celery's lazy proxy to the registered task, so the
+    check is on the object behind it — and on the property the scan tests rely
+    on: a ``.delay`` patched through ``core.tasks`` is what a by-name dispatch
+    calls.
+    """
+    import core.tasks as hub
+    from core import task_names
+    from core.celery_app import registered_task
+
+    expected = {
+        "RUN_HOST_DISCOVERY": hub.run_host_discovery_task,
+        "RUN_CREDENTIALED_SCAN": hub.run_credentialed_scan_task,
+        "SYNC_HOST_DISCOVERY": hub.sync_host_discovery_task,
+        "SYNC_ASSET_DISCOVERY": hub.sync_asset_discovery_task,
+        "SYNC_VULNERABILITY_AUDIT": hub.sync_vulnerability_audit_task,
+    }
+    declared = {name for name in vars(task_names) if name.isupper()}
+    assert declared == set(expected)
+    for const, task in expected.items():
+        resolved = registered_task(getattr(task_names, const))
+        assert resolved is task._get_current_object(), const
+
+        def fake_delay(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(task, "delay", fake_delay)
+        assert resolved.delay is fake_delay, const
+
+
 # ── import cycles ─────────────────────────────────────────────────────────────
 
 

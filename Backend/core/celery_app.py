@@ -175,3 +175,26 @@ celery_app.conf.beat_schedule = {
 # The web-scanner worker's start-up self-check is registered by the web module
 # itself, in core/web/tasks.py (Phase 3) — shared infrastructure does not
 # import a feature.
+
+
+def registered_task(name: str):
+    """
+    The task registered under ``name`` — the same object ``.delay()`` is called
+    on when the defining module is imported directly.
+
+    Code below the task hub dispatches through this rather than importing
+    ``core.tasks``: importing the hub to reach one task put the scheduler, the
+    scan persistence helpers and the hub in one import cycle. The object is the
+    registered task itself, so its queue, time limits, eager execution and any
+    test patch of ``.delay`` all behave exactly as before.
+
+    A process that has not imported the task modules yet (a script, a shell)
+    loads the modules this app is configured with — the same list a worker
+    loads at start-up — and looks again. A name that is still missing raises
+    ``celery.exceptions.NotRegistered``, as it would from a worker.
+    """
+    try:
+        return celery_app.tasks[name]
+    except KeyError:
+        celery_app.loader.import_default_modules()
+        return celery_app.tasks[name]

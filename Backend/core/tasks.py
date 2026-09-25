@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from config import AppConfig
+from core import task_names
 from core.celery_app import celery_app
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
@@ -1184,7 +1185,7 @@ def _sync_credentialed_vulnerabilities(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_asset_discovery_task",
+    name=task_names.SYNC_ASSET_DISCOVERY,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1216,7 +1217,7 @@ def sync_asset_discovery_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_vulnerability_audit_task",
+    name=task_names.SYNC_VULNERABILITY_AUDIT,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1248,7 +1249,7 @@ def sync_vulnerability_audit_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_host_discovery_task",
+    name=task_names.SYNC_HOST_DISCOVERY,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1280,7 +1281,7 @@ def sync_host_discovery_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.run_host_discovery",
+    name=task_names.RUN_HOST_DISCOVERY,
     queue="scanner",
     bind=True,
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
@@ -4477,7 +4478,7 @@ def _audit_host_over_transport(**kwargs):
 
 
 @celery_app.task(
-    name="ccure.tasks.run_credentialed_scan",
+    name=task_names.RUN_CREDENTIALED_SCAN,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED,
     time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED

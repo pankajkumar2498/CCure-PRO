@@ -228,24 +228,16 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "engines.vulnerability.vulnerability_engine",
             "scans.finding_normalizer",
         ),
-        ("task-hub-is-a-leaf", "core.scheduling.dispatcher", "core.tasks"),
-        ("task-hub-is-a-leaf", "scans.db_helpers", "core.tasks"),
     }
 )
 
 #: Module-level import cycles present on 25 Sep 2026 (measured with lazy imports
 #: counted). A new cycle, or a new module joining one of these, fails CI; a
-#: cycle that is broken must be deleted here. Roadmap Phase 3 shrinks the first
-#: two — the task-hub cycle via `_detect_os` (moved to engines, which took
-#: routers.credentialed out of it) and `create_notification`; the constants
-#: <-> cve_database cycle was broken by moving CVE_DB into core/utils.py.
+#: cycle that is broken must be deleted here. Phase 3 broke the task-hub cycle
+#: (`_detect_os` moved to engines, `create_notification` to core.notifications,
+#: and the scheduler and scan persistence now dispatch by task name through
+#: core/task_names.py) and the constants <-> cve_database cycle (CVE_DB moved
+#: into core/utils.py).
 KNOWN_CYCLES: tuple[frozenset[str], ...] = (
-    frozenset(
-        {
-            "core.scheduling.dispatcher",
-            "core.tasks",
-            "scans.db_helpers",
-        }
-    ),
     frozenset({"core.web.injection", "core.web.injection.engine"}),
 )

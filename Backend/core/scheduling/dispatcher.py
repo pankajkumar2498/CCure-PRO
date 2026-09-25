@@ -301,7 +301,8 @@ def _count_policy_use(db: Session, schedule: ScanSchedule, effective) -> None:
 def _dispatch_network(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
-    from core.tasks import run_host_discovery_task
+    from core.celery_app import registered_task
+    from core.task_names import RUN_HOST_DISCOVERY
     from scans.db_helpers import create_scan
 
     # Resolved before the scan row exists: `create_scan` commits, so a refusal
@@ -338,7 +339,7 @@ def _dispatch_network(
     record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()
 
-    task = run_host_discovery_task.delay(
+    task = registered_task(RUN_HOST_DISCOVERY).delay(
         user_id=schedule.created_by,
         targets=targets,
         scan_type=scan_type,
@@ -364,7 +365,8 @@ def _dispatch_network(
 def _dispatch_credentialed(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
-    from core.tasks import run_credentialed_scan_task
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from db.models import ComplianceCredential
     from scans.db_helpers import create_scan
 
@@ -418,7 +420,7 @@ def _dispatch_credentialed(
     # Only the credential *reference* travels to the worker. The task resolves
     # and decrypts it there. A schedule must never put a password in the broker
     # payload, which is what the manual route does with its request body.
-    task = run_credentialed_scan_task.delay(
+    task = registered_task(RUN_CREDENTIALED_SCAN).delay(
         user_id=schedule.created_by,
         targets=targets,
         username=None,

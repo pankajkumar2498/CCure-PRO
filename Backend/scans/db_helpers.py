@@ -301,9 +301,12 @@ def update_scan_phase1(
             db.commit()
 
     # Asset Sync in background (AFTER commit to avoid FK race condition)
-    from core.tasks import sync_host_discovery_task
+    from core.celery_app import registered_task
+    from core.task_names import SYNC_HOST_DISCOVERY
 
-    sync_host_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+    registered_task(SYNC_HOST_DISCOVERY).delay(
+        str(scan.id), org_id, user_id, hosts_data
+    )
 
     if is_final:
         try:
@@ -569,15 +572,21 @@ def update_scan_phase(
 
     # Synchronization (AFTER commit to avoid FK race condition)
     if phase == 2:
-        from core.tasks import sync_asset_discovery_task
+        from core.celery_app import registered_task
+        from core.task_names import SYNC_ASSET_DISCOVERY
 
-        sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+        registered_task(SYNC_ASSET_DISCOVERY).delay(
+            str(scan.id), org_id, user_id, hosts_data
+        )
     elif phase >= 3 and not findings_synced:
         # Reached only for a non-final phase-3 update, or when the inline sync
         # above failed and the work still has to happen.
-        from core.tasks import sync_vulnerability_audit_task
+        from core.celery_app import registered_task
+        from core.task_names import SYNC_VULNERABILITY_AUDIT
 
-        sync_vulnerability_audit_task.delay(str(scan.id), org_id, user_id, hosts_data)
+        registered_task(SYNC_VULNERABILITY_AUDIT).delay(
+            str(scan.id), org_id, user_id, hosts_data
+        )
 
     if is_final:
         try:

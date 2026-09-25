@@ -15,6 +15,10 @@ blocks, and what to do when one fails. The workflows are
 | Bandit Medium-Severity Report | Bandit 1.9.4     | no               | no               | yes                             | never (report only)                          |
 | Ruff (in `ci.yml`)            | ruff             | yes              | yes              | no                              | unchanged from before                        |
 
+Container images are scanned separately, by Trivy in `images.yml`, against the
+image each commit actually builds. Its policy and exceptions are in
+[CONTAINER_IMAGES.md](CONTAINER_IMAGES.md).
+
 The nightly run exists because advisory databases change while the code does
 not. A dependency that was clean when it merged can be vulnerable a week later,
 and no commit arrives to trigger a check. When a scheduled run fails, GitHub

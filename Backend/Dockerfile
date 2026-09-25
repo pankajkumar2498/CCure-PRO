@@ -1,20 +1,44 @@
 # syntax=docker/dockerfile:1
+#
+# One image, four roles: compose runs it as `api`, `worker`, `beat` and
+# `web-worker`, choosing the role by command (and by `user: root` for the three
+# that need raw sockets or write where ccure cannot). CI builds it once per
+# commit and tags it with the commit SHA — see .github/workflows/images.yml and
+# docs/ci/CONTAINER_IMAGES.md.
+#
+# Base images are pinned by digest, so a rebuild of the same commit starts from
+# the same bytes. Dependabot (docker ecosystem, .github/dependabot.yml) opens a
+# PR when the tag moves, which is how security updates to the base still arrive.
 # ── Base Image ─────────────────────────────────────────────────────────────
-FROM python:3.11-slim AS base
+FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
 
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/home/ccure/.local/bin:${PATH}"
+# BuildKit warns that PYTHONPATH is undefined here. Leave it: the expansion
+# leaves a trailing ':', and an empty PYTHONPATH entry means "the current
+# directory", i.e. /app. `python db/migrate_production_schema.py` (start.sh)
+# puts db/ first on sys.path, not /app, and its `from db...` imports resolve
+# only through that empty entry.
 ENV PYTHONPATH="/home/ccure/.local/lib/python3.11/site-packages:${PYTHONPATH}"
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-# Install system dependencies
+# Runtime system packages only — this stage is what ships.
 # - nmap: essential for network scanning
 # - libcap2-bin: to grant raw socket permissions to non-root users
-# - gcc, libpq-dev: for building certain python packages
-# - wget, unzip, curl: for downloading security tool binaries
-# - chromium: headless browser for Playwright-based web crawling
+# - chromium: Debian's build is not what Playwright drives (that is the
+#   browser under /opt/playwright), but installing it is what brings in the
+#   shared libraries Playwright's Chromium links against. Kept deliberately;
+#   see docs/ci/CONTAINER_IMAGES.md.
+#
+# The compiler toolchain (gcc, python3-dev, libpq-dev) and the download tools
+# (wget, unzip, curl) used to be installed here too, which put a C compiler and
+# the kernel headers into every running container. linux-libc-dev alone, pulled
+# in by python3-dev, carried 88 of the image's 191 HIGH advisories. Nothing
+# at run time uses any of them: psycopg2-binary bundles its libpq, and the
+# scanner builds `curl ...` reproduction commands as text without running curl.
+# They now exist only in the stages that need them.
 #
 # sqlmap is deliberately NOT installed here: it comes from requirements.txt into
 # /home/ccure/.local, which the runtime stage copies wholesale. It used to be
@@ -26,12 +50,6 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     libcap2-bin \
-    gcc \
-    python3-dev \
-    libpq-dev \
-    wget \
-    unzip \
-    curl \
     chromium \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -40,6 +58,14 @@ WORKDIR /app
 
 # ── Dependency Stage ───────────────────────────────────────────────────────
 FROM base AS builder
+
+# Build-only: compilers and headers for any requirement without a wheel.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
@@ -53,6 +79,13 @@ RUN --mount=type=cache,target=/root/.cache/ms-playwright \
 # ── Security Tools Stage ──────────────────────────────────────────────────
 FROM base AS tools
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    unzip \
+    ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Tool versions are PINNED (Phase 15), not fetched as "latest", so a clean
 # rebuild is reproducible and version-controlled. Override at build time with
 # --build-arg NUCLEI_VERSION=vX.Y.Z if a controlled upgrade is intended. These
@@ -61,24 +94,36 @@ FROM base AS tools
 # download that fails must abort the build rather than silently ship an image
 # missing a primary detector (the runtime gate below is the second line of
 # defence, not the first).
+#
+# Each download is checked against the SHA-256 the project publishes beside the
+# release (its *_checksums.txt). A version pin says which release was asked
+# for; only the checksum says the bytes are that release. An upgrade therefore
+# changes the version and its checksum together — an override of the version
+# alone fails here, which is the intent.
 ARG NUCLEI_VERSION=v3.11.1
+ARG NUCLEI_SHA256=ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
 ARG SUBFINDER_VERSION=v2.6.7
+ARG SUBFINDER_SHA256=d988a481d3037c55e685afee023eb104a81a77dd2691fb902b59019a365f6103
 ARG FFUF_VERSION=v2.3.0
+ARG FFUF_SHA256=b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
 
 # Nuclei — template-based vulnerability scanner (primary DAST engine)
 RUN wget -q "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" -O /tmp/nuclei.zip && \
+    echo "${NUCLEI_SHA256}  /tmp/nuclei.zip" | sha256sum -c - && \
     unzip -o /tmp/nuclei.zip -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/nuclei && \
     rm -f /tmp/nuclei.zip
 
 # Subfinder — passive subdomain enumeration
 RUN wget -q "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" -O /tmp/subfinder.zip && \
+    echo "${SUBFINDER_SHA256}  /tmp/subfinder.zip" | sha256sum -c - && \
     unzip -o /tmp/subfinder.zip -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/subfinder && \
     rm -f /tmp/subfinder.zip
 
 # ffuf — directory/file bruteforcing
 RUN wget -q "https://github.com/ffuf/ffuf/releases/download/${FFUF_VERSION}/ffuf_${FFUF_VERSION#v}_linux_amd64.tar.gz" -O /tmp/ffuf.tar.gz && \
+    echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c - && \
     tar xf /tmp/ffuf.tar.gz -C /usr/local/bin/ ffuf && \
     chmod +x /usr/local/bin/ffuf && \
     rm -f /tmp/ffuf.tar.gz
@@ -86,12 +131,21 @@ RUN wget -q "https://github.com/ffuf/ffuf/releases/download/${FFUF_VERSION}/ffuf
 # Nuclei templates — provisioned once at build time into the image (NOT fetched
 # per scan). This is a build-time snapshot; the runtime gate below refuses to
 # ship without it, and the scanner does not re-download on every scan.
+# It is the one input here that is deliberately not pinned: the templates are a
+# detection feed, and freezing them trades new coverage for reproducibility.
+# Which snapshot an image carries is the image's own record, fixed at the SHA.
 RUN nuclei -update-templates 2>/dev/null || echo "Nuclei template update skipped"
 
-# Download common wordlist for ffuf
+# ffuf's wordlist, pinned to a SecLists commit and checked. It was fetched from
+# `master` with `|| echo skipped`, so its contents changed with upstream and a
+# failed download shipped an image whose ffuf had nothing to try. This commit's
+# file is byte-identical to the one the image carried when it was pinned.
+ARG SECLISTS_COMMIT=eccfbd405af82194e125a450a0076dbe4252d6f9
+ARG WORDLIST_SHA256=47fb86ca6fb3f97e5491161581900d6d99851fb16764eacddf16aa85617c956a
 RUN mkdir -p /opt/wordlists && \
-    wget -q "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" \
-    -O /opt/wordlists/common.txt || echo "Wordlist download skipped"
+    wget -q "https://raw.githubusercontent.com/danielmiessler/SecLists/${SECLISTS_COMMIT}/Discovery/Web-Content/common.txt" \
+    -O /opt/wordlists/common.txt && \
+    echo "${WORDLIST_SHA256}  /opt/wordlists/common.txt" | sha256sum -c -
 
 # ── Final Runtime Image ────────────────────────────────────────────────────
 FROM base AS runtime
@@ -99,9 +153,13 @@ FROM base AS runtime
 # Create a non-privileged user for the API process
 RUN useradd -m -s /bin/bash ccure
 
+# Ownership is set by COPY --chown, never by a later `RUN chown -R`. Changing
+# ownership in a separate layer writes every file a second time, and the
+# duplicates were 1.27 GB of a 5.27 GB image: 488 MB of Python packages, 690 MB
+# of Playwright browser and 90 MB of application code.
+
 # Copy installed python packages from builder
-COPY --from=builder /root/.local /home/ccure/.local
-RUN chown -R ccure:ccure /home/ccure/.local
+COPY --from=builder --chown=ccure:ccure /root/.local /home/ccure/.local
 
 # Copy security tool binaries from tools stage
 COPY --from=tools /usr/local/bin/nuclei /usr/local/bin/nuclei
@@ -110,8 +168,7 @@ COPY --from=tools /usr/local/bin/ffuf /usr/local/bin/ffuf
 COPY --from=tools /opt/wordlists /opt/wordlists
 
 # Copy Playwright browsers from builder
-COPY --from=builder /opt/playwright /opt/playwright
-RUN chown -R ccure:ccure /opt/playwright
+COPY --from=builder --chown=ccure:ccure /opt/playwright /opt/playwright
 
 # Copy nuclei templates (may be in /root or /home)
 COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
@@ -168,9 +225,12 @@ RUN set -e; \
         exit 1; \
     fi
 
-# Copy application code
-COPY . .
-RUN chown -R ccure:ccure /app
+# Copy application code. /app itself was created by WORKDIR as root, and
+# --chown covers what is copied, not the directory copied into, so it is handed
+# over explicitly (one directory, not a recursive rewrite). The old recursive
+# chown covered it, and start.sh's `sed -i` below needs to create a file here.
+RUN chown ccure:ccure /app
+COPY --chown=ccure:ccure . .
 
 # Grant nmap binary the ability to perform raw socket scans without root
 # This allows the worker to run with fewer privileges if desired,

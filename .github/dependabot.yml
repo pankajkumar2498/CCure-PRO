@@ -17,3 +17,21 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+
+  # The Dockerfiles pin their base images by digest, which makes a rebuild of
+  # one commit reproducible and also freezes the base's security patches. This
+  # is the other half: a PR whenever python:3.11-slim, node:22-slim or
+  # nginx:stable-alpine moves, which images.yml then builds, scans and
+  # smoke-tests like any other change.
+  - package-ecosystem: "docker"
+    directories:
+      - "/Backend"
+      - "/Frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+      - "docker"

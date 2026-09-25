@@ -226,7 +226,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "engines.vulnerability.vulnerability_engine",
             "scans.finding_normalizer",
         ),
-        ("http-edge", "core.tasks", "routers.credentialed"),
         ("http-edge", "scans.db_helpers", "routers.notifications"),
         ("identity-below-scanning", "auth.router", "scan_helpers"),
         ("infrastructure-is-foundation", "core.celery_app", "core.web.self_check"),
@@ -246,16 +245,16 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
 
 #: Module-level import cycles present on 25 Sep 2026 (measured with lazy imports
 #: counted). A new cycle, or a new module joining one of these, fails CI; a
-#: cycle that is broken must be deleted here. Roadmap Phase 3 removes the first
-#: two — the task-hub cycle via `_detect_os` and `create_notification`, the
-#: constants cycle by splitting `core/constants.py`.
+#: cycle that is broken must be deleted here. Roadmap Phase 3 shrinks the first
+#: two — the task-hub cycle via `_detect_os` (moved to engines, which took
+#: routers.credentialed out of it) and `create_notification`, the constants
+#: cycle by splitting `core/constants.py`.
 KNOWN_CYCLES: tuple[frozenset[str], ...] = (
     frozenset({"core.constants", "core.cve_database"}),
     frozenset(
         {
             "core.scheduling.dispatcher",
             "core.tasks",
-            "routers.credentialed",
             "scans.db_helpers",
         }
     ),

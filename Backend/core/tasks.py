@@ -3385,7 +3385,7 @@ def audit_credentialed_host(
     from engines.credentialed.ssh_scanner import SSHScanner
     from engines.credentialed.vuln_matcher import VulnMatcher
     from engines.credentialed.windows_collector import WindowsCollector
-    from routers.credentialed import _detect_os
+    from engines.credentialed.os_detection import detect_os
     from scans.finding_normalizer import verify_credentialed_report
 
     def _emit(message, percentage=0, stage=None):
@@ -3472,7 +3472,7 @@ def audit_credentialed_host(
         if resolved_transport in ("winrm", "smb"):
             # Both are Windows-only protocols, so the operating system is
             # established by the fact that the connection succeeded. Running
-            # _detect_os here would spend a round trip re-deriving something
+            # detect_os here would spend a round trip re-deriving something
             # already known, and its probes are written for a POSIX shell — on
             # the SMB transport they would not run at all, since it executes no
             # commands, and the host would be misread as Linux.
@@ -3484,7 +3484,7 @@ def audit_credentialed_host(
             )
         else:
             _emit("Detecting Operating System...", 20, "detection")
-            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+            os_type = os_type_req if os_type_req != "auto" else detect_os(ssh)
 
         _emit(f"Collecting system data ({os_type})...", 30, "collection")
         collector = (

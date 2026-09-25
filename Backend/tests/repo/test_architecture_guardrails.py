@@ -59,10 +59,11 @@ def test_the_import_graph_is_not_vacuous(graph):
     assert len(edges) > 1000, f"only {len(edges)} edges found — parser broken?"
     pairs = {(e.src, e.dst) for e in edges}
     assert ("main", "config") in pairs or any(src == "main" for src, _ in pairs)
-    assert (
-        "core.tasks",
-        "routers.credentialed",
-    ) in pairs, "a known lazy import was not seen; inside-function imports must count"
+    # Imports inside functions must be counted — they are where this codebase
+    # hid its cycles. Checked by volume rather than by one named edge, because
+    # the named edges are exactly what the refactoring phases remove.
+    lazy = sum(1 for e in edges if e.lazy)
+    assert lazy > 300, f"only {lazy} inside-function imports seen; are they counted?"
 
 
 # ── layering ──────────────────────────────────────────────────────────────────

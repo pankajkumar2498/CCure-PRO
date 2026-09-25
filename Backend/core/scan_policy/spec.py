@@ -67,18 +67,15 @@ __all__ = [
 # Vocabularies
 # ─────────────────────────────────────────────────────────────────────────────
 
-#: Which pipeline a policy may drive. ``any`` is a policy whose settings are
-#: meaningful to both — a severity floor, say — and is what a policy defaults
-#: to. The kinds match ``db.models.scan_schedules.SCAN_KINDS`` deliberately:
-#: two vocabularies for "what sort of scan is this" is how they diverge.
-POLICY_KIND_NETWORK = "network"
-POLICY_KIND_CREDENTIALED = "credentialed"
-POLICY_KIND_ANY = "any"
-
-POLICY_SCAN_KINDS: Tuple[str, ...] = (
-    POLICY_KIND_NETWORK,
-    POLICY_KIND_CREDENTIALED,
+#: Which pipeline a policy may drive — defined in db/scan_policy_kinds.py
+#: (Phase 3), because it is also the domain of the ``scan_policies.scan_kind``
+#: CHECK constraint and the model must not import this package. Re-exported
+#: here unchanged, so everything that reads it from the spec still does.
+from db.scan_policy_kinds import (  # noqa: E402,F401  (re-export)
     POLICY_KIND_ANY,
+    POLICY_KIND_CREDENTIALED,
+    POLICY_KIND_NETWORK,
+    POLICY_SCAN_KINDS,
 )
 
 #: Severity vocabulary, weakest first. This is ``ConfigCheck.severity``'s own

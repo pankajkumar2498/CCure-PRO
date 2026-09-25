@@ -1,5 +1,5 @@
 """
-tests/test_mail_dispatch.py
+tests/auth/test_mail_dispatch.py
 ─────────────────────────────────────────────────────────────────────────────
 Mail delivery must not be able to silently do nothing.
 
@@ -20,7 +20,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _fresh_worker_cache():
     """The availability answer is cached for 30s; don't leak it between tests."""
-    from core.mail_dispatch import reset_worker_cache
+    from auth.mail_dispatch import reset_worker_cache
 
     reset_worker_cache()
     yield
@@ -66,7 +66,7 @@ def test_sends_inline_when_no_worker_is_consuming(real_routing):
     This is the regression test for the whole module. No worker → the message
     must still go out, from this process.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=False):
         with patch("auth.mail_service.send_verification_email") as sender:
@@ -82,7 +82,7 @@ def test_sends_inline_when_no_worker_is_consuming(real_routing):
 
 def test_queues_when_a_worker_is_consuming(real_routing):
     """With a worker present, use it — inline sending is the fallback, not the norm."""
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=True):
         with patch("auth.mail_service.send_verification_email") as sender:
@@ -101,7 +101,7 @@ def test_falls_back_inline_when_the_broker_refuses(real_routing):
     The check and the publish are not atomic. If Redis dies in between, the
     message must not be lost.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=True):
         with patch("auth.mail_service.send_verification_email") as sender:
@@ -122,7 +122,7 @@ def test_reports_failure_when_both_routes_fail(real_routing):
     Never raises — the caller has already committed — but must report "failed"
     rather than a success it cannot support.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch.object(mail_dispatch, "_queue_has_consumer", return_value=False):
         with patch(
@@ -141,7 +141,7 @@ def test_never_raises_into_the_caller(real_routing):
     Registration and password reset are past the point of no return when they
     dispatch. A mail problem must not convert a completed write into a 500.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch.object(
         mail_dispatch, "_queue_has_consumer", side_effect=RuntimeError("boom")
@@ -163,7 +163,7 @@ def test_eager_mode_sends_once_and_reports_eager(monkeypatch):
     needs asserting somewhere or the short-circuit is untested.
     """
     from config import AppConfig
-    from core import mail_dispatch
+    from auth import mail_dispatch
     from core.celery_app import celery_app
 
     monkeypatch.setattr(AppConfig, "MAIL_INLINE_FALLBACK", True)
@@ -186,7 +186,7 @@ def test_eager_mode_does_not_consult_the_broker(monkeypatch):
     matter: in eager mode the task runs here regardless of who is consuming.
     """
     from config import AppConfig
-    from core import mail_dispatch
+    from auth import mail_dispatch
     from core.celery_app import celery_app
 
     monkeypatch.setattr(AppConfig, "MAIL_INLINE_FALLBACK", True)
@@ -199,7 +199,7 @@ def test_eager_mode_does_not_consult_the_broker(monkeypatch):
 
 
 def test_unknown_kind_is_reported_not_raised(real_routing):
-    from core.mail_dispatch import dispatch_email
+    from auth.mail_dispatch import dispatch_email
 
     assert dispatch_email("no_such_kind", "a@b.test") == "failed"
 
@@ -213,7 +213,7 @@ def test_consumer_check_requires_the_mail_queue_specifically():
     the mail tasks are routed to. The web-scanning worker consumes web_* queues
     and would otherwise be mistaken for a mail consumer.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     inspect = MagicMock()
     inspect.return_value.active_queues.return_value = {
@@ -235,7 +235,7 @@ def test_unreachable_broker_is_treated_as_no_consumer():
     Fail towards sending. Guessing "a worker is probably there" would
     reintroduce exactly the silent loss this exists to prevent.
     """
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     with patch(
         "core.celery_app.celery_app.control.inspect",
@@ -246,7 +246,7 @@ def test_unreachable_broker_is_treated_as_no_consumer():
 
 def test_availability_answer_is_cached():
     """A broadcast ping per registration would be an absurd cost."""
-    from core import mail_dispatch
+    from auth import mail_dispatch
 
     inspect = MagicMock()
     inspect.return_value.active_queues.return_value = {

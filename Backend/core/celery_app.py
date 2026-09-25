@@ -15,6 +15,7 @@ celery_app = Celery(
         "core.web.tasks",  # Web application scan background jobs
         "core.compliance_tasks",  # Compliance scan background jobs
         "core.email_security_tasks",  # Email domain screening and account hygiene
+        "auth.mail_tasks",  # Outgoing application email
     ],
 )
 

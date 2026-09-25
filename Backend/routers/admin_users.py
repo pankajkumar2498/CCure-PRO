@@ -806,7 +806,7 @@ def approve_user(
     # decision into a 500.
     try:
         from config import AppConfig
-        from core.mail_dispatch import dispatch_email
+        from auth.mail_dispatch import dispatch_email
 
         dispatch_email(
             "account_approved",

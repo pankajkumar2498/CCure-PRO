@@ -340,7 +340,7 @@ def _issue_verification_token(db: Session, user: User, request: Request | None =
     from datetime import datetime, timedelta, timezone
 
     from config import AppConfig
-    from core.mail_dispatch import dispatch_email
+    from auth.mail_dispatch import dispatch_email
     from db.models import EmailVerificationToken
 
     now = datetime.now(timezone.utc)
@@ -1249,7 +1249,7 @@ def forgot_password(
 
     from config import AppConfig
     from core.audit import log_audit_event
-    from core.mail_dispatch import dispatch_email
+    from auth.mail_dispatch import dispatch_email
     from core.throttle import hit
     from db.models import PasswordResetToken
 
@@ -1485,7 +1485,7 @@ def reset_password_endpoint(
     # invites the user to try again with a token that no longer exists.
     try:
         from core.ip_resolver import get_client_ip
-        from core.mail_dispatch import dispatch_email
+        from auth.mail_dispatch import dispatch_email
 
         dispatch_email(
             "password_changed",
@@ -1543,7 +1543,7 @@ def send_email_otp(
     import secrets
     from datetime import timedelta
 
-    from core.mail_dispatch import dispatch_email
+    from auth.mail_dispatch import dispatch_email
     from db.base import utcnow
 
     payload = decode_token(req.mfa_token)

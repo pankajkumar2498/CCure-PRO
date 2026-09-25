@@ -1,5 +1,5 @@
 """
-core/mail_dispatch.py
+auth/mail_dispatch.py
 ──────────────────────────────────────────────────────────────────────────────
 One way to send an application email, which cannot silently do nothing.
 
@@ -29,7 +29,7 @@ What this does *not* try to be
 ──────────────────────────────
 A transactional outbox. If the broker is up and a worker is consuming, the
 message is Redis's responsibility from that point; if the worker dies mid-task,
-Celery's retry (see the mail tasks in core/tasks.py) covers it. Building a
+Celery's retry (see the mail tasks in auth/mail_tasks.py) covers it. Building a
 persisted outbox table would cover the remaining window — the process dying
 between commit and publish — at a cost that is not justified for
 "the verification email is late".
@@ -44,7 +44,7 @@ from typing import Any, Callable
 log = logging.getLogger("ccure.mail")
 
 # Queue the mail tasks are routed to. Must match the `queue=` on the task
-# decorators in core/tasks.py and the --queues= the host worker is started with.
+# decorators in auth/mail_tasks.py and the --queues= the host worker is started with.
 _MAIL_QUEUE = "default"
 
 # How long a worker-availability answer is trusted. A broadcast ping costs a
@@ -99,12 +99,12 @@ def _senders() -> dict[str, tuple[Callable[..., Any], Callable[..., None]]]:
     """
     Map a mail kind to (celery task, plain sender).
 
-    Imported lazily and per call: core.tasks pulls in the whole scanning stack,
-    and importing it at module scope makes this module unusable from anywhere
-    that core.tasks itself imports.
+    Imported lazily and per call, as before the move. The tasks come from
+    auth.mail_tasks rather than core.tasks: the scan task hub pulled in the
+    whole scanning stack for five tasks that only call auth.mail_service.
     """
     from auth import mail_service
-    from core import tasks
+    from auth import mail_tasks as tasks
 
     return {
         "verification": (

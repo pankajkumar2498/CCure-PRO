@@ -50,7 +50,6 @@ _CORE_GROUPS = {
         "security_crypto",
         "utils",
         "constants",
-        "mail_dispatch",
         "user_agent",
         "upload_guard",
         "quota",

@@ -137,6 +137,7 @@ RULES: tuple[Rule, ...] = (
             "core.utils",
             "core.redis_client",
             "core.celery_app",
+            # Moved to auth/ in Phase 3; kept so it cannot return here importing auth.
             "core.mail_dispatch",
             "core.rate_limit_audit",
             "core.rate_limit_middleware",
@@ -227,10 +228,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "engines.vulnerability.vulnerability_engine",
             "scans.finding_normalizer",
         ),
-        ("infrastructure-is-foundation", "core.mail_dispatch", "auth"),
-        ("infrastructure-is-foundation", "core.mail_dispatch", "auth.mail_service"),
-        ("infrastructure-is-foundation", "core.mail_dispatch", "core.tasks"),
-        ("task-hub-is-a-leaf", "core.mail_dispatch", "core.tasks"),
         ("task-hub-is-a-leaf", "core.scheduling.dispatcher", "core.tasks"),
         ("task-hub-is-a-leaf", "scans.db_helpers", "core.tasks"),
     }

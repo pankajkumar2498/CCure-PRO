@@ -1,0 +1,15 @@
+# Trivy exceptions for the frontend image. Read by .github/workflows/images.yml.
+#
+# Every entry names one vulnerability, says why it is
+# accepted and how it is removed, and EXPIRES. On 2026-10-08 the entries stop
+# applying and the gate fails again, so an exception is a dated decision rather
+# than a permanent silence. Renew one only after re-checking its remediation.
+# Policy and procedure: docs/ci/CONTAINER_IMAGES.md#vulnerability-exceptions
+#
+# Generated from the scan of the image built on 24 Sep 2026.
+
+vulnerabilities:
+  - id: CVE-2026-93990
+    statement: >-
+      HIGH in libexpat 2.8.4-r0 from the nginx:stable-alpine base image; Alpine publishes 2.8.5-r0, and the newest nginx:stable-alpine (digest pinned in Frontend/Dockerfile, 24 Sep 2026) still ships 2.8.4-r0. Remediation: the Dependabot PR that moves the digest once nginx rebuilds, checked by this gate. Short expiry because a rebuild is expected soon.
+    expired_at: 2026-10-08

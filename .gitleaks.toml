@@ -43,9 +43,16 @@ regexes = [
 # 2. Register.test.jsx drives the password-strength validator with fixed
 #    literals, one per rule it must reject. They are test vectors, not
 #    credentials, and the test needs them spelled out.
+# 3. .gitleaksignore itself. Each line is a 40-hex commit id beside a rule
+#    name, which generic-api-key reads as a key assignment, so the file that
+#    records reviewed findings was reported as a leak on the commit adding it.
+#    Excluded by exact path; it holds fingerprints, never values.
 [allowlist]
 regexTarget = "match"
 regexes = [
   '''ux4g\.generated\.(css|manifest\.json)''',
   '''Str0ngPassphrase1''',
+]
+paths = [
+  '''^\.gitleaksignore$''',
 ]

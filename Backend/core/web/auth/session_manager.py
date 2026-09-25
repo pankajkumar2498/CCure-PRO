@@ -384,8 +384,13 @@ class WebSessionManager:
         try:
             import httpx
 
+            # ACCEPTED RISK, pending a decision — docs/ci/SECURITY_GATES.md
+            # "Accepted risks". This request carries the client secret and, for
+            # the password grant, the user's password, to an operator-named
+            # token_url that may be a third-party identity provider, and the
+            # certificate is not verified.
             async with httpx.AsyncClient(
-                verify=False, timeout=30.0, follow_redirects=True
+                verify=False, timeout=30.0, follow_redirects=True  # nosec B501
             ) as client:
                 resp = await client.post(token_url, data=data)
                 body = {}
@@ -810,8 +815,12 @@ class WebSessionManager:
         try:
             import httpx
 
+            # ACCEPTED RISK, pending a decision — docs/ci/SECURITY_GATES.md
+            # "Accepted risks". The login form is posted with the configured
+            # username and password and the target's certificate is not
+            # verified, so an interceptor on the path can collect them.
             async with httpx.AsyncClient(
-                verify=False,
+                verify=False,  # nosec B501
                 follow_redirects=True,
                 timeout=30.0,
             ) as client:
@@ -1054,8 +1063,12 @@ class WebSessionManager:
                         value = value.replace("{{" + k + "}}", v)
                 return value
 
+            # ACCEPTED RISK, pending a decision — docs/ci/SECURITY_GATES.md
+            # "Accepted risks". The steps post whatever login fields the scan
+            # configures, credentials included, without verifying the
+            # target's certificate.
             async with httpx.AsyncClient(
-                verify=False, follow_redirects=True, timeout=30.0
+                verify=False, follow_redirects=True, timeout=30.0  # nosec B501
             ) as client:
                 last_url = base
                 for i, step in enumerate(steps):

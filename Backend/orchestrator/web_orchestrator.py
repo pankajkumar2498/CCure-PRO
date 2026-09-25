@@ -2512,7 +2512,13 @@ class WebScanOrchestrator:
             parsed = urlparse(target_url)
             base = f"{parsed.scheme}://{parsed.netloc}"
 
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            # verify=False on the probes in this module is deliberate: the
+            # scan target's certificate is not trusted, scanned hosts are
+            # routinely self-signed, and TLS itself is assessed by sslyze.
+            # These requests carry no credential.
+            async with httpx.AsyncClient(
+                verify=False, timeout=10.0  # nosec B501
+            ) as client:
                 # robots.txt
                 try:
                     resp = await client.get(f"{base}/robots.txt")
@@ -2593,7 +2599,7 @@ class WebScanOrchestrator:
             import httpx
 
             async with httpx.AsyncClient(
-                verify=False, timeout=10.0, follow_redirects=True
+                verify=False, timeout=10.0, follow_redirects=True  # nosec B501
             ) as client:
                 for url in sample_urls:
                     try:
@@ -2654,7 +2660,7 @@ class WebScanOrchestrator:
             )
             grouped: Dict[tuple[str, str], dict] = {}
             async with httpx.AsyncClient(
-                verify=False, timeout=10.0, follow_redirects=True
+                verify=False, timeout=10.0, follow_redirects=True  # nosec B501
             ) as client:
                 for url in sample_urls:
                     try:
@@ -2711,7 +2717,7 @@ class WebScanOrchestrator:
             import httpx
 
             async with httpx.AsyncClient(
-                verify=False, timeout=10.0, follow_redirects=True
+                verify=False, timeout=10.0, follow_redirects=True  # nosec B501
             ) as client:
                 for url in sample_urls:
                     try:
@@ -2880,7 +2886,12 @@ class WebScanOrchestrator:
             extra = ep.get("graphql_operation") or ""
             body = ep.get("request_body")
             if body:
-                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+                extra += (
+                    ":"
+                    + hashlib.sha1(
+                        str(body).encode("utf-8"), usedforsecurity=False
+                    ).hexdigest()[:12]
+                )
             key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)

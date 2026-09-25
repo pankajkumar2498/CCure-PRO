@@ -1300,7 +1300,9 @@ class PlaywrightCrawler:
         under many URLs.
         """
         collapsed = re.sub(r"\s+", " ", body or "").strip()
-        return hashlib.sha1(collapsed.encode("utf-8", "replace")).hexdigest()
+        return hashlib.sha1(
+            collapsed.encode("utf-8", "replace"), usedforsecurity=False
+        ).hexdigest()
 
     @staticmethod
     def _has_route_fragment(url: str) -> bool:
@@ -1450,7 +1452,12 @@ class PlaywrightCrawler:
             extra = ep.get("graphql_operation") or ""
             body = ep.get("request_body")
             if body:
-                extra += ":" + hashlib.sha1(str(body).encode("utf-8")).hexdigest()[:12]
+                extra += (
+                    ":"
+                    + hashlib.sha1(
+                        str(body).encode("utf-8"), usedforsecurity=False
+                    ).hexdigest()[:12]
+                )
             key = f"{method}:{url}:{extra}"
             if key not in seen:
                 seen.add(key)

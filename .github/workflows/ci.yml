@@ -56,7 +56,12 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        # The major version must match docker-compose.yml's `db` service.
+        # CI stayed on 15 after production moved to 18 (17 Sep 2026), so
+        # migrations, constraints and query plans were being proven on a
+        # server nobody deploys. Change the two together;
+        # tests/repo/test_ci_postgres_version.py fails if they diverge.
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: ccure_test
           POSTGRES_USER: ccure_user
@@ -93,11 +98,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r Backend/requirements.txt
-          pip install "pytest==7.4.4" pytest-cov pytest-rerunfailures bandit ruff
+          pip install "pytest==7.4.4" pytest-cov pytest-rerunfailures "bandit==1.9.4" ruff
 
+      # High severity only, and no --skip. It used to skip fourteen rules
+      # globally; eleven of them raise nothing at this severity, and the other
+      # three (B324 weak hash, B501 TLS verification off, B507 unknown SSH host
+      # key) hid seventeen findings the scanner genuinely needs, but also any
+      # new one, such as verify=False on an outbound feed fetch. The eight
+      # identifier hashes now say `usedforsecurity=False`; the other nine
+      # carry a one-line `# nosec`, and four of those are recorded as
+      # accepted risks. Keep this identical to .pre-commit-config.yaml and see
+      # docs/ci/SECURITY_GATES.md before adding a suppression.
+      #
+      # Bandit is pinned because a new release adds rules, and an unpinned
+      # install turns that into a red build on a commit that changed nothing.
       - name: Run Static Security Analysis (Bandit)
         run: |
-          bandit -r Backend/ -x Backend/tests -lll --skip B324,B501,B507,B110,B112,B605,B608,B104,B105,B106,B314,B113,B601,B310
+          bandit -r Backend/ -x Backend/tests -lll
 
       - name: Run Linting Checks (Ruff)
         run: |
@@ -199,10 +216,9 @@ jobs:
           cd Frontend
           npm ci
 
-      - name: Run Vulnerability Audit (NPM Audit)
-        run: |
-          cd Frontend
-          npm audit --audit-level=high || echo "NPM audit flagged high/critical vulnerabilities"
+      # npm audit lives in security.yml ("npm Dependency Audit"), which also
+      # runs it nightly. The step that stood here ended in `|| echo` and could
+      # not fail.
 
       # The build comes before the tests, and both matter. The guardrails
       # suite inspects dist/ to assert the shipped bundle carries no UX4G

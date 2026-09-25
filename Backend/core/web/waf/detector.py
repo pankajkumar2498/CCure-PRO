@@ -120,8 +120,10 @@ class WAFDetector:
                 "evidence": [],
             }
 
+        # The scan target's certificate is not trusted: scanned hosts are
+        # routinely self-signed, and TLS itself is assessed by sslyze.
         async with httpx.AsyncClient(
-            verify=False,
+            verify=False,  # nosec B501
             follow_redirects=True,
             timeout=15.0,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CCure-Audit-PRO/1.0)"},

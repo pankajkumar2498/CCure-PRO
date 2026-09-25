@@ -22,6 +22,15 @@ Three layers now prevent a repeat, in `Backend/tests/conftest.py`:
    `users` / `scans` / `assets` / `services` unless it carries the
    `_pytest_scratch_marker` sentinel table.
 
+All three vet `DATABASE_URL` when `conftest.py` loads, which is *before*
+collection imports the test modules. A module assigning
+`os.environ["DATABASE_URL"]` at import replaces the vetted value afterwards, and
+`alembic/env.py` reads the environment, so the schema stamp follows it.
+`tests/topology/test_topology_client.py` did exactly that, naming `ccure_test`;
+it was found on 24 Sep 2026 because the suite could not reach that address from
+a test harness. `seed_system_roles` now refuses to start if the value changed.
+**Never assign `DATABASE_URL` in a test module.**
+
 `docker-compose.yml` also pins `TEST_DATABASE_URL` to `ccure_pytest_db` on the
 `api`, `worker` and `web-worker` services, so `docker exec … pytest` cannot
 inherit the live URL.

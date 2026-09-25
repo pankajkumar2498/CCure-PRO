@@ -531,6 +531,24 @@ def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
     from db.migrate_production_schema import create_partitions, seed_rbac
 
+    # The guards above vet DATABASE_URL when this file loads, but test modules
+    # are imported *afterwards*, during collection, and a module-level
+    # `os.environ["DATABASE_URL"] = ...` silently replaces the vetted value.
+    # alembic/env.py reads the environment, not the Config handed to it, so
+    # `_build_test_schema`'s stamp then writes to whatever that module named.
+    # tests/topology/test_topology_client.py named `ccure_test` — the live
+    # database's name on the Windows deployment — and CI only escaped because
+    # its own throwaway server happened to answer at that address. Checked
+    # here, before anything touches a database, so it fails every test loudly
+    # rather than migrating the wrong one.
+    if os.environ.get("DATABASE_URL") != database_url:
+        raise RuntimeError(
+            f"DATABASE_URL was changed after conftest vetted it: it now names "
+            f"'{_db_name(os.environ.get('DATABASE_URL') or '')}' instead of "
+            f"'{_db_name(database_url)}'. A test module assigns it at import "
+            f"time; find it with: grep -rn 'DATABASE_URL' tests/"
+        )
+
     _build_test_schema()
 
     with engine.begin() as conn:

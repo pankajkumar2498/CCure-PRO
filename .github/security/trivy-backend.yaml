@@ -1,0 +1,433 @@
+# Trivy exceptions for the backend image. Read by .github/workflows/images.yml.
+#
+# Every entry names one vulnerability in one binary (by path), says why it is
+# accepted and how it is removed, and EXPIRES. On 2026-10-24 the entries stop
+# applying and the gate fails again, so an exception is a dated decision rather
+# than a permanent silence. Renew one only after re-checking its remediation.
+# Policy and procedure: docs/ci/CONTAINER_IMAGES.md#vulnerability-exceptions
+#
+# Generated from the scan of the image built on 24 Sep 2026.
+
+vulnerabilities:
+
+  # ── nuclei v3.11.1: 14 advisories (0 critical)
+  - id: CVE-2026-33818
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-39821
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-46600
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56853
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56854
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into nuclei v3.11.1; fixed in 0.55.0. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56858
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56859
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56860
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56862
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in stdlib compiled into nuclei v3.11.1; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56864
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in golang.org/x/mod compiled into nuclei v3.11.1; fixed in 0.40.0. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-56865
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in golang.org/x/mod compiled into nuclei v3.11.1; fixed in 0.40.0. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-71556
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in github.com/go-git/go-git/v5 compiled into nuclei v3.11.1; fixed in 5.19.2. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-84304
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in google.golang.org/grpc compiled into nuclei v3.11.1; fixed in 1.83.1. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+  - id: CVE-2026-84445
+    paths:
+      - "usr/local/bin/nuclei"
+    statement: >-
+      HIGH in google.golang.org/grpc compiled into nuclei v3.11.1; fixed in 1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e. v3.11.1 is the newest nuclei release (checked 24 Sep 2026); the findings are in the Go standard library and x/ modules its release binary was compiled with. Remediation: take the next upstream release (NUCLEI_VERSION and NUCLEI_SHA256 in Backend/Dockerfile).
+    expired_at: 2026-10-24
+
+  # ── ffuf v2.3.0: 8 advisories (0 critical)
+  - id: CVE-2023-39325
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.17.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2023-45288
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.23.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2024-45338
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.33.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2026-25681
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.55.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2026-27136
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.55.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2026-33814
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.53.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2026-39821
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.55.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+  - id: CVE-2026-46600
+    paths:
+      - "usr/local/bin/ffuf"
+    statement: >-
+      HIGH in golang.org/x/net compiled into ffuf v2.3.0; fixed in 0.56.0. v2.3.0 is the newest ffuf release (checked 24 Sep 2026); the findings are in golang.org/x/net as compiled into it. Remediation: take the next upstream release (FFUF_VERSION and FFUF_SHA256).
+    expired_at: 2026-10-24
+
+  # ── subfinder v2.6.7: 45 advisories (2 critical)
+  - id: CVE-2023-45283
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.20.11, 1.21.4, 1.20.12, 1.21.5. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2023-45288
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.21.9, 1.22.2. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2024-24790
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      CRITICAL in stdlib compiled into subfinder v2.6.7; fixed in 1.21.11, 1.22.4. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2024-34156
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.22.7, 1.23.1. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2024-45337
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.31.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2024-45338
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net compiled into subfinder v2.6.7; fixed in 0.33.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-22868
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/oauth2 compiled into subfinder v2.6.7; fixed in 0.27.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-22869
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.35.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-47913
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.43.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-61726
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.24.12, 1.25.6. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-61729
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.24.11, 1.25.5. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      CRITICAL in stdlib compiled into subfinder v2.6.7; fixed in 1.24.13, 1.25.7, 1.26.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-25679
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.8, 1.26.1. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-25681
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net compiled into subfinder v2.6.7; fixed in 0.55.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-27136
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net compiled into subfinder v2.6.7; fixed in 0.55.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-27145
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.11, 1.26.4. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-32280
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.9, 1.26.2. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-32281
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.9, 1.26.2. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-32283
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.9, 1.26.2. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-33811
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.10, 1.26.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-33814
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net, stdlib compiled into subfinder v2.6.7; fixed in 1.25.10, 1.26.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-33818
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39820
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.10, 1.26.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39821
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net, stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39822
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.12, 1.26.5, 1.27.0-rc.2. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39828
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39829
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39830
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39831
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39832
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39835
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-39836
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.10, 1.26.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-42499
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.10, 1.26.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-42504
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.11, 1.26.4. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-42508
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-46595
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-46597
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.52.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-46600
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/net compiled into subfinder v2.6.7; fixed in 0.56.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56852
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/text compiled into subfinder v2.6.7; fixed in 0.39.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56853
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56854
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in golang.org/x/crypto compiled into subfinder v2.6.7; fixed in 0.55.0. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56858
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56859
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56860
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+  - id: CVE-2026-56862
+    paths:
+      - "usr/local/bin/subfinder"
+    statement: >-
+      HIGH in stdlib compiled into subfinder v2.6.7; fixed in 1.25.13, 1.26.6, 1.27.0-rc.3. An upgrade exists: v2.16.0. Not taken in this change because it alters subdomain enumeration, a scanner behaviour, and needs its own validation. subfinder is a reported, non-fatal tool in the runtime gate. Remediation: bump SUBFINDER_VERSION and SUBFINDER_SHA256 and re-run the web-scan suite.
+    expired_at: 2026-10-24
+
+  # ── python:3.11-slim base image: setuptools 79.0.1's vendored copies (2)
+  - id: CVE-2026-23949
+    paths:
+      - "usr/local/lib/python3.11/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info/METADATA"
+    statement: >-
+      HIGH in jaraco.context 5.3.0, vendored inside the setuptools 79.0.1 that the pinned python:3.11-slim base ships (not an application requirement, so outside pip-audit); fixed in 6.1.0. Not upgraded in place: newer setuptools removes pkg_resources, which installed libraries may import at run time. Remediation: the Dependabot PR moving the base digest to a python:3.11-slim with a fixed setuptools.
+    expired_at: 2026-10-24
+  - id: CVE-2026-24049
+    paths:
+      - "usr/local/lib/python3.11/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info/METADATA"
+    statement: >-
+      HIGH in wheel 0.45.1, vendored inside the setuptools 79.0.1 that the pinned python:3.11-slim base ships (not an application requirement, so outside pip-audit); fixed in 0.46.2. Not upgraded in place: newer setuptools removes pkg_resources, which installed libraries may import at run time. Remediation: the Dependabot PR moving the base digest to a python:3.11-slim with a fixed setuptools.
+    expired_at: 2026-10-24

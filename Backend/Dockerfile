@@ -8,7 +8,10 @@
 #
 # Base images are pinned by digest, so a rebuild of the same commit starts from
 # the same bytes. Dependabot (docker ecosystem, .github/dependabot.yml) opens a
-# PR when the tag moves, which is how security updates to the base still arrive.
+# PR when the image behind the tag is rebuilt, which is how security updates to
+# the base still arrive. It never moves the Python version: 3.11 -> 3.14 is an
+# upgrade (no Pillow 10.3.0 or psycopg2-binary 2.9.9 wheels there), made by
+# editing the tag deliberately.
 # ── Base Image ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
 

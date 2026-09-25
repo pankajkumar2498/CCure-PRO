@@ -47,7 +47,7 @@ from routers.traditional_scans import router as traditional_scans_router
 from routers.user_profile import router as user_profile_router
 from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
-from scans.schema_bootstrap import ensure_scan_schema
+from db.models.scans import ensure_scan_schema
 from routers.scan_history import router as scans_router
 from routers.config_audit import router as config_audit_router
 from routers.credentials import router as credentials_router

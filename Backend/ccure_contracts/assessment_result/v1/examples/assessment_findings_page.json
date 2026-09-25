@@ -1,0 +1,170 @@
+{
+  "contract": "ccure.audit.assessment_findings_page",
+  "schema_version": "1.0",
+  "message_id": "4d5e6f70-8b9c-4dae-9f10-2b3c4d5e6f05",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T08:15:00Z",
+  "correlation_id": "corr-rank-pull-7781",
+  "result_id": "ar_scn_defa_c522b539_26sep26_k2mq",
+  "items": [
+    {
+      "finding": {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228"
+      },
+      "definition": {
+        "definition_id": "CVE-2021-44228",
+        "definition_type": "cve",
+        "cve_id": "CVE-2021-44228",
+        "title": "Apache Log4j2 JNDI remote code execution (Log4Shell)"
+      },
+      "asset": {
+        "asset_id": "ast_org_default_192_0_2_10",
+        "ip_address": "192.0.2.10",
+        "hostname": "fin-app-01",
+        "mac_address": "00:00:5e:00:53:10"
+      },
+      "severity": "critical",
+      "cvss": {
+        "score": 10.0,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+        "version": "3.1"
+      },
+      "detection": {
+        "method": "credentialed_package",
+        "confidence": "confirmed",
+        "qod": 97,
+        "detected_version": "2.14.1"
+      },
+      "exploit": {
+        "availability": "actively_exploited",
+        "in_cisa_kev": true,
+        "kev_due_date": "2021-12-24",
+        "epss_score": 0.94,
+        "ransomware_linked": true
+      },
+      "status": "open",
+      "first_found_at": "2026-09-19T02:37:02Z",
+      "last_found_at": "2026-09-26T02:39:55Z",
+      "remediation": {
+        "state": "assigned",
+        "sla_state": "overdue",
+        "sla_due_at": "2026-09-24T02:37:02Z",
+        "reopened_count": 0,
+        "guidance": "Upgrade Log4j to 2.17.1 or later."
+      },
+      "risk": {
+        "cvss_component": {
+          "status": "available",
+          "value": 10.0,
+          "unit": "cvss_base"
+        },
+        "asset_criticality_component": {
+          "status": "not_implemented",
+          "reason": "No asset criticality (SRS 7.3.7.3)."
+        },
+        "exposure_component": {
+          "status": "not_implemented",
+          "reason": "No exposure factor (SRS 7.3.7.5)."
+        },
+        "srs_risk_score": {
+          "status": "not_implemented",
+          "reason": "The SRS weighted score needs criticality and exposure."
+        },
+        "residual_risk_score": {
+          "status": "not_implemented",
+          "reason": "Compensating controls are not modelled on findings (SRS 7.3.7.8)."
+        },
+        "audit_priority": "P0"
+      },
+      "last_assessment": {
+        "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+        "completed_at": "2026-09-26T02:41:17Z",
+        "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+      },
+      "evidence_refs": [
+        {
+          "evidence_id": "evd_fnd_log4shell_proof",
+          "kind": "finding_proof",
+          "collected_at": "2026-09-26T02:39:55Z"
+        }
+      ]
+    },
+    {
+      "finding": {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CCURE-CFG-CCURE-WIN-PASSWORD-MINIMUM-LENGTH"
+      },
+      "definition": {
+        "definition_id": "CCURE-CFG-CCURE-WIN-PASSWORD-MINIMUM-LENGTH",
+        "definition_type": "config_check",
+        "title": "Minimum password length is at least 14 characters"
+      },
+      "asset": {
+        "asset_id": "ast_org_default_192_0_2_10",
+        "ip_address": "192.0.2.10",
+        "hostname": "fin-app-01",
+        "mac_address": "00:00:5e:00:53:10"
+      },
+      "severity": "medium",
+      "detection": {
+        "method": "config_check",
+        "confidence": "confirmed",
+        "qod": 99
+      },
+      "exploit": {
+        "availability": "not_applicable"
+      },
+      "status": "open",
+      "first_found_at": "2026-09-26T02:40:31Z",
+      "last_found_at": "2026-09-26T02:40:31Z",
+      "remediation": {
+        "state": "open",
+        "sla_state": "within_sla",
+        "sla_due_at": "2026-10-26T02:40:31Z",
+        "reopened_count": 0,
+        "guidance": "Set 'Minimum password length' to 14 or more in the local or domain policy."
+      },
+      "risk": {
+        "cvss_component": {
+          "status": "not_applicable",
+          "reason": "Configuration findings carry no CVSS."
+        },
+        "asset_criticality_component": {
+          "status": "not_implemented",
+          "reason": "No asset criticality (SRS 7.3.7.3)."
+        },
+        "exposure_component": {
+          "status": "not_implemented",
+          "reason": "No exposure factor (SRS 7.3.7.5)."
+        },
+        "srs_risk_score": {
+          "status": "not_implemented",
+          "reason": "The SRS weighted score needs criticality and exposure."
+        },
+        "residual_risk_score": {
+          "status": "not_implemented",
+          "reason": "Compensating controls are not modelled on findings (SRS 7.3.7.8)."
+        }
+      },
+      "last_assessment": {
+        "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+        "completed_at": "2026-09-26T02:41:17Z",
+        "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+      },
+      "evidence_refs": [
+        {
+          "evidence_id": "evd_chk_win_pwlen_192_0_2_10",
+          "kind": "check_observation",
+          "collected_at": "2026-09-26T02:40:31Z"
+        }
+      ]
+    }
+  ],
+  "position": {
+    "next_cursor": "c2:ar_scn_defa_c522b539_26sep26_k2mq:2",
+    "has_more": true
+  }
+}

@@ -184,10 +184,11 @@ This repository is being refactored into the common CCure platform (Policy
 Pro, Audit, Rank, IR). `tests/repo/test_architecture_guardrails.py` holds the
 line while that happens, and it is a **ratchet in both directions**:
 
-- **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids eight
+- **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids nine
   directions of dependency (routers are the HTTP edge; models are leaves;
   engines are libraries; `core/tasks.py` is not imported back; shared
-  infrastructure imports no features; identity does not import scanning; …),
+  infrastructure imports no features; identity does not import scanning;
+  `ccure_contracts` imports no module's code; …),
   each with its reason. `KNOWN_VIOLATIONS` recorded the 21 that existed on
   25 Sep 2026 and is **empty** since Phase 3 removed them all, so every rule
   now holds without exception. A new violation fails CI. Never add an entry to
@@ -201,6 +202,47 @@ line while that happens, and it is a **ratchet in both directions**:
 Imports inside functions count as dependencies — they are how this codebase
 hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
 prints the graph; `--violations` lists every rule-breaking edge.
+
+Two things Phase 3 deliberately left, which are **not** violations:
+
+- **Compatibility import paths.** `scans.cvss` and `scans.finding_normalizer`
+  are `sys.modules` aliases of `core.checks.cvss` / `core.checks.finding_normalizer`
+  (the same module objects, so patches and `isinstance` still work), and
+  `scan_helpers.limiter` is `core.rate_limiter.limiter`. New code imports the
+  new paths; the old ones are migrated and deprecated later, not now.
+- **The discovery engine still loads SQLAlchemy**, via `core.risk` →
+  `core.vuln_intel`. It breaks no rule; it stops the engine running without the
+  database layer, and is refactored only when a phase needs that.
+
+Do not start dependency cleanup for its own sake: Phase 3's objective
+(zero violations, zero cycles) is met.
+
+## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
+
+What Policy Pro, Audit, Rank and IR exchange. Design and review document:
+[`docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md`](docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md).
+**Nothing in the application uses them yet** — a test fails if anything
+imports `ccure_contracts` before the integration adapter is built (plan Phase 7).
+
+- **The Pydantic models are the source; the JSON Schemas are generated.** Never
+  hand-edit `*/v1/schemas/*.json`. After changing a model run
+  `python -m scripts.contracts.generate_schemas`; on the VM the API container
+  cannot write into the bind mount, so render there and write on the host:
+  `docker exec -w /app ccure-api python -m scripts.contracts.generate_schemas --bundle | python3 scripts/contracts/write_bundle.py`.
+- **Every field is declared with `owned(owner, …)`** and carries
+  `x-ccure-owner` / `x-ccure-availability` into the schema. A field Audit
+  cannot populate is `not_implemented` and must be optional or a
+  `CcureMeasuredValueV1` with a reason — never a required value Audit would have
+  to invent. The tests enforce both.
+- **`ccure_contracts` imports only the standard library and Pydantic**
+  (`contracts-are-leaves`). It must never import an Audit model: contracts do
+  not expose SQLAlchemy rows, and translation happens in the adapter.
+- **Class names are `Ccure…V1`** — FastAPI names OpenAPI components after the
+  class, and a bare `Finding` would replace an existing schema.
+- **Policy Pro sends controls and parameters, never executable checks**, and IR
+  can never move a finding to `verified_fixed`. Both are refused by the models.
+- v1 is `draft` until reviewed. Once a contract is `published` its schema digest
+  is pinned in `schema_lock.json` and changes need a new `schema_version`.
 
 ## Where things live
 

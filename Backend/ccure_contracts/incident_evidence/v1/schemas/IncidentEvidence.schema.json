@@ -1,0 +1,804 @@
+{
+  "$defs": {
+    "CcureAssetRefV1": {
+      "additionalProperties": false,
+      "description": "An asset as Audit knows it.\n\n``asset_id`` is Audit's identifier and is opaque. It is **not** stable\nacross a change of IP address today (open question Q5), so the identity\nattributes are carried beside it for correlation by other modules.",
+      "properties": {
+        "asset_id": {
+          "description": "Audit's asset identifier. Opaque.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Asset Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "hostname": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hostname, where resolved.",
+          "title": "Hostname",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        },
+        "ip_address": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IPv4 or IPv6 address at assessment time.",
+          "title": "Ip Address",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "mac_address": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MAC address, where discovered.",
+          "title": "Mac Address",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "title": "CcureAssetRefV1",
+      "type": "object"
+    },
+    "CcureExternalEvidenceV1": {
+      "additionalProperties": false,
+      "description": "A file IR holds. Audit records the reference and digest, not the bytes.",
+      "properties": {
+        "ir_evidence_id": {
+          "description": "IR's identifier for the file.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Ir Evidence Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "media_type": {
+          "description": "MIME type.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "name": {
+          "description": "File name.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "sha256": {
+          "description": "Digest, so an auditor can match the file IR produces.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "size_bytes": {
+          "description": "Size.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        }
+      },
+      "required": [
+        "ir_evidence_id",
+        "name",
+        "media_type",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "CcureExternalEvidenceV1",
+      "type": "object"
+    },
+    "CcureFindingRefV1": {
+      "additionalProperties": false,
+      "description": "A finding, by Audit's identifier.",
+      "properties": {
+        "finding_id": {
+          "description": "Audit's finding identifier. Opaque.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Finding Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "finding_id"
+      ],
+      "title": "CcureFindingRefV1",
+      "type": "object"
+    },
+    "CcureIncidentEvidenceDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "effectiveness_score": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureMeasuredValueV1"
+            }
+          ],
+          "description": "IR's response effectiveness score (SRS 7.4.5).",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir",
+          "x-ccure-srs": [
+            "7.4.5"
+          ]
+        },
+        "evidence_files": {
+          "description": "Files IR holds, by reference and digest.",
+          "items": {
+            "$ref": "#/$defs/CcureExternalEvidenceV1"
+          },
+          "title": "Evidence Files",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "incident_id": {
+          "description": "IR's incident identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Incident Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "incident_version": {
+          "description": "Monotonic; each update is a new immutable record.",
+          "minimum": 1,
+          "title": "Incident Version",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "related_assets": {
+          "description": "Audit assets the incident concerns.",
+          "items": {
+            "$ref": "#/$defs/CcureAssetRefV1"
+          },
+          "title": "Related Assets",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "related_findings": {
+          "description": "Audit findings the incident concerns.",
+          "items": {
+            "$ref": "#/$defs/CcureFindingRefV1"
+          },
+          "title": "Related Findings",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "remediation_claims": {
+          "description": "Claims about Audit findings.",
+          "items": {
+            "$ref": "#/$defs/CcureRemediationClaimV1"
+          },
+          "title": "Remediation Claims",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "response_actions": {
+          "description": "Response actions taken.",
+          "items": {
+            "$ref": "#/$defs/CcureResponseActionV1"
+          },
+          "title": "Response Actions",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "severity": {
+          "description": "IR's severity.",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/IncidentStatus"
+            }
+          ],
+          "description": "Incident status.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "summary": {
+          "description": "Incident summary / log digest.",
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir",
+          "x-ccure-srs": [
+            "7.4.6"
+          ]
+        },
+        "timeline": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureIncidentTimelineV1"
+            }
+          ],
+          "description": "Key timestamps.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir",
+          "x-ccure-srs": [
+            "7.4.5"
+          ]
+        },
+        "title": {
+          "description": "Incident title.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        }
+      },
+      "required": [
+        "incident_id",
+        "incident_version",
+        "title",
+        "status",
+        "severity",
+        "timeline",
+        "summary",
+        "effectiveness_score"
+      ],
+      "title": "CcureIncidentEvidenceDataV1",
+      "type": "object"
+    },
+    "CcureIncidentTimelineV1": {
+      "additionalProperties": false,
+      "description": "SRS 7.4.5 — the timestamps IR's effectiveness scoring uses.",
+      "properties": {
+        "closed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Case closure.",
+          "title": "Closed At",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "contained_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Containment.",
+          "title": "Contained At",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "detected_at": {
+          "description": "Detection.",
+          "format": "date-time",
+          "title": "Detected At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "occurred_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estimated start.",
+          "title": "Occurred At",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "recovered_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Recovery.",
+          "title": "Recovered At",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        }
+      },
+      "required": [
+        "detected_at"
+      ],
+      "title": "CcureIncidentTimelineV1",
+      "type": "object"
+    },
+    "CcureMeasuredValueV1": {
+      "additionalProperties": false,
+      "description": "A number that may not be available, with the reason when it is not.\n\nThis is how a contract says \"unknown\" without saying \"zero\". A value is\npresent exactly when ``status`` is ``available``; any other status carries\nno value and must say why.",
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why no value is present. Required unless status is available.",
+          "title": "Reason",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ValueStatus"
+            }
+          ],
+          "description": "Whether a value is present, and if not why.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unit of the value, e.g. 'seconds', 'percent'.",
+          "title": "Unit",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The value; present only when status is available.",
+          "title": "Value",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CcureMeasuredValueV1",
+      "type": "object"
+    },
+    "CcureRemediationClaimV1": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/RemediationClaimKind"
+            }
+          ],
+          "description": "What IR claims.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "claimed_at": {
+          "description": "When the claim was made.",
+          "format": "date-time",
+          "title": "Claimed At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "description": {
+          "description": "What was done, in words.",
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "finding": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureFindingRefV1"
+            }
+          ],
+          "description": "An Audit finding IR received in contract 4.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "request_rescan": {
+          "default": false,
+          "description": "Ask Audit to schedule a targeted re-scan of the affected asset (SRS 7.3.5.8). A request, not an order: Audit's scope and quota apply.",
+          "title": "Request Rescan",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        }
+      },
+      "required": [
+        "finding",
+        "claim",
+        "claimed_at",
+        "description"
+      ],
+      "title": "CcureRemediationClaimV1",
+      "type": "object"
+    },
+    "CcureResponseActionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "description": "IR's action identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Action Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "action_type": {
+          "description": "e.g. isolate_host, block_ip, patch, reset_credential.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Action Type",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "description": {
+          "description": "What was done.",
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "outcome": {
+          "description": "Result.",
+          "enum": [
+            "succeeded",
+            "failed",
+            "partial"
+          ],
+          "title": "Outcome",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "performed_at": {
+          "description": "When.",
+          "format": "date-time",
+          "title": "Performed At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "performed_by_ref": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opaque reference to who or what performed it.",
+          "title": "Performed By Ref",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        }
+      },
+      "required": [
+        "action_id",
+        "action_type",
+        "description",
+        "performed_at",
+        "outcome"
+      ],
+      "title": "CcureResponseActionV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "IncidentStatus": {
+      "enum": [
+        "open",
+        "contained",
+        "resolved",
+        "closed"
+      ],
+      "title": "IncidentStatus",
+      "type": "string"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    },
+    "RemediationClaimKind": {
+      "description": "What IR says it did about a finding. There is no 'verified'.",
+      "enum": [
+        "remediated",
+        "mitigated",
+        "not_remediated"
+      ],
+      "title": "RemediationClaimKind",
+      "type": "string"
+    },
+    "ValueStatus": {
+      "description": "Why a measured value is or is not present.",
+      "enum": [
+        "available",
+        "not_implemented",
+        "not_collected",
+        "not_applicable"
+      ],
+      "title": "ValueStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/incident_evidence/v1/IncidentEvidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``POST /api/v1/integrations/incident-evidence`` request body.",
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.incident_evidence",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.incident_evidence"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureIncidentEvidenceDataV1"
+        }
+      ],
+      "description": "The incident evidence.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "ir"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcureIncidentEvidenceV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

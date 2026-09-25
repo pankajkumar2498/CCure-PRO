@@ -1,0 +1,593 @@
+{
+  "$defs": {
+    "CcureAssessmentRefV1": {
+      "additionalProperties": false,
+      "description": "An Audit assessment (a scan or a compliance run).",
+      "properties": {
+        "assessment_id": {
+          "description": "Audit's assessment identifier. Opaque.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Assessment Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the assessment reached its terminal state.",
+          "title": "Completed At",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "scan_policy_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fingerprint of the scan policy snapshot the assessment ran under (GAP-12). Two results with different fingerprints assessed different things and are not directly comparable.",
+          "title": "Scan Policy Fingerprint",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "assessment_id"
+      ],
+      "title": "CcureAssessmentRefV1",
+      "type": "object"
+    },
+    "CcureAssetRefV1": {
+      "additionalProperties": false,
+      "description": "An asset as Audit knows it.\n\n``asset_id`` is Audit's identifier and is opaque. It is **not** stable\nacross a change of IP address today (open question Q5), so the identity\nattributes are carried beside it for correlation by other modules.",
+      "properties": {
+        "asset_id": {
+          "description": "Audit's asset identifier. Opaque.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Asset Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "hostname": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hostname, where resolved.",
+          "title": "Hostname",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        },
+        "ip_address": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IPv4 or IPv6 address at assessment time.",
+          "title": "Ip Address",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "mac_address": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MAC address, where discovered.",
+          "title": "Mac Address",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "title": "CcureAssetRefV1",
+      "type": "object"
+    },
+    "CcureControlRefV1": {
+      "additionalProperties": false,
+      "description": "One control of one framework, e.g. ISO27001_2022 / 2022 / A.8.9.",
+      "properties": {
+        "control_id": {
+          "description": "The control's identifier as the framework publishes it (A.8.9, PR.AA-01, AC-2). Namespace rules are open decision D3.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Control Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "framework": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureFrameworkRefV1"
+            }
+          ],
+          "description": "The framework.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "framework",
+        "control_id"
+      ],
+      "title": "CcureControlRefV1",
+      "type": "object"
+    },
+    "CcureEvidenceFileV1": {
+      "additionalProperties": false,
+      "properties": {
+        "download_path": {
+          "description": "Path on this API, e.g. /api/v1/integrations/evidence/{id}/content.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Download Path",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "malware_scan": {
+          "description": "Upload-guard result. 'not_configured' is not 'clean' (CLAUDE.md, file uploads).",
+          "enum": [
+            "clean",
+            "not_configured",
+            "not_scanned"
+          ],
+          "title": "Malware Scan",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "media_type": {
+          "description": "Verified media type (content-sniffed, not declared).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "name": {
+          "description": "File name as stored (sanitised).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "sha256": {
+          "description": "Digest.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "size_bytes": {
+          "description": "Size.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "name",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "download_path",
+        "malware_scan"
+      ],
+      "title": "CcureEvidenceFileV1",
+      "type": "object"
+    },
+    "CcureEvidenceRecordDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CcureAssessmentRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The assessment that collected it.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "asset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CcureAssetRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The asset it concerns.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "collected_at": {
+          "description": "When collected or received.",
+          "format": "date-time",
+          "title": "Collected At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "control_refs": {
+          "description": "Controls it supports.",
+          "items": {
+            "$ref": "#/$defs/CcureControlRefV1"
+          },
+          "title": "Control Refs",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "evidence_id": {
+          "description": "Identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Evidence Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CcureEvidenceFileV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Present when the evidence is a stored file.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "finding_refs": {
+          "description": "Findings it supports.",
+          "items": {
+            "$ref": "#/$defs/CcureFindingRefV1"
+          },
+          "title": "Finding Refs",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "kind": {
+          "description": "What the evidence is.",
+          "enum": [
+            "check_observation",
+            "finding_proof",
+            "uploaded_file",
+            "attestation",
+            "incident_evidence"
+          ],
+          "title": "Kind",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "origin_module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "Who produced the content. 'ir' for evidence received through contract 5 — stored read-only, never edited by Audit.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "redaction_applied": {
+          "description": "Whether anything was masked from text before it was returned.",
+          "title": "Redaction Applied",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Redacted textual evidence, e.g. an observed setting.",
+          "title": "Text",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "origin_module",
+        "collected_at",
+        "redaction_applied"
+      ],
+      "title": "CcureEvidenceRecordDataV1",
+      "type": "object"
+    },
+    "CcureFindingRefV1": {
+      "additionalProperties": false,
+      "description": "A finding, by Audit's identifier.",
+      "properties": {
+        "finding_id": {
+          "description": "Audit's finding identifier. Opaque.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Finding Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "finding_id"
+      ],
+      "title": "CcureFindingRefV1",
+      "type": "object"
+    },
+    "CcureFrameworkRefV1": {
+      "additionalProperties": false,
+      "description": "A compliance framework, named by code and version (e.g. ISO27001_2022 / 2022).",
+      "properties": {
+        "code": {
+          "description": "Framework code from the shared framework vocabulary (open decision D3).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "version": {
+          "description": "Framework version as published.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "code",
+        "version"
+      ],
+      "title": "CcureFrameworkRefV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/evidence/v1/EvidenceRecord.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.evidence_record",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.evidence_record"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureEvidenceRecordDataV1"
+        }
+      ],
+      "description": "The record.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "audit"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcureEvidenceRecordV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

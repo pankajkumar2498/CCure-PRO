@@ -114,6 +114,8 @@ def test_every_rule_says_why():
         ("core.constants", "reporting.pdf_generator", "infrastructure-is-foundation"),
         ("auth.router", "scan_helpers", "identity-below-scanning"),
         ("scans.db_helpers", "core.tasks", "task-hub-is-a-leaf"),
+        ("ccure_contracts.x", "db.models.scans", "contracts-are-leaves"),
+        ("ccure_contracts.x", "core.checks.contract", "contracts-are-leaves"),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):

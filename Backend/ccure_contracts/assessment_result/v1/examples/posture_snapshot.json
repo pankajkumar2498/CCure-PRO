@@ -1,0 +1,106 @@
+{
+  "contract": "ccure.audit.posture_snapshot",
+  "schema_version": "1.0",
+  "message_id": "5e6f7081-9cad-4ebf-8a21-3c4d5e6f7006",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T08:16:00Z",
+  "correlation_id": "corr-rank-pull-7782",
+  "data": {
+    "snapshot_id": "ps_org_default_20260926T081600Z",
+    "valid_as_of": "2026-09-26T08:16:00Z",
+    "inventory": {
+      "assets_known": 57,
+      "by_last_coverage": {
+        "ASSESSED": 21,
+        "PARTIALLY_ASSESSED": 24,
+        "NOT_ASSESSED": 3,
+        "ERROR": 1
+      },
+      "never_assessed": 8,
+      "stale_after_days": 30,
+      "stale": 11
+    },
+    "findings": {
+      "open_by_severity": {
+        "critical": 4,
+        "high": 19,
+        "medium": 61,
+        "low": 33,
+        "none": 2,
+        "unscored": 6
+      },
+      "by_remediation_state": {
+        "open": 88,
+        "assigned": 17,
+        "in_remediation": 9,
+        "pending_verification": 4,
+        "verified_fixed": 42,
+        "reopened": 3,
+        "risk_accepted": 5
+      },
+      "by_sla_state": {
+        "within_sla": 31,
+        "due_soon": 7,
+        "overdue": 17,
+        "resolved": 42,
+        "pending_verification": 4,
+        "not_applicable": 64
+      },
+      "accepted_risk": 5
+    },
+    "frameworks": [
+      {
+        "framework": {
+          "code": "ISO27001_2022",
+          "version": "2022"
+        },
+        "controls": {
+          "PASS": 38,
+          "FAIL": 11,
+          "NOT_ASSESSED": 21,
+          "NOT_APPLICABLE": 4,
+          "MANUAL_REVIEW": 19,
+          "ERROR": 0
+        },
+        "compliance_score": {
+          "status": "available",
+          "value": 77.6,
+          "unit": "percent"
+        }
+      }
+    ],
+    "latest_results": [
+      {
+        "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+        "completed_at": "2026-09-26T02:41:17Z",
+        "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+      }
+    ],
+    "metrics": {
+      "mttr": {
+        "status": "not_implemented",
+        "reason": "Not computed yet."
+      },
+      "sla_compliance_rate": {
+        "status": "not_implemented",
+        "reason": "Not computed yet."
+      },
+      "reopen_rate": {
+        "status": "not_implemented",
+        "reason": "Not computed yet."
+      },
+      "vulnerability_density": {
+        "status": "not_implemented",
+        "reason": "Not computed yet."
+      },
+      "criticality_distribution": {
+        "status": "not_implemented",
+        "reason": "Audit has no asset criticality attribute."
+      }
+    }
+  }
+}

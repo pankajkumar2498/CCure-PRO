@@ -180,6 +180,17 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        name="contracts-are-leaves",
+        importer=("ccure_contracts",),
+        forbidden=_APP_PACKAGES + ("db", "config"),
+        reason=(
+            "ccure_contracts is the one package every CCure module may import, so "
+            "it may import no module's code. A contract that reached into Audit's "
+            "models or services would expose Audit's internals to Policy Pro, "
+            "Rank and IR and couple all four to them (Phase 4)."
+        ),
+    ),
+    Rule(
         name="reporting-below-http",
         importer=("reporting",),
         forbidden=("routers", "orchestrator", "core.tasks", "main"),

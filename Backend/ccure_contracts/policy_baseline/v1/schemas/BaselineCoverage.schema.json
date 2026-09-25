@@ -1,0 +1,685 @@
+{
+  "$defs": {
+    "BaselineMappingState": {
+      "description": "How Audit can assess one control of a received policy baseline.",
+      "enum": [
+        "AUTOMATED",
+        "PARTIALLY_AUTOMATED",
+        "ATTESTATION_REQUIRED",
+        "UNKNOWN_CONTROL",
+        "UNSUPPORTED"
+      ],
+      "title": "BaselineMappingState",
+      "type": "string"
+    },
+    "CcureAuditRuleRefV1": {
+      "additionalProperties": false,
+      "description": "An Audit assessment rule a control maps to. Audit's, and opaque.",
+      "properties": {
+        "check_type": {
+          "description": "The kind of check, e.g. 'registry', 'config_file', 'scap_rule', 'database_query', 'evidence_key'. Descriptive only.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Check Type",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "platforms": {
+          "description": "Platforms the rule can assess, e.g. 'windows', 'linux'.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Platforms",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "rule_id": {
+          "description": "Audit's rule identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Rule Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "title": {
+          "description": "Rule title, for display.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "rule_id",
+        "title",
+        "check_type"
+      ],
+      "title": "CcureAuditRuleRefV1",
+      "type": "object"
+    },
+    "CcureBaselineCoverageDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "description": "Whether the baseline governs Audit's assessments. Activation is an Audit-side decision (open question Q1).",
+          "enum": [
+            "pending_review",
+            "active",
+            "superseded",
+            "rejected"
+          ],
+          "title": "Activation",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "baseline": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureBaselineRefV1"
+            }
+          ],
+          "description": "The baseline answered, with the digest Audit computed.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "controls": {
+          "description": "One entry per baseline control, in baseline order.",
+          "items": {
+            "$ref": "#/$defs/CcureControlMappingV1"
+          },
+          "title": "Controls",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "mapped_at": {
+          "description": "When this mapping revision was computed.",
+          "format": "date-time",
+          "title": "Mapped At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "mapping_revision": {
+          "description": "Increments when Audit re-maps the same baseline version because its own rule catalogue changed (a benchmark loaded, a rule retired). The baseline is immutable; its coverage is not.",
+          "minimum": 1,
+          "title": "Mapping Revision",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "parameters": {
+          "description": "One entry per parameter received.",
+          "items": {
+            "$ref": "#/$defs/CcureParameterOutcomeV1"
+          },
+          "title": "Parameters",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "received_at": {
+          "description": "When Audit first accepted this version.",
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "scope": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureScopeOutcomeV1"
+            }
+          ],
+          "description": "What happened to the scope narrowing.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureCoverageSummaryV1"
+            }
+          ],
+          "description": "Counts per mapping state.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "baseline",
+        "received_at",
+        "mapping_revision",
+        "mapped_at",
+        "activation",
+        "summary",
+        "controls",
+        "scope"
+      ],
+      "title": "CcureBaselineCoverageDataV1",
+      "type": "object"
+    },
+    "CcureBaselineRefV1": {
+      "additionalProperties": false,
+      "description": "A specific version of a Policy Pro baseline, as Audit received it.",
+      "properties": {
+        "baseline_id": {
+          "description": "Policy Pro's baseline identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Baseline Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "baseline_version": {
+          "description": "Monotonic version number of the baseline.",
+          "minimum": 1,
+          "title": "Baseline Version",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest Audit computed over the canonical JSON of the baseline as received. Lets both sides prove which content a result refers to.",
+          "title": "Content Sha256",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "baseline_id",
+        "baseline_version"
+      ],
+      "title": "CcureBaselineRefV1",
+      "type": "object"
+    },
+    "CcureControlMappingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "audit_rules": {
+          "description": "The Audit rules the control maps to. Empty for ATTESTATION_REQUIRED, UNKNOWN_CONTROL and UNSUPPORTED.",
+          "items": {
+            "$ref": "#/$defs/CcureAuditRuleRefV1"
+          },
+          "title": "Audit Rules",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "control": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureControlRefV1"
+            }
+          ],
+          "description": "Echo of the control.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "mapping_state": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/BaselineMappingState"
+            }
+          ],
+          "description": "How Audit can assess the control.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit",
+          "x-ccure-srs": [
+            "7.3.1.2",
+            "7.3.2.1"
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the control is not (fully) automated. Required unless AUTOMATED.",
+          "title": "Reason",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "requirement_id": {
+          "description": "Echo of the baseline requirement this entry answers.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Requirement Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "control",
+        "mapping_state"
+      ],
+      "title": "CcureControlMappingV1",
+      "type": "object"
+    },
+    "CcureControlRefV1": {
+      "additionalProperties": false,
+      "description": "One control of one framework, e.g. ISO27001_2022 / 2022 / A.8.9.",
+      "properties": {
+        "control_id": {
+          "description": "The control's identifier as the framework publishes it (A.8.9, PR.AA-01, AC-2). Namespace rules are open decision D3.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Control Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "framework": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureFrameworkRefV1"
+            }
+          ],
+          "description": "The framework.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "framework",
+        "control_id"
+      ],
+      "title": "CcureControlRefV1",
+      "type": "object"
+    },
+    "CcureCoverageSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attestation_required": {
+          "description": "Controls needing attestation.",
+          "minimum": 0,
+          "title": "Attestation Required",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "automated": {
+          "description": "Controls mapped AUTOMATED.",
+          "minimum": 0,
+          "title": "Automated",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "controls_total": {
+          "description": "Controls in the baseline.",
+          "minimum": 0,
+          "title": "Controls Total",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "partially_automated": {
+          "description": "Controls mapped PARTIALLY_AUTOMATED.",
+          "minimum": 0,
+          "title": "Partially Automated",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "unknown_control": {
+          "description": "Controls Audit's catalogue does not know.",
+          "minimum": 0,
+          "title": "Unknown Control",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "unsupported": {
+          "description": "Known controls Audit cannot assess.",
+          "minimum": 0,
+          "title": "Unsupported",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "controls_total",
+        "automated",
+        "partially_automated",
+        "attestation_required",
+        "unknown_control",
+        "unsupported"
+      ],
+      "title": "CcureCoverageSummaryV1",
+      "type": "object"
+    },
+    "CcureFrameworkRefV1": {
+      "additionalProperties": false,
+      "description": "A compliance framework, named by code and version (e.g. ISO27001_2022 / 2022).",
+      "properties": {
+        "code": {
+          "description": "Framework code from the shared framework vocabulary (open decision D3).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "version": {
+          "description": "Framework version as published.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "code",
+        "version"
+      ],
+      "title": "CcureFrameworkRefV1",
+      "type": "object"
+    },
+    "CcureParameterOutcomeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "handling": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ParameterHandling"
+            }
+          ],
+          "description": "What Audit does with the value. Until Audit's rules take parameters (plan Phase 13) every known parameter is RECORDED_NOT_HONOURED — recorded, reported, and never silently ignored.",
+          "x-ccure-availability": "partial",
+          "x-ccure-owner": "audit"
+        },
+        "name": {
+          "description": "Echo of the parameter name.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why, when not HONOURED.",
+          "title": "Reason",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "requirement_id": {
+          "description": "Echo of the requirement.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Requirement Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "name",
+        "handling"
+      ],
+      "title": "CcureParameterOutcomeV1",
+      "type": "object"
+    },
+    "CcureScopeOutcomeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "applied": {
+          "description": "Whether any scope narrowing was applied.",
+          "title": "Applied",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "rejected_entries": {
+          "description": "Scope entries refused because they lie outside the organisation's authorised scan scope.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Rejected Entries",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "title": "CcureScopeOutcomeV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    },
+    "ParameterHandling": {
+      "description": "What Audit does with one organisation parameter of a baseline.",
+      "enum": [
+        "HONOURED",
+        "RECORDED_NOT_HONOURED",
+        "UNKNOWN_PARAMETER",
+        "INVALID_VALUE"
+      ],
+      "title": "ParameterHandling",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/policy_baseline/v1/BaselineCoverage.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Response to a PolicyBaseline, and ``GET …/coverage``.",
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.baseline_coverage",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.baseline_coverage"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureBaselineCoverageDataV1"
+        }
+      ],
+      "description": "Audit's coverage of the baseline.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "audit"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcureBaselineCoverageV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

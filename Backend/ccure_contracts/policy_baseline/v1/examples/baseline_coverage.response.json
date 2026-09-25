@@ -1,0 +1,164 @@
+{
+  "contract": "ccure.audit.baseline_coverage",
+  "schema_version": "1.0",
+  "message_id": "5b8a3c19-7e1d-4c0b-8f0a-1e2d3c4b5a02",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-25T09:12:05Z",
+  "correlation_id": "corr-pp-approval-2f6c1b",
+  "causation_id": "0f1c7d8e-3b52-4a8e-9a55-5d2f0f6f1a01",
+  "data": {
+    "baseline": {
+      "baseline_id": "pp-baseline-infosec-core",
+      "baseline_version": 4,
+      "content_sha256": "28a258807c0ed3c17a10c802c4c70c68648a46ed325c3cb81c92458f8b0acc0b"
+    },
+    "received_at": "2026-09-25T09:12:05Z",
+    "mapping_revision": 1,
+    "mapped_at": "2026-09-25T09:12:05Z",
+    "activation": "pending_review",
+    "summary": {
+      "controls_total": 6,
+      "automated": 2,
+      "partially_automated": 0,
+      "attestation_required": 3,
+      "unknown_control": 1,
+      "unsupported": 0
+    },
+    "controls": [
+      {
+        "requirement_id": "REQ-ACC-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.17"
+        },
+        "mapping_state": "ATTESTATION_REQUIRED",
+        "reason": "Audit's rule for A.5.17 is an attestation placeholder; the password-length checks are not yet crosswalked to this control."
+      },
+      {
+        "requirement_id": "REQ-VUL-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.8"
+        },
+        "mapping_state": "AUTOMATED",
+        "audit_rules": [
+          {
+            "rule_id": "crl_vuln_critical_v1",
+            "title": "No open critical vulnerabilities",
+            "check_type": "evidence_key",
+            "platforms": [
+              "any"
+            ]
+          },
+          {
+            "rule_id": "crl_vuln_high_v1",
+            "title": "No open high vulnerabilities",
+            "check_type": "evidence_key",
+            "platforms": [
+              "any"
+            ]
+          }
+        ]
+      },
+      {
+        "requirement_id": "REQ-CFG-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.9"
+        },
+        "mapping_state": "AUTOMATED",
+        "audit_rules": [
+          {
+            "rule_id": "crl_iso_config_telnet_v1",
+            "title": "Telnet service disabled",
+            "check_type": "service_status",
+            "platforms": [
+              "windows",
+              "linux"
+            ]
+          },
+          {
+            "rule_id": "crl_iso_config_smbv1_v1",
+            "title": "SMBv1 disabled",
+            "check_type": "registry",
+            "platforms": [
+              "windows"
+            ]
+          },
+          {
+            "rule_id": "crl_iso_config_firewall_v1",
+            "title": "Host firewall profile active",
+            "check_type": "service_status",
+            "platforms": [
+              "windows",
+              "linux"
+            ]
+          }
+        ]
+      },
+      {
+        "requirement_id": "REQ-GOV-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.1"
+        },
+        "mapping_state": "ATTESTATION_REQUIRED",
+        "reason": "An organisational control; no technical check can establish it."
+      },
+      {
+        "requirement_id": "REQ-PHY-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.7.4"
+        },
+        "mapping_state": "ATTESTATION_REQUIRED",
+        "reason": "A physical control; declared not applicable by the baseline."
+      },
+      {
+        "requirement_id": "REQ-ORG-07",
+        "control": {
+          "framework": {
+            "code": "ORG_INTERNAL",
+            "version": "3"
+          },
+          "control_id": "PWD-01"
+        },
+        "mapping_state": "UNKNOWN_CONTROL",
+        "reason": "Framework ORG_INTERNAL/3 is not in Audit's catalogue."
+      }
+    ],
+    "parameters": [
+      {
+        "requirement_id": "REQ-ACC-01",
+        "name": "password_min_length",
+        "handling": "RECORDED_NOT_HONOURED",
+        "reason": "Audit's rules do not take parameters yet (plan Phase 13); the value is recorded and reported."
+      }
+    ],
+    "scope": {
+      "applied": true,
+      "rejected_entries": [
+        "198.51.100.0/24"
+      ]
+    }
+  }
+}

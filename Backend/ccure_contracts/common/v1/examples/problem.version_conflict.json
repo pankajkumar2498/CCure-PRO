@@ -1,0 +1,9 @@
+{
+  "type": "https://ccurepro.cdac.in/problems/version_conflict",
+  "title": "Baseline version already received with different content",
+  "status": 409,
+  "detail": "pp-baseline-infosec-core version 4 was received on 2026-09-25T09:12:05Z with a different content digest. Send the change as version 5.",
+  "code": "version_conflict",
+  "correlation_id": "corr-pp-approval-2f6c1b",
+  "retryable": false
+}

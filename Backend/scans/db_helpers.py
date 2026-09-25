@@ -307,7 +307,7 @@ def update_scan_phase1(
 
     if is_final:
         try:
-            from routers.notifications import (
+            from core.notifications import (
                 NotificationCategory,
                 NotificationType,
                 create_notification,
@@ -581,7 +581,7 @@ def update_scan_phase(
 
     if is_final:
         try:
-            from routers.notifications import (
+            from core.notifications import (
                 NotificationCategory,
                 NotificationType,
                 create_notification,
@@ -702,7 +702,7 @@ def mark_scan_failed(
         db.commit()
 
     try:
-        from routers.notifications import (
+        from core.notifications import (
             NotificationCategory,
             NotificationType,
             create_notification,
@@ -884,7 +884,7 @@ def create_completed_scan(
             db.commit()
 
     try:
-        from routers.notifications import (
+        from core.notifications import (
             NotificationCategory,
             NotificationType,
             create_notification,

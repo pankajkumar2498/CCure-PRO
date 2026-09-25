@@ -115,7 +115,7 @@ def _notify_user_admin_action(
       3. Fan-out to admins in the acting admin's organization (if different).
     """
     try:
-        from routers.notifications import (
+        from core.notifications import (
             NotificationCategory,
             NotificationType,
             create_notification,

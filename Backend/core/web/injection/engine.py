@@ -38,7 +38,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-from core.web.injection import payloads as P
+import core.web.injection.payloads as P
 
 log = logging.getLogger("ccure.web.injection")
 

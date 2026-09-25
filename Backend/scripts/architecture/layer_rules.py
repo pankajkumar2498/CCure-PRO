@@ -203,18 +203,17 @@ def violations(edges: list[Edge]) -> list[tuple[str, Edge]]:
 
 
 #: (rule, importer, imported) — the violations still allowed to exist.
-#: Phase 2 recorded twelve on 25 Sep 2026; Phase 3 removed all of them, so the
+#: Phase 2 recorded twenty-one on 25 Sep 2026; Phase 3 removed all of them, so the
 #: set is empty and every rule above now holds without exception. Do not add to
 #: it: a new entry needs an explicit reason in review.
 KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset()
 
-#: Module-level import cycles present on 25 Sep 2026 (measured with lazy imports
-#: counted). A new cycle, or a new module joining one of these, fails CI; a
-#: cycle that is broken must be deleted here. Phase 3 broke the task-hub cycle
-#: (`_detect_os` moved to engines, `create_notification` to core.notifications,
-#: and the scheduler and scan persistence now dispatch by task name through
-#: core/task_names.py) and the constants <-> cve_database cycle (CVE_DB moved
-#: into core/utils.py).
-KNOWN_CYCLES: tuple[frozenset[str], ...] = (
-    frozenset({"core.web.injection", "core.web.injection.engine"}),
-)
+#: Module-level import cycles that are allowed to exist (measured with lazy
+#: imports counted). Phase 2 recorded three on 25 Sep 2026 and Phase 3 broke all
+#: of them: the task-hub cycle (`_detect_os` moved to engines,
+#: `create_notification` to core.notifications, and the scheduler and scan
+#: persistence dispatch by task name through core/task_names.py), constants <->
+#: cve_database (CVE_DB moved into core/utils.py), and core.web.injection <->
+#: its engine (the engine imports its payloads module rather than reading it
+#: off the package that re-exports the engine). Any cycle now fails CI.
+KNOWN_CYCLES: tuple[frozenset[str], ...] = ()

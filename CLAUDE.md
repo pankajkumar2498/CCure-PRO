@@ -188,11 +188,12 @@ line while that happens, and it is a **ratchet in both directions**:
   directions of dependency (routers are the HTTP edge; models are leaves;
   engines are libraries; `core/tasks.py` is not imported back; shared
   infrastructure imports no features; identity does not import scanning; …),
-  each with its reason. `KNOWN_VIOLATIONS` lists the 21 that existed on
-  25 Sep 2026. A new one fails CI; a listed one that has been fixed also fails
-  until it is **deleted** from the list. Never add to it to make a build pass.
-- **Import cycles** — `KNOWN_CYCLES` records the three module-level cycles. A
-  new cycle or a module joining one fails; a broken one must be removed.
+  each with its reason. `KNOWN_VIOLATIONS` recorded the 21 that existed on
+  25 Sep 2026 and is **empty** since Phase 3 removed them all, so every rule
+  now holds without exception. A new violation fails CI. Never add an entry to
+  make a build pass — move the shared code down a layer instead.
+- **Import cycles** — `KNOWN_CYCLES` is empty for the same reason: the three
+  cycles recorded in Phase 2 are broken, and any module-level cycle fails.
 - **Table ownership** — `Backend/scripts/architecture/table_ownership.yaml`
   names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
   of every table. **A new table needs an entry in the same change.**

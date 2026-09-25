@@ -647,6 +647,26 @@ def test_rejections_are_logged_without_leaking_credentials():
     assert "Bearer" not in text
 
 
+def test_rejections_are_attributed_through_the_decoder_main_registers():
+    """
+    Phase 3 moved token decoding out of core/rate_limit_audit.py: the module
+    is infrastructure and must not import auth, so main.py registers
+    auth.jwt_handler.decode_token at start-up. If that wiring were lost, 429
+    records would silently stop naming the caller — this pins it.
+    """
+    import core.rate_limit_audit as audit
+    import main  # noqa: F401  (the composition root does the registration)
+    from auth.jwt_handler import decode_token
+
+    assert audit._token_decoder is decode_token
+
+    class _Req:
+        headers = {"authorization": "Bearer not-a-real-token"}
+
+    # An invalid token is still unattributed, as before.
+    assert audit._caller_identity(_Req()) == (None, None)
+
+
 def test_degradation_is_announced_once_per_transition():
     """
     The fallback path is invisible by design — when the shared store goes away

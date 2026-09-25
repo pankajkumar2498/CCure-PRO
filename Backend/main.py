@@ -659,6 +659,14 @@ app = FastAPI(
 from config import AppConfig
 from core.rate_limit_middleware import BaselineRateLimitMiddleware
 
+# 429 audit records name the caller when a valid access token was presented.
+# The rate-limit audit module is infrastructure and does not import auth, so
+# the composition root hands it the decoder (Phase 3).
+from auth.jwt_handler import decode_token as _decode_token
+from core.rate_limit_audit import set_token_decoder
+
+set_token_decoder(_decode_token)
+
 app.add_middleware(
     BaselineRateLimitMiddleware,
     limit=AppConfig.API_DEFAULT_RATE_LIMIT,

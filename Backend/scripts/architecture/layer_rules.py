@@ -230,7 +230,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth.mail_service"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "core.tasks"),
-        ("infrastructure-is-foundation", "core.rate_limit_audit", "auth.jwt_handler"),
         ("task-hub-is-a-leaf", "core.mail_dispatch", "core.tasks"),
         ("task-hub-is-a-leaf", "core.scheduling.dispatcher", "core.tasks"),
         ("task-hub-is-a-leaf", "scans.db_helpers", "core.tasks"),

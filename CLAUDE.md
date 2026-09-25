@@ -178,6 +178,29 @@ Two rules the layout depends on, both of which fail loudly if broken:
   `MAIN_PY`); `conftest.py` puts `tests/` on `sys.path` so it resolves from any
   group.
 
+## Architecture guardrails (modular-platform programme)
+
+This repository is being refactored into the common CCure platform (Policy
+Pro, Audit, Rank, IR). `tests/repo/test_architecture_guardrails.py` holds the
+line while that happens, and it is a **ratchet in both directions**:
+
+- **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids eight
+  directions of dependency (routers are the HTTP edge; models are leaves;
+  engines are libraries; `core/tasks.py` is not imported back; shared
+  infrastructure imports no features; identity does not import scanning; …),
+  each with its reason. `KNOWN_VIOLATIONS` lists the 21 that existed on
+  25 Sep 2026. A new one fails CI; a listed one that has been fixed also fails
+  until it is **deleted** from the list. Never add to it to make a build pass.
+- **Import cycles** — `KNOWN_CYCLES` records the three module-level cycles. A
+  new cycle or a module joining one fails; a broken one must be removed.
+- **Table ownership** — `Backend/scripts/architecture/table_ownership.yaml`
+  names the owning module (`platform`, `audit`, later `policy_pro`/`rank`/`ir`)
+  of every table. **A new table needs an entry in the same change.**
+
+Imports inside functions count as dependencies — they are how this codebase
+hid its cycles. `python -m scripts.architecture.import_graph` (from `Backend/`)
+prints the graph; `--violations` lists every rule-breaking edge.
+
 ## Where things live
 
 - **Compliance catalogues** — the thirteen `*_controls_seed.json` files are in

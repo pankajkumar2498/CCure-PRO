@@ -44,7 +44,7 @@ from db.base import gen_org_id, gen_user_id, get_db, utcnow
 from db.models import Organization, RefreshTokenSession, Role, User
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
-from scan_helpers import limiter
+from core.rate_limiter import limiter
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session

@@ -227,7 +227,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "engines.vulnerability.vulnerability_engine",
             "scans.finding_normalizer",
         ),
-        ("infrastructure-is-foundation", "core.celery_app", "core.web.self_check"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth.mail_service"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "core.tasks"),

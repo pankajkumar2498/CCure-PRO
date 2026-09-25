@@ -1344,3 +1344,39 @@ def run_web_audit_task(
         return {"success": False, "error": str(exc)}
     finally:
         db.close()
+
+
+# ─── Worker start-up self-check ─────────────────────────────────────────────
+# Moved here from core/celery_app.py (Phase 3 of the modular-platform
+# programme): the web module registers its own worker hook. core/web/tasks.py
+# is on the Celery `include` list, so every worker imports it at boot — before
+# worker_ready fires — exactly as it imported celery_app.
+#
+# ── Web-scanner readiness self-check (Phase 15) ──────────────────────────────
+# When the web-scanner worker comes up, verify its DAST toolchain (nuclei +
+# templates, ffuf, sqlmap, the Playwright browser, sslyze) and its backing
+# services (Redis, PostgreSQL), and log the verdict loudly. Phase 14 wrongly
+# read SQLi as broken because an ad-hoc login-shell probe hid sqlmap on PATH;
+# the fix is for the worker to report its own readiness in its own runtime, so
+# a genuinely missing engine surfaces as NOT_READY rather than a silent skip
+# that lets a vulnerable app read as clean. Runs only on the web-scanner worker
+# (identified by its web_* queues) and never emits a secret.
+from celery.signals import worker_ready  # noqa: E402
+
+
+@worker_ready.connect
+def _web_scanner_self_check(sender=None, **_kwargs):
+    import logging
+    import sys
+
+    argv = " ".join(sys.argv)
+    if not any(q in argv for q in ("web_dast", "web_crawl", "web_recon", "web_audit")):
+        return  # not the web-scanner worker — it does not need the DAST toolchain
+    try:
+        from core.web.self_check import log_self_check
+
+        log_self_check()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("ccure.web.self_check").warning(
+            "web-scanner self-check could not run: %s", exc
+        )

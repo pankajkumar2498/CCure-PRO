@@ -10,7 +10,7 @@
 # the same bytes. Dependabot (docker ecosystem, .github/dependabot.yml) opens a
 # PR when the tag moves, which is how security updates to the base still arrive.
 # ── Base Image ─────────────────────────────────────────────────────────────
-FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
+FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS base
 
 # Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1

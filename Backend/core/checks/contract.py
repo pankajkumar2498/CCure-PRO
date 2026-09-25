@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence
 
-from scans.cvss import CANONICAL_SEVERITIES, SEVERITY_RANK
+from core.checks.cvss import CANONICAL_SEVERITIES, SEVERITY_RANK
 
 __all__ = [
     "CHECK_DOMAINS",
@@ -204,7 +204,7 @@ class Evidence:
             # Imported inside the function rather than at module scope so this
             # package stays importable from contexts that load models without
             # the heavier scans dependencies already resolved.
-            from scans.finding_normalizer import redact_sensitive_data
+            from core.checks.finding_normalizer import redact_sensitive_data
 
             object.__setattr__(self, "raw", redact_sensitive_data(str(self.raw)))
         if self.collected_at.tzinfo is None:

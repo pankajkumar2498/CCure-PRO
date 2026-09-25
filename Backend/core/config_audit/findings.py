@@ -46,14 +46,14 @@ from core.checks.definitions import (
     definition_id_for_check,
 )
 from core.config_audit.spec import ConfigCheck
-from scans.finding_normalizer import (
+from core.checks.finding_normalizer import (
     Confidence,
     DetectionMethod,
     Remediation,
     RemediationConfidence,
     StandardizedFinding,
 )
-from scans.finding_normalizer import normalize_severity as display_severity
+from core.checks.finding_normalizer import normalize_severity as display_severity
 
 log = logging.getLogger("ccure.config_audit.findings")
 

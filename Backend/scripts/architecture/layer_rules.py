@@ -206,27 +206,10 @@ def violations(edges: list[Edge]) -> list[tuple[str, Edge]]:
 #: Delete entries as refactoring removes them. Do not add to this set.
 KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
     {
-        ("engines-are-libraries", "core.checks.contract", "scans.cvss"),
-        ("engines-are-libraries", "core.checks.contract", "scans.finding_normalizer"),
         (
             "engines-are-libraries",
             "core.config_audit.compliance_sync",
             "db.models.compliance",
-        ),
-        (
-            "engines-are-libraries",
-            "core.config_audit.findings",
-            "scans.finding_normalizer",
-        ),
-        (
-            "engines-are-libraries",
-            "engines.port.port_engine",
-            "scans.finding_normalizer",
-        ),
-        (
-            "engines-are-libraries",
-            "engines.vulnerability.vulnerability_engine",
-            "scans.finding_normalizer",
         ),
     }
 )

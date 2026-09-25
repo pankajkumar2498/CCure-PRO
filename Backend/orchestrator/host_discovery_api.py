@@ -13,7 +13,8 @@ import logging
 import os
 from typing import Optional
 
-from core.constants import PDF_AVAILABLE, SCAPY_AVAILABLE
+from core.constants import SCAPY_AVAILABLE
+from reporting.availability import PDF_AVAILABLE
 from core.models import DiscoveryScanType, ScanIntensity
 from core.utils import PrivilegeManager
 from orchestrator.scan_orchestrator import ScanOrchestrator

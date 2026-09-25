@@ -19,7 +19,20 @@ from typing import Dict, List, Optional
 
 log = logging.getLogger("ccure.utils")
 
-from core.constants import CVE_DB, CVE_HINTS, VER_PATTERNS
+from core.constants import CVE_HINTS, VER_PATTERNS
+
+# -- CVE Database (SQLite with automatic fallback) ----------------------------
+# Created here, beside its only reader, rather than in core/constants.py, where
+# importing any lookup table opened the database. get_cve_database() returns a
+# process-wide singleton, so this is the same object it always was.
+try:
+    from core.cve_database import get_cve_database
+
+    CVE_DB = get_cve_database()
+    CVE_DATABASE_AVAILABLE = CVE_DB.db_available
+except ImportError:
+    CVE_DB = None
+    CVE_DATABASE_AVAILABLE = False
 
 # =============================================================================
 # Privilege Manager

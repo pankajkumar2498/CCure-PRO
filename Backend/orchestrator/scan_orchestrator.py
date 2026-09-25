@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from core.asset_correlation import AssetCorrelationEngine
-from core.constants import PDF_AVAILABLE
+from reporting.availability import PDF_AVAILABLE
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine

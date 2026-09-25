@@ -228,7 +228,6 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
         ),
         ("identity-below-scanning", "auth.router", "scan_helpers"),
         ("infrastructure-is-foundation", "core.celery_app", "core.web.self_check"),
-        ("infrastructure-is-foundation", "core.constants", "reporting.pdf_generator"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "auth.mail_service"),
         ("infrastructure-is-foundation", "core.mail_dispatch", "core.tasks"),
@@ -246,10 +245,9 @@ KNOWN_VIOLATIONS: frozenset[tuple[str, str, str]] = frozenset(
 #: counted). A new cycle, or a new module joining one of these, fails CI; a
 #: cycle that is broken must be deleted here. Roadmap Phase 3 shrinks the first
 #: two — the task-hub cycle via `_detect_os` (moved to engines, which took
-#: routers.credentialed out of it) and `create_notification`, the constants
-#: cycle by splitting `core/constants.py`.
+#: routers.credentialed out of it) and `create_notification`; the constants
+#: <-> cve_database cycle was broken by moving CVE_DB into core/utils.py.
 KNOWN_CYCLES: tuple[frozenset[str], ...] = (
-    frozenset({"core.constants", "core.cve_database"}),
     frozenset(
         {
             "core.scheduling.dispatcher",

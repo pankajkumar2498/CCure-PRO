@@ -1,11 +1,11 @@
 # Phase 5 — CCure Audit integration boundaries (proposal)
 
-|               |                                                                                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping). |
-| **Date**      | 26 Sep 2026                                                                                                                                                     |
-| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`  |
-| **Audience**  | Audit team and architecture reviewers                                                                                                                           |
+|               |                                                                                                                                                                                                             |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping), 5.4 (assessment read extraction; see §3.1). |
+| **Date**      | 26 Sep 2026                                                                                                                                                                                                 |
+| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                              |
+| **Audience**  | Audit team and architecture reviewers                                                                                                                                                                       |
 
 Phase 5 creates the **internal** boundaries CCure Audit needs to consume and
 produce the Phase 4 contracts later:
@@ -134,6 +134,28 @@ signature** (`export_payload`, `compliance_verdict_rows`,
 service for views and turns them into rows. `routers/reports.py`, the
 measurement script and the 88 existing export tests need no change. This
 follows the Phase 3 pattern — move the logic down, keep the old entry point.
+
+### 3.1 Step 5.4 as built (26 Sep 2026)
+
+Two deliberate differences from the plan above, both to keep the extraction as
+small as possible:
+
+- **The export renders from the moved records, not from the views.** The read
+  functions moved verbatim (AST-identical) into
+  `ccure_audit/services/assessment_read.py`, and `reporting/exports.py` imports
+  them back under the names it always used; not one rendering line changed.
+  The typed views (`AssessmentReadService.verdicts`) are built from the same
+  records for the integration adapter, and a test proves they reproduce the
+  export's compliance rows cell for cell. Switching the export to render from
+  views would re-derive every cell for no contract benefit, so it is not done.
+- **Per-asset coverage, method outcomes and credential outcome are not in
+  5.4.** None of that exists in the export — it is new assembly, not
+  extraction — and is left for the step that first needs it.
+
+Byte-identity was proven with `scripts/verification/phase5_golden/`: a restore
+of the 26 Sep 02:30 full dump into a scratch database, plus synthetic scans
+covering every walker path, captured twice before the change (identical) and
+compared after it (byte-identical, SHA-256 `1e4f4b9c…`, 84 MB).
 
 **Not moved:** anything under `core/`, `engines/`, `scans/`, `db/`,
 `orchestrator/` or `routers/`. The services _use_ those modules; relocating

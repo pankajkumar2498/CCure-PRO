@@ -48,11 +48,26 @@ the export cannot name a framework the tenant never installed.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
+
+# The read half of this module lives in the Audit assessment-read service
+# (Phase 5.4). Imported under the names this module has always used, so the
+# rendering code below is unchanged and ``reporting.exports.ControlRef`` /
+# ``control_map_for_checks`` still resolve for existing callers.
+from ccure_audit.services.assessment_read import (  # noqa: F401
+    ControlRef,
+    HostAudit as _HostAudit,
+    asset_ids_for_hosts as _asset_ids_for_hosts,
+    collect_host_audits as _collect_host_audits,
+    control_map_for_checks,
+    dedupe_host_audits as _dedupe_host_audits,
+    organisation_name,
+    policy_framework_ids,
+    scan_host_audits as _scan_host_audits,
+)
 
 log = logging.getLogger("ccure.reporting.exports")
 
@@ -262,234 +277,6 @@ def _iso(value: Any) -> str:
     return str(value)
 
 
-@dataclass(frozen=True)
-class ControlRef:
-    """One framework control a check answers for."""
-
-    framework_id: str
-    framework_name: str
-    control_id: str
-    control_title: str
-    profiles: Tuple[str, ...] = ()
-
-    def profile_label(self) -> str:
-        # Empty means the control is in scope whatever profile was selected,
-        # which is what every pre-Phase-4 control is. "All" says that; an empty
-        # cell would read as "nobody recorded a profile".
-        return ", ".join(self.profiles) if self.profiles else "All"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Reading the scan's stored configuration verdicts
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class _HostAudit:
-    """One host's configuration-audit record, as the scan stored it."""
-
-    host: str
-    summary: Mapping[str, Any] = field(default_factory=dict)
-
-    @property
-    def assessed(self) -> bool:
-        return bool(self.summary.get("assessed"))
-
-    @property
-    def results(self) -> List[Mapping[str, Any]]:
-        return [
-            r for r in (self.summary.get("results") or []) if isinstance(r, Mapping)
-        ]
-
-
-def _collect_host_audits(
-    payload: Any, host_hint: str = "", depth: int = 0
-) -> List[_HostAudit]:
-    """
-    Every ``config_audit`` record in a stored scan payload, with its host.
-
-    Walked rather than read from a fixed path, and that is a deliberate choice
-    rather than laziness. The same record reaches three different shapes: the
-    vulnerability-audit pipeline nests it under
-    ``_phase_data[i].credentialed_report``, the standalone credentialed scan
-    puts the whole report in ``options["credentialed_report"]``, and a
-    multi-host credentialed run carries a list of reports beside a single
-    ``report``. A fixed path would export one of those and silently return
-    nothing for the other two — an empty sheet that reads as a clean host.
-
-    The host is taken from the record's own container, so a walk can never
-    attribute one machine's verdicts to another.
-    """
-    found: List[_HostAudit] = []
-    if depth > 8:
-        return found
-
-    if isinstance(payload, Mapping):
-        host = (
-            _text(payload.get("target"))
-            or _text(payload.get("ip_address"))
-            or _text(payload.get("ip"))
-            or host_hint
-        )
-        audit = payload.get("config_audit")
-        if isinstance(audit, Mapping):
-            found.append(_HostAudit(host=host, summary=audit))
-        for key, value in payload.items():
-            if key == "config_audit":
-                continue
-            found.extend(_collect_host_audits(value, host, depth + 1))
-    elif isinstance(payload, list):
-        for item in payload:
-            found.extend(_collect_host_audits(item, host_hint, depth + 1))
-
-    return found
-
-
-def _dedupe_host_audits(audits: Sequence[_HostAudit]) -> List[_HostAudit]:
-    """
-    One record per (host, fingerprint of what it holds).
-
-    A multi-host credentialed scan stores the first host's report twice — once
-    as ``report`` for the consumers that predate multi-host support and once
-    inside ``reports`` — so a plain walk returns it twice and the export would
-    double every one of that host's verdicts. Counted rows are the whole point
-    of the reconciliation requirement, so this is not cosmetic.
-    """
-    seen: set = set()
-    out: List[_HostAudit] = []
-    for audit in audits:
-        key = (
-            audit.host,
-            bool(audit.summary.get("assessed")),
-            len(audit.results),
-            _text(audit.summary.get("policy_fingerprint")),
-            tuple(sorted(str(r.get("check_id") or "") for r in audit.results))[:50],
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(audit)
-    return out
-
-
-def _scan_host_audits(db: Session, scan: Any) -> List[_HostAudit]:
-    """Every configuration-audit record this scan produced, across its phases."""
-    audits: List[_HostAudit] = []
-
-    for phase in getattr(scan, "phases", None) or []:
-        audits.extend(_collect_host_audits(getattr(phase, "summary", None)))
-
-    options = getattr(scan, "options", None) or {}
-    if isinstance(options, Mapping):
-        report = options.get("credentialed_report")
-        if report is not None:
-            audits.extend(_collect_host_audits(report))
-
-    return _dedupe_host_audits(audits)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Control and framework mapping
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def control_map_for_checks(
-    db: Session,
-    *,
-    org_id: str,
-    check_ids: Sequence[str],
-    framework_ids: Optional[Sequence[str]] = None,
-) -> Dict[str, List[ControlRef]]:
-    """
-    Which framework controls each check answers for.
-
-    Four queries in total regardless of how many checks are passed, because
-    this runs over a benchmark that can carry 955 rules and one query per check
-    would be exactly the N+1 the brief names.
-
-    The framework set is the same intersection ``compliance_sync`` writes
-    through — installed by this tenant **and** active in this installation —
-    optionally narrowed further by the scan's own GAP-12 framework selection.
-    An export must not name a framework the tenant never installed, and it must
-    not name one the scan's policy excluded, because in both cases the rest of
-    that framework was never assessed.
-    """
-    from core.compliance_frameworks import is_active as is_active_framework
-    from db.models.compliance import (
-        ComplianceControl,
-        ComplianceFramework,
-        ComplianceRuleControl,
-        ComplianceTenantFramework,
-    )
-
-    wanted_checks = [str(c) for c in check_ids if c]
-    if not wanted_checks:
-        return {}
-
-    enabled = [
-        row[0]
-        for row in db.query(ComplianceTenantFramework.framework_id)
-        .filter(
-            ComplianceTenantFramework.tenant_id == org_id,
-            ComplianceTenantFramework.is_enabled.is_(True),
-        )
-        .all()
-        if is_active_framework(row[0])
-    ]
-    if framework_ids:
-        narrowed = {str(f) for f in framework_ids if f}
-        enabled = [f for f in enabled if f in narrowed]
-    if not enabled:
-        return {}
-
-    framework_names = {
-        fid: name
-        for fid, name in db.query(ComplianceFramework.id, ComplianceFramework.name)
-        .filter(ComplianceFramework.id.in_(enabled))
-        .all()
-    }
-
-    mapping: Dict[str, List[ControlRef]] = {}
-    # Chunked because `IN` with several thousand parameters is refused by some
-    # drivers and is slow on all of them. 900 keeps well inside PostgreSQL's
-    # bind-parameter ceiling with room for the other predicates.
-    for start in range(0, len(wanted_checks), 900):
-        chunk = wanted_checks[start : start + 900]
-        rows = (
-            db.query(
-                ComplianceRuleControl.rule_id,
-                ComplianceControl.id,
-                ComplianceControl.title,
-                ComplianceControl.framework_id,
-                ComplianceControl.profiles,
-            )
-            .join(
-                ComplianceControl,
-                ComplianceControl.id == ComplianceRuleControl.control_id,
-            )
-            .filter(
-                ComplianceRuleControl.rule_id.in_(chunk),
-                ComplianceControl.framework_id.in_(enabled),
-            )
-            .all()
-        )
-        for rule_id, control_id, title, framework_id, profiles in rows:
-            profile_tuple: Tuple[str, ...] = ()
-            if isinstance(profiles, (list, tuple)):
-                profile_tuple = tuple(str(p) for p in profiles if p)
-            mapping.setdefault(str(rule_id), []).append(
-                ControlRef(
-                    framework_id=str(framework_id or ""),
-                    framework_name=str(framework_names.get(framework_id) or ""),
-                    control_id=str(control_id or ""),
-                    control_title=str(title or ""),
-                    profiles=profile_tuple,
-                )
-            )
-
-    return mapping
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Scan context
 # ─────────────────────────────────────────────────────────────────────────────
@@ -508,18 +295,7 @@ def scan_context(db: Session, scan: Any) -> Dict[str, Any]:
     """
     from core.findings.comparison import policy_context
 
-    org_name = ""
-    try:
-        from db.models import Organization
-
-        org = (
-            db.query(Organization)
-            .filter(Organization.id == getattr(scan, "org_id", None))
-            .first()
-        )
-        org_name = str(getattr(org, "name", "") or "")
-    except Exception as exc:  # an export must not fail over a display name
-        log.debug("Could not resolve the organisation name for an export: %s", exc)
+    org_name = organisation_name(db, scan)
 
     policy = policy_context(scan)
 
@@ -624,19 +400,10 @@ def compliance_verdict_rows(
     context = dict(context or scan_context(db, scan))
     org_id = str(getattr(scan, "org_id", "") or "")
     policy = context.get("policy") or {}
-    policy_frameworks: Optional[List[str]] = None
-
     # The scan's own framework selection, read from the snapshot. A scan
     # narrowed to one benchmark must not export rows naming the controls of a
     # framework it never assessed.
-    try:
-        from core.scan_policy import read_policy_snapshot
-
-        effective = read_policy_snapshot(scan)
-        if effective is not None:
-            policy_frameworks = [str(f) for f in (effective.framework_ids or ()) if f]
-    except Exception as exc:
-        log.debug("Could not read the policy snapshot for an export: %s", exc)
+    policy_frameworks = policy_framework_ids(scan)
 
     if framework_id:
         wanted = [str(framework_id)]
@@ -795,27 +562,6 @@ def _verdict_row(
         policy[1],
         policy[2],
     ]
-
-
-def _asset_ids_for_hosts(
-    db: Session, org_id: str, hosts: Iterable[str]
-) -> Dict[str, str]:
-    """Map each host address to its asset id in one query."""
-    wanted = sorted({str(h) for h in hosts if h})
-    if not wanted or not org_id:
-        return {}
-    try:
-        from db.models.assets import Asset
-
-        rows = (
-            db.query(Asset.ip_address, Asset.id)
-            .filter(Asset.org_id == org_id, Asset.ip_address.in_(wanted))
-            .all()
-        )
-        return {str(ip): str(asset_id) for ip, asset_id in rows}
-    except Exception as exc:
-        log.debug("Could not resolve asset ids for an export: %s", exc)
-        return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

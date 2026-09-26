@@ -10,8 +10,8 @@ It is a reviewed draft, not yet wired to anything, so these tests guard the
 * every field names the module that owns it;
 * the semantic rules hold — unknown is never zero, PASS is earned, a
   baseline cannot carry an executable check, IR cannot verify a fix;
-* the package imports only the standard library and Pydantic, and nothing in
-  the application imports it yet.
+* the package imports only the standard library and Pydantic, and only the
+  Audit integration adapter imports it.
 
 Design document: docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md.
 """
@@ -300,22 +300,23 @@ def test_contract_classes_carry_the_ccure_prefix():
         assert spec.model.__name__.startswith("Ccure")
 
 
-def test_nothing_in_the_application_imports_the_contracts_yet():
+def test_only_the_audit_adapter_imports_the_contracts():
     """
-    Phase 4 is definitions only: no route, task or service may use a contract
-    until the design is reviewed. Delete this test in the phase that builds the
-    Audit integration adapter (plan Phase 7).
+    Contracts are translated in exactly one place: the Audit integration
+    adapter (Phase 5). A route, task, service or capability importing a
+    contract type would couple Audit's internals to another module's schema.
     """
     _, edges = collect_edges()
     users = sorted(
         {
             e.src
             for e in edges
-            if e.dst.startswith("ccure_contracts")
+            if (e.dst == "ccure_contracts" or e.dst.startswith("ccure_contracts."))
             and not e.src.startswith("ccure_contracts")
+            and not e.src.startswith("ccure_audit.integration")
         }
     )
-    assert not users, f"application modules importing ccure_contracts: {users}"
+    assert not users, f"modules importing ccure_contracts outside the adapter: {users}"
 
 
 def test_a_correction_is_a_new_result_that_says_why():

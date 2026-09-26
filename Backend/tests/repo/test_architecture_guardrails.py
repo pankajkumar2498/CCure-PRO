@@ -116,6 +116,36 @@ def test_every_rule_says_why():
         ("scans.db_helpers", "core.tasks", "task-hub-is-a-leaf"),
         ("ccure_contracts.x", "db.models.scans", "contracts-are-leaves"),
         ("ccure_contracts.x", "core.checks.contract", "contracts-are-leaves"),
+        ("ccure_contracts.x", "ccure_audit.services.views", "contracts-are-leaves"),
+        ("ccure_audit.integration.m", "db.models.scans", "integration-is-an-adapter"),
+        ("ccure_audit.integration.m", "reporting.exports", "integration-is-an-adapter"),
+        ("ccure_audit.integration.m", "core.remediation", "integration-is-an-adapter"),
+        (
+            "ccure_audit.services.s",
+            "ccure_contracts.common.v1",
+            "services-do-not-speak-contracts",
+        ),
+        (
+            "ccure_audit.services.s",
+            "ccure_audit.integration",
+            "services-do-not-speak-contracts",
+        ),
+        (
+            "ccure_audit.services.s",
+            "routers.reports",
+            "services-do-not-speak-contracts",
+        ),
+        (
+            "core.findings.comparison",
+            "ccure_audit.services",
+            "foundations-do-not-import-audit-module",
+        ),
+        (
+            "db.models.findings",
+            "ccure_audit.services.views",
+            "foundations-do-not-import-audit-module",
+        ),
+        ("scans.db_helpers", "ccure_audit", "foundations-do-not-import-audit-module"),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):
@@ -131,6 +161,11 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("core.tasks", "scans.db_helpers"),  # the task hub may depend downwards
         ("routers.phase_scans", "core.tasks"),  # the HTTP layer dispatches tasks
         ("db.models.users", "db.base"),  # models may use the session layer
+        ("ccure_audit.integration.m", "ccure_contracts.common.v1"),  # its job
+        ("ccure_audit.integration.m", "ccure_audit.services.views"),  # its job
+        ("ccure_audit.services.s", "db.models.findings"),  # services own queries
+        ("ccure_audit.services.s", "core.remediation.sla"),  # and use capabilities
+        ("reporting.exports", "ccure_audit.services"),  # the Phase 5 transition
     ],
 )
 def test_the_rules_allow_ordinary_downward_dependencies(src, dst):

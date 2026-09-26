@@ -23,6 +23,7 @@ answer to "what breaks if this fails".
 | `web/`          | The web-application scanning module |
 | `reports/`      | PDF/CSV generation, layout limits, download access rules |
 | `repo/`         | Repository-wide invariants: documentation coverage, schema drift |
+| `audit_boundary/` | The CCure Audit module's boundary layers (`ccure_audit/`): views, application services, integration mappers |
 
 ## Two rules the layout depends on
 

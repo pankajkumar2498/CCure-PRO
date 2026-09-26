@@ -28,6 +28,7 @@ from scripts.architecture.import_graph import Edge
 
 #: Every application top-level package, for rules that forbid "anything else".
 _APP_PACKAGES = (
+    "ccure_audit",
     "auth",
     "core",
     "engines",
@@ -188,6 +189,56 @@ RULES: tuple[Rule, ...] = (
             "it may import no module's code. A contract that reached into Audit's "
             "models or services would expose Audit's internals to Policy Pro, "
             "Rank and IR and couple all four to them (Phase 4)."
+        ),
+    ),
+    Rule(
+        name="integration-is-an-adapter",
+        importer=("ccure_audit.integration",),
+        forbidden=(
+            "db",
+            "config",
+            "core",
+            "engines",
+            "scans",
+            "orchestrator",
+            "reporting",
+            "routers",
+            "scan_helpers",
+            "auth",
+            "main",
+        ),
+        reason=(
+            "The Audit integration adapter translates service views into "
+            "contract messages and back. Reaching past ccure_audit.services to "
+            "the database or a capability is how an ORM row ends up inside a "
+            "contract other modules depend on (Phase 5)."
+        ),
+    ),
+    Rule(
+        name="services-do-not-speak-contracts",
+        importer=("ccure_audit.services",),
+        forbidden=(
+            "ccure_contracts",
+            "ccure_audit.integration",
+            "routers",
+            "main",
+            "core.tasks",
+        ),
+        reason=(
+            "Audit's application services return Audit's own views. If they "
+            "spoke contract types, a new contract version would force a change "
+            "to every service; translation belongs to the adapter. Services are "
+            "neither HTTP handlers nor the task hub (Phase 5)."
+        ),
+    ),
+    Rule(
+        name="foundations-do-not-import-audit-module",
+        importer=("core", "engines", "scans", "orchestrator", "db", "auth"),
+        forbidden=("ccure_audit",),
+        reason=(
+            "ccure_audit sits above the existing capabilities and uses them. A "
+            "capability importing it back re-creates the upward dependencies "
+            "and cycles Phase 3 removed (Phase 5)."
         ),
     ),
     Rule(

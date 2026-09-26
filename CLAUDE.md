@@ -184,11 +184,12 @@ This repository is being refactored into the common CCure platform (Policy
 Pro, Audit, Rank, IR). `tests/repo/test_architecture_guardrails.py` holds the
 line while that happens, and it is a **ratchet in both directions**:
 
-- **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids nine
+- **Layering** — `Backend/scripts/architecture/layer_rules.py` forbids twelve
   directions of dependency (routers are the HTTP edge; models are leaves;
   engines are libraries; `core/tasks.py` is not imported back; shared
   infrastructure imports no features; identity does not import scanning;
-  `ccure_contracts` imports no module's code; …),
+  `ccure_contracts` imports no module's code; the three `ccure_audit` rules
+  below; …),
   each with its reason. `KNOWN_VIOLATIONS` recorded the 21 that existed on
   25 Sep 2026 and is **empty** since Phase 3 removed them all, so every rule
   now holds without exception. A new violation fails CI. Never add an entry to
@@ -216,6 +217,27 @@ Two things Phase 3 deliberately left, which are **not** violations:
 
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.
+
+## Audit boundary layers (`Backend/ccure_audit/`) — Phase 5
+
+Design: [`docs/architecture/PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md`](docs/architecture/PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md).
+`ccure_audit/services/` answers questions about Audit's data and returns
+**views**; `ccure_audit/integration/` turns views into contract messages. The
+existing `core/`, `engines/`, `scans/` and `reporting/` code is used, not moved.
+
+- **A view is declared with `@view`** (frozen, slotted, keyword-only
+  dataclass) and holds only plain values — no ORM object, no list or dict, no
+  naive datetime. `impurities()` checks one; service tests run it over
+  everything a service returns.
+- **`integration-is-an-adapter`**: the adapter imports `ccure_contracts` and
+  `ccure_audit.services` only. **`services-do-not-speak-contracts`**: services
+  never import a contract type. **`foundations-do-not-import-audit-module`**:
+  `core`, `engines`, `scans`, `orchestrator`, `db` and `auth` never import
+  `ccure_audit`. `reporting → ccure_audit.services` is allowed on purpose — the
+  transition while the export's read logic moves into the services.
+- **Nothing in production imports the adapter** until the integration phase;
+  `test_nothing_in_production_imports_the_integration_adapter_yet` enforces it.
+  Only the adapter may import `ccure_contracts`.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 

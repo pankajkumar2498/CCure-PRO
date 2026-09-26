@@ -69,7 +69,7 @@
       "additionalProperties": false,
       "properties": {
         "activation": {
-          "description": "Whether the baseline governs Audit's assessments. Activation is an Audit-side decision (open question Q1).",
+          "description": "Whether the baseline governs Audit's assessments. A received baseline starts as pending_review and governs nothing until an Audit administrator explicitly activates it (Phase 4 review, Q1).",
           "enum": [
             "pending_review",
             "active",

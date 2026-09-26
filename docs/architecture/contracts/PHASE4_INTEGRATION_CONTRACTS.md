@@ -2,6 +2,7 @@
 
 |                        |                                                                                                                                                                                           |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Review**             | **Approved 26 Sep 2026** as the architectural baseline for CCurePro module integration, with the clarifications in §14.1.                                                                 |
 | **Status**             | **Draft for review.** Definitions only: no route serves these contracts, no task emits them, no production behaviour has changed.                                                         |
 | **Date**               | 25 Sep 2026                                                                                                                                                                               |
 | **Programme**          | Modular-platform programme, Phase 4 (plan: `docs/architecture/CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` §7–§8)                                                                              |
@@ -213,7 +214,9 @@ the payload under `data` (or, for pages, `items` and `position`):
   exactly why they are declared opaque: reading meaning out of them is the
   coupling this programme removes. It also means **an Audit asset id changes
   when the asset's IP changes**, so asset references carry `ip_address`,
-  `mac_address` and `hostname` beside the id (open question **Q5**).
+  `mac_address` and `hostname` beside the id. A stable, IP-independent asset
+  identity is a future Audit domain change (Q5, deferred) and is not part of
+  Phase 5.
 - Framework and control identifiers are a shared vocabulary: `framework.code` +
   `framework.version` + `control_id` as the framework publishes it, e.g.
   `ISO27001_2022` / `2022` / `A.8.9`. Who governs that vocabulary is open
@@ -355,8 +358,10 @@ Errors are RFC 9457 problem details (`application/problem+json`), schema
   form (`content_sha256`).
 - **Immutable by design:** a baseline version; a gap report; an assessment
   result and its findings and controls pages; an incident version and its
-  receipt. A correction is a new object that names what it supersedes (open
-  question **Q9**), never an edit.
+  receipt. A correction is a new object that names what it supersedes, never
+  an edit (Q9, approved): an `AssessmentResult` made wrong by an Audit defect
+  is corrected by a new result carrying `supersedes_result_id` and
+  `correction_reason`, and the original stays exactly as published.
 - **Deliberately not immutable:** `BaselineCoverage` (it gets a new
   `mapping_revision` when Audit's own rule catalogue changes — the baseline
   stays the same, the ability to assess it does not) and `PostureSnapshot`
@@ -707,10 +712,11 @@ placeholders.
   `RECORDED_NOT_HONOURED`.
 - **Scope only narrows.** Entries outside the tenant's authorised scan scope
   are rejected and listed; Policy Pro is not a scan authorisation.
-- **Activation is Audit's decision.** A received baseline is stored and mapped
-  immediately but governs assessments only once active (`pending_review` in the
-  example). Whether activation is automatic or needs an Audit administrator is
-  open question **Q1**.
+- **Activation is an explicit Audit administrator action** (Q1, approved).
+  A received baseline is stored and mapped immediately, starts in
+  `pending_review`, and governs no assessment until an Audit administrator
+  activates it. A baseline can change what every scan assesses, so it is never
+  activated by the message that delivered it.
 - **Parameter names come from `Capabilities`** (§11), never from a list Policy
   Pro keeps.
 
@@ -982,9 +988,12 @@ so IR never has to call back to interpret it.
 from "nobody looked at this host" (example: `assessment_completed.json`).
 
 **Filtering.** The design document sends only Critical and High findings; the
-SRS asks for "vulnerability findings and audit data". The contract carries
-every severity, and a subscription chooses a floor (`min_severity`, default
-`high` for push). Which default IR wants is open question **Q3**.
+SRS asks for "vulnerability findings and audit data". **The shared schema
+carries every severity and encodes no filtering policy.** Which findings IR
+receives is IR's business decision (Q3, open for IR): the pull feed offers a
+`min_severity` parameter as a mechanism, and the push subscription will be
+configured with whatever floor IR chooses. Until IR decides, nothing is
+filtered.
 
 ---
 
@@ -1127,6 +1136,21 @@ Two related facts that are **not** gaps, stated so nobody records them as one:
 ---
 
 ## 14. Open design questions
+
+### 14.1 Settled in the Phase 4 review (26 Sep 2026)
+
+| #   | Outcome                                                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | **Approved v1 behaviour:** a received baseline is stored and mapped but governs no assessment until an Audit administrator explicitly activates it. Initial `activation` is `pending_review`. |
+| Q3  | **Open, for IR to decide.** The shared finding schema encodes no filtering policy; the feed's `min_severity` is a mechanism, and nothing is filtered until IR chooses.                        |
+| Q5  | **Deferred** as a future Audit domain change. Asset ids are not redesigned in Phase 5.                                                                                                        |
+| Q8  | **Accepted:** HTTPS + outbox for v1. Kafka is deferred.                                                                                                                                       |
+| Q9  | **Resolved:** a correction is a new `AssessmentResult` with `supersedes_result_id` and `correction_reason`; an existing result is never modified. Added to v1.0 (still a draft schema).       |
+
+The table below keeps the original proposals for the record; where it differs,
+§14.1 wins.
+
+### 14.2 Questions as raised
 
 The plan's open decisions stand: **D2** (push/pull — proposed here as push
 primary with pull catch-up), **D3** (framework and control identifier

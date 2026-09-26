@@ -316,3 +316,33 @@ def test_nothing_in_the_application_imports_the_contracts_yet():
         }
     )
     assert not users, f"application modules importing ccure_contracts: {users}"
+
+
+def test_a_correction_is_a_new_result_that_says_why():
+    """Q9: an AssessmentResult is corrected by superseding it, never by editing it."""
+    result = _example("assessment_result", "assessment_result.json")
+    model = _spec("AssessmentResult").model
+
+    correction = copy.deepcopy(result)
+    correction["data"]["result_id"] = "ar_scn_defa_c522b539_26sep26_k2mq_c1"
+    correction["data"]["supersedes_result_id"] = result["data"]["result_id"]
+    correction["data"][
+        "correction_reason"
+    ] = "Coverage was miscounted by an Audit defect."
+    model.model_validate(correction)
+
+    without_reason = copy.deepcopy(correction)
+    del without_reason["data"]["correction_reason"]
+    with pytest.raises(ValidationError, match="correction must say why"):
+        model.model_validate(without_reason)
+
+    itself = copy.deepcopy(correction)
+    itself["data"]["supersedes_result_id"] = itself["data"]["result_id"]
+    with pytest.raises(ValidationError, match="cannot supersede itself"):
+        model.model_validate(itself)
+
+
+def test_a_received_baseline_starts_pending_review():
+    """Q1: nothing governs an assessment until an Audit administrator activates it."""
+    coverage = _example("policy_baseline", "baseline_coverage.response.json")
+    assert coverage["data"]["activation"] == "pending_review"

@@ -321,8 +321,9 @@ class CcureBaselineCoverageDataV1(ContractModel):
     )
     activation: Literal["pending_review", "active", "superseded", "rejected"] = owned(
         "audit",
-        "Whether the baseline governs Audit's assessments. Activation is an "
-        "Audit-side decision (open question Q1).",
+        "Whether the baseline governs Audit's assessments. A received baseline "
+        "starts as pending_review and governs nothing until an Audit "
+        "administrator explicitly activates it (Phase 4 review, Q1).",
     )
     summary: CcureCoverageSummaryV1 = owned("audit", "Counts per mapping state.")
     controls: List[CcureControlMappingV1] = owned(

@@ -12,6 +12,11 @@ established, which is what a maturity score needs to be reproducible. Findings
 and control results are paged through their own resources, so the message
 itself stays bounded however large the assessment was.
 
+**A correction is a new result, never an edit.** If an Audit defect made a
+published result wrong, Audit publishes a new result naming the old one in
+``supersedes_result_id`` with a ``correction_reason``; the old result stays
+exactly as it was published (Phase 4 review, Q9).
+
 **PostureSnapshot is current state.** Findings change after a scan —
 remediation, verification, acceptance — and a scan-time result cannot answer
 "what is open now". The snapshot is generated on request and carries the time
@@ -188,6 +193,18 @@ class CcureAssessmentResultDataV1(ContractModel):
     content_sha256: Sha256 = owned(
         "audit", "Digest of the canonical JSON of this data object without this field."
     )
+    supersedes_result_id: Optional[OpaqueId] = owned(
+        "audit",
+        "Set only on a correction: the earlier result this one replaces, because "
+        "an Audit defect made it wrong. The earlier result is never edited or "
+        "withdrawn; consumers prefer the newest result in a supersession chain.",
+        default=None,
+    )
+    correction_reason: Optional[ShortText] = owned(
+        "audit",
+        "Why the earlier result was superseded. Required with supersedes_result_id.",
+        default=None,
+    )
     descriptor: CcureAssessmentDescriptorV1 = owned("audit", "The assessment.")
     coverage: CcureCoverageCountsV1 = owned("audit", "What was covered.")
     assets: List[CcureAssetAssessmentV1] = owned(
@@ -209,6 +226,13 @@ class CcureAssessmentResultDataV1(ContractModel):
 
     @model_validator(mode="after")
     def _coverage_accounts_for_assets(self) -> "CcureAssessmentResultDataV1":
+        if (self.supersedes_result_id is None) != (self.correction_reason is None):
+            raise ValueError(
+                "supersedes_result_id and correction_reason go together: a "
+                "correction must say why"
+            )
+        if self.supersedes_result_id == self.result_id:
+            raise ValueError("a result cannot supersede itself")
         tally = {state: 0 for state in CoverageState}
         for asset in self.assets:
             tally[asset.coverage] += 1

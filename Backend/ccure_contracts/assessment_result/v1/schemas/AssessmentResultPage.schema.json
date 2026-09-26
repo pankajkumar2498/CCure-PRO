@@ -240,6 +240,23 @@
           "x-ccure-availability": "available",
           "x-ccure-owner": "audit"
         },
+        "correction_reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the earlier result was superseded. Required with supersedes_result_id.",
+          "title": "Correction Reason",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
         "coverage": {
           "allOf": [
             {
@@ -305,6 +322,24 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
           "title": "Result Id",
           "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "supersedes_result_id": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set only on a correction: the earlier result this one replaces, because an Audit defect made it wrong. The earlier result is never edited or withdrawn; consumers prefer the newest result in a supersession chain.",
+          "title": "Supersedes Result Id",
           "x-ccure-availability": "available",
           "x-ccure-owner": "audit"
         }

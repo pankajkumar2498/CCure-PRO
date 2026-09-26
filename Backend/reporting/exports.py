@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -67,6 +67,15 @@ from ccure_audit.services.assessment_read import (  # noqa: F401
     organisation_name,
     policy_framework_ids,
     scan_host_audits as _scan_host_audits,
+)
+
+# The finding-read half lives in the Audit finding-read service (Phase 5.5),
+# imported under the names this module has always used.
+from ccure_audit.services.finding_read import (  # noqa: F401
+    definition_titles as _definition_titles,
+    finding_context_map,
+    finding_pairs,
+    owner_names as _owner_names,
 )
 
 log = logging.getLogger("ccure.reporting.exports")
@@ -569,38 +578,6 @@ def _verdict_row(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _finding_query(db: Session, org_id: str):
-    from db.models.assets import Asset
-    from db.models.findings import AssetVulnerability
-
-    return (
-        db.query(AssetVulnerability, Asset)
-        .join(Asset, AssetVulnerability.asset_id == Asset.id)
-        .filter(AssetVulnerability.org_id == org_id)
-    )
-
-
-def _owner_names(db: Session, owner_ids: Iterable[str]) -> Dict[str, str]:
-    """
-    Owner ids to display names, in one query.
-
-    An email address is the only identifier a person reliably recognises, so it
-    is what the export carries — and it is already what the remediation API
-    returns, so the spreadsheet and the queue name the same person the same way.
-    """
-    wanted = sorted({str(o) for o in owner_ids if o})
-    if not wanted:
-        return {}
-    try:
-        from db.models import User
-
-        rows = db.query(User.id, User.email).filter(User.id.in_(wanted)).all()
-        return {str(uid): str(email or "") for uid, email in rows}
-    except Exception as exc:
-        log.debug("Could not resolve remediation owner names for an export: %s", exc)
-        return {}
-
-
 def finding_export_rows(
     db: Session,
     scan: Any,
@@ -629,60 +606,19 @@ def finding_export_rows(
     indexed predicate — and this only compares it against now.
     """
     from core.remediation.sla import sla_state
-    from db.models.findings import AssetVulnerability
 
     context = dict(context or scan_context(db, scan))
-    org_id = str(getattr(scan, "org_id", "") or "")
-    scan_id = str(getattr(scan, "id", "") or "")
 
-    query = _finding_query(db, org_id)
-    if scope == "scan":
-        query = query.filter(AssetVulnerability.scan_id == scan_id)
-    else:
-        asset_ids = sorted(
-            set(
-                _asset_ids_for_hosts(
-                    db, org_id, [a.host for a in _scan_host_audits(db, scan)]
-                ).values()
-            )
-        )
-        scan_assets = [
-            row[0]
-            for row in db.query(AssetVulnerability.asset_id)
-            .filter(AssetVulnerability.scan_id == scan_id)
-            .distinct()
-            .all()
-        ]
-        asset_ids = sorted(set(asset_ids) | {str(a) for a in scan_assets if a})
-        if not asset_ids:
-            return []
-        query = query.filter(AssetVulnerability.asset_id.in_(asset_ids))
-
-    if asset_id:
-        query = query.filter(AssetVulnerability.asset_id == str(asset_id))
-    if severity:
-        wanted = [str(s).strip().lower() for s in severity if s]
-        if wanted:
-            query = query.filter(AssetVulnerability.severity.in_(wanted))
-    if status:
-        wanted = [str(s).strip().lower() for s in status if s]
-        if wanted:
-            query = query.filter(AssetVulnerability.status.in_(wanted))
-    if remediation_state:
-        wanted = [str(s).strip().lower() for s in remediation_state if s]
-        if wanted:
-            query = query.filter(AssetVulnerability.remediation_state.in_(wanted))
-    if overdue_only:
-        query = query.filter(
-            AssetVulnerability.sla_due_at.isnot(None),
-            AssetVulnerability.sla_due_at < datetime.now(timezone.utc),
-        )
-
-    # Streamed rather than materialised: a credentialed audit of one Windows
-    # host produces well over a hundred findings and an estate produces
-    # thousands, and holding every ORM object would be the memory explosion the
-    # brief names.
-    pairs = list(query.yield_per(1000))
+    pairs = finding_pairs(
+        db,
+        scan,
+        asset_id=asset_id,
+        severity=severity,
+        status=status,
+        remediation_state=remediation_state,
+        overdue_only=overdue_only,
+        scope=scope,
+    )
 
     owners = _owner_names(db, [f.remediation_owner for f, _asset in pairs])
     definitions = _definition_titles(db, [f.vuln_id for f, _asset in pairs])
@@ -750,115 +686,6 @@ def _definition_type(vuln_id: Any) -> str:
         return _text(definition_type_for_id(str(vuln_id or "")))
     except Exception:
         return ""
-
-
-def _definition_titles(db: Session, vuln_ids: Iterable[str]) -> Dict[str, str]:
-    """Catalogue titles for the findings being exported, in one query."""
-    wanted = sorted({str(v) for v in vuln_ids if v})
-    if not wanted:
-        return {}
-    try:
-        from db.models.findings import VulnerabilityDefinition
-
-        titles: Dict[str, str] = {}
-        for start in range(0, len(wanted), 900):
-            chunk = wanted[start : start + 900]
-            for def_id, title in (
-                db.query(VulnerabilityDefinition.id, VulnerabilityDefinition.title)
-                .filter(VulnerabilityDefinition.id.in_(chunk))
-                .all()
-            ):
-                titles[str(def_id)] = str(title or "")
-        return titles
-    except Exception as exc:
-        log.debug("Could not resolve definition titles for an export: %s", exc)
-        return {}
-
-
-def finding_context_map(
-    db: Session, scan: Any
-) -> Dict[Tuple[str, str], Dict[str, str]]:
-    """
-    Remediation context for the findings CSV, keyed by ``(host, identifier)``.
-
-    The findings CSV is generated from the *scan payload* rather than from the
-    database — that is what makes it a point-in-time record of what the scan
-    reported, and it is deliberately not being changed into a database dump.
-    The GAP-14 record lives in the database, so this is the bridge: one query,
-    a dictionary, and ``csv_generator`` looks each finding up by identity.
-
-    Both halves of the key are normalised, because the payload spells a host as
-    it probed it and an identifier in whichever case the source used.
-
-    **Each record is registered under its title as well as its identifier**,
-    and that is not belt and braces — it is the only key a configuration
-    finding has. ``StandardizedFinding.plugin_id`` falls back to the title when
-    the payload carries no ``plugin_id``/``id``/``rule_id`` key, and the
-    credentialed pipeline emits configuration findings with the minted
-    ``CCURE-CFG-…`` identifier in ``cve_id`` rather than in any of those three.
-    ``cve_ids`` is then empty, because ``CCURE-CFG-…`` is correctly rejected as
-    a CVE. So a CVE finding joins on its CVE and a configuration finding joins
-    on its title, which the database holds because the catalogue row was minted
-    from the same result.
-
-    A title shared by two findings on one host is registered under neither:
-    showing one finding's owner and due date against its sibling would be
-    worse than showing none, and the identifier key still resolves both.
-    """
-    from core.remediation.sla import sla_state
-    from db.models.findings import AssetVulnerability
-
-    org_id = str(getattr(scan, "org_id", "") or "")
-    scan_id = str(getattr(scan, "id", "") or "")
-    if not org_id or not scan_id:
-        return {}
-
-    pairs = list(
-        _finding_query(db, org_id)
-        .filter(AssetVulnerability.scan_id == scan_id)
-        .yield_per(1000)
-    )
-    owners = _owner_names(db, [f.remediation_owner for f, _a in pairs])
-    titles = _definition_titles(db, [f.vuln_id for f, _a in pairs])
-
-    out: Dict[Tuple[str, str], Dict[str, str]] = {}
-    ambiguous_titles: set = set()
-
-    for finding, asset in pairs:
-        state = sla_state(finding)
-        payload = {
-            "remediation_state": _text(finding.remediation_state),
-            "remediation_owner": _text(
-                owners.get(str(finding.remediation_owner or ""), "")
-            ),
-            "sla_due_at": _iso(finding.sla_due_at),
-            "sla_state": _text(state),
-            "overdue": _text(state == "overdue"),
-            "verified_at": _iso(finding.verified_at),
-            "verified_scan_id": _text(finding.verified_scan_id),
-            "accepted_at": _iso(finding.accepted_at),
-            "exception_expires_at": _iso(finding.exception_expires_at),
-        }
-        host = str(getattr(asset, "ip_address", "") or "").strip().lower()
-        if not host:
-            continue
-
-        identifier = str(finding.vuln_id or "").strip().upper()
-        if identifier:
-            out[(host, identifier)] = payload
-
-        title_key = (host, str(titles.get(str(finding.vuln_id), "")).strip().upper())
-        if not title_key[1] or title_key[1] == identifier:
-            continue
-        if title_key in out:
-            ambiguous_titles.add(title_key)
-        else:
-            out[title_key] = payload
-
-    for key in ambiguous_titles:
-        out.pop(key, None)
-
-    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

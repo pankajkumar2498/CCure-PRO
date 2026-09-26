@@ -116,6 +116,11 @@ for scan in scans:
         variants["host_first"] = {"host": hosts[0]}
     if assets:
         variants["asset_first"] = {"asset_id": assets[0]}
+    variants["remediation_assigned"] = {"remediation_state": ["assigned"]}
+    variants["remediation_open_reopened"] = {"remediation_state": ["open", "reopened"]}
+    variants["status_accepted"] = {"status": ["accepted"]}
+    variants["status_fixed_scope_asset"] = {"status": ["fixed"], "scope": "asset"}
+    variants["overdue_scope_asset"] = {"overdue_only": True, "scope": "asset"}
     variants["profile_IG1"] = {"profile": "IG1"}
     variants["profile_IG2"] = {"profile": "IG2"}
     for name, filters in variants.items():

@@ -1,11 +1,11 @@
 # Phase 5 — CCure Audit integration boundaries (proposal)
 
-|               |                                                                                                                                                                                                             |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping), 5.4 (assessment read extraction; see §3.1). |
-| **Date**      | 26 Sep 2026                                                                                                                                                                                                 |
-| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                              |
-| **Audience**  | Audit team and architecture reviewers                                                                                                                                                                       |
+|               |                                                                                                                                                                                                                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping), 5.4 (assessment read extraction; see §3.1), 5.5 (finding read extraction; see §3.2). Stopped for review of the read boundary before 5.6. |
+| **Date**      | 26 Sep 2026                                                                                                                                                                                                                                                                                              |
+| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                                                                                                                           |
+| **Audience**  | Audit team and architecture reviewers                                                                                                                                                                                                                                                                    |
 
 Phase 5 creates the **internal** boundaries CCure Audit needs to consume and
 produce the Phase 4 contracts later:
@@ -156,6 +156,37 @@ Byte-identity was proven with `scripts/verification/phase5_golden/`: a restore
 of the 26 Sep 02:30 full dump into a scratch database, plus synthetic scans
 covering every walker path, captured twice before the change (identical) and
 compared after it (byte-identical, SHA-256 `1e4f4b9c…`, 84 MB).
+
+### 3.2 Step 5.5 as built, and the read boundary it completes (26 Sep 2026)
+
+The finding-read half of the export moved into
+`ccure_audit/services/finding_read.py` the same way: `_finding_query`,
+`_owner_names`, `_definition_titles` and `finding_context_map` verbatim, and
+the query-building block of `finding_export_rows` as `finding_pairs()` (its 8
+statements AST-identical, including the early empty answer for an asset scope
+with no assets). `exports.py` imports them back and builds its rows exactly as
+before. Golden: the scratch findings were first given real remediation history
+(owners, risk acceptance, overdue, verified fixed, reopened, no SLA) and new
+filter variants, a fresh baseline was captured twice on the 5.4 code, and the
+output after the move and after the view layer was byte-identical
+(SHA-256 `bd1301da…`).
+
+**The read boundary after 5.5** — what the contract mappers (5.6) will have:
+
+| Service                          | Returns                                              | Contract use                                              |
+| -------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `ComplianceCatalogueService`     | control mappings, framework capabilities             | 1 (coverage), Capabilities                                |
+| `BaselineMappingService`         | coverage of a baseline (stateless)                   | 1                                                         |
+| `AssessmentReadService.verdicts` | per-host stored verdicts with controls               | 2, 3 (controls pages), 4 (`assessment.completed`, partly) |
+| `FindingReadService.findings`    | cursor-paged typed findings with remediation and SLA | 3 (findings pages), 4 (finding payload)                   |
+
+Not in the read boundary yet, and each needs new assembly rather than
+extraction: the scan descriptor and per-asset coverage, method outcomes and
+credential outcome (contract 3 assets, `assessment.completed`); current posture
+(`PostureSnapshot`, which needs the dashboard queries out of
+`routers/dashboard.py`); finding events; evidence records. The 5.6 mappers can
+cover what the four services return and must mark the rest as not yet
+available rather than filling it.
 
 **Not moved:** anything under `core/`, `engines/`, `scans/`, `db/`,
 `orchestrator/` or `routers/`. The services _use_ those modules; relocating

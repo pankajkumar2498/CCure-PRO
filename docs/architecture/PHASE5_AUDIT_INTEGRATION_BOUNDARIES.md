@@ -1,11 +1,11 @@
 # Phase 5 — CCure Audit integration boundaries (proposal)
 
-|               |                                                                                                                                                                |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service).                        |
-| **Date**      | 26 Sep 2026                                                                                                                                                    |
-| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/` |
-| **Audience**  | Audit team and architecture reviewers                                                                                                                          |
+|               |                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping). |
+| **Date**      | 26 Sep 2026                                                                                                                                                     |
+| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`  |
+| **Audience**  | Audit team and architecture reviewers                                                                                                                           |
 
 Phase 5 creates the **internal** boundaries CCure Audit needs to consume and
 produce the Phase 4 contracts later:

@@ -263,7 +263,9 @@ imports `ccure_contracts` before the integration adapter is built (plan Phase 14
   class, and a bare `Finding` would replace an existing schema.
 - **Policy Pro sends controls and parameters, never executable checks**, and IR
   can never move a finding to `verified_fixed`. Both are refused by the models.
-- v1 is `draft` until reviewed. Once a contract is `published` its schema digest
+- v1 is `draft` until the first team builds against it (project-owner decision,
+  28 Sep 2026; the project owner approves every later version). Once a
+  contract is `published` its schema digest
   is pinned in `schema_lock.json` and changes need a new `schema_version`.
 - **`scripts/integration/` is operator tooling for Contract 1, outside the
   import graph.** `policypro_library_to_baseline.py` is the reference

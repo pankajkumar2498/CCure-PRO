@@ -1163,6 +1163,22 @@ Two related facts that are **not** gaps, stated so nobody records them as one:
 | Q8  | **Accepted:** HTTPS + outbox for v1. Kafka is deferred.                                                                                                                                       |
 | Q9  | **Resolved:** a correction is a new `AssessmentResult` with `supersedes_result_id` and `correction_reason`; an existing result is never modified. Added to v1.0 (still a draft schema).       |
 
+### 14.1b Decisions closing plan Phase 7 (project owner, 28 Sep 2026)
+
+- **v1 stays `draft` until the first team builds against it.** No other module
+  consumes a contract yet, and PolicyPro expects to change framework naming, so
+  pinning the schemas now would turn expected early changes into version
+  bumps without protecting anyone. The freeze happens when the first consumer
+  — Policy Pro, Rank or IR — starts building against a contract, or at plan
+  Phase 14 (core ↔ IR data flow), whichever comes first. Accidental drift is
+  still caught: CI fails when a committed schema stops matching its model.
+- **D3 — control identifiers.** A control is framework code + version +
+  control id, spelled as Audit's catalogue publishes them in Capabilities
+  (e.g. `ISO27001_2022` / `2022` / `A.8.9`). The framework catalogue is
+  expected to become Policy Pro's to define; a change of codes or naming then
+  arrives as a new `schema_version`.
+- **D5 — who approves a new contract version:** the project owner.
+
 ### 14.1a Corrections before the v1 freeze (plan Phase 7, 28 Sep 2026)
 
 Building the Audit mappers (Phase 5.6) found six places where the draft could

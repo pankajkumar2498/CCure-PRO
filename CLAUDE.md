@@ -238,6 +238,21 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `organizations` in step 8.4, and the 11 mentions in identity's own code
     are a baseline that reaches zero there.
 - **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+- **Identity's code lives in `ccure_platform` since step 8.2.**
+  - **The moves:**
+    - `auth/*` → `ccure_platform/identity/`;
+    - `auth/rbac.py` → `ccure_platform/rbac/dependencies.py`;
+    - `db/models/users.py` and `rbac.py` → `ccure_platform/models/`.
+  - **Old paths are stubs.** Every `auth/…` path named elsewhere in this file
+    is now a stub aliasing the same module object
+    (`ccure_platform/_legacy.py`, `MOVED_MODULES`).
+  - **Moved modules keep their legacy `__name__`.** That keeps logger names,
+    limiter route keys (`auth.router.login`) and class `__module__` unchanged.
+    Do not "fix" this in passing. Renaming them is its own change.
+  - **Edit the files under `ccure_platform/`,** never the stubs.
+  - **Import rule.** Platform code never imports `auth.*` or
+    `db.models.users`/`rbac` (`platform-does-not-use-legacy-paths`). It
+    imports models through the `db.models` registry.
 
 ## Audit boundary layers (`Backend/ccure_audit/`) — Phase 5
 

@@ -1,22 +1,12 @@
-"""Email and username normalization helpers for authentication flows."""
+"""
+Moved to ``ccure_platform/identity/email_utils.py`` (Phase 8.2 of the modular-platform programme).
 
-from sqlalchemy import func
+This path is an alias of the **same module object**, not a copy and not a star
+re-export — see ``ccure_platform/_legacy.py``. Existing imports, private names,
+``isinstance`` checks and ``patch`` targets behave exactly as before.
+"""
 
-# The canonical-form rules and normalize_email moved to db/email_canonical.py
-# (Phase 3) so the users model can compute its own column without importing
-# auth. Re-exported here unchanged.
-from db.email_canonical import (  # noqa: F401  (re-export)
-    _DOT_INSENSITIVE_DOMAINS,
-    _SUBADDRESS_DOMAINS,
-    _SUBADDRESS_SEPARATORS,
-    canonicalize_email,
-    normalize_email,
-)
+import ccure_platform.identity.email_utils as _module  # noqa: F401  (registers the alias on import)
+import sys
 
-
-def email_matches(column, email: object):
-    return func.lower(column) == normalize_email(email)
-
-
-def username_matches(column, username: object):
-    return func.lower(column) == str(username or "").strip().lower()
+sys.modules[__name__] = _module

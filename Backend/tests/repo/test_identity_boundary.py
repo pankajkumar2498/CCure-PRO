@@ -277,8 +277,8 @@ def model_owner():
 def test_platform_code_imports_no_module_model(model_owner):
     """
     ``from db.models import Scan`` is an edge to ``db.models`` — the layer rule
-    cannot see it, so it is checked by name. ``auth/`` is included because it is
-    the code step 8.2 moves into the platform.
+    cannot see it, so it is checked by name. ``auth/`` is included too: since
+    step 8.2 it holds only alias stubs, and it must stay that way.
     """
     import ast
 
@@ -323,29 +323,6 @@ def test_every_model_module_is_classified_for_the_platform_rule():
         "model module(s) neither platform-owned nor forbidden to ccure_platform "
         f"in layer_rules.py: {unclassified}"
     )
-
-
-def test_identity_would_satisfy_the_platform_rule_after_the_move():
-    """
-    Step 8.2 moves ``auth/`` into ``ccure_platform``. Every import ``auth/``
-    makes today, re-homed there, must already satisfy
-    ``platform-is-shared-foundation`` — so the move needs no exception.
-    """
-    _, edges = collect_edges()
-    rehomed = [
-        Edge("ccure_platform.identity" + e.src[len("auth") :], e.dst, e.lazy)
-        for e in edges
-        if e.src == "auth" or e.src.startswith("auth.")
-    ]
-    assert len(rehomed) > 20, "auth/ edges not found — measurement broken?"
-    broken = [
-        f"  {edge.src} -> {edge.dst}"
-        for rule, edge in violations(rehomed)
-        if rule == "platform-is-shared-foundation"
-    ]
-    assert (
-        not broken
-    ), "identity's current imports break the platform rule:\n" + "\n".join(broken)
 
 
 # ── Audit's settings are Audit's ─────────────────────────────────────────────

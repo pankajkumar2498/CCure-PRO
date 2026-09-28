@@ -10,9 +10,11 @@ moves them in (``docs/architecture/PHASE8_PLATFORM_IDENTITY.md``):
     rbac/       roles, permissions, the require_permission / require_role checks
     api.py      the one way in for every module
 
-Step 8.1 creates the package and the guardrails only; nothing lives here yet
-and nothing imports it. Identity's code is still in ``auth/`` and
-``db/models/``.
+Step 8.1 created the package and the guardrails. Step 8.2 moved identity's
+code in from ``auth/`` (``identity/``, ``rbac/``) and its models from
+``db/models/`` (``models/``); every old path is an alias of the same module
+object (``_legacy.py``). Module code still reaches identity through those old
+paths until steps 8.3–8.5 move it onto ``api``.
 
 What does **not** belong here, and is refused by the guardrails:
 

@@ -80,8 +80,12 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         name="models-are-leaves",
-        importer=("db",),
+        importer=("db", "ccure_platform.models"),
         forbidden=_APP_PACKAGES,
+        # The platform's models are models (Phase 8.2): db.models.users and
+        # db.models.rbac are alias stubs of them, and they register their
+        # legacy names through ccure_platform._legacy, which imports nothing.
+        exempt_targets=("ccure_platform.models", "ccure_platform._legacy"),
         reason=(
             "Models and the session layer sit at the bottom: every capability "
             "imports them, so a model importing a capability puts that capability "
@@ -233,6 +237,18 @@ RULES: tuple[Rule, ...] = (
             "depend on Audit and turn the platform into a place Audit logic "
             "hides (Phase 8). Shared infrastructure is named one module at a "
             "time in exempt_targets."
+        ),
+    ),
+    Rule(
+        name="platform-does-not-use-legacy-paths",
+        importer=("ccure_platform",),
+        forbidden=("auth", "db.models.users", "db.models.rbac"),
+        reason=(
+            "auth.* and db.models.users/rbac are compatibility aliases of modules "
+            "that moved into ccure_platform in Phase 8.2, kept for module code "
+            "until step 8.5. The platform imports its own modules by their real "
+            "names (models through the db.models registry), so the aliases can "
+            "be deleted without touching it."
         ),
     ),
     Rule(

@@ -104,6 +104,10 @@ def component(module: str) -> str:
         return "db.models" if len(parts) >= 3 and parts[1] == "models" else "db"
     if top == "engines":
         return f"engines.{parts[1]}" if len(parts) > 1 else "engines"
+    if top == "ccure_platform":
+        # identity, rbac and the models are separate components: the legacy
+        # db.models stubs import the platform's models, not its sign-in router.
+        return f"ccure_platform.{parts[1]}" if len(parts) > 1 else "ccure_platform"
     if top == "routers":
         return "routers"
     return top

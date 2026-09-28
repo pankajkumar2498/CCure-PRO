@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                       |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved** by the project owner, 28 Sep 2026, step by step with a review stop after each commit. **Step 8.1 done** (guardrails only); 8.2 not started.                              |
+| **Status**    | **Approved** by the project owner, 28 Sep 2026, step by step with a review stop after each commit. **Steps 8.1 and 8.2 done**; 8.3 not started.                                       |
 | **Date**      | 28 Sep 2026                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 8, rule 13, §3.9 (future authentication service), Phase 19 (single-organisation mode) |
 | **Builds on** | Phases 1–7: 0 layering violations, 0 import cycles, contracts v1 (draft), Audit's read services                                                                                       |
@@ -215,3 +215,122 @@ unimported package changed. The OpenAPI document generated from the working
 tree and from `91f4ebf` is byte-identical: SHA-256 `abc552ad…`, 338,097 bytes,
 271 routes. The API and worker were not restarted because there was nothing for
 them to load.
+
+## 9. Step 8.2 — as built
+
+The owner's conditions for this step (28 Sep 2026 review of 8.1):
+
+- 8.2 only, with no organisation or quota change;
+- the models moved without duplication, and every old path resolving to the
+  same module and class objects;
+- externally observable behaviour identical;
+- the three platform services in `core/` classified before anything moves.
+
+**What moved.** Thirteen files moved with `git mv`, so their history follows
+them. `ccure_platform/_legacy.py` `MOVED_MODULES` is the record.
+
+| Old path                                                                | Now                                              |
+| ----------------------------------------------------------------------- | ------------------------------------------------ |
+| `auth/router.py`                                                        | `ccure_platform/identity/router.py`              |
+| `auth/jwt_handler.py`                                                   | `ccure_platform/identity/jwt_handler.py`         |
+| `auth/dependencies.py`                                                  | `ccure_platform/identity/dependencies.py`        |
+| `auth/email_utils.py`, `email_domain_guard.py`, `email_risk_signals.py` | `ccure_platform/identity/` (same names)          |
+| `auth/mail_dispatch.py`, `mail_service.py`, `mail_tasks.py`             | `ccure_platform/identity/` (same names)          |
+| `auth/registration_limits.py`                                           | `ccure_platform/identity/registration_limits.py` |
+| `auth/rbac.py`                                                          | `ccure_platform/rbac/dependencies.py`            |
+| `db/models/users.py`                                                    | `ccure_platform/models/users.py`                 |
+| `db/models/rbac.py`                                                     | `ccure_platform/models/rbac.py`                  |
+
+The model files moved whole. `users.py` also holds `AuditLog`, which is the
+platform's audit trail and not the CCure Audit module. `rbac.py` holds
+`Organization` beside the roles. Splitting either would have made one legacy
+path two modules. No `tenancy/` package exists yet, because nothing but the
+model belongs in it before step 8.3.
+
+**How the old paths keep working.** Three things together:
+
+1. **Stubs.** Each old file is a stub: `import <new> as _module;
+sys.modules[__name__] = _module`. This is the `scans.cvss` pattern from
+   Phase 3.
+2. **`adopt_legacy_name`.** Each moved module calls
+   `adopt_legacy_name(__name__, "<legacy>")` as its first statement. It
+   registers the alias from inside its own import, so the alias holds
+   whichever name is imported first. It sets the legacy package attribute, and
+   `auth/__init__.py` and `db/models/__init__.py` answer the other order
+   through `__getattr__`.
+3. **The legacy `__name__`.** The module keeps its old `__name__`. Everything
+   derived from it is therefore unchanged:
+   - the limiter's route table (`auth.router.login`);
+   - logger names;
+   - the `__module__` of Pydantic and SQLAlchemy classes.
+
+The real location stays in `__spec__.name` and `__file__`. Renaming loggers
+and limiter keys is a later, deliberate change. The limiter's **Redis** keys
+are URL-based (`LIMITS:LIMITER/<ip>//auth/login/10/1/minute`, observed live)
+and never depended on the module name.
+
+**Platform code imports its own modules by their real names**, and models
+through the `db.models` registry as before. The new layer rule
+`platform-does-not-use-legacy-paths` holds that, so the aliases can be deleted
+later without touching the platform. `models-are-leaves` now also covers
+`ccure_platform.models`, and it exempts the two legacy model stubs, which
+import the platform's models.
+
+`component()` in the import graph splits `ccure_platform` by subpackage, as it
+already did for `engines`. Otherwise the model stubs would appear to reach the
+sign-in router, and the component-level cycle figure would jump from 20 to 32
+for a reason that is not real.
+
+**Not changed:**
+
+- module code's imports, which are still `auth.*` / `db.models`. Steps 8.3–8.5
+  change them, and the baselines stay 32 / 53 / 8 / 11;
+- the `organizations` quota and scope columns;
+- the relationships to Audit's models;
+- foreign keys, tokens and signing;
+- router prefixes;
+- Celery task names and `include` (`auth.mail_tasks` is loaded through its
+  alias).
+
+**The three platform services in `core/`** were classified by what they do and
+what they touch, and none was moved. None had to move for 8.2, and each is a
+separate decision.
+
+| Module                      | Belongs to                                                                                                                                                                                          | Plan                                                                                                                                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core.audit`                | **Platform: the audit trail.** It is the single write path for `audit_logs` (platform-owned), used by every module. "Audit" here means the tamper-evident activity log, not the CCure Audit module. | Move as one unit with its family (`audit_taxonomy`, `audit_retention`, `audit_event_translator`, which the DBA bootstrap scripts reference) into `ccure_platform/audit_log/` as its own step after 8.5. It is not identity, and 8.2 is. |
+| `core.notifications`        | **Platform: notifications.** The `notifications` table is platform-owned, and any module notifies a user. Its three identity queries find the users who hold a role.                                | Its queries move onto `ccure_platform.api` in 8.3. The module itself moves with the audit-log step or later.                                                                                                                            |
+| `core.email_security_tasks` | **Platform: identity.** Email-risk enrichment, the retro-scan, purging unapproved accounts and the disposable-domain sync are all account screening and lifecycle.                                  | **Recommended for 8.3:** move it into `ccure_platform/identity/`, keeping its four task names, queue and `include` entry. That removes one file and three queries from the baseline more honestly than rewriting them onto the API.     |
+
+**Tests** — `tests/repo/test_platform_identity_move.py` (57):
+
+- for every moved module: `old is new` for the module and every model class,
+  the legacy `__name__`, the real `__spec__`, and the parent attribute;
+- each identity table is mapped once and defined in exactly one source file;
+- the aliases hold in three fresh interpreters that import new-first,
+  legacy-first and registry-first;
+- limiter route keys, logger names and Celery task names are unchanged, and no
+  OpenAPI name mentions the new location;
+- every legacy file is a stub of exactly its recorded module, `auth/` holds
+  nothing else, and each moved module adopts its name before anything reads it.
+
+The guardrail cases gained 8. The 8.1 test that anticipated this move was
+removed, because the real edges are now checked instead.
+
+**Verified against `48b7393`**, on the working tree and on a `git archive` of
+that commit, in the same container:
+
+- the OpenAPI document is byte-identical (SHA-256 `abc552ad…`, 271 routes);
+- the 91 limiter route keys are identical;
+- the 45 Celery task names are identical.
+
+After the API, worker, web worker and beat were restarted, a live probe gave
+the same status and body as before for:
+
+- login with an unknown account;
+- a malformed login;
+- refresh and logout without a cookie;
+- a missing token;
+- a bad token on an identity route and on a permission-guarded route.
+
+The limiter's Redis keys were identical too.

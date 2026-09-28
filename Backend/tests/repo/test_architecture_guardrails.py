@@ -172,6 +172,22 @@ def test_every_rule_says_why():
             "ccure_platform.api",
             "integration-is-an-adapter",
         ),
+        (
+            "ccure_platform.identity.router",
+            "auth.jwt_handler",
+            "platform-does-not-use-legacy-paths",
+        ),
+        (
+            "ccure_platform.rbac.dependencies",
+            "db.models.users",
+            "platform-does-not-use-legacy-paths",
+        ),
+        (
+            "ccure_platform.models.users",
+            "ccure_platform.identity.router",
+            "models-are-leaves",
+        ),
+        ("db.models.scans", "ccure_platform.identity", "models-are-leaves"),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):
@@ -194,7 +210,10 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("reporting.exports", "ccure_audit.services"),  # the Phase 5 transition
         ("ccure_platform.identity.x", "core.rate_limiter"),  # shared infrastructure
         ("ccure_platform.identity.x", "core.audit"),  # the platform's audit log
-        ("ccure_platform.identity.x", "db.models.users"),  # its own models
+        ("ccure_platform.identity.x", "db.models"),  # the model registry
+        ("ccure_platform.models.users", "db.base"),  # the platform's models are models
+        ("db.models.users", "ccure_platform.models.users"),  # the legacy alias stub
+        ("ccure_platform.models.rbac", "ccure_platform._legacy"),
         ("ccure_platform.tenancy", "db.base"),
         ("ccure_platform.api", "config"),
         ("routers.scan_history", "ccure_platform.api"),  # the way in

@@ -67,10 +67,19 @@ IDENTITY_MODELS = frozenset(
     }
 )
 
-#: Modules an identity model can be imported from today.
-IDENTITY_MODEL_SOURCES = ("db.models", "db.models.users", "db.models.rbac")
+#: Modules an identity model can be imported from: the registry, the legacy
+#: paths, and (since Phase 8.2) where the models now live.
+IDENTITY_MODEL_SOURCES = (
+    "db.models",
+    "db.models.users",
+    "db.models.rbac",
+    "ccure_platform.models",
+    "ccure_platform.models.users",
+    "ccure_platform.models.rbac",
+)
 
-#: Identity's own code: any import from here is an identity import.
+#: The legacy path of identity's code (aliases since Phase 8.2): any import from
+#: here is an identity import. Imports of ``ccure_platform`` internals are too.
 IDENTITY_PACKAGES = ("auth",)
 
 #: The one way into the platform once Phase 8 is complete.
@@ -477,11 +486,12 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
 
 #: platform-side module -> {Audit setting: mentions}. 11 in 2 modules, measured
 #: 28 Sep 2026. Registration gives a new self-service organisation an Audit
-#: asset quota (``auth.router``), and the organisation administration router
+#: asset quota (``ccure_platform.identity.router``), and the organisation administration router
 #: edits quotas and scan scope. Step 8.4 moves both to Audit — the URLs stay —
 #: and this reaches zero there.
 KNOWN_AUDIT_SETTING_REFERENCES: dict[str, dict[str, int]] = {
-    "auth.router": {"max_assets": 1},
+    # auth.router until Phase 8.2 moved it; the mention is the same one.
+    "ccure_platform.identity.router": {"max_assets": 1},
     "routers.admin_orgs": {"max_assets": 6, "scan_scope_cidrs": 4},
 }
 

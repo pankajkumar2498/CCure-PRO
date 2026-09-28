@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.compliance_frameworks import (  # noqa: E402
     active_framework_ids,
+    is_benchmark_framework,
     parked_framework_ids,
 )
 from db.base import SessionLocal  # noqa: E402
@@ -53,6 +54,14 @@ def main() -> int:
         "--tenant",
         default=None,
         help="Limit to one organisation id. Default: every organisation.",
+    )
+    parser.add_argument(
+        "--framework",
+        default=None,
+        help=(
+            "Limit to one framework id, so activating one catalogue does not "
+            "also realign every other flag that has drifted. Default: all."
+        ),
     )
     args = parser.parse_args()
 
@@ -82,6 +91,16 @@ def main() -> int:
             )
             changes = []
             for row in rows:
+                # A loaded benchmark (`cfw_bm_…`) is not this script's business.
+                # It is never in the shipped list, so "not active" used to read
+                # as "parked" and the first --apply after Phase 4 would have
+                # switched off every benchmark a tenant had loaded. Loading one
+                # is the decision to use it, and a tenant's own switch for it is
+                # left exactly as the operator set it.
+                if is_benchmark_framework(row.framework_id):
+                    continue
+                if args.framework and row.framework_id != args.framework:
+                    continue
                 want = row.framework_id in active
                 if row.is_enabled == want:
                     continue

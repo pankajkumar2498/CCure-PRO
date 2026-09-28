@@ -168,5 +168,13 @@ cross-references.
 
 1. **ISO management-system clauses: added.** Clauses 4.1–10.2 are in Audit's ISO catalogue as attestation controls, so no requirement of the ISO library is unknown to Audit any more.
 2. **HIPAA catalogue: approved.** Audit holds the HIPAA Security Rule, identified by CFR paragraph. A HIPAA _baseline_ still needs ask 4 — the library's identifiers are not CFR paragraphs.
-3. **PCI DSS: approved.** The catalogue moves to v4.0.1 and is switched on.
+3. **PCI DSS: done.** The catalogue is v4.0.1 and switched on. Before that:
+
+   - its 62 requirement numbers were checked against the standard, and 16 corrected;
+   - its stored numbers became the standard's own (`1.1.2`, not `pci_1_1_1`);
+   - it stopped inheriting ISO's attestation placeholders;
+   - five evidence keys stopped reporting an unrecorded fact as a failure.
+
+   It carries 62 _selected_ requirements, and its name says so. A PolicyPro PCI library would be mapped against those numbers.
+
 4. **`CcurePolicyPro Policy Docs/` is not committed.** It is reference material. The PCI PDF is licensed text, and the libraries are PolicyPro's content.

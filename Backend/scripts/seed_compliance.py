@@ -30,7 +30,9 @@ from db.models.compliance import ComplianceControl, ComplianceFramework
 #: this set: their stored numbers feed crosswalk resolution and rule seeding
 #: for three parked catalogues, and changing them needs its own verification
 #: rather than riding along with a change for two others.
-EXPLICIT_NUMBER_FRAMEWORKS = frozenset({"cfw_iso27001_2022", "cfw_hipaa_security_rule"})
+EXPLICIT_NUMBER_FRAMEWORKS = frozenset(
+    {"cfw_iso27001_2022", "cfw_hipaa_security_rule", "cfw_pci_dss_v4"}
+)
 
 
 def _control_number(framework_id: str, ctrl: dict) -> str:

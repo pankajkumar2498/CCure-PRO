@@ -3611,12 +3611,55 @@ automated rule. A.8.13 did exactly that to PR.DS-11 and RC.RP-03.
 
 ### Which frameworks are switched on
 
-Fourteen catalogues ship. Three are active: ISO/IEC 27001:2022, NIST CSF 2.0
-and CIS Controls v8.1 (since Phase 4). The rest are **parked**: still seeded
-and still crosswalk-reachable, but not offered, scannable, reportable or
-installable. `core/compliance_frameworks.py` is the list, overridable with
-`COMPLIANCE_ACTIVE_FRAMEWORKS`. Turning one back on is one entry there plus
-`python -m scripts.set_active_frameworks --apply`.
+Fourteen catalogues ship. Four are active:
+
+- ISO/IEC 27001:2022;
+- NIST CSF 2.0;
+- CIS Controls v8.1 (since Phase 4);
+- PCI DSS v4.0.1 (since 28 Sep 2026).
+
+The rest are **parked**: still seeded and still crosswalk-reachable, but not
+offered, scannable, reportable or installable. `core/compliance_frameworks.py`
+is the list, overridable with `COMPLIANCE_ACTIVE_FRAMEWORKS`.
+
+Turning one back on is one entry there plus
+`python -m scripts.set_active_frameworks --framework <id> --apply`. Run the dry
+run first and read it:
+
+- **`--framework` limits the run to that catalogue.** Without it, the script
+  also realigns every other flag that has drifted. On 28 Sep 2026 that would
+  have enabled CIS for three organisations where it is installed but off —
+  still unresolved, and a decision of its own.
+- **Loaded benchmarks (`cfw_bm_…`) are never touched.** The script used to
+  read "not in the shipped list" as "parked", so its first `--apply` would
+  have switched off all five STIG benchmarks for `org_default`.
+
+**PCI DSS was put right before it was switched on**, and
+`tests/compliance/test_pci_dss_catalogue.py` pins each fix:
+
+- **Requirement numbers.** 16 of the 62 described one requirement under
+  another's number. Every "Roles and responsibilities" entry sat at X.1.1,
+  which is policies and procedures; the standard puts roles at X.1.2. The
+  others were 2.2.5→2.2.4, 8.3.9→8.3.7, 9.4.5→9.4.7, 10.3.3→10.3.2 and
+  11.5.1.1→11.5.2.
+- **Stored numbers.** The stored number was the internal id (`pci_10_1_1`).
+  It is the standard's (`10.1.1`) now, via `EXPLICIT_NUMBER_FRAMEWORKS`.
+  Row and rule ids are unchanged.
+- **Rule inheritance.** Its rules inherited ISO's attestation placeholders
+  through the crosswalk: 21 were unlinked. Only rules that evaluate something
+  cross, as for NIST CSF. Placeholder rule ids now come from the control id,
+  not its number.
+- **Evidence defaults.** Five evidence keys read only by PCI rules
+  (`pam_mfa_enforced`, `asv_scan_fresh`, `pci_log_daily_reviewed`,
+  `ir_test_fresh_365d`, `fim_active`) defaulted to `False`. Every host nobody
+  had checked therefore *failed* the requirement. They are `None` now, which
+  renders as not assessed.
+- **Name.** It is "PCI DSS v4.0.1 (62 selected requirements)", because a
+  score over 62 requirements must not read as a score over the standard.
+  Expanding it needs the standard's text, which is licensed: the supplied PDF
+  is a reference and is not in the repository.
+- **Unverified.** The SAQ profiles on each entry were not verified; that needs
+  the SAQ documents.
 
 **The HIPAA Security Rule is the fourteenth** (28 Sep 2026, parked). Its
 content and wiring:

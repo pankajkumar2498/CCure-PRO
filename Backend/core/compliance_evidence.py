@@ -379,21 +379,38 @@ class ComplianceEvidenceProvider:
             rdp_nla_enforced = bool(_nla_raw)
 
         # --- PCI-DSS v4.0 FIM (File Integrity Monitoring) Detection ---
-        fim_active = registry_attrs.get("fim_active", False) or custom_attrs.get(
-            "fim_active", False
-        )
+        # None when neither source recorded it: read only by a PCI rule, where a
+        # False default failed requirement 11.5.2 on every host nobody had
+        # checked (see the note on the PCI keys below).
+        _fim_values = [
+            v
+            for v in (registry_attrs.get("fim_active"), custom_attrs.get("fim_active"))
+            if v is not None
+        ]
+        fim_active = any(bool(v) for v in _fim_values) if _fim_values else None
         fim_monitored_dirs = registry_attrs.get(
             "fim_monitored_dirs", []
         ) or custom_attrs.get("fim_monitored_dirs", [])
 
+        # The four PCI keys below are None when nothing was recorded, never
+        # False. Each is read by an active PCI rule (crl_pci_auth_mfa,
+        # crl_pci_asv_fresh, crl_pci_log_daily, crl_pci_ir_test_365d), and a
+        # False default made every host that had never recorded the fact FAIL
+        # the requirement — an unknown reported as a known failure. None is
+        # dropped from the payload below, so the rule reads the key as missing
+        # and renders manual_review. The same applies to a stored date that
+        # does not parse: nothing was established.
+
         # --- PCI-DSS v4.0 PAM MFA Module Detection (Linux pam_duo.so, pam_google_authenticator.so) ---
-        pam_mfa_modules = custom_attrs.get("pam_mfa_modules", [])
-        pam_mfa_enforced = len(pam_mfa_modules) > 0
+        pam_mfa_modules = custom_attrs.get("pam_mfa_modules")
+        pam_mfa_enforced = (
+            len(pam_mfa_modules) > 0 if isinstance(pam_mfa_modules, list) else None
+        )
 
         # --- PCI-DSS v4.0 ASV Scan Freshness Tracking ---
         # Track last PASSING ASV scan date, not just any scan execution
         asv_last_passing_scan_date = custom_attrs.get("asv_last_passing_scan_date")
-        asv_scan_fresh = False
+        asv_scan_fresh = None
         if asv_last_passing_scan_date:
             try:
                 last_scan = datetime.fromisoformat(
@@ -402,14 +419,14 @@ class ComplianceEvidenceProvider:
                 days_since = (datetime.now(timezone.utc) - last_scan).days
                 asv_scan_fresh = days_since <= 90  # Quarterly cadence
             except (ValueError, TypeError):
-                asv_scan_fresh = False
+                asv_scan_fresh = None
 
         # --- PCI-DSS v4.0 Daily Log Review (Req 10.4.1) ---
-        pci_log_daily_reviewed = custom_attrs.get("pci_log_daily_reviewed", False)
+        pci_log_daily_reviewed = custom_attrs.get("pci_log_daily_reviewed")
 
         # --- PCI-DSS v4.0 IR Tabletop Exercise Freshness (Req 12.10.2) ---
         ir_last_test_date = custom_attrs.get("ir_last_test_date")
-        ir_test_fresh_365d = False
+        ir_test_fresh_365d = None
         if ir_last_test_date:
             try:
                 last_test = datetime.fromisoformat(
@@ -418,7 +435,7 @@ class ComplianceEvidenceProvider:
                 days_since_test = (datetime.now(timezone.utc) - last_test).days
                 ir_test_fresh_365d = days_since_test <= 365
             except (ValueError, TypeError):
-                ir_test_fresh_365d = False
+                ir_test_fresh_365d = None
 
         # --- PCI-DSS v4.0 Session Timeout Configuration (Req 8.2.8) ---
         session_timeout_minutes = registry_attrs.get(

@@ -1,13 +1,13 @@
 {
   "framework": {
     "code": "PCI_DSS_V4",
-    "name": "PCI-DSS v4.0 Payment Card Industry Data Security Standard",
-    "version": "4.0",
-    "description": "PCI Data Security Standard (PCI DSS) v4.0 provides a baseline of technical and operational requirements designed to protect payment account data. Mandatory for any entity that stores, processes, or transmits cardholder data (CHD) or sensitive authentication data (SAD)."
+    "name": "PCI DSS v4.0.1 (62 selected requirements)",
+    "version": "4.0.1",
+    "description": "PCI Data Security Standard v4.0.1 (June 2024): technical and operational requirements protecting payment account data, mandatory for any entity that stores, processes or transmits cardholder data or sensitive authentication data. This catalogue carries 62 selected requirements, not the whole standard; a score over it is a score over those requirements. Requirement numbers verified against v4.0.1 on 28 Sep 2026."
   },
   "controls": [
     {
-      "id": "pci_1_1_1", "control_number": "1.1.1", "theme": "PCI_01",
+      "id": "pci_1_1_1", "control_number": "1.1.2", "theme": "PCI_01",
       "title": "Roles and responsibilities for network security controls are documented and understood",
       "description": "All roles and responsibilities for performing activities in Requirement 1 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -61,7 +61,7 @@
       "tags": ["dmz", "network_segmentation", "pci_req_1"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_2_1_1", "control_number": "2.1.1", "theme": "PCI_02",
+      "id": "pci_2_1_1", "control_number": "2.1.2", "theme": "PCI_02",
       "title": "Roles and responsibilities for secure configurations are documented and understood",
       "description": "All roles and responsibilities for performing activities in Requirement 2 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -88,7 +88,7 @@
       "tags": ["default_accounts", "hardening", "pci_req_2"], "saq_profiles": ["saq_a", "saq_a_ep", "saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_2_2_5", "control_number": "2.2.5", "theme": "PCI_02",
+      "id": "pci_2_2_5", "control_number": "2.2.4", "theme": "PCI_02",
       "title": "All unnecessary functionality is removed or disabled",
       "description": "All unnecessary functionality is removed or disabled, including unnecessary software, functions, ports, protocols, services, web servers.",
       "scannability": "auto", "scan_module_hint": "services_ports",
@@ -106,7 +106,7 @@
       "tags": ["encryption", "admin_access", "ssh", "tls", "pci_req_2"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_3_1_1", "control_number": "3.1.1", "theme": "PCI_03",
+      "id": "pci_3_1_1", "control_number": "3.1.2", "theme": "PCI_03",
       "title": "Roles and responsibilities for protecting stored account data are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 3 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -142,7 +142,7 @@
       "tags": ["pan_protection", "encryption", "masking", "pci_req_3"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_4_1_1", "control_number": "4.1.1", "theme": "PCI_04",
+      "id": "pci_4_1_1", "control_number": "4.1.2", "theme": "PCI_04",
       "title": "Roles and responsibilities for strong cryptography in transit are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 4 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -169,7 +169,7 @@
       "tags": ["certificates", "key_management", "pci_req_4"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_5_1_1", "control_number": "5.1.1", "theme": "PCI_05",
+      "id": "pci_5_1_1", "control_number": "5.1.2", "theme": "PCI_05",
       "title": "Roles and responsibilities for malicious software protection are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 5 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -205,7 +205,7 @@
       "tags": ["antivirus", "updates", "pci_req_5"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_6_1_1", "control_number": "6.1.1", "theme": "PCI_06",
+      "id": "pci_6_1_1", "control_number": "6.1.2", "theme": "PCI_06",
       "title": "Roles and responsibilities for secure systems and software development are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 6 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -261,7 +261,7 @@
       "v4_2025_mandatory": true
     },
     {
-      "id": "pci_7_1_1", "control_number": "7.1.1", "theme": "PCI_07",
+      "id": "pci_7_1_1", "control_number": "7.1.2", "theme": "PCI_07",
       "title": "Roles and responsibilities for restricting access are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 7 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -289,7 +289,7 @@
       "v4_2025_mandatory": true
     },
     {
-      "id": "pci_8_1_1", "control_number": "8.1.1", "theme": "PCI_08",
+      "id": "pci_8_1_1", "control_number": "8.1.2", "theme": "PCI_08",
       "title": "Roles and responsibilities for identification and authentication are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 8 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -326,7 +326,7 @@
     },
     {
       "id": "pci_8_3_6", "control_number": "8.3.6", "theme": "PCI_08",
-      "title": "Password minimum length of 12 characters (PCI v4.0 Updated)",
+      "title": "Password minimum length of 12 characters",
       "description": "If passwords/passphrases are used as an authentication factor, they meet a minimum length of 12 characters, containing both numeric and alphabetic characters.",
       "scannability": "auto", "scan_module_hint": "credential_validation",
       "crosswalk": ["ISO27001:A.8.5", "NIST_CSF_V2:PR.AA-01", "CIS:5.2"],
@@ -335,7 +335,7 @@
       "v4_2025_mandatory": true
     },
     {
-      "id": "pci_8_3_9", "control_number": "8.3.9", "theme": "PCI_08",
+      "id": "pci_8_3_9", "control_number": "8.3.7", "theme": "PCI_08",
       "title": "Passwords/passphrases are not the same as the previous four used",
       "description": "If passwords/passphrases are used, they are set to a unique value for each user's first use and upon reset, and cannot be the same as the previous four passwords/passphrases used.",
       "scannability": "auto", "scan_module_hint": "credential_validation",
@@ -354,7 +354,7 @@
       "v4_2025_mandatory": true
     },
     {
-      "id": "pci_9_1_1", "control_number": "9.1.1", "theme": "PCI_09",
+      "id": "pci_9_1_1", "control_number": "9.1.2", "theme": "PCI_09",
       "title": "Roles and responsibilities for physical access restrictions are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 9 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -372,7 +372,7 @@
       "tags": ["physical_access", "network_equipment", "pci_req_9"], "saq_profiles": ["saq_b_ip", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_9_4_5", "control_number": "9.4.5", "theme": "PCI_09",
+      "id": "pci_9_4_5", "control_number": "9.4.7", "theme": "PCI_09",
       "title": "Electronic media with cardholder data is destroyed when no longer needed",
       "description": "Electronic media with cardholder data is destroyed when no longer needed for business or legal reasons.",
       "scannability": "manual", "scan_module_hint": null,
@@ -381,7 +381,7 @@
       "tags": ["media_destruction", "data_disposal", "pci_req_9"], "saq_profiles": ["saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_10_1_1", "control_number": "10.1.1", "theme": "PCI_10",
+      "id": "pci_10_1_1", "control_number": "10.1.2", "theme": "PCI_10",
       "title": "Roles and responsibilities for logging and monitoring are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 10 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -399,7 +399,7 @@
       "tags": ["audit_logs", "siem", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_10_3_3", "control_number": "10.3.3", "theme": "PCI_10",
+      "id": "pci_10_3_3", "control_number": "10.3.2", "theme": "PCI_10",
       "title": "Audit logs are protected from unauthorized modifications",
       "description": "Audit logs are promptly backed up to a centralized log server or media that is difficult to alter.",
       "scannability": "semi_auto", "scan_module_hint": "offline_configuration",
@@ -435,7 +435,7 @@
       "tags": ["ntp", "time_sync", "clock", "pci_req_10"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_11_1_1", "control_number": "11.1.1", "theme": "PCI_11",
+      "id": "pci_11_1_1", "control_number": "11.1.2", "theme": "PCI_11",
       "title": "Roles and responsibilities for security testing are documented",
       "description": "All roles and responsibilities for performing activities in Requirement 11 are documented, assigned, and understood.",
       "scannability": "manual", "scan_module_hint": null,
@@ -480,7 +480,7 @@
       "tags": ["ids", "ips", "intrusion_detection", "pci_req_11"], "saq_profiles": ["saq_a_ep", "saq_c", "saq_d_merchant", "saq_d_service_provider"]
     },
     {
-      "id": "pci_11_5_1_1", "control_number": "11.5.1.1", "theme": "PCI_11",
+      "id": "pci_11_5_1_1", "control_number": "11.5.2", "theme": "PCI_11",
       "title": "File integrity monitoring (FIM) is deployed on critical system files",
       "description": "Mechanisms for change detection (e.g., file integrity monitoring tools) are deployed to detect unauthorized modification of critical system files, configuration files, or content files.",
       "scannability": "auto", "scan_module_hint": "offline_configuration",

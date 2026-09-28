@@ -39,7 +39,9 @@ def test_the_finished_frameworks_are_the_default():
     """
     ISO 27001 and NIST CSF 2.0 were finished first; CIS Controls v8.1 was
     activated by Phase 4 so that hardening-benchmark findings have a framework
-    to roll up into.
+    to roll up into; PCI DSS v4.0.1 by the project owner on 28 Sep 2026, once
+    its requirement numbers, rule inheritance and evidence defaults were fixed
+    (`test_pci_dss_catalogue.py`).
 
     Pinned as an exact tuple on purpose. Activating a catalogue makes it
     offered, scannable, reportable and installable for every tenant, which is a
@@ -50,11 +52,13 @@ def test_the_finished_frameworks_are_the_default():
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
+        "cfw_pci_dss_v4",
     )
     assert compliance_frameworks.active_framework_ids() == (
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
+        "cfw_pci_dss_v4",
     )
 
 
@@ -191,12 +195,11 @@ def test_guard_distinguishes_parked_from_unknown():
 @pytest.mark.parametrize(
     "slug",
     [
-        # "cis_v8_1" is deliberately absent: Phase 4 activated it, so its
-        # report renders rather than being refused. It is covered by
-        # `test_active_framework_reports_still_render` instead.
+        # "cis_v8_1" and "pci_dss_v4" are deliberately absent: Phase 4
+        # activated CIS and the project owner activated PCI DSS on 28 Sep
+        # 2026, so their reports render rather than being refused.
         "soc2_type2",
         "cert_in_2022",
-        "pci_dss_v4",
         "dpdp_2023",
         "gdpr",
         "nist_800_53_r5",
@@ -231,7 +234,7 @@ def test_soa_is_refused_for_a_parked_framework(
     assert ok.status_code == 200
 
     refused = client.get(
-        "/compliance/reports/soa?framework_id=cfw_pci_dss_v4", headers=auth_headers
+        "/compliance/reports/soa?framework_id=cfw_soc2_type2", headers=auth_headers
     )
     assert refused.status_code == 403
 
@@ -254,12 +257,13 @@ def test_marketplace_lists_only_active_frameworks(client, auth_headers):
     # whether one is loaded depends on what the installation did, not on this
     # module. Anything extra must be a benchmark; a parked catalogue appearing
     # here is the defect this test exists for.
-    assert listed[:3] == [
+    assert listed[:4] == [
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
+        "cfw_pci_dss_v4",
     ], listed
-    extra = listed[3:]
+    extra = listed[4:]
     assert all(
         compliance_frameworks.is_benchmark_framework(fid) for fid in extra
     ), extra
@@ -686,3 +690,23 @@ def test_no_findings_or_scores_exist_for_a_parked_framework(db_session):
     assert (
         not stray_findings
     ), f"findings exist against parked or orphaned controls: {sorted(stray_findings)}"
+
+
+def test_realigning_flags_never_touches_a_loaded_benchmark():
+    """
+    `set_active_frameworks.py` compares each tenant flag with the shipped
+    active list, and a loaded benchmark (`cfw_bm_…`) is never on it — so its
+    first `--apply` after Phase 4 would have switched off every STIG benchmark
+    a tenant had loaded. Caught by the dry run before PCI DSS was activated on
+    28 Sep 2026. The script opens its own session on the live database, so it
+    is guarded by its source rather than run here.
+    """
+    import inspect
+
+    from scripts import set_active_frameworks
+
+    source = inspect.getsource(set_active_frameworks.main)
+    skip = source.index("if is_benchmark_framework(row.framework_id):")
+    decide = source.index("want = row.framework_id in active")
+    assert skip < decide
+    assert '"--framework"' in source

@@ -61,6 +61,12 @@ DEFAULT_ACTIVE_FRAMEWORK_IDS: tuple[str, ...] = (
     # recommendations there. Benchmark content is loaded as its own framework
     # by `core/benchmarks/loader.py` and is not seeded in this repository.
     "cfw_cis_v8_1",
+    # Switched on 28 Sep 2026 (project-owner decision). Before that its 62
+    # requirement numbers were verified against PCI DSS v4.0.1 and 16 corrected,
+    # its rules stopped inheriting ISO's attestation placeholders, and four
+    # evidence keys stopped reporting an unrecorded fact as a failure. It is a
+    # selection of the standard's requirements, and its name says so.
+    "cfw_pci_dss_v4",
 )
 
 # Every catalogue that ships, active or parked. Kept so callers can tell

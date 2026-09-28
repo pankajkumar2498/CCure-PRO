@@ -49,7 +49,7 @@ class CcureParameterCapabilityV1(ContractModel):
     honoured: bool = owned(
         "audit",
         "Whether Audit's rules use the value today. False until rule "
-        "parameterisation (plan Phase 13) — a truthful false, not a missing value.",
+        "parameterisation (plan Phase 17) — a truthful false, not a missing value.",
     )
     description: ShortText = owned("audit", "Meaning.")
 

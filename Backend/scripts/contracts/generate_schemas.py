@@ -11,7 +11,8 @@ host (``scripts/contracts/write_bundle.py``).
 
 The schemas are generated, never hand-edited: the Pydantic models in
 ``ccure_contracts`` are the source, and the JSON files are what a team working
-outside this repository (plan Phase 18) or in another language validates
+outside this repository (the plan's external-team contingency) or in
+another language validates
 against. ``tests/repo/test_integration_contracts.py`` fails when the two drift.
 """
 

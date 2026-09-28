@@ -11,6 +11,22 @@
 | **Requirements**       | _SRS for CcurePro Platform v1.0_ §7.6 (inter-module interfaces), §7.3 (Audit), §7.2 (Policy Pro), §7.4 (IR), §7.5 (Rank); _Design Document for CcurePro Platform v1.0_ §3 (interface map) |
 | **Reviewers needed**   | Policy Pro, Rank, IR and Audit teams; platform owner (decision D6)                                                                                                                        |
 
+> **Phase numbering.** This document was written under revision 3 of the
+> platform plan. Revision 4 (28 Sep 2026, `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`)
+> renumbered the later phases, and the numbers below are kept as written. Old →
+> new:
+>
+> - 6 (coverage model) → 15
+> - 7 (integration layer) → 14
+> - 8 (engine ports, moving code into `ccure_audit`) → 16
+> - 11 (platform extraction) → 8–9
+> - 13–14 (parameters, SRS risk inputs) → 17
+> - 18 (external teams) → a contingency
+> - 19 → dropped: IR is a separate service by design
+>
+> Phase numbers of the gap-closure programme (GAP-…) are a different series and
+> are unaffected.
+
 This document defines what the four CCure modules exchange — **Policy Pro**,
 **CCure Audit**, **CCure Rank** and **CCure IR** — before any more structural
 work is done inside Audit. It is written so each team can review the contracts

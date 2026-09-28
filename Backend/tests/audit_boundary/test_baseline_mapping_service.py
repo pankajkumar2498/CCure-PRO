@@ -66,7 +66,7 @@ LENGTH_USED = ParameterDefinition(
 
 
 def test_audit_has_no_parameter_vocabulary_yet():
-    """No rule takes a parameter until plan Phase 13; nothing may claim otherwise."""
+    """No rule takes a parameter until plan Phase 17; nothing may claim otherwise."""
     assert PARAMETER_VOCABULARY == ()
 
 

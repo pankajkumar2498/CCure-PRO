@@ -7,6 +7,22 @@
 | **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                                                                                                                                                                                                                        |
 | **Audience**  | Audit team and architecture reviewers                                                                                                                                                                                                                                                                                                                                                                 |
 
+> **Phase numbering.** This document was written under revision 3 of the
+> platform plan. Revision 4 (28 Sep 2026, `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`)
+> renumbered the later phases, and the numbers below are kept as written. Old →
+> new:
+>
+> - 6 (coverage model) → 15
+> - 7 (integration layer) → 14
+> - 8 (engine ports, moving code into `ccure_audit`) → 16
+> - 11 (platform extraction) → 8–9
+> - 13–14 (parameters, SRS risk inputs) → 17
+> - 18 (external teams) → a contingency
+> - 19 → dropped: IR is a separate service by design
+>
+> Phase numbers of the gap-closure programme (GAP-…) are a different series and
+> are unaffected.
+
 Phase 5 creates the **internal** boundaries CCure Audit needs to consume and
 produce the Phase 4 contracts later:
 

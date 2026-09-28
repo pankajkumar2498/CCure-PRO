@@ -271,7 +271,7 @@
           "x-ccure-owner": "audit"
         },
         "honoured": {
-          "description": "Whether Audit's rules use the value today. False until rule parameterisation (plan Phase 13) — a truthful false, not a missing value.",
+          "description": "Whether Audit's rules use the value today. False until rule parameterisation (plan Phase 17) — a truthful false, not a missing value.",
           "title": "Honoured",
           "type": "boolean",
           "x-ccure-availability": "available",

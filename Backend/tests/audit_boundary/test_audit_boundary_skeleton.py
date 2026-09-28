@@ -55,7 +55,7 @@ def test_the_phase5_layer_rules_are_registered():
 def test_nothing_in_production_imports_the_integration_adapter_yet():
     """
     The adapter is exercised by tests only until the integration phase (plan
-    Phase 7) wires it to routes behind service identity. Delete this test in
+    Phase 14) wires it to routes behind service identity. Delete this test in
     that phase, not before.
     """
     _, edges = collect_edges()

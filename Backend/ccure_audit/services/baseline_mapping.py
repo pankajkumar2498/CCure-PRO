@@ -12,7 +12,7 @@ Three independent answers, each from one function that is tested on its own:
   :class:`ComplianceCatalogueService` and classified by its ``classify_control``
   rule. This module never decides a mapping state itself.
 * **Parameters** — :func:`parameter_handling`. Audit has **no parameter
-  vocabulary yet**: its rules take no parameters until plan Phase 13. So every
+  vocabulary yet**: its rules take no parameters until plan Phase 17. So every
   parameter is ``unknown_parameter`` today, with the value recorded and the
   reason given — never silently ignored and never reported as honoured.
 * **Scope** — :func:`evaluate_scope_cidrs`. A baseline's scope may only
@@ -77,7 +77,7 @@ class ParameterDefinition:
 
 
 #: The parameters Audit understands. **Empty, deliberately**: no Audit rule
-#: takes a parameter yet (plan Phase 13). Adding an entry here is a promise
+#: takes a parameter yet (plan Phase 17). Adding an entry here is a promise
 #: that the name means something to Audit; do not add one until a rule reads
 #: it, or add it with ``honoured=False`` so it is reported as recorded.
 PARAMETER_VOCABULARY: Tuple[ParameterDefinition, ...] = ()
@@ -215,7 +215,7 @@ def parameter_handling(
             return (
                 PARAM_UNKNOWN,
                 "Audit has no parameter vocabulary yet: its rules take no "
-                "parameters (plan Phase 13). The value is recorded, not applied.",
+                "parameters (plan Phase 17). The value is recorded, not applied.",
             )
         return (
             PARAM_UNKNOWN,

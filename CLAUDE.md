@@ -244,7 +244,7 @@ existing `core/`, `engines/`, `scans/` and `reporting/` code is used, not moved.
 What Policy Pro, Audit, Rank and IR exchange. Design and review document:
 [`docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md`](docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md).
 **Nothing in the application uses them yet** — a test fails if anything
-imports `ccure_contracts` before the integration adapter is built (plan Phase 7).
+imports `ccure_contracts` before the integration adapter is built (plan Phase 14).
 
 - **The Pydantic models are the source; the JSON Schemas are generated.** Never
   hand-edit `*/v1/schemas/*.json`. After changing a model run

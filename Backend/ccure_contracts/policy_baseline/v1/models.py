@@ -275,7 +275,7 @@ class CcureParameterOutcomeV1(ContractModel):
     handling: ParameterHandling = owned(
         "audit",
         "What Audit does with the value. Until Audit's rules take parameters "
-        "(plan Phase 13) every known parameter is RECORDED_NOT_HONOURED — "
+        "(plan Phase 17) every known parameter is RECORDED_NOT_HONOURED — "
         "recorded, reported, and never silently ignored.",
         availability="partial",
     )

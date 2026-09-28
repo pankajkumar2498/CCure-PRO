@@ -4,7 +4,7 @@ ccure_contracts — the integration contracts between the four CCure modules.
 Phase 4 of the modular-platform programme. **Draft for review**: nothing in the
 application imports this package yet, no route serves it and no worker emits
 it. It is the reviewable definition of what Policy Pro, Audit, Rank and IR
-will exchange once the integration layer is built (plan Phase 7).
+will exchange once the integration layer is built (plan Phase 14).
 
 Design document: ``docs/architecture/contracts/PHASE4_INTEGRATION_CONTRACTS.md``.
 

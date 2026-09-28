@@ -23,6 +23,7 @@ from auth.rbac import require_permission, user_has_permission
 from auth.jwt_handler import decode_token
 from core.audit import log_audit_event
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
+from ccure_platform import api as platform_api
 from db.models import User
 from core.web.auth.secrets import encrypt_auth_config
 from db.models.web_scans import (
@@ -494,9 +495,7 @@ def start_web_scan(
     idempotency_key = _normalize_idempotency_key(idempotency_key)
     target_org_id = _resolve_org(user, org_id)
 
-    from db.models.rbac import Organization
-
-    org = db.query(Organization).filter(Organization.id == target_org_id).first()
+    org = platform_api.organisation(db, target_org_id)
     org_slug = org.slug if org else target_org_id
 
     duplicate_scan = _find_duplicate_web_scan(

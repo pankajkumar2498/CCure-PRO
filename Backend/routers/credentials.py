@@ -51,6 +51,7 @@ from auth.rbac import require_permission
 from core.audit import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
+from ccure_platform import api as platform_api
 from db.models import ComplianceCredential, Organization, User
 from db.models.compliance import (
     AUTH_METHODS,
@@ -489,7 +490,7 @@ def create_credential(
             status_code=409, detail=f"A credential named {body.name!r} already exists."
         )
 
-    org_row = db.query(Organization).filter(Organization.id == org).first()
+    org_row = platform_api.organisation(db, org)
     cred = ComplianceCredential(
         id=gen_compliance_credential_id(org_row.slug if org_row else org),
         tenant_id=org,

@@ -15,7 +15,8 @@ from typing import Optional
 from auth.dependencies import get_current_user_flexible
 from core.audit import log_audit_event
 from db.base import get_db
-from db.models import Permission, RolePermission, Scan, User
+from ccure_platform import api as platform_api
+from db.models import Scan, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from scan_helpers import limiter
 from fastapi.responses import FileResponse
@@ -369,16 +370,7 @@ def _require_reports_read(user: User, db: Session) -> None:
             status_code=403, detail="Your account does not have a role assigned."
         )
 
-    has_reports_read = (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == role.id,
-            Permission.resource == "reports",
-            Permission.action == "read",
-        )
-        .first()
-    ) is not None
+    has_reports_read = platform_api.user_has_permission(db, user, "reports", "read")
 
     if not has_reports_read:
         raise HTTPException(
@@ -399,16 +391,7 @@ def _require_reports_delete(user: User, db: Session) -> None:
             status_code=403, detail="Your account does not have a role assigned."
         )
 
-    has_reports_delete = (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == role.id,
-            Permission.resource == "reports",
-            Permission.action == "delete",
-        )
-        .first()
-    ) is not None
+    has_reports_delete = platform_api.user_has_permission(db, user, "reports", "delete")
 
     if not has_reports_delete:
         raise HTTPException(
@@ -424,18 +407,7 @@ def _is_superadmin(user: User) -> bool:
 
 
 def _can_read_all_org_scans(user: User, db: Session) -> bool:
-    if _is_superadmin(user):
-        return True
-    return (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == user.role_id,
-            Permission.resource == "scans",
-            Permission.action == "read_all",
-        )
-        .first()
-    ) is not None
+    return platform_api.user_has_permission(db, user, "scans", "read_all")
 
 
 def _audit_report_download(db: Session, user: User, request, scan, report_format: str):

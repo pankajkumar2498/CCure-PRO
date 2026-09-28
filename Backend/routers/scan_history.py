@@ -17,7 +17,8 @@ from typing import Optional
 from auth.jwt_handler import decode_token
 from auth.rbac import require_permission
 from db.base import SessionLocal, get_db, utcnow
-from db.models import Permission, RolePermission, User
+from ccure_platform import api as platform_api
+from db.models import User
 from db.models.scans import Scan
 from fastapi import (
     APIRouter,
@@ -159,19 +160,7 @@ def _scan_to_dict(
 
 
 def _user_can_read_all_scans(user: User, db: Session) -> bool:
-    if getattr(getattr(user, "role", None), "name", "").lower() == "superadmin":
-        return True
-
-    return (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == user.role_id,
-            Permission.resource == "scans",
-            Permission.action == "read_all",
-        )
-        .first()
-    ) is not None
+    return platform_api.user_has_permission(db, user, "scans", "read_all")
 
 
 def _get_scan_or_404(
@@ -430,16 +419,7 @@ def _get_websocket_user(websocket: WebSocket) -> User:
             raise HTTPException(status_code=401, detail="User not found.")
 
         if getattr(user.role, "name", "").lower() != "superadmin":
-            has_perm = (
-                db.query(RolePermission)
-                .join(Permission, Permission.id == RolePermission.permission_id)
-                .filter(
-                    RolePermission.role_id == user.role_id,
-                    Permission.resource == "scans",
-                    Permission.action == "read",
-                )
-                .first()
-            ) is not None
+            has_perm = platform_api.user_has_permission(db, user, "scans", "read")
             if not has_perm:
                 raise HTTPException(status_code=403, detail="Insufficient privileges.")
 

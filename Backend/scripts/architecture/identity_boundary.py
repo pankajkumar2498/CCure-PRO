@@ -405,24 +405,17 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
         {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
     ),
     "routers.reports": frozenset(
-        {
-            "auth.dependencies.get_current_user_flexible",
-            "db.models.Permission",
-            "db.models.RolePermission",
-            "db.models.User",
-        }
+        {"auth.dependencies.get_current_user_flexible", "db.models.User"}
     ),
     "routers.scan_history": frozenset(
         {
             "auth.jwt_handler.decode_token",
             "auth.rbac.require_permission",
-            "db.models.Permission",
-            "db.models.RolePermission",
             "db.models.User",
         }
     ),
     "routers.scan_policies": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.scan_schedules": frozenset(
         {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
@@ -437,7 +430,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.rbac.require_permission",
             "auth.rbac.user_has_permission",
             "db.models.User",
-            "db.models.rbac.Organization",
         }
     ),
 }
@@ -454,22 +446,19 @@ KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
     "core.scheduling.dispatcher": {"Organization": 1},
     "core.tasks": {"Organization": 2, "RefreshTokenSession": 1, "User": 1},
     "routers.credentialed": {"Organization": 1},
-    "routers.credentials": {"Organization": 2},
+    "routers.credentials": {"Organization": 1},
     "routers.dashboard": {"Organization": 1},
     "routers.phase_scans": {"Organization": 1},
-    "routers.remediation": {"Organization": 1, "User": 1},
-    "routers.reports": {"RolePermission": 3},
-    "routers.scan_history": {"RolePermission": 2, "User": 1},
-    "routers.scan_policies": {"Organization": 2},
-    "routers.scan_schedules": {"Organization": 2},
-    "routers.web_scans": {"Organization": 1, "User": 1},
+    "routers.remediation": {"Organization": 1},
+    "routers.scan_history": {"User": 1},
+    "routers.scan_schedules": {"Organization": 1},
+    "routers.web_scans": {"User": 1},
 }
 
 #: module -> {identity model: joins and eager loads}. 8 in 4 modules. The
 #: proposal's count (query() and select() only) did not look for these.
 KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
-    "routers.reports": {"Permission": 3},
-    "routers.scan_history": {"Permission": 2, "User": 1},
+    "routers.scan_history": {"User": 1},
     "routers.web_scans": {"User": 1},
 }
 

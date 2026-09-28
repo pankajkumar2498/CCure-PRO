@@ -67,7 +67,8 @@ from core.scan_policy.spec import (
 )
 from core.scan_policy.validation import validate_policy
 from db.base import gen_org_token, get_db
-from db.models import Organization, ScanSchedule, User
+from ccure_platform import api as platform_api
+from db.models import ScanSchedule, User
 from db.models.scan_policies import (
     POLICY_STATUS_ACTIVE,
     POLICY_STATUS_ARCHIVED,
@@ -415,7 +416,7 @@ def create_policy(
         .all()
     ]
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     policy = ScanPolicy(
         id=_gen_policy_id(org.slug if org else resolved_org),
         org_id=resolved_org,
@@ -718,7 +719,7 @@ def new_policy_version(
     ]
     version = next_version_number(versions)
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     successor = ScanPolicy(
         id=_gen_policy_id(org.slug if org else resolved_org),
         org_id=resolved_org,

@@ -54,6 +54,7 @@ from core.scheduling.recurrence import (
     parse_hhmm,
 )
 from db.base import gen_scan_schedule_id, get_db
+from ccure_platform import api as platform_api
 from db.models import ComplianceCredential, Organization, User
 from db.models.scan_schedules import (
     DISPATCHABLE_SCAN_KINDS,
@@ -571,7 +572,7 @@ def create_schedule(
             detail=f"A schedule named {body.name!r} already exists.",
         )
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     schedule = ScanSchedule(
         id=gen_scan_schedule_id(org.slug if org else resolved_org),
         org_id=resolved_org,

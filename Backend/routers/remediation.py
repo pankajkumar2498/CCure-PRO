@@ -81,6 +81,7 @@ from core.remediation import (
 )
 from core.remediation.sla import DEFAULT_SLA_DAYS, SETTINGS_KEY
 from db.base import get_db
+from ccure_platform import api as platform_api
 from db.models import Organization, User
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, FindingRemediationEvent
@@ -642,10 +643,8 @@ def assign(
     org = _resolve_org(user, org_id)
 
     if body.owner_id:
-        owner = (
-            db.query(User).filter(User.id == body.owner_id, User.org_id == org).first()
-        )
-        if owner is None:
+        owner = platform_api.user(db, body.owner_id)
+        if owner is None or owner.org_id != org:
             raise HTTPException(
                 status_code=400,
                 detail="The owner must be a user in this organisation.",

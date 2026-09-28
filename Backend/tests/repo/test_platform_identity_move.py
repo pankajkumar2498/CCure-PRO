@@ -193,6 +193,11 @@ def test_limiter_route_keys_are_unchanged():
         # these two were already named explicitly and must stay so
         ("ccure_platform.identity.mail_dispatch", "log", "ccure.mail"),
         ("ccure_platform.identity.mail_tasks", "log", "ccure.tasks"),
+        (
+            "ccure_platform.identity.email_security_tasks",
+            "log",
+            "core.email_security_tasks",
+        ),
     ],
 )
 def test_logger_names_are_unchanged(module, attribute, logger_name):
@@ -216,6 +221,24 @@ def test_celery_task_names_and_include_are_unchanged():
     # The worker still loads the mail tasks by their legacy path.
     assert "auth.mail_tasks" in celery_app.conf.include
     assert sys.modules["auth.mail_tasks"] is mail_tasks
+
+
+def test_account_screening_tasks_keep_their_names_queue_and_include():
+    """core.email_security_tasks moved into the platform in step 8.3."""
+    import ccure_platform.identity.email_security_tasks as screening
+    from core.celery_app import celery_app
+
+    for name in (
+        "ccure.tasks.enrich_email_risk",
+        "ccure.tasks.retro_scan_email_risk",
+        "ccure.tasks.purge_stale_unapproved_accounts",
+        "ccure.tasks.sync_disposable_domains",
+    ):
+        task = celery_app.tasks[name]
+        assert task.__module__ == "core.email_security_tasks", name
+        assert task.queue == "default", name
+    assert "core.email_security_tasks" in celery_app.conf.include
+    assert sys.modules["core.email_security_tasks"] is screening
 
 
 def test_no_openapi_name_mentions_the_new_location():

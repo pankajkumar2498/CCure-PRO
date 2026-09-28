@@ -712,7 +712,7 @@ def _queue_email_risk_enrichment(user_id: str) -> None:
     if not AppConfig.EMAIL_RISK_ENRICHMENT_ENABLED:
         return
     try:
-        from core.email_security_tasks import enrich_email_risk
+        from ccure_platform.identity.email_security_tasks import enrich_email_risk
 
         enrich_email_risk.delay(user_id)
     except Exception as exc:

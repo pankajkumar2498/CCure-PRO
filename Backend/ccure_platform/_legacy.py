@@ -63,6 +63,8 @@ MOVED_MODULES: dict[str, str] = {
     "auth.rbac": "ccure_platform.rbac.dependencies",
     "db.models.users": "ccure_platform.models.users",
     "db.models.rbac": "ccure_platform.models.rbac",
+    # Phase 8.3: account screening and lifecycle tasks
+    "core.email_security_tasks": "ccure_platform.identity.email_security_tasks",
 }
 
 

@@ -223,7 +223,6 @@ RULES: tuple[Rule, ...] = (
         exempt_targets=(
             "core.audit",
             "core.celery_app",
-            "core.email_security_tasks",
             "core.ip_resolver",
             "core.rate_limiter",
             "core.redis_client",

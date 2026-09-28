@@ -315,6 +315,18 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_cis_v8_1")
                 .first()
             )
+            # HIPAA Security Rule (45 CFR Part 164 Subpart C), added 28 Sep
+            # 2026 and parked. 65 controls: 22 standards, 43 specifications.
+            hipaa_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_hipaa_security_rule")
+                .first()
+            )
+            hipaa_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_hipaa_security_rule")
+                .count()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -423,6 +435,8 @@ async def lifespan(app: FastAPI):
                 # reason CLAUDE.md records: a condition that can never be
                 # satisfied re-runs the whole seeder on every container start.
                 or cis_ctrl_count < 150
+                or not hipaa_fw
+                or hipaa_ctrl_count < 65
                 or rule_count < 20
             ):
                 log.info(
@@ -497,6 +511,11 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nis2_seed):
                         seed_framework_and_controls(db, nis2_seed)
+                    hipaa_seed = os.path.join(
+                        base_scripts_dir, "hipaa_security_rule_controls_seed.json"
+                    )
+                    if os.path.exists(hipaa_seed):
+                        seed_framework_and_controls(db, hipaa_seed)
                     if os.path.exists(cis_seed):
                         seed_framework_and_controls(db, cis_seed)
 

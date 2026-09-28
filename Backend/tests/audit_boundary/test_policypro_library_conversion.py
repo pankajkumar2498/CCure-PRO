@@ -275,7 +275,7 @@ def test_a_hipaa_library_is_refused_with_the_reason():
         )
     )
     with pytest.raises(
-        conv.ConversionError, match="HIPAA library: Audit has no HIPAA catalogue"
+        conv.ConversionError, match="HIPAA library: its identifiers are PolicyPro's own"
     ):
         _build(rows=rows, demo=True)
 

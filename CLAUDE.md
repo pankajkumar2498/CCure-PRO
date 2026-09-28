@@ -270,7 +270,8 @@ imports `ccure_contracts` before the integration adapter is built (plan Phase 14
   translation of a PolicyPro policy library plus an organisation's SoA answers
   into a `PolicyBaseline`. It never invents applicability: no SoA means a
   refusal unless `--demo-all-applicable`, which labels the output. It refuses a
-  HIPAA library: there is no HIPAA catalogue and no stable regulatory ids.
+  HIPAA library: its ids are PolicyPro's own, not the CFR paragraphs
+  Audit's HIPAA catalogue uses.
   `baseline_coverage_report.py` answers a baseline with `BaselineCoverage`
   over a **read-only** session. What PolicyPro must export, and why:
   [`docs/architecture/policypro/POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md`](docs/architecture/policypro/POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md).
@@ -3608,14 +3609,30 @@ rule therefore means adding that control there and regenerating the CSF seed,
 or NIST is left claiming `manual` for a Subcategory that now inherits an
 automated rule. A.8.13 did exactly that to PR.DS-11 and RC.RP-03.
 
-### Only two frameworks are switched on
+### Which frameworks are switched on
 
-Thirteen catalogues ship. Eleven are **parked** while ISO/IEC 27001:2022 and
-NIST CSF 2.0 are finished: still seeded, still crosswalk-reachable, but not
-offered, not scannable, not reportable and not installable.
-`core/compliance_frameworks.py` is the list, overridable with
+Fourteen catalogues ship. Three are active: ISO/IEC 27001:2022, NIST CSF 2.0
+and CIS Controls v8.1 (since Phase 4). The rest are **parked**: still seeded
+and still crosswalk-reachable, but not offered, scannable, reportable or
+installable. `core/compliance_frameworks.py` is the list, overridable with
 `COMPLIANCE_ACTIVE_FRAMEWORKS`. Turning one back on is one entry there plus
 `python -m scripts.set_active_frameworks --apply`.
+
+**The HIPAA Security Rule is the fourteenth** (28 Sep 2026, parked). Its
+content and wiring:
+
+- **Controls.** 65: the 22 standards and 43 implementation specifications of
+  45 CFR 164.308–316.
+- **Numbering.** Each is named by its CFR citation (`164.312(a)(2)(iii)`).
+- **Descriptions.** Each carries the regulation's own text, which is US
+  federal law and public domain.
+- **Themes.** One per section, `HIPAA_ADM` … `HIPAA_DOC` (migration
+  `f3b5d7e9a1c4`).
+- **Tests.** `tests/compliance/test_hipaa_security_rule_catalogue.py` pins
+  the Required/Addressable tags to the regulation's own markers and to the
+  published Security Standards Matrix's totals.
+- **Rules.** Every control is an attestation placeholder. Its rule id is
+  derived from the control's id, never its number.
 
 - **Parking is never a data decision.** Do not delete or un-seed a parked
   catalogue. `main.py`'s bootstrap condition names all thirteen, so a missing

@@ -108,6 +108,13 @@ const THEME_LABELS = {
   TECH: "Technological Controls (TECH)",
   ISMS: "Management-System Clauses 4–10 (ISMS)",
 
+  // HIPAA Security Rule (45 CFR Part 164 Subpart C)
+  HIPAA_ADM: "Administrative Safeguards (§164.308)",
+  HIPAA_PHY: "Physical Safeguards (§164.310)",
+  HIPAA_TEC: "Technical Safeguards (§164.312)",
+  HIPAA_ORG: "Organizational Requirements (§164.314)",
+  HIPAA_DOC: "Policies, Procedures and Documentation (§164.316)",
+
   // NIST CSF v2.0
   GV: "Govern (GV)",
   ID: "Identify (ID)",

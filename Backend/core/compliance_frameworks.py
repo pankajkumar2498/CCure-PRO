@@ -80,6 +80,11 @@ ALL_FRAMEWORK_IDS: tuple[str, ...] = (
     "cfw_nist_800_82_r3",
     "cfw_nerc_cip",
     "cfw_nis2",
+    # HIPAA Security Rule (45 CFR Part 164 Subpart C), added 28 Sep 2026.
+    # Parked: the catalogue exists so a Policy Pro baseline naming a HIPAA
+    # requirement is answered, and so an operator can install it; switching it
+    # on is a separate decision.
+    "cfw_hipaa_security_rule",
 )
 
 # Framework id -> the `/compliance/reports/<slug>` endpoint that renders it, so

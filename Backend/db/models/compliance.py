@@ -237,6 +237,14 @@ CONTROL_THEMES = (
     # excluded through the Statement of Applicability, and must not be scored
     # or reported as one of Annex A's four themes.
     "ISMS",
+    # HIPAA Security Rule, one per section of 45 CFR Part 164 Subpart C
+    # (migration f3b5d7e9a1c4): 164.308 administrative, 164.310 physical,
+    # 164.312 technical, 164.314 organizational, 164.316 documentation.
+    "HIPAA_ADM",
+    "HIPAA_PHY",
+    "HIPAA_TEC",
+    "HIPAA_ORG",
+    "HIPAA_DOC",
 )
 
 CONTROL_THEME_SQL = "theme IN %s" % _sql_in_list(CONTROL_THEMES)

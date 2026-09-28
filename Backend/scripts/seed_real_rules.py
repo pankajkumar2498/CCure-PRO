@@ -3779,6 +3779,57 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
             db.commit()
             print("  - Successfully mapped rules and controls for EU NIS 2 Directive")
 
+        # HIPAA Security Rule: one attestation placeholder per control. There
+        # are no crosswalks to inherit through and no technical check reads a
+        # HIPAA requirement, so every control is attestation work until one does.
+        #
+        # The rule id comes from the control's *id*, which never changes, not
+        # from its number: the PCI block derives it from `control_number`, so a
+        # renumbering there would mint a second set of rules beside the first.
+        hipaa_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_hipaa_security_rule")
+            .all()
+        )
+        for hipaa_ctrl in hipaa_controls:
+            suffix = hipaa_ctrl.id.replace("cct_hipaa_security_rule_", "")
+            rule_id = f"crl_hipaa_auto_gen_{suffix}"
+            if (
+                not db.query(ComplianceRule)
+                .filter(ComplianceRule.id == rule_id)
+                .first()
+            ):
+                db.add(
+                    ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-HIPAA-{hipaa_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source="manual",
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                )
+                db.flush()
+            linked = (
+                db.query(ComplianceRuleControl)
+                .filter(
+                    ComplianceRuleControl.rule_id == rule_id,
+                    ComplianceRuleControl.control_id == hipaa_ctrl.id,
+                )
+                .first()
+            )
+            if not linked:
+                db.add(ComplianceRuleControl(rule_id=rule_id, control_id=hipaa_ctrl.id))
+        if hipaa_controls:
+            db.commit()
+            print(
+                "  - Successfully mapped rules and controls for the HIPAA Security Rule"
+            )
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -3802,6 +3853,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "cfw_nist_800_82_r3",
                 "cfw_nerc_cip",
                 "cfw_nis2",
+                "cfw_hipaa_security_rule",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

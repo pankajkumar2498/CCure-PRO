@@ -129,11 +129,12 @@ def _library_kind(rows: Sequence[Mapping[str, str]]) -> str:
         return "iso27001"
     if "hipaa_reference" in columns:
         raise ConversionError(
-            "HIPAA library: Audit has no HIPAA catalogue, and the library's "
-            "identifiers are PolicyPro's own (HIPAA-POL-…) with section-level "
-            "CFR references, so no control could be named in a way Audit "
-            "resolves. See docs/architecture/policypro/"
-            "POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md."
+            "HIPAA library: its identifiers are PolicyPro's own (HIPAA-POL-…) "
+            "and its CFR references are section-level, while Audit's HIPAA "
+            "Security Rule catalogue names each requirement by CFR paragraph "
+            "(e.g. 164.312(a)(2)(iii)). Guessing a paragraph from a name would "
+            "put a requirement on the wrong control. See ask 4 in "
+            "docs/architecture/policypro/POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md."
         )
     raise ConversionError(
         f"not a PolicyPro ISO 27001 library: expected columns {ISO_COLUMNS}"

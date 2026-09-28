@@ -146,6 +146,32 @@ def test_every_rule_says_why():
             "foundations-do-not-import-audit-module",
         ),
         ("scans.db_helpers", "ccure_audit", "foundations-do-not-import-audit-module"),
+        (
+            "ccure_platform.identity.x",
+            "scans.db_helpers",
+            "platform-is-shared-foundation",
+        ),
+        ("ccure_platform.tenancy", "db.models.scans", "platform-is-shared-foundation"),
+        (
+            "ccure_platform.api",
+            "core.compliance_tasks",
+            "platform-is-shared-foundation",
+        ),
+        (
+            "ccure_platform.rbac",
+            "ccure_audit.services",
+            "platform-is-shared-foundation",
+        ),
+        ("ccure_platform.api", "routers.admin_orgs", "platform-is-shared-foundation"),
+        ("ccure_contracts.x", "ccure_platform.api", "contracts-are-leaves"),
+        ("db.models.scans", "ccure_platform", "models-are-leaves"),
+        ("engines.port.x", "ccure_platform.api", "engines-are-libraries"),
+        ("core.constants", "ccure_platform.api", "infrastructure-is-foundation"),
+        (
+            "ccure_audit.integration.m",
+            "ccure_platform.api",
+            "integration-is-an-adapter",
+        ),
     ],
 )
 def test_the_rules_catch_what_they_describe(src, dst, rule):
@@ -166,6 +192,14 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("ccure_audit.services.s", "db.models.findings"),  # services own queries
         ("ccure_audit.services.s", "core.remediation.sla"),  # and use capabilities
         ("reporting.exports", "ccure_audit.services"),  # the Phase 5 transition
+        ("ccure_platform.identity.x", "core.rate_limiter"),  # shared infrastructure
+        ("ccure_platform.identity.x", "core.audit"),  # the platform's audit log
+        ("ccure_platform.identity.x", "db.models.users"),  # its own models
+        ("ccure_platform.tenancy", "db.base"),
+        ("ccure_platform.api", "config"),
+        ("routers.scan_history", "ccure_platform.api"),  # the way in
+        ("ccure_audit.services.s", "ccure_platform.api"),
+        ("core.tasks", "ccure_platform.api"),
     ],
 )
 def test_the_rules_allow_ordinary_downward_dependencies(src, dst):

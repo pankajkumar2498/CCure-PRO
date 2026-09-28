@@ -18,6 +18,9 @@ allowlist entry does.
 
 Rules are matched on dotted module names. ``importer`` and ``forbidden`` are
 tuples of prefixes; a prefix matches the module itself and everything under it.
+``exempt_importers`` narrows who the rule applies to, and ``exempt_targets``
+narrows what it forbids — for a rule that forbids a whole package except a few
+named modules in it.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from scripts.architecture.import_graph import Edge
 #: Every application top-level package, for rules that forbid "anything else".
 _APP_PACKAGES = (
     "ccure_audit",
+    "ccure_platform",
     "auth",
     "core",
     "engines",
@@ -48,6 +52,7 @@ class Rule:
     forbidden: tuple[str, ...]
     reason: str
     exempt_importers: tuple[str, ...] = ()
+    exempt_targets: tuple[str, ...] = ()
 
 
 def _matches(module: str, prefixes: tuple[str, ...]) -> bool:
@@ -102,6 +107,7 @@ RULES: tuple[Rule, ...] = (
             "scans",
             "reporting",
             "auth",
+            "ccure_platform",
             "db",
         ),
         reason=(
@@ -120,6 +126,7 @@ RULES: tuple[Rule, ...] = (
             "engines",
             "reporting",
             "auth",
+            "ccure_platform",
             "db",
             "orchestrator",
         ),
@@ -148,6 +155,7 @@ RULES: tuple[Rule, ...] = (
         ),
         forbidden=(
             "auth",
+            "ccure_platform",
             "reporting",
             "routers",
             "scans",
@@ -181,6 +189,53 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        name="platform-is-shared-foundation",
+        importer=("ccure_platform",),
+        forbidden=(
+            "ccure_audit",
+            "core",
+            "scans",
+            "scan_helpers",
+            "engines",
+            "orchestrator",
+            "reporting",
+            "routers",
+            "main",
+            # Audit's models. The platform's own (users, rbac, email_security,
+            # notifications) and db.base stay importable.
+            "db.models.amt",
+            "db.models.assets",
+            "db.models.compliance",
+            "db.models.findings",
+            "db.models.scan_policies",
+            "db.models.scan_reports",
+            "db.models.scan_schedules",
+            "db.models.scans",
+            "db.models.topology",
+            "db.models.web_scans",
+        ),
+        # The shared infrastructure identity uses today (measured from auth/ on
+        # 28 Sep 2026), so moving auth/ here in step 8.2 needs no exception.
+        exempt_targets=(
+            "core.audit",
+            "core.celery_app",
+            "core.email_security_tasks",
+            "core.ip_resolver",
+            "core.rate_limiter",
+            "core.redis_client",
+            "core.throttle",
+            "core.user_agent",
+        ),
+        reason=(
+            "ccure_platform is what all four CCure modules share: identity, "
+            "tenancy and RBAC. Importing a module's code — Audit's scans, "
+            "findings, compliance, reports or models — would make every module "
+            "depend on Audit and turn the platform into a place Audit logic "
+            "hides (Phase 8). Shared infrastructure is named one module at a "
+            "time in exempt_targets."
+        ),
+    ),
+    Rule(
         name="contracts-are-leaves",
         importer=("ccure_contracts",),
         forbidden=_APP_PACKAGES + ("db", "config"),
@@ -205,6 +260,7 @@ RULES: tuple[Rule, ...] = (
             "routers",
             "scan_helpers",
             "auth",
+            "ccure_platform",
             "main",
         ),
         reason=(
@@ -258,6 +314,8 @@ def violations(edges: list[Edge]) -> list[tuple[str, Edge]]:
             if rule.importer != ("",) and not _matches(edge.src, rule.importer):
                 continue
             if rule.exempt_importers and _matches(edge.src, rule.exempt_importers):
+                continue
+            if rule.exempt_targets and _matches(edge.dst, rule.exempt_targets):
                 continue
             if _matches(edge.dst, rule.forbidden):
                 found.append((rule.name, edge))

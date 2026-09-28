@@ -218,6 +218,27 @@ Two things Phase 3 deliberately left, which are **not** violations:
 Do not start dependency cleanup for its own sake: Phase 3's objective
 (zero violations, zero cycles) is met.
 
+**The identity boundary (Phase 8)** is a fourth ratchet,
+`tests/repo/test_identity_boundary.py` over
+`scripts/architecture/identity_boundary.py`.
+
+- **What it counts.** Module code importing `auth.*` or an identity model (32
+  files on 28 Sep 2026) and querying or joining an identity table (53 queries,
+  8 joins). Each figure may only fall.
+- **It is by symbol, not by edge.** `from db.models import User` and
+  `from db.models import Scan` are the same edge. A layer rule therefore cannot
+  hold this line, and `python -m scripts.architecture.identity_boundary` is
+  how to see the sites.
+- **`ccure_platform` is shared, never Audit's.**
+  - `ccure_platform.api` may export only `PLATFORM_API_SURFACE`.
+  - The package may import no Audit code or model
+    (`platform-is-shared-foundation`).
+  - Audit's quotas and scan scope (`max_assets`, `max_scans_per_day`,
+    `max_concurrent_scans`, `scan_scope_cidrs`) are Audit's. They leave
+    `organizations` in step 8.4, and the 11 mentions in identity's own code
+    are a baseline that reaches zero there.
+- **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+
 ## Audit boundary layers (`Backend/ccure_audit/`) — Phase 5
 
 Design: [`docs/architecture/PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md`](docs/architecture/PHASE5_AUDIT_INTEGRATION_BOUNDARIES.md).

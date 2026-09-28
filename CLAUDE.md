@@ -238,6 +238,15 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `organizations` in step 8.4, and the 11 mentions in identity's own code
     are a baseline that reaches zero there.
 - **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+- **Module code asks `ccure_platform.api` (since step 8.3)**, never
+  `users`/`organizations`/`roles` directly:
+  - `api.user()` and `api.organisation()` return frozen views;
+  - `api.user_has_permission()` is `require_permission`'s own rule. Do not
+    hand-copy the superadmin check again; six copies were removed.
+  - **`OrganisationView` deliberately has no quota, scope, plan or settings.**
+    The 13 remaining `Organization` queries read exactly those, for Audit, and
+    move in step 8.4, which should include the SLA policy in
+    `settings["remediation_sla"]`.
 - **Identity's code lives in `ccure_platform` since step 8.2.**
   - **The moves:**
     - `auth/*` → `ccure_platform/identity/`;

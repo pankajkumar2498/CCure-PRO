@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                       |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved** by the project owner, 28 Sep 2026, step by step with a review stop after each commit. **Steps 8.1 and 8.2 done**; 8.3 not started.                                       |
+| **Status**    | **Approved** by the project owner, 28 Sep 2026, step by step with a review stop after each commit. **Steps 8.1–8.3 done**; 8.4 not started.                                           |
 | **Date**      | 28 Sep 2026                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 8, rule 13, §3.9 (future authentication service), Phase 19 (single-organisation mode) |
 | **Builds on** | Phases 1–7: 0 layering violations, 0 import cycles, contracts v1 (draft), Audit's read services                                                                                       |
@@ -334,3 +334,152 @@ the same status and body as before for:
 - a bad token on an identity route and on a permission-guarded route.
 
 The limiter's Redis keys were identical too.
+
+## 10. Step 8.3 — as built
+
+The owner's conditions (review of 8.2):
+
+- classify every access by what the caller needs before replacing it, and do
+  not invent a generic API to remove a query;
+- no quota or scope ownership moves, and no organisation column changes;
+- URLs, permissions, roles, tokens and task names unchanged;
+- `core.audit` is not moved;
+- `core.notifications` uses the API but stays where it is;
+- `core.email_security_tasks` may move as its own change.
+
+**Result:**
+
+| Measure         | Before | After | How                                                        |
+| --------------- | ------ | ----- | ---------------------------------------------------------- |
+| Direct queries  | 53     | 17    | 32 replaced, 1 removed, 3 moved into the platform, 17 kept |
+| Joins and loads | 8      | 2     | 6 replaced, 2 kept                                         |
+| Importing files | 32     | 25    | Imports themselves go in 8.5                               |
+
+### What `ccure_platform.api` gained
+
+- **Planned, now implemented:**
+  - `current_user`, `current_user_flexible`, `require_permission`,
+    `require_role`. These are the existing dependencies, re-exported. They
+    still return the ORM `User` that every route reads.
+  - `user_display_names`: returns the email address, which is what the export
+    printed.
+  - `organisation` / `OrganisationView`: id, name and slug only. There is no
+    quota, scope, plan or settings field.
+- **Added, because no planned name matched the callers' meaning:**
+  - `user_has_permission` is the existing single implementation behind
+    `require_permission`. Six call sites had hand-copied it.
+  - `user` / `UserView` (id, org_id, username, email, in_app_alerts) resolves
+    an account by id, for the scan owner's organisation, the activity-log
+    actor, and owner membership.
+  - `active_members_with_roles` serves the notification fan-out, which selects
+    by role _name_.
+- **Planned but not implemented**, because no caller has the meaning:
+
+  - `users_holding_permission`: the joins it was meant for all ask whether
+    _one_ user holds a permission, not who holds it;
+  - `is_organisation_active`.
+
+  Both stay declared in `PLATFORM_API_SURFACE` and can be added when a caller
+  needs them.
+
+### Old access → new API
+
+| Caller (line at `7c5786e`)                                                                                                                                                                         | Access                           | Meaning                                                                       | Now                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `ccure_audit.services.assessment_read:333`                                                                                                                                                         | Organization                     | display name in an export                                                     | `api.organisation().name`                                        |
+| `ccure_audit.services.finding_read:71`                                                                                                                                                             | User                             | owner email addresses                                                         | `api.user_display_names()`                                       |
+| `core.notifications:163`                                                                                                                                                                           | User                             | a username computed and never used                                            | **removed**                                                      |
+| `core.notifications:204, 212`                                                                                                                                                                      | Role, User                       | active members holding these roles                                            | `api.active_members_with_roles()`                                |
+| `core.tasks:131, 2669, 4541`                                                                                                                                                                       | User                             | the scan owner's organisation                                                 | `api.user().org_id`                                              |
+| `core.tasks:386`                                                                                                                                                                                   | User                             | the owner exists; its organisation                                            | `api.user()`                                                     |
+| `core.tasks:432`, `core.topology.engine:865`, `scans.db_helpers:169, 764, 784`, `routers.credentials:492`, `routers.scan_policies:418, 721`, `routers.scan_schedules:574`, `routers.web_scans:499` | Organization                     | slug for building an id, falling back to the id                               | `api.organisation().slug`                                        |
+| `scans.db_helpers:132`                                                                                                                                                                             | User                             | the user's organisation                                                       | `api.user().org_id`                                              |
+| `scans.db_helpers:189, 286, 556, 698, 865`                                                                                                                                                         | User                             | the activity-log actor (`log_audit_event` reads only id, org_id and username) | `api.user()`                                                     |
+| `scans.progress:198, 205` + join                                                                                                                                                                   | User, RolePermission, Permission | may this user read another's scan                                             | `api.user()` + `api.user_has_permission(…, "scans", "read_all")` |
+| `routers.reports:373, 403, 430` + 3 joins                                                                                                                                                          | RolePermission, Permission       | reports:read, reports:delete, scans:read_all                                  | `api.user_has_permission()`                                      |
+| `routers.scan_history:166` + join                                                                                                                                                                  | RolePermission, Permission       | scans:read_all                                                                | `api.user_has_permission()`                                      |
+| `routers.scan_history:434` + join                                                                                                                                                                  | RolePermission, Permission       | the WebSocket's scans:read                                                    | `api.user_has_permission()`                                      |
+| `routers.remediation:646`                                                                                                                                                                          | User                             | the owner is a user in this organisation                                      | `api.user()` + an org comparison                                 |
+| `core.email_security_tasks:49, 105, 215`                                                                                                                                                           | User                             | account screening and lifecycle                                               | **moved** into `ccure_platform.identity` (below)                 |
+
+### Kept, and why (17 queries, 2 joins)
+
+- **Audit configuration on `organizations`: 13 queries, step 8.4.** Each
+  passes the row to a quota, scope or SLA reader:
+
+  - quota: `core.quota:157`, and `routers.dashboard:224` (the plan, to derive
+    quota limits);
+  - scan scope: `core.tasks:135`, `core.scheduling.dispatcher:202`,
+    `routers.credentialed:49`, `routers.credentials:654`,
+    `routers.phase_scans:72`, `routers.scan_schedules:445`,
+    `ccure_audit.services.baseline_mapping:316`;
+  - SLA policy: `core.tasks:4860`, `core.remediation.reporting:154`,
+    `core.remediation.workflow:217`, `routers.remediation:135`.
+
+  Replacing these with `OrganisationView` would put Audit configuration into
+  the platform view, which the owner's conditions forbid.
+
+  **Two findings for 8.4's scope:**
+
+  - The SLA policy is Audit configuration too, stored in
+    `Organization.settings["remediation_sla"]`. 8.4 was defined as quotas and
+    scan scope, so it should include the SLA policy.
+  - Whether `plan` is a platform attribute (a tier all modules read) or
+    Audit's is a decision to take there.
+
+  `baseline_mapping:316` was first classified as an existence check. Its row
+  also reaches `_scope()`, which reads `scan_scope_cidrs`, so it was reverted
+  and kept.
+
+- **WebSocket ticket logins: 2 queries and 2 eager loads, Phase 10.** They
+  are `routers.scan_history:424/425` and `routers.web_scans:1357/1358`. They
+  are authentication, not a lookup, and the two differ: one checks
+  `scans:read`, the other checks active and not deleted. The gateway
+  authenticates WebSockets in Phase 10, so a platform primitive now would be
+  designed twice. The permission check inside the first _was_ replaced.
+- **Identity maintenance tasks in the Audit task hub: 2 queries.** They are
+  `core.tasks:5102` (`purge_stale_unverified_accounts`) and `:5211`
+  (`purge_expired_refresh_sessions`). They are identity's, like the
+  unapproved-account purge that moved. They were not moved because only
+  `core.email_security_tasks` was authorised. **Recommendation:** move both
+  into `ccure_platform/identity/`, keeping their task names and beat entries.
+
+### `core.email_security_tasks` moved (commit 8.3b)
+
+It moved to `ccure_platform/identity/email_security_tasks.py`. The old path is
+an alias of the same module object, recorded in `MOVED_MODULES`. Its
+`__name__`, the Celery `include` entry, the four task names and the `default`
+queue are unchanged, and a test pins them. `core/__init__.py` gained the same
+`__getattr__` as the other legacy packages. The platform rule no longer
+exempts it.
+
+### Behaviour
+
+- **One deliberate difference, reachable only with corrupt data.** A
+  `preferences` value that is not a JSON object now reads as "alerts on".
+  Before, the notification fan-out raised `AttributeError` on it.
+- **Measured against `7c5786e`:**
+  - the OpenAPI document is byte-identical (`abc552ad…`, 271 routes);
+  - the 91 limiter route keys and the 45 Celery task names are identical;
+  - lint findings are unchanged in every touched file (the pre-existing
+    unused `typing` imports aside).
+- **Graph:** 0 layer violations and 0 module-level cycles. The component-level
+  figure reads 24, not 20. The loop is made of components, and each hop uses
+  a _different_ module of its component:
+
+  1. `api` → identity (through `identity.dependencies`);
+  2. identity → the `core.audit` group (through the sign-in _router_);
+  3. that group → `reporting` (through `audit_retention` → `audit_export`);
+  4. `reporting` → `scans` → `api`.
+
+  No module-level path closes it. It would disappear if the identity
+  component were split into its dependencies and its router, or if the
+  activity log moved out of `core/` (the audit-log step).
+
+**Tests:**
+
+- `tests/auth/test_platform_api.py`: every function is checked against the
+  query it replaced — missing ids, deleted and inactive accounts, the
+  alerts-preference rule, and the permission rule by ORM user and by id.
+- the Celery test for the moved screening tasks;
+- the identity baselines, lowered at each batch.

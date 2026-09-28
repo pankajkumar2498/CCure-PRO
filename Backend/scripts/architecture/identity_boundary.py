@@ -356,9 +356,7 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 #: module -> identity symbols it imports. 32 modules and 80 symbols on
 #: 28 Sep 2026; 31 after core.email_security_tasks moved into the platform (8.3).
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
-    "ccure_audit.services.assessment_read": frozenset({"db.models.Organization"}),
     "ccure_audit.services.baseline_mapping": frozenset({"db.models.Organization"}),
-    "ccure_audit.services.finding_read": frozenset({"db.models.User"}),
     "core.audit": frozenset({"db.models.User"}),
     "core.quota": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.reporting": frozenset({"db.models.rbac.Organization"}),
@@ -437,9 +435,7 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
 KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
-    "ccure_audit.services.assessment_read": {"Organization": 1},
     "ccure_audit.services.baseline_mapping": {"Organization": 1},
-    "ccure_audit.services.finding_read": {"User": 1},
     "core.quota": {"Organization": 1},
     "core.remediation.reporting": {"Organization": 1},
     "core.remediation.workflow": {"Organization": 1},

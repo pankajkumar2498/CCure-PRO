@@ -327,13 +327,9 @@ def organisation_name(db: Session, scan: Any) -> str:
     """The scan organisation's display name, or ``""``. Never raises."""
     org_name = ""
     try:
-        from db.models import Organization
+        from ccure_platform import api as platform_api
 
-        org = (
-            db.query(Organization)
-            .filter(Organization.id == getattr(scan, "org_id", None))
-            .first()
-        )
+        org = platform_api.organisation(db, getattr(scan, "org_id", None))
         org_name = str(getattr(org, "name", "") or "")
     except Exception as exc:  # an export must not fail over a display name
         log.debug("Could not resolve the organisation name for an export: %s", exc)

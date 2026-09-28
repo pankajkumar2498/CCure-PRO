@@ -66,10 +66,9 @@ def owner_names(db: Session, owner_ids: Iterable[str]) -> Dict[str, str]:
     if not wanted:
         return {}
     try:
-        from db.models import User
+        from ccure_platform import api as platform_api
 
-        rows = db.query(User.id, User.email).filter(User.id.in_(wanted)).all()
-        return {str(uid): str(email or "") for uid, email in rows}
+        return platform_api.user_display_names(db, wanted)
     except Exception as exc:
         log.debug("Could not resolve remediation owner names for an export: %s", exc)
         return {}

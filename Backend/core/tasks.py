@@ -19,11 +19,10 @@ from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
     Asset,
     AssetVulnerability,
-    Organization,
     Scan,
-    User,
     VulnerabilityDefinition,
 )
+from ccure_platform import api as platform_api
 from db.models.compliance import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
 from engines.credentialed.coverage import (
     correlate_listeners,
@@ -121,15 +120,15 @@ def _bind_scan_scope(
     was admitted for. Falling back to the user's current org covers the
     traditional-scan path, which carries no scan id.
     """
-    from db.models import Organization, User
+    from db.models import Organization
 
     org_id = None
     if scan_id:
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
         org_id = getattr(scan_row, "org_id", None) if scan_row is not None else None
     if not org_id and user_id:
-        user_row = db.query(User).filter(User.id == user_id).first()
-        org_id = getattr(user_row, "org_id", None) if user_row is not None else None
+        owner = platform_api.user(db, user_id)
+        org_id = owner.org_id if owner is not None else None
 
     org = (
         db.query(Organization).filter(Organization.id == org_id).first()
@@ -383,7 +382,7 @@ def _sync_credentialed_asset_identity(
         _to_int,
     )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if not user:
         log.warning("Credentialed asset sync skipped: user %s not found", user_id)
         return
@@ -429,7 +428,7 @@ def _sync_credentialed_asset_identity(
             asset.ip_address = ip
     else:
         log.info("Asset not found for ip=%s. Bootstrapping new asset record.", ip)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         asset = Asset(
@@ -2666,7 +2665,7 @@ def run_topology_mapping_task(
             return {"success": True, "skipped": True, "reason": "No SNMP configuration"}
 
         # Determine org_id
-        user = db.query(User).filter(User.id == user_id).first()
+        user = platform_api.user(db, user_id)
         org_id = str(scan_row.org_id or (user.org_id if user else ""))
 
         # Determine target IPs from discovered active hosts
@@ -4538,7 +4537,7 @@ def run_credentialed_scan_task(
     _scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
     policy = read_policy_snapshot(_scan_row)
     benchmark_checks: list = []
-    _scan_owner = db.query(User).filter(User.id == user_id).first()
+    _scan_owner = platform_api.user(db, user_id)
     if _scan_owner is not None:
         from core.benchmarks.selection import benchmark_checks_for_org
 

@@ -19,9 +19,10 @@ import logging
 from datetime import datetime
 from enum import Enum
 
+from ccure_platform import api as platform_api
 from core.redis_client import publish_notification_sync
 from db.base import gen_notification_id
-from db.models import Notification, Role, User
+from db.models import Notification
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -160,9 +161,6 @@ def create_notification(
 
     Called internally when scan completes, vulnerability is found, etc.
     """
-    user = db.query(User).filter(User.id == user_id).first()
-    username = user.username if user else user_id
-
     notification = Notification(
         id=gen_notification_id(user_id, notification_type.value),
         user_id=user_id,
@@ -200,24 +198,9 @@ def fan_out_notification(
     Fan-out a notification to all active users in an organization matching specific roles,
     respecting their in-app alert preferences.
     """
-    # Find roles
-    roles = db.query(Role).filter(Role.name.in_(target_roles)).all()
-    role_ids = [r.id for r in roles]
-
-    if not role_ids:
+    users = platform_api.active_members_with_roles(db, org_id, target_roles)
+    if not users:
         return 0
-
-    # Find users
-    users = (
-        db.query(User)
-        .filter(
-            User.org_id == org_id,
-            User.role_id.in_(role_ids),
-            User.is_active == True,
-            User.is_deleted == False,
-        )
-        .all()
-    )
 
     inserted = 0
     notifications = []
@@ -227,8 +210,7 @@ def fan_out_notification(
             continue
 
         # Respect User Preferences
-        prefs = user.preferences or {}
-        if prefs.get("in_app_alerts", True) is False:
+        if not user.in_app_alerts:
             continue
 
         notification = Notification(

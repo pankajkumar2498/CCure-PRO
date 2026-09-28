@@ -360,7 +360,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
     "ccure_audit.services.baseline_mapping": frozenset({"db.models.Organization"}),
     "ccure_audit.services.finding_read": frozenset({"db.models.User"}),
     "core.audit": frozenset({"db.models.User"}),
-    "core.notifications": frozenset({"db.models.Role", "db.models.User"}),
     "core.quota": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.reporting": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.workflow": frozenset({"db.models.rbac.Organization"}),
@@ -378,7 +377,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "db.models.rbac.Organization",
         }
     ),
-    "core.topology.engine": frozenset({"db.models.Organization"}),
     "routers.admin_nvd": frozenset({"auth.rbac.require_role", "db.models.User"}),
     "routers.assets": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.compliance": frozenset({"auth.rbac.require_permission", "db.models.User"}),
@@ -442,12 +440,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "db.models.rbac.Organization",
         }
     ),
-    "scans.db_helpers": frozenset(
-        {"db.models.rbac.Organization", "db.models.users.User"}
-    ),
-    "scans.progress": frozenset(
-        {"db.models.Permission", "db.models.RolePermission", "db.models.User"}
-    ),
 }
 
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
@@ -456,13 +448,11 @@ KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
     "ccure_audit.services.assessment_read": {"Organization": 1},
     "ccure_audit.services.baseline_mapping": {"Organization": 1},
     "ccure_audit.services.finding_read": {"User": 1},
-    "core.notifications": {"Role": 1, "User": 2},
     "core.quota": {"Organization": 1},
     "core.remediation.reporting": {"Organization": 1},
     "core.remediation.workflow": {"Organization": 1},
     "core.scheduling.dispatcher": {"Organization": 1},
-    "core.tasks": {"Organization": 3, "RefreshTokenSession": 1, "User": 5},
-    "core.topology.engine": {"Organization": 1},
+    "core.tasks": {"Organization": 2, "RefreshTokenSession": 1, "User": 1},
     "routers.credentialed": {"Organization": 1},
     "routers.credentials": {"Organization": 2},
     "routers.dashboard": {"Organization": 1},
@@ -473,8 +463,6 @@ KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
     "routers.scan_policies": {"Organization": 2},
     "routers.scan_schedules": {"Organization": 2},
     "routers.web_scans": {"Organization": 1, "User": 1},
-    "scans.db_helpers": {"Organization": 3, "User": 6},
-    "scans.progress": {"RolePermission": 1, "User": 1},
 }
 
 #: module -> {identity model: joins and eager loads}. 8 in 4 modules. The
@@ -483,7 +471,6 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
     "routers.reports": {"Permission": 3},
     "routers.scan_history": {"Permission": 2, "User": 1},
     "routers.web_scans": {"User": 1},
-    "scans.progress": {"Permission": 1},
 }
 
 #: platform-side module -> {Audit setting: mentions}. 11 in 2 modules, measured

@@ -13,9 +13,8 @@ from typing import Any, List, Optional
 
 from core.audit import log_audit_event
 from db.base import gen_scan_id, gen_scan_phase_id, utcnow
-from db.models.rbac import Organization
+from ccure_platform import api as platform_api
 from db.models.scans import Scan, ScanPhase
-from db.models.users import User
 from scans.asset_syncer import (
     sync_asset_discovery,
     sync_host_discovery,
@@ -129,7 +128,7 @@ def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
 
 
 def _get_org_id(db: Session, user_id: str) -> str:
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if not user:
         raise ValueError(f"User {user_id} not found in DB")
     return str(user.org_id)
@@ -166,7 +165,7 @@ def create_scan(
     """Create an empty running scan before Phase 1 starts."""
     if not org_id:
         org_id = _get_org_id(db, user_id)
-    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org = platform_api.organisation(db, org_id)
     org_slug = org.slug if org else org_id
 
     scan = Scan(
@@ -186,7 +185,7 @@ def create_scan(
     db.commit()
     db.refresh(scan)
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if user:
         log_audit_event(
             db=db,
@@ -283,7 +282,7 @@ def update_scan_phase1(
     db.refresh(scan)
 
     if is_final:
-        user = db.query(User).filter(User.id == scan.created_by).first()
+        user = platform_api.user(db, scan.created_by)
         if user:
             log_audit_event(
                 db=db,
@@ -553,7 +552,7 @@ def update_scan_phase(
     db.refresh(scan)
 
     if is_final:
-        user = db.query(User).filter(User.id == scan.created_by).first()
+        user = platform_api.user(db, scan.created_by)
         if user:
             log_audit_event(
                 db=db,
@@ -695,7 +694,7 @@ def mark_scan_failed(
     db.commit()
     db.refresh(scan)
 
-    user = db.query(User).filter(User.id == scan.created_by).first()
+    user = platform_api.user(db, scan.created_by)
     if user:
         log_audit_event(
             db=db,
@@ -761,7 +760,7 @@ def create_completed_scan(
         if not scan:
             raise ValueError(f"Scan {scan_id} not found")
         org_id = str(scan.org_id)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         if scan.status != "unreachable":
@@ -781,7 +780,7 @@ def create_completed_scan(
         scan.info_count = summary.get("info_count", scan.info_count or 0)
     else:
         org_id = _get_org_id(db, user_id)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         scan = Scan(
@@ -862,7 +861,7 @@ def create_completed_scan(
         db.commit()
         db.refresh(scan)
 
-    user = db.query(User).filter(User.id == scan.created_by).first()
+    user = platform_api.user(db, scan.created_by)
     if user:
         log_audit_event(
             db=db,

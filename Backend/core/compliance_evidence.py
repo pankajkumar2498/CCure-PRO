@@ -448,10 +448,10 @@ class ComplianceEvidenceProvider:
         ) or custom_attrs.get("account_lockout_threshold")
 
         # --- PCI-DSS v4.0 WAF Active (Req 6.4.1) ---
-        waf_active = custom_attrs.get("waf_active", False)
+        waf_active = custom_attrs.get("waf_active")
 
         # --- PCI-DSS v4.0 IDS/IPS Active (Req 11.5.1) ---
-        ids_ips_active = custom_attrs.get("ids_ips_active", False)
+        ids_ips_active = custom_attrs.get("ids_ips_active")
 
         # --- PCI-DSS v4.0 Log Retention (Req 10.5.1: >= 365 days) ---
         log_retention_days = registry_attrs.get("retention_days") or custom_attrs.get(
@@ -471,11 +471,19 @@ class ComplianceEvidenceProvider:
             else None
         )
 
+        # No ``False`` default on these four or on ``ids_ips_active`` /
+        # ``waf_active`` above: a value that was never collected is absent, and
+        # the engine renders an absent key as not assessed. They defaulted to
+        # False until 28 Sep 2026 — the pattern CLAUDE.md forbids on this path —
+        # so a host whose registry hardening was never read FAILED the ISO,
+        # NIST CSF, CIS and PCI rules that read them (3 of this installation's 4
+        # assets on that date). ``rdp_disabled`` stays a boolean for the NLA
+        # derivation above; only what is published changes.
         payload = {
-            "uac_enabled": registry_attrs.get("uac_enabled", False),
-            "firewall_profile_active": registry_attrs.get("firewall_active", False),
-            "remote_desktop_disabled": rdp_disabled,
-            "audit_policy_configured": registry_attrs.get("audit_configured", False),
+            "uac_enabled": registry_attrs.get("uac_enabled"),
+            "firewall_profile_active": registry_attrs.get("firewall_active"),
+            "remote_desktop_disabled": registry_attrs.get("rdp_disabled"),
+            "audit_policy_configured": registry_attrs.get("audit_configured"),
             # New normalized protocol hardening attributes
             # No ``False`` default on these four: the key is absent when the
             # transport did not collect the setting, and a default turns "not

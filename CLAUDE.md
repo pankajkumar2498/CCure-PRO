@@ -265,6 +265,15 @@ imports `ccure_contracts` before the integration adapter is built (plan Phase 14
   can never move a finding to `verified_fixed`. Both are refused by the models.
 - v1 is `draft` until reviewed. Once a contract is `published` its schema digest
   is pinned in `schema_lock.json` and changes need a new `schema_version`.
+- **`scripts/integration/` is operator tooling for Contract 1, outside the
+  import graph.** `policypro_library_to_baseline.py` is the reference
+  translation of a PolicyPro policy library plus an organisation's SoA answers
+  into a `PolicyBaseline`. It never invents applicability: no SoA means a
+  refusal unless `--demo-all-applicable`, which labels the output. It refuses a
+  HIPAA library: there is no HIPAA catalogue and no stable regulatory ids.
+  `baseline_coverage_report.py` answers a baseline with `BaselineCoverage`
+  over a **read-only** session. What PolicyPro must export, and why:
+  [`docs/architecture/policypro/POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md`](docs/architecture/policypro/POLICYPRO_BASELINE_EXPORT_REQUIREMENTS.md).
 
 ## Where things live
 

@@ -91,6 +91,7 @@ PLATFORM_API = "ccure_platform.api"
 #: other module's business logic. A name added here needs a reason in review.
 PLATFORM_API_SURFACE = frozenset(
     {
+        # planned in the Phase 8 proposal
         "current_user",
         "current_user_flexible",
         "require_permission",
@@ -100,6 +101,12 @@ PLATFORM_API_SURFACE = frozenset(
         "organisation",
         "OrganisationView",
         "is_organisation_active",
+        # added in step 8.3, each for callers whose semantics the planned
+        # names did not cover (PHASE8_PLATFORM_IDENTITY.md §10)
+        "user_has_permission",
+        "user",
+        "UserView",
+        "active_members_with_roles",
     }
 )
 

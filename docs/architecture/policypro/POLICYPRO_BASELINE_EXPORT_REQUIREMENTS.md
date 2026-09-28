@@ -101,11 +101,16 @@ applicable. It was then mapped against Audit's live catalogue for the default
 organisation, on a read-only connection. The tool is
 `Backend/scripts/integration/baseline_coverage_report.py`.
 
-| Answer                   | Controls | Which                                                                                                        |
-| ------------------------ | -------: | ------------------------------------------------------------------------------------------------------------ |
-| **AUTOMATED**            |       15 | e.g. A.5.18, A.8.1, A.8.2, A.8.5, A.8.7, A.8.8, A.8.9 (3 rules), A.8.13, A.8.15, A.8.16, A.8.17, A.8.18      |
-| **ATTESTATION_REQUIRED** |       78 | The remaining Annex A controls. No technical check establishes them, so evidence or an attestation is needed |
-| **UNKNOWN_CONTROL**      |       25 | Management-system clauses 4.1–10.2. Audit's ISO catalogue holds Annex A only                                 |
+| Answer                   | Controls | Which                                                                                                   |
+| ------------------------ | -------: | ------------------------------------------------------------------------------------------------------- |
+| **AUTOMATED**            |       15 | e.g. A.5.18, A.8.1, A.8.2, A.8.5, A.8.7, A.8.8, A.8.9 (3 rules), A.8.13, A.8.15, A.8.16, A.8.17, A.8.18 |
+| **ATTESTATION_REQUIRED** |      103 | The other 78 Annex A controls, and the 25 management-system clauses 4.1–10.2                            |
+| **UNKNOWN_CONTROL**      |        0 | —                                                                                                       |
+
+Before 28 Sep 2026 the 25 clauses were answered `UNKNOWN_CONTROL`: Audit's ISO
+catalogue held Annex A only. They were added as attestation controls, under
+their own numbers (`5.1`, not `A.5.1`) and their own `ISMS` theme. They are not
+rows of the Statement of Applicability, because clauses 4–10 are mandatory.
 
 Parameters: none were sent, because the library carries none.
 
@@ -159,9 +164,9 @@ Audit keeps:
 The libraries cannot replace these: they contain no executable checks and no
 cross-references.
 
-## Decisions for the project owner
+## Decisions for the project owner — taken 28 Sep 2026
 
-1. Should Audit's ISO catalogue gain the management-system clauses 4.1–10.2 as attestation controls? Without them, 25 of every ISO baseline's requirements answer `UNKNOWN_CONTROL`.
-2. Should Audit hold a HIPAA catalogue? This is needed before any HIPAA baseline can be assessed, and depends on ask 4.
-3. Should Audit's PCI catalogue move to v4.0.1, and should PCI be switched on?
-4. Should `CcurePolicyPro Policy Docs/` be committed to the repository? The PCI PDF is licensed text and should not be. The libraries are PolicyPro's content, for PolicyPro to decide.
+1. **ISO management-system clauses: added.** Clauses 4.1–10.2 are in Audit's ISO catalogue as attestation controls, so no requirement of the ISO library is unknown to Audit any more.
+2. **HIPAA catalogue: approved.** Audit holds the HIPAA Security Rule, identified by CFR paragraph. A HIPAA _baseline_ still needs ask 4 — the library's identifiers are not CFR paragraphs.
+3. **PCI DSS: approved.** The catalogue moves to v4.0.1 and is switched on.
+4. **`CcurePolicyPro Policy Docs/` is not committed.** It is reference material. The PCI PDF is licensed text, and the libraries are PolicyPro's content.

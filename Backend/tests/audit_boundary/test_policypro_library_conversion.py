@@ -327,13 +327,14 @@ def test_a_converted_baseline_gets_a_coverage_answer(db_session):
         assert data.activation == "pending_review"
         assert data.summary.controls_total == 3 == len(data.controls)
         by_ref = {c.control.control_id: c for c in data.controls}
-        # Audit's ISO catalogue holds Annex A only; a management-system clause
-        # is reported as unknown, never as assessed.
-        assert by_ref["4.1"].mapping_state is BaselineMappingState.UNKNOWN_CONTROL
+        # A management-system clause is in Audit's ISO catalogue (since
+        # 28 Sep 2026) as an attestation control: answered, never unknown and
+        # never automated.
+        assert by_ref["4.1"].mapping_state is BaselineMappingState.ATTESTATION_REQUIRED
         assert [c.requirement_id for c in data.controls] == [
             c.requirement_id for c in message.data.controls
         ]
-        assert "UNKNOWN_CONTROL" in summary(coverage)
+        assert "ATTESTATION_REQUIRED" in summary(coverage)
         assert not db_session.new and not db_session.dirty and not db_session.deleted
     finally:
         db_session.rollback()

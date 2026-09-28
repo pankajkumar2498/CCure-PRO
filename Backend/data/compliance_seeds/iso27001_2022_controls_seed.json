@@ -3,8 +3,8 @@
     "code": "ISO27001_2022",
     "name": "ISO/IEC 27001:2022",
     "version": "2022",
-    "source_annex": "Annex A",
-    "total_controls": 93,
+    "source_annex": "Clauses 4–10 and Annex A",
+    "total_controls": 118,
     "themes": [
       {
         "code": "ORG",
@@ -29,6 +29,12 @@
         "name": "Technological",
         "range": "A.8.1 - A.8.34",
         "count": 34
+      },
+      {
+        "code": "ISMS",
+        "name": "ISMS management-system clauses",
+        "range": "4.1 - 10.2",
+        "count": 25
       }
     ],
     "scannability_legend": {
@@ -1647,12 +1653,428 @@
         "NIST_800_53_R5:AU-5"
       ],
       "scan_module_hint": null
+    },
+    {
+      "id": "clause_4.1",
+      "control_number": "4.1",
+      "theme": "ISMS",
+      "title": "Understanding the organization and its context",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The organisation determines the external and internal issues relevant to its purpose that affect its ability to achieve the intended outcomes of its information security management system.",
+      "evidence_checklist": [
+        "Record of the internal and external issues considered",
+        "Evidence the analysis is revisited when circumstances change"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_4.2",
+      "control_number": "4.2",
+      "theme": "ISMS",
+      "title": "Understanding the needs and expectations of interested parties",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The parties with an interest in the ISMS, their information security requirements, and which of those requirements the ISMS will address are determined.",
+      "evidence_checklist": [
+        "Register of interested parties and their requirements",
+        "Record of which requirements the ISMS addresses"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_4.3",
+      "control_number": "4.3",
+      "theme": "ISMS",
+      "title": "Determining the scope of the information security management system",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The boundaries and applicability of the ISMS are determined, taking account of the organisation's context, interested parties and interfaces with other organisations, and the scope is kept as documented information.",
+      "evidence_checklist": [
+        "Documented ISMS scope statement",
+        "Record of the interfaces and dependencies considered"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_4.4",
+      "control_number": "4.4",
+      "theme": "ISMS",
+      "title": "Information security management system",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The ISMS, including the processes it needs and their interactions, is established, implemented, maintained and continually improved.",
+      "evidence_checklist": [
+        "Description of the ISMS processes and how they interact"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_5.1",
+      "control_number": "5.1",
+      "theme": "ISMS",
+      "title": "Leadership and commitment",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Top management demonstrates leadership of the ISMS: the policy and objectives fit the organisation's strategy, the ISMS is built into business processes, resources are made available, and the importance of effective information security is communicated.",
+      "evidence_checklist": [
+        "Records of top-management direction and decisions on the ISMS",
+        "Evidence that resources were allocated"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_5.2",
+      "control_number": "5.2",
+      "theme": "ISMS",
+      "title": "Policy",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Top management sets an information security policy suited to the organisation's purpose, with objectives or a framework for setting them and commitments to meet applicable requirements and to improve continually; it is documented, communicated and available.",
+      "evidence_checklist": [
+        "Approved information security policy",
+        "Evidence of communication within the organisation and availability to interested parties"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_5.3",
+      "control_number": "5.3",
+      "theme": "ISMS",
+      "title": "Organizational roles, responsibilities and authorities",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Responsibilities and authorities for roles relevant to information security are assigned and communicated, including responsibility for the ISMS's conformity and for reporting its performance to top management.",
+      "evidence_checklist": [
+        "Documented roles, responsibilities and authorities",
+        "Evidence of assignment and communication"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_6.1.1",
+      "control_number": "6.1.1",
+      "theme": "ISMS",
+      "title": "Actions to address risks and opportunities — General",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "When the ISMS is planned, the risks and opportunities it must address are determined, and actions to address them are planned, built into ISMS processes and evaluated for effectiveness.",
+      "evidence_checklist": [
+        "Record of the risks and opportunities affecting the ISMS and the actions planned"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_6.1.2",
+      "control_number": "6.1.2",
+      "theme": "ISMS",
+      "title": "Information security risk assessment",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "A defined risk assessment process, with risk acceptance and assessment criteria, identifies, analyses and evaluates information security risks and produces consistent, valid and comparable results.",
+      "evidence_checklist": [
+        "Documented risk assessment process and criteria",
+        "Risk register or assessment results"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_6.1.3",
+      "control_number": "6.1.3",
+      "theme": "ISMS",
+      "title": "Information security risk treatment",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "A defined risk treatment process selects treatment options, determines the controls needed, compares them with Annex A, produces a Statement of Applicability and a risk treatment plan, and obtains risk owners' approval of the plan and acceptance of residual risk.",
+      "evidence_checklist": [
+        "Documented risk treatment process",
+        "Statement of Applicability",
+        "Risk treatment plan with risk-owner approval"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_6.2",
+      "control_number": "6.2",
+      "theme": "ISMS",
+      "title": "Information security objectives and planning to achieve them",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Information security objectives are set at relevant functions and levels, measurable where practicable, monitored, communicated and updated, with plans saying what will be done, by whom, with which resources and by when.",
+      "evidence_checklist": [
+        "Documented information security objectives",
+        "Plans and progress records for the objectives"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_6.3",
+      "control_number": "6.3",
+      "theme": "ISMS",
+      "title": "Planning of changes",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Changes to the ISMS are made in a planned way.",
+      "evidence_checklist": [
+        "Records of planned ISMS changes and their approval"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_7.1",
+      "control_number": "7.1",
+      "theme": "ISMS",
+      "title": "Resources",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The resources needed to establish, run, maintain and continually improve the ISMS are determined and provided.",
+      "evidence_checklist": [
+        "Evidence of resource planning and allocation for the ISMS"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_7.2",
+      "control_number": "7.2",
+      "theme": "ISMS",
+      "title": "Competence",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The competence needed by people whose work affects information security performance is determined and ensured through education, training or experience, and action is taken to close gaps.",
+      "evidence_checklist": [
+        "Competence requirements for ISMS roles",
+        "Records of training, qualifications or experience"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_7.3",
+      "control_number": "7.3",
+      "theme": "ISMS",
+      "title": "Awareness",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "People working under the organisation's control know the information security policy, how they contribute to the ISMS, and the consequences of not conforming.",
+      "evidence_checklist": [
+        "Awareness programme records",
+        "Evidence of staff acknowledgement"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_7.4",
+      "control_number": "7.4",
+      "theme": "ISMS",
+      "title": "Communication",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The internal and external communication the ISMS needs — what, when, with whom and how — is determined.",
+      "evidence_checklist": [
+        "Communication plan or matrix"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_7.5",
+      "control_number": "7.5",
+      "theme": "ISMS",
+      "title": "Documented information",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The documented information the standard requires, and that the organisation needs for its ISMS, is created, updated and controlled: identified, reviewed, approved, available, protected, distributed, retained and disposed of.",
+      "evidence_checklist": [
+        "Document control procedure",
+        "Document register with versions and approvals"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_8.1",
+      "control_number": "8.1",
+      "theme": "ISMS",
+      "title": "Operational planning and control",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The processes needed to meet information security requirements and carry out the planned actions — including externally provided ones — are planned, implemented and controlled, with records showing they ran as planned.",
+      "evidence_checklist": [
+        "Operational process records",
+        "Controls over externally provided processes"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_8.2",
+      "control_number": "8.2",
+      "theme": "ISMS",
+      "title": "Information security risk assessment",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Information security risk assessments are carried out at planned intervals and when significant changes occur, and their results are retained.",
+      "evidence_checklist": [
+        "Dated results of risk assessments"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_8.3",
+      "control_number": "8.3",
+      "theme": "ISMS",
+      "title": "Information security risk treatment",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The risk treatment plan is carried out and its results are retained.",
+      "evidence_checklist": [
+        "Records of risk treatment implementation and results"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_9.1",
+      "control_number": "9.1",
+      "theme": "ISMS",
+      "title": "Monitoring, measurement, analysis and evaluation",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "What is monitored and measured, how, when and by whom, and how the results are analysed and evaluated, is determined; information security performance and the ISMS's effectiveness are evaluated.",
+      "evidence_checklist": [
+        "Monitoring and measurement plan",
+        "Monitoring and measurement results"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_9.2",
+      "control_number": "9.2",
+      "theme": "ISMS",
+      "title": "Internal audit",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Internal audits at planned intervals, under a defined audit programme, establish whether the ISMS meets the organisation's own requirements and the standard's, and whether it is effectively implemented and maintained.",
+      "evidence_checklist": [
+        "Internal audit programme",
+        "Audit reports and results"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_9.3",
+      "control_number": "9.3",
+      "theme": "ISMS",
+      "title": "Management review",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "Top management reviews the ISMS at planned intervals to ensure it remains suitable, adequate and effective, and decides on improvements and changes.",
+      "evidence_checklist": [
+        "Management review minutes, with the inputs considered and the decisions taken"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_10.1",
+      "control_number": "10.1",
+      "theme": "ISMS",
+      "title": "Continual improvement",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "The suitability, adequacy and effectiveness of the ISMS are continually improved.",
+      "evidence_checklist": [
+        "Records of improvement actions"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
+    },
+    {
+      "id": "clause_10.2",
+      "control_number": "10.2",
+      "theme": "ISMS",
+      "title": "Nonconformity and corrective action",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "When a nonconformity occurs it is dealt with, its causes are evaluated, corrective action is taken and reviewed for effectiveness, and the nonconformities and results are retained.",
+      "evidence_checklist": [
+        "Nonconformity and corrective action register"
+      ],
+      "crosswalk": [],
+      "tags": [
+        "management_system_clause"
+      ]
     }
   ],
   "summary_counts": {
-    "auto": 14,
-    "semi_auto": 17,
-    "manual": 62,
-    "total": 93
+    "auto": 15,
+    "semi_auto": 0,
+    "manual": 103,
+    "total": 118
   }
 }

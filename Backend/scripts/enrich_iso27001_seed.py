@@ -961,14 +961,252 @@ SCAN_MODULE_HINTS = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Management-system clauses 4–10
+#
+# The catalogue held Annex A only, so a Policy Pro baseline naming a clause was
+# answered UNKNOWN_CONTROL — 25 of the 118 requirements in PolicyPro's ISO
+# library. The clauses are mandatory for conformity and are assessed by
+# attestation: nothing technical establishes "top management demonstrates
+# leadership". They carry their own theme (`ISMS`), because they are not Annex
+# A controls and must not be scored or listed in the SoA as if they were.
+#
+# Titles are the standard's clause headings. Descriptions state each clause's
+# objective in our own words, like the Annex A enrichment above, and are not
+# transcriptions of the standard's text. Evidence lists name the records an
+# auditor asks for. No crosswalks: none has been reviewed, and an invented one
+# would reach gap analysis.
+#
+# Ids are `clause_<n>` with an explicit `control_number`: clause 5.1 and Annex A
+# control 5.1 share a number, and the id is the row-id suffix
+# (`scripts/seed_compliance._control_number`).
+# ─────────────────────────────────────────────────────────────────────────────
+
+ISMS_CLAUSES: list[tuple[str, str, str, list[str]]] = [
+    (
+        "4.1",
+        "Understanding the organization and its context",
+        "The organisation determines the external and internal issues relevant to its purpose that affect its ability to achieve the intended outcomes of its information security management system.",
+        [
+            "Record of the internal and external issues considered",
+            "Evidence the analysis is revisited when circumstances change",
+        ],
+    ),
+    (
+        "4.2",
+        "Understanding the needs and expectations of interested parties",
+        "The parties with an interest in the ISMS, their information security requirements, and which of those requirements the ISMS will address are determined.",
+        [
+            "Register of interested parties and their requirements",
+            "Record of which requirements the ISMS addresses",
+        ],
+    ),
+    (
+        "4.3",
+        "Determining the scope of the information security management system",
+        "The boundaries and applicability of the ISMS are determined, taking account of the organisation's context, interested parties and interfaces with other organisations, and the scope is kept as documented information.",
+        [
+            "Documented ISMS scope statement",
+            "Record of the interfaces and dependencies considered",
+        ],
+    ),
+    (
+        "4.4",
+        "Information security management system",
+        "The ISMS, including the processes it needs and their interactions, is established, implemented, maintained and continually improved.",
+        ["Description of the ISMS processes and how they interact"],
+    ),
+    (
+        "5.1",
+        "Leadership and commitment",
+        "Top management demonstrates leadership of the ISMS: the policy and objectives fit the organisation's strategy, the ISMS is built into business processes, resources are made available, and the importance of effective information security is communicated.",
+        [
+            "Records of top-management direction and decisions on the ISMS",
+            "Evidence that resources were allocated",
+        ],
+    ),
+    (
+        "5.2",
+        "Policy",
+        "Top management sets an information security policy suited to the organisation's purpose, with objectives or a framework for setting them and commitments to meet applicable requirements and to improve continually; it is documented, communicated and available.",
+        [
+            "Approved information security policy",
+            "Evidence of communication within the organisation and availability to interested parties",
+        ],
+    ),
+    (
+        "5.3",
+        "Organizational roles, responsibilities and authorities",
+        "Responsibilities and authorities for roles relevant to information security are assigned and communicated, including responsibility for the ISMS's conformity and for reporting its performance to top management.",
+        [
+            "Documented roles, responsibilities and authorities",
+            "Evidence of assignment and communication",
+        ],
+    ),
+    (
+        "6.1.1",
+        "Actions to address risks and opportunities — General",
+        "When the ISMS is planned, the risks and opportunities it must address are determined, and actions to address them are planned, built into ISMS processes and evaluated for effectiveness.",
+        [
+            "Record of the risks and opportunities affecting the ISMS and the actions planned"
+        ],
+    ),
+    (
+        "6.1.2",
+        "Information security risk assessment",
+        "A defined risk assessment process, with risk acceptance and assessment criteria, identifies, analyses and evaluates information security risks and produces consistent, valid and comparable results.",
+        [
+            "Documented risk assessment process and criteria",
+            "Risk register or assessment results",
+        ],
+    ),
+    (
+        "6.1.3",
+        "Information security risk treatment",
+        "A defined risk treatment process selects treatment options, determines the controls needed, compares them with Annex A, produces a Statement of Applicability and a risk treatment plan, and obtains risk owners' approval of the plan and acceptance of residual risk.",
+        [
+            "Documented risk treatment process",
+            "Statement of Applicability",
+            "Risk treatment plan with risk-owner approval",
+        ],
+    ),
+    (
+        "6.2",
+        "Information security objectives and planning to achieve them",
+        "Information security objectives are set at relevant functions and levels, measurable where practicable, monitored, communicated and updated, with plans saying what will be done, by whom, with which resources and by when.",
+        [
+            "Documented information security objectives",
+            "Plans and progress records for the objectives",
+        ],
+    ),
+    (
+        "6.3",
+        "Planning of changes",
+        "Changes to the ISMS are made in a planned way.",
+        ["Records of planned ISMS changes and their approval"],
+    ),
+    (
+        "7.1",
+        "Resources",
+        "The resources needed to establish, run, maintain and continually improve the ISMS are determined and provided.",
+        ["Evidence of resource planning and allocation for the ISMS"],
+    ),
+    (
+        "7.2",
+        "Competence",
+        "The competence needed by people whose work affects information security performance is determined and ensured through education, training or experience, and action is taken to close gaps.",
+        [
+            "Competence requirements for ISMS roles",
+            "Records of training, qualifications or experience",
+        ],
+    ),
+    (
+        "7.3",
+        "Awareness",
+        "People working under the organisation's control know the information security policy, how they contribute to the ISMS, and the consequences of not conforming.",
+        ["Awareness programme records", "Evidence of staff acknowledgement"],
+    ),
+    (
+        "7.4",
+        "Communication",
+        "The internal and external communication the ISMS needs — what, when, with whom and how — is determined.",
+        ["Communication plan or matrix"],
+    ),
+    (
+        "7.5",
+        "Documented information",
+        "The documented information the standard requires, and that the organisation needs for its ISMS, is created, updated and controlled: identified, reviewed, approved, available, protected, distributed, retained and disposed of.",
+        ["Document control procedure", "Document register with versions and approvals"],
+    ),
+    (
+        "8.1",
+        "Operational planning and control",
+        "The processes needed to meet information security requirements and carry out the planned actions — including externally provided ones — are planned, implemented and controlled, with records showing they ran as planned.",
+        ["Operational process records", "Controls over externally provided processes"],
+    ),
+    (
+        "8.2",
+        "Information security risk assessment",
+        "Information security risk assessments are carried out at planned intervals and when significant changes occur, and their results are retained.",
+        ["Dated results of risk assessments"],
+    ),
+    (
+        "8.3",
+        "Information security risk treatment",
+        "The risk treatment plan is carried out and its results are retained.",
+        ["Records of risk treatment implementation and results"],
+    ),
+    (
+        "9.1",
+        "Monitoring, measurement, analysis and evaluation",
+        "What is monitored and measured, how, when and by whom, and how the results are analysed and evaluated, is determined; information security performance and the ISMS's effectiveness are evaluated.",
+        ["Monitoring and measurement plan", "Monitoring and measurement results"],
+    ),
+    (
+        "9.2",
+        "Internal audit",
+        "Internal audits at planned intervals, under a defined audit programme, establish whether the ISMS meets the organisation's own requirements and the standard's, and whether it is effectively implemented and maintained.",
+        ["Internal audit programme", "Audit reports and results"],
+    ),
+    (
+        "9.3",
+        "Management review",
+        "Top management reviews the ISMS at planned intervals to ensure it remains suitable, adequate and effective, and decides on improvements and changes.",
+        [
+            "Management review minutes, with the inputs considered and the decisions taken"
+        ],
+    ),
+    (
+        "10.1",
+        "Continual improvement",
+        "The suitability, adequacy and effectiveness of the ISMS are continually improved.",
+        ["Records of improvement actions"],
+    ),
+    (
+        "10.2",
+        "Nonconformity and corrective action",
+        "When a nonconformity occurs it is dealt with, its causes are evaluated, corrective action is taken and reviewed for effectiveness, and the nonconformities and results are retained.",
+        ["Nonconformity and corrective action register"],
+    ),
+]
+
+ISMS_THEME = "ISMS"
+
+
+def isms_clause_controls() -> list[dict]:
+    """The management-system clauses as seed entries, in clause order."""
+    return [
+        {
+            "id": f"clause_{number}",
+            "control_number": number,
+            "theme": ISMS_THEME,
+            "title": title,
+            "scannability": "manual",
+            "scan_module_hint": None,
+            "description": description,
+            "evidence_checklist": evidence,
+            "crosswalk": [],
+            "tags": ["management_system_clause"],
+        }
+        for number, title, description, evidence in ISMS_CLAUSES
+    ]
+
+
 def main() -> int:
     path = seed_path("iso27001_2022_controls_seed.json")
 
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
+    # The clauses are owned by the table above: drop any previous copy and
+    # append the current one, so re-running converges rather than duplicating.
+    data["controls"] = [c for c in data["controls"] if c.get("theme") != ISMS_THEME]
+    data["controls"].extend(isms_clause_controls())
+
     missing = []
     for ctrl in data["controls"]:
+        if ctrl.get("theme") == ISMS_THEME:
+            continue
         cid = str(ctrl["id"])
         enrich = ENRICHMENT.get(cid)
         if not enrich:
@@ -997,6 +1235,23 @@ def main() -> int:
     if missing:
         print(f"ERROR: no enrichment authored for {len(missing)} controls: {missing}")
         return 1
+
+    # Descriptive metadata, recomputed so it cannot drift from the controls.
+    fw = data["framework"]
+    fw["source_annex"] = "Clauses 4–10 and Annex A"
+    fw["total_controls"] = len(data["controls"])
+    fw["themes"] = [t for t in fw.get("themes", []) if t.get("code") != ISMS_THEME] + [
+        {
+            "code": ISMS_THEME,
+            "name": "ISMS management-system clauses",
+            "range": "4.1 - 10.2",
+            "count": len(ISMS_CLAUSES),
+        }
+    ]
+    counts: dict[str, int] = {"auto": 0, "semi_auto": 0, "manual": 0}
+    for ctrl in data["controls"]:
+        counts[ctrl["scannability"]] = counts.get(ctrl["scannability"], 0) + 1
+    data["summary_counts"] = {**counts, "total": len(data["controls"])}
 
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)

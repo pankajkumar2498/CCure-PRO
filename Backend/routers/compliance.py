@@ -321,6 +321,11 @@ def _ordered_themes(themes) -> list:
     return known + rest
 
 
+#: ISO/IEC 27001's management-system clauses; never rows of a Statement of
+#: Applicability (see `download_statement_of_applicability`).
+SOA_EXCLUDED_THEME = "ISMS"
+
+
 def control_sort_key(control_number: str) -> tuple:
     """Orders control numbers numerically rather than lexicographically.
 
@@ -341,6 +346,12 @@ def control_sort_key(control_number: str) -> tuple:
 
     Non-numeric segments in other frameworks sort as text after any numeric
     segment at the same position, which keeps them grouped and stable.
+
+    ISO/IEC 27001 Annex A (``A.5.1``) sorts after the standard's clauses
+    (``4.1`` … ``10.2``). Stripping the ``A.`` alone would give clause 5.1 and
+    control A.5.1 the same key and interleave the two; the leading group keeps
+    Annex A together, and a list holding only Annex A controls sorts exactly as
+    it did before.
     """
     if not control_number:
         return ()
@@ -349,7 +360,9 @@ def control_sort_key(control_number: str) -> tuple:
     if csf_key is not None:
         return csf_key
 
-    cleaned = str(control_number).lstrip("A.").strip()
+    text = str(control_number).strip()
+    annex_a = text.startswith("A.")
+    cleaned = text.lstrip("A.").strip()
     parts = re.split(r"[.\-_]", cleaned)
     key: list = []
     for part in parts:
@@ -357,7 +370,7 @@ def control_sort_key(control_number: str) -> tuple:
             key.append((0, int(part), ""))
         else:
             key.append((1, 0, part.lower()))
-    return tuple(key)
+    return ((1, 0, ""),) + tuple(key) if annex_a else tuple(key)
 
 
 class RolledFinding:
@@ -3971,9 +3984,16 @@ def download_statement_of_applicability(
             detail="Framework is not installed for this organization.",
         )
 
+    # ISO/IEC 27001's management-system clauses (4–10) are in the catalogue as
+    # attestation controls but not in the SoA: clause 6.1.3(d) makes the SoA a
+    # statement about Annex A controls, and clauses 4–10 are mandatory — there
+    # is no applicability to state.
     controls = (
         db.query(ComplianceControl)
-        .filter(ComplianceControl.framework_id == framework_id)
+        .filter(
+            ComplianceControl.framework_id == framework_id,
+            ComplianceControl.theme != SOA_EXCLUDED_THEME,
+        )
         .all()
     )
     # Numeric ordering. `ORDER BY control_number` is a string sort, so the SoA

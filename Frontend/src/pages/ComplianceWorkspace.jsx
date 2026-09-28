@@ -106,6 +106,7 @@ const THEME_LABELS = {
   PPL: "People Controls (PPL)",
   PHY: "Physical Controls (PHY)",
   TECH: "Technological Controls (TECH)",
+  ISMS: "Management-System Clauses 4–10 (ISMS)",
 
   // NIST CSF v2.0
   GV: "Govern (GV)",

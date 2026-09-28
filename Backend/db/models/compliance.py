@@ -231,6 +231,12 @@ CONTROL_THEMES = (
     "NIS2_IAM",
     "NIS2_MFA",
     "BENCHMARK",
+    # ISO/IEC 27001:2022 clauses 4–10, the management-system requirements
+    # (migration e9a1c3d5f7b2). A theme of their own because they are not
+    # Annex A controls: they are mandatory for conformity, never selected or
+    # excluded through the Statement of Applicability, and must not be scored
+    # or reported as one of Annex A's four themes.
+    "ISMS",
 )
 
 CONTROL_THEME_SQL = "theme IN %s" % _sql_in_list(CONTROL_THEMES)

@@ -394,7 +394,9 @@ async def lifespan(app: FastAPI):
                 or not nist82_fw
                 or not nerc_cip_fw
                 or not nis2_fw
-                or ctrl_count < 93
+                # ISO/IEC 27001:2022: 93 Annex A controls plus the 25
+                # management-system clauses (4.1 … 10.2) added on 28 Sep 2026.
+                or ctrl_count < 118
                 # NIST CSF 2.0 defines exactly 106 Subcategories. The threshold
                 # here was 20 — every other framework's is its real control
                 # count — so a NIST catalogue truncated to any size above 20

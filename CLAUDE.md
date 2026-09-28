@@ -3555,6 +3555,21 @@ placeholder including the ones that are fully automated.
 checklists, crosswalks, scannability and module hints; edit the tables there,
 never the generated JSON.
 
+**The catalogue holds the management-system clauses 4.1–10.2 as well as Annex
+A** (118 controls, since 28 Sep 2026). They are attestation controls under
+their own theme, `ISMS` (migration `e9a1c3d5f7b2`), and `ISMS_CLAUSES` in the
+same script owns them. Three things keep them apart from Annex A, and each is
+tested:
+
+- **Their numbers.** Clause 5.1 and control A.5.1 are different requirements.
+  Seed ids are `clause_<n>` with an explicit `control_number`, which
+  `seed_compliance._control_number` honours for the catalogues in
+  `EXPLICIT_NUMBER_FRAMEWORKS`.
+- **Their order.** `control_sort_key` puts Annex A after the clauses rather
+  than interleaving `5.1` with `A.5.1`.
+- **The SoA.** The Statement of Applicability excludes them: clause 6.1.3(d)
+  makes it a statement about Annex A, and clauses 4–10 are mandatory.
+
 Four things that were wrong and are now guarded by
 `tests/compliance/test_compliance_iso27001.py`:
 

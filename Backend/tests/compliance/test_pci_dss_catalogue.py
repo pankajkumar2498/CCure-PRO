@@ -1,5 +1,6 @@
 """
-The PCI DSS catalogue, switched on 28 Sep 2026.
+The PCI DSS catalogue — corrected on 28 Sep 2026, switched on, and parked again
+the same day when the work was narrowed to ISO.
 
 Three things were put right before it could be offered, and each is pinned
 here:
@@ -75,10 +76,12 @@ def test_the_other_verified_corrections_hold():
     assert "File integrity monitoring" in by_number["11.5.2"]
 
 
-def test_pci_is_active_and_published_under_its_numbers():
+def test_pci_is_parked_and_published_under_its_numbers():
+    """Parked again on 28 Sep 2026 (work narrowed to ISO); the fixes stay."""
     from scripts.seed_compliance import _control_number
 
-    assert compliance_frameworks.is_active(FRAMEWORK_ID)
+    assert not compliance_frameworks.is_active(FRAMEWORK_ID)
+    assert FRAMEWORK_ID in compliance_frameworks.parked_framework_ids()
     ctrl = {"id": "pci_1_1_1", "control_number": "1.1.2"}
     assert _control_number(FRAMEWORK_ID, ctrl) == "1.1.2"
 

@@ -39,9 +39,9 @@ def test_the_finished_frameworks_are_the_default():
     """
     ISO 27001 and NIST CSF 2.0 were finished first; CIS Controls v8.1 was
     activated by Phase 4 so that hardening-benchmark findings have a framework
-    to roll up into; PCI DSS v4.0.1 by the project owner on 28 Sep 2026, once
-    its requirement numbers, rule inheritance and evidence defaults were fixed
-    (`test_pci_dss_catalogue.py`).
+    to roll up into. PCI DSS v4.0.1 was activated and parked again on
+    28 Sep 2026: the project owner narrowed the work to ISO until the modular
+    refactoring completes.
 
     Pinned as an exact tuple on purpose. Activating a catalogue makes it
     offered, scannable, reportable and installable for every tenant, which is a
@@ -52,13 +52,11 @@ def test_the_finished_frameworks_are_the_default():
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
-        "cfw_pci_dss_v4",
     )
     assert compliance_frameworks.active_framework_ids() == (
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
-        "cfw_pci_dss_v4",
     )
 
 
@@ -195,11 +193,11 @@ def test_guard_distinguishes_parked_from_unknown():
 @pytest.mark.parametrize(
     "slug",
     [
-        # "cis_v8_1" and "pci_dss_v4" are deliberately absent: Phase 4
-        # activated CIS and the project owner activated PCI DSS on 28 Sep
-        # 2026, so their reports render rather than being refused.
+        # "cis_v8_1" is deliberately absent: Phase 4 activated it, so its
+        # report renders rather than being refused.
         "soc2_type2",
         "cert_in_2022",
+        "pci_dss_v4",
         "dpdp_2023",
         "gdpr",
         "nist_800_53_r5",
@@ -257,13 +255,12 @@ def test_marketplace_lists_only_active_frameworks(client, auth_headers):
     # whether one is loaded depends on what the installation did, not on this
     # module. Anything extra must be a benchmark; a parked catalogue appearing
     # here is the defect this test exists for.
-    assert listed[:4] == [
+    assert listed[:3] == [
         "cfw_iso27001_2022",
         "cfw_nist_csf_v2",
         "cfw_cis_v8_1",
-        "cfw_pci_dss_v4",
     ], listed
-    extra = listed[4:]
+    extra = listed[3:]
     assert all(
         compliance_frameworks.is_benchmark_framework(fid) for fid in extra
     ), extra

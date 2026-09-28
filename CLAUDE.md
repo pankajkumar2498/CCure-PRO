@@ -3613,12 +3613,16 @@ automated rule. A.8.13 did exactly that to PR.DS-11 and RC.RP-03.
 
 ### Which frameworks are switched on
 
-Fourteen catalogues ship. Four are active:
+Fourteen catalogues ship. Three are active:
 
 - ISO/IEC 27001:2022;
 - NIST CSF 2.0;
-- CIS Controls v8.1 (since Phase 4);
-- PCI DSS v4.0.1 (since 28 Sep 2026).
+- CIS Controls v8.1 (since Phase 4).
+
+**The work is focused on ISO until the modular refactoring completes**
+(project owner, 28 Sep 2026). PCI DSS v4.0.1 was switched on and parked again
+the same day. Its fixes below stay in place, so re-activating it is one entry
+in the list plus the command below.
 
 The rest are **parked**: still seeded and still crosswalk-reachable, but not
 offered, scannable, reportable or installable. `core/compliance_frameworks.py`
@@ -3636,7 +3640,7 @@ run first and read it:
   read "not in the shipped list" as "parked", so its first `--apply` would
   have switched off all five STIG benchmarks for `org_default`.
 
-**PCI DSS was put right before it was switched on**, and
+**PCI DSS was put right on 28 Sep 2026**, and
 `tests/compliance/test_pci_dss_catalogue.py` pins each fix:
 
 - **Requirement numbers.** 16 of the 62 described one requirement under

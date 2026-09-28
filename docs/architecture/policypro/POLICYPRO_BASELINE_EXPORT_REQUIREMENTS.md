@@ -168,7 +168,7 @@ cross-references.
 
 1. **ISO management-system clauses: added.** Clauses 4.1–10.2 are in Audit's ISO catalogue as attestation controls, so no requirement of the ISO library is unknown to Audit any more.
 2. **HIPAA catalogue: approved.** Audit holds the HIPAA Security Rule, identified by CFR paragraph. A HIPAA _baseline_ still needs ask 4 — the library's identifiers are not CFR paragraphs.
-3. **PCI DSS: done.** The catalogue is v4.0.1 and switched on. Before that:
+3. **PCI DSS: corrected, then parked.** The catalogue is v4.0.1. It was switched on and parked again the same day, when work was narrowed to ISO until the refactoring completes. The corrections remain:
 
    - its 62 requirement numbers were checked against the standard, and 16 corrected;
    - its stored numbers became the standard's own (`1.1.2`, not `pci_1_1_1`);

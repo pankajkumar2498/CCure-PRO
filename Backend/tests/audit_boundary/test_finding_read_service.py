@@ -275,3 +275,27 @@ def test_reading_writes_nothing(db_session, world):
         org_id=world["org_id"], scan_id=world["scan"].id
     )
     assert not db_session.new and not db_session.dirty and not db_session.deleted
+
+
+def test_every_view_maps_to_a_contract_finding(db_session, world):
+    """Service → view → Phase 5.6 mapper, on real rows."""
+    from ccure_audit.integration.mappers.findings import finding
+
+    items = {
+        v.definition_id: finding(v)
+        for v in FindingReadService(db_session)
+        .findings(org_id=world["org_id"], scan_id=world["scan"].id)
+        .items
+    }
+    assert len(items) == len(world["ids"])
+    verified = items["CVE-9999-50005"].remediation
+    assert verified.verified_by.assessment_id == world["scan"].id
+    accepted = items["CVE-9999-50004"].remediation.risk_acceptance
+    assert accepted.reason == "Compensating control in place."
+    assert items["CVE-9999-50003"].remediation.sla_state.value == "overdue"
+    assert items["CVE-9999-50001"].exploit.availability.value == "actively_exploited"
+    assert items["CVE-9999-50002"].exploit.availability.value == "public_exploit"
+    config = items["CCURE-CFG-TEST-FREAD-PWLEN"]
+    assert config.definition.cve_id is None
+    assert config.exploit.availability.value == "not_applicable"
+    assert config.exploit.in_cisa_kev is None

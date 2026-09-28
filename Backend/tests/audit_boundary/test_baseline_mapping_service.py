@@ -442,10 +442,13 @@ def test_query_count_does_not_grow_with_the_baseline(tenant):
         service.map_baseline(org_id="org_map_a", baseline=baseline)
         return len(statements)
 
-    engine = db.get_bind()
-    event.listen(engine, "before_cursor_execute", count)
+    # The session's own connection, not the engine: the suite's TestClient runs
+    # the app lifespan, whose background loops query the same engine from
+    # another thread, and an engine-wide listener counted them intermittently.
+    connection = db.connection()
+    event.listen(connection, "before_cursor_execute", count)
     try:
         few, many = run(1), run(30)
     finally:
-        event.remove(engine, "before_cursor_execute", count)
-    assert few == many <= 6
+        event.remove(connection, "before_cursor_execute", count)
+    assert 0 < few == many <= 6

@@ -376,9 +376,16 @@ def policy_framework_ids(scan: Any) -> Optional[List[str]]:
 class ControlRefView:
     framework_id: str
     framework_name: str
+    #: Audit's internal control row id (``cct_…``) — what the export prints.
     control_id: str
     control_title: str
     profiles: Tuple[str, ...]
+    #: How the framework publishes the control: code + version + number (e.g.
+    #: ``ISO27001_2022`` / ``2022`` / ``A.8.9``). This is what other modules
+    #: identify a control by; the internal ``control_id`` is opaque to them.
+    framework_code: str
+    framework_version: str
+    control_number: str
 
 
 @view
@@ -430,8 +437,15 @@ class AssessmentVerdictsView:
     hosts: Tuple[HostVerdictsView, ...]
 
 
+#: A control whose published identifiers could not be read. Empty rather than
+#: guessed: the adapter refuses an empty identifier by name.
+_UNPUBLISHED: Tuple[str, str, str] = ("", "", "")
+
+
 def _check_verdict(
-    result: Mapping[str, Any], refs: Sequence[ControlRef]
+    result: Mapping[str, Any],
+    refs: Sequence[ControlRef],
+    published: Mapping[str, Tuple[str, str, str]],
 ) -> CheckVerdictView:
     metadata = result.get("metadata") or {}
     evidence = result.get("evidence") or []
@@ -466,6 +480,9 @@ def _check_verdict(
                 control_id=r.control_id,
                 control_title=r.control_title,
                 profiles=tuple(r.profiles),
+                framework_code=published.get(r.control_id, _UNPUBLISHED)[0],
+                framework_version=published.get(r.control_id, _UNPUBLISHED)[1],
+                control_number=published.get(r.control_id, _UNPUBLISHED)[2],
             )
             for r in refs
         ),
@@ -493,6 +510,38 @@ class AssessmentReadService:
             raise LookupError(f"no assessment {scan_id!r} for this tenant")
         return scan
 
+    def _published_identifiers(
+        self, control_ids: Iterable[str]
+    ) -> Dict[str, Tuple[str, str, str]]:
+        """
+        ``control row id → (framework code, framework version, control number)``,
+        in one query. The export's ``ControlRef`` carries only the internal ids;
+        the view adds the published ones without touching the export's path.
+        """
+        from db.models.compliance import ComplianceControl, ComplianceFramework
+
+        wanted = sorted({c for c in control_ids if c})
+        if not wanted:
+            return {}
+        rows = (
+            self._db.query(
+                ComplianceControl.id,
+                ComplianceFramework.code,
+                ComplianceFramework.version,
+                ComplianceControl.control_number,
+            )
+            .join(
+                ComplianceFramework,
+                ComplianceFramework.id == ComplianceControl.framework_id,
+            )
+            .filter(ComplianceControl.id.in_(wanted))
+            .all()
+        )
+        return {
+            str(cid): (str(code or ""), str(version or ""), str(number or ""))
+            for cid, code, version, number in rows
+        }
+
     def verdicts(self, *, org_id: str, scan_id: str) -> AssessmentVerdictsView:
         """
         Every configuration verdict the assessment stored, per host, with the
@@ -517,6 +566,9 @@ class AssessmentReadService:
             framework_ids=frameworks or None,
         )
         assets = asset_ids_for_hosts(self._db, org_id, [a.host for a in audits])
+        published = self._published_identifiers(
+            {ref.control_id for refs in controls.values() for ref in refs}
+        )
         hosts = tuple(
             HostVerdictsView(
                 host=a.host,
@@ -527,7 +579,9 @@ class AssessmentReadService:
                 results=(
                     tuple(
                         _check_verdict(
-                            r, controls.get(str(r.get("check_id") or "")) or []
+                            r,
+                            controls.get(str(r.get("check_id") or "")) or [],
+                            published,
                         )
                         for r in a.results
                     )

@@ -353,3 +353,32 @@ def test_reading_writes_nothing(db_session, world):
         org_id=world["org_id"], scan_id=world["scan"].id
     )
     assert not db_session.new and not db_session.dirty and not db_session.deleted
+
+
+def test_a_control_ref_carries_the_published_identifiers(db_session, world):
+    view = AssessmentReadService(db_session).verdicts(
+        org_id=world["org_id"], scan_id=world["scan"].id
+    )
+    (host,) = view.hosts
+    mapped = next(r for r in host.results if r.check_id == MAPPED_CHECK)
+    (ref,) = mapped.controls
+    assert ref.framework_code.startswith("BM_READ_")
+    assert ref.framework_version == "1.0"
+    assert ref.control_number == "5.2.8"
+    # The internal row id is unchanged — it is what the export prints.
+    assert ref.control_id.startswith("cct_cfw_bm_read_")
+
+
+def test_the_view_maps_to_contract_control_results(db_session, world):
+    """Service → view → Phase 5.6 mapper, on real rows."""
+    from ccure_audit.integration.mappers.control_results import control_results
+
+    view = AssessmentReadService(db_session).verdicts(
+        org_id=world["org_id"], scan_id=world["scan"].id
+    )
+    (result,) = control_results(view)
+    assert result.control.control_id == "5.2.8"
+    assert result.control.framework.version == "1.0"
+    assert result.state.value == "FAIL"
+    assert result.asset_counts.fail == 1
+    assert [r.rule_id for r in result.rules] == [MAPPED_CHECK]

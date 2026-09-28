@@ -1,11 +1,11 @@
 # Phase 5 — CCure Audit integration boundaries (proposal)
 
-|               |                                                                                                                                                                                                                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping), 5.4 (assessment read extraction; see §3.1), 5.5 (finding read extraction; see §3.2). Stopped for review of the read boundary before 5.6. |
-| **Date**      | 26 Sep 2026                                                                                                                                                                                                                                                                                              |
-| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                                                                                                                           |
-| **Audience**  | Audit team and architecture reviewers                                                                                                                                                                                                                                                                    |
+|               |                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Approved 26 Sep 2026.** Implemented one step per commit with a review stop after each. Done: 5.1 (skeleton), 5.2 (catalogue service), 5.3 (baseline mapping), 5.4 (assessment read extraction; see §3.1), 5.5 (finding read extraction; see §3.2), 5.6 (integration mappers; see §3.3). Phase 5 complete; awaiting review, and the contract clarifications in §3.3 decide whether v1 can be frozen. |
+| **Date**      | 26 Sep 2026                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Builds on** | Phase 4 contracts (approved 26 Sep 2026): [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md), `Backend/ccure_contracts/`                                                                                                                                                                                                                                        |
+| **Audience**  | Audit team and architecture reviewers                                                                                                                                                                                                                                                                                                                                                                 |
 
 Phase 5 creates the **internal** boundaries CCure Audit needs to consume and
 produce the Phase 4 contracts later:
@@ -187,6 +187,143 @@ credential outcome (contract 3 assets, `assessment.completed`); current posture
 `routers/dashboard.py`); finding events; evidence records. The 5.6 mappers can
 cover what the four services return and must mark the rest as not yet
 available rather than filling it.
+
+### 3.3 Step 5.6 as built: the integration mappers (28 Sep 2026)
+
+`ccure_audit/integration/` now holds pure functions from the Phase 5 views to
+the Phase 4 contract models. Nothing in production imports them. Only the
+adapter imports `ccure_contracts`, and it imports no `core`, `db` or
+`reporting` (enforced by the layer rule and by a test over its import
+statements).
+
+| Module                         | Maps                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `mappers/policy_baseline.py`   | `PolicyBaseline` (inbound) → `BaselineInput`                                         |
+| `mappers/baseline_coverage.py` | `CoverageView` → `BaselineCoverage`                                                  |
+| `mappers/capabilities.py`      | `FrameworkCapabilityView` + `ParameterDefinition` → `Capabilities`                   |
+| `mappers/findings.py`          | `FindingView` → `Finding`; `FindingPageView` → `AssessmentFindingsPage`              |
+| `mappers/control_results.py`   | `AssessmentVerdictsView` → `ControlResult` items; `AssessmentControlsPage`           |
+| `vocabulary.py`                | Audit value → contract value, every table pinned by a test to Audit's own definition |
+| `envelope.py`, `errors.py`     | caller-supplied envelope context; `MappingError`                                     |
+
+**One view change.** `ControlRefView` gained `framework_code`,
+`framework_version` and `control_number`, the identifiers a control is
+published under and the ones other modules use. It gets them from one extra
+batched query in `AssessmentReadService.verdicts`. `control_map_for_checks` and
+the export are untouched, and the golden capture is byte-identical
+(`bd1301da…`) after the change.
+
+**Rules the mappers apply:**
+
+- **Closed vocabularies refuse, and open ones degrade.** An unknown value in
+  any of the following is a `MappingError`: remediation state, SLA state,
+  detection status, definition type, mapping state, parameter handling. An
+  unknown value in the following never maps to a stronger state than the data
+  supports:
+  - a stored outcome maps to `ERROR`, and a blank outcome to `NOT_ASSESSED`;
+  - a severity maps to `unscored`;
+  - a detection method or a confidence maps to `unverified`.
+- **Inconsistent stored data is refused rather than repaired.**
+  - `verified_fixed` with no verifying scan.
+  - `risk_accepted` with no date or no reason.
+  - A control with no published identifier.
+  - Two controls publishing one identifier.
+  - An AUTOMATED mapping with no assessing rule.
+  - An identifier the contract's `OpaqueId` cannot carry.
+- **The state decides, not the residue.** A risk acceptance is emitted only
+  in `risk_accepted`, and a withdrawn acceptance's leftover reason is ignored.
+- **The control roll-up** uses the contract's precedence. An assessed host
+  counts towards a rule only if it stored a result for it. A host whose audit
+  did not run counts `NOT_ASSESSED` towards every rule, with the engine's
+  reason. Every non-verdict says why.
+- **Envelope values are the caller's.** Message id, correlation id and time
+  are supplied by the caller, as are the baseline's received time, digest,
+  mapping revision and `activation`, which has no default. The contracts list
+  and the methods list on `Capabilities` are also supplied: no Audit service
+  holds them yet, and an empty `methods` is refused. As a result, every
+  mapper is a pure function.
+
+**Honest availability.** Criticality, exposure, the SRS score and residual
+risk are `not_implemented` with reasons. `risk_category` and
+`audit_priority` are null: the priority is computed in `core.vuln_intel` and
+is not stored on the finding. Exploit intelligence is `not_applicable` for a
+non-CVE, with the KEV flag null rather than `False`.
+
+**A defect the real data found.** Audit stores `cvss_score = 0.0` with no
+vector on every configuration and privilege finding, the critical ones
+included: 8 of 8 such rows, in both the scratch restore and the live database
+(a read-only query). Passed through, that would report a critical finding's
+CVSS as zero. CVSS scores a CVE, so the mapper states `not_applicable` for any
+other definition whatever the row holds. The stored placeholder is an Audit
+data issue. It is recorded here rather than changed, because the export prints
+it and 5.6 does not alter output.
+
+**Verification against the scratch restore**
+(`scripts/verification/phase5_golden/verify_mappers.py`, read-only). Every
+scan and every finding was mapped:
+
+- 11 scans and 1,760 findings; 24 control results (15 FAIL, 5 PASS,
+  4 NOT_ASSESSED);
+- CVSS: 1,752 available and 8 `not_applicable`;
+- exploit availability: 8 `actively_exploited`, 8 `not_applicable`;
+- all seven remediation states the data holds, including the verified-fixed
+  and risk-accepted history the 5.5 fixtures added;
+- **0 refusals.**
+
+**Not mapped in 5.6**, because no read service returns what they need. Each
+needs new assembly (§3.2):
+
+- `AssessmentResult`: descriptor, per-asset coverage, method and credential
+  outcomes, totals, metrics;
+- `PostureSnapshot`;
+- `FindingEvent`;
+- `ComplianceGapReport`;
+- `EvidenceRecord`.
+
+The proposal listed `AssessmentResult` under 5.6. Only its two page resources
+(findings and controls) are mapped.
+
+**Contract clarifications to settle before v1 is frozen.** Each is a place
+where the draft cannot say what Audit knows or does not know. None is a field
+Audit could fill today.
+
+1. **`evidence_refs` and `finding_refs` cannot say "not implemented".** They
+   are lists, marked available, and always empty today. An empty list reads as
+   "no evidence" and "no finding caused this FAIL". Mark them
+   `availability="not_implemented"` until the evidence store and finding
+   linkage exist, or make them nullable.
+2. **`CcureControlMappingV1` has no field for Audit's notes.** Notes such as
+   "declared not applicable" or "framework not installed for this tenant" are
+   appended to `reason`, which the contract describes as the reason a control
+   is not automated. The control also does not echo its applicability. Add
+   `notes: List[ShortText]`.
+3. **`CcureScopeOutcomeV1` loses three facts.**
+   - Each rejected entry's reason. `rejected_entries` holds strings only.
+   - Unmatched asset tags. These are inside the scope, but match nothing, so
+     a scope applied through them assesses nothing.
+   - Whether the organisation has a scan scope configured at all.
+4. **A controls page with no items is ambiguous.** Nothing assessed produces
+   no control results, and the page cannot say why. Either the page carries a
+   coverage pointer, or it is documented that coverage is read from the
+   `AssessmentResult` it belongs to.
+5. **`CcureAuditRuleRefV1.rule_id` and `CcureRuleResultV1.rule_id` are one
+   namespace.** Both are the compliance rule id, which is the check id. The
+   contract should say so, so that Policy Pro can correlate coverage with
+   results.
+6. **`audit_priority`** is marked partial, but it is not stored on a finding.
+   It is `not_implemented` until it is persisted, or it is computed in the
+   adapter's service layer.
+
+Also seen in the data, and not a contract question: configuration findings
+carry `detection_method = credentialed_package` rather than `config_check`.
+The mapper passes the stored value through rather than overriding it.
+
+**A test fix outside 5.6's own code.** The 5.3 query-count test failed once in
+three combined runs. Its SQL listener was engine-wide. The suite's
+session-wide TestClient runs the application lifespan, whose NVD sync loop
+queries the same engine from another thread five seconds after start-up. The
+test now listens on the session's own connection and asserts a count above
+zero, so it cannot pass by counting nothing.
 
 **Not moved:** anything under `core/`, `engines/`, `scans/`, `db/`,
 `orchestrator/` or `routers/`. The services _use_ those modules; relocating

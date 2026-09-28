@@ -287,6 +287,10 @@ The proposal listed `AssessmentResult` under 5.6. Only its two page resources
 where the draft cannot say what Audit knows or does not know. None is a field
 Audit could fill today.
 
+> **Resolved in plan Phase 7 (28 Sep 2026)** — corrections C1–C6 in
+> [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md)
+> §14.1a, with the mappers updated to match. The list below is kept as found.
+
 1. **`evidence_refs` and `finding_refs` cannot say "not implemented".** They
    are lists, marked available, and always empty today. An empty list reads as
    "no evidence" and "no finding caused this FAIL". Mark them

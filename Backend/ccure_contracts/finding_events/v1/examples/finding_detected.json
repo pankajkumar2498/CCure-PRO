@@ -80,20 +80,14 @@
           "status": "not_implemented",
           "reason": "Compensating controls are not modelled on findings (SRS 7.3.7.8)."
         },
-        "audit_priority": "P0"
+        "audit_priority": null
       },
       "last_assessment": {
         "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
         "completed_at": "2026-09-26T02:41:17Z",
         "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
       },
-      "evidence_refs": [
-        {
-          "evidence_id": "evd_fnd_log4shell_proof",
-          "kind": "finding_proof",
-          "collected_at": "2026-09-26T02:39:55Z"
-        }
-      ]
+      "evidence_refs": null
     }
   }
 }

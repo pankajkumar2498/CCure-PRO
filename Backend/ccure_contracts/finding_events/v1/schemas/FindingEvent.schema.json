@@ -1115,9 +1115,9 @@
             }
           ],
           "default": null,
-          "description": "Audit's own KEV/EPSS/exploit priority (core/vuln_intel.compute_priority). Not the SRS score.",
+          "description": "Audit's own KEV/EPSS/exploit priority (core/vuln_intel.compute_priority). Not the SRS score. Computed for display and not stored on the finding, so not published yet; always null.",
           "title": "Audit Priority",
-          "x-ccure-availability": "partial",
+          "x-ccure-availability": "not_implemented",
           "x-ccure-owner": "audit"
         },
         "cvss_component": {
@@ -1255,13 +1255,21 @@
           "x-ccure-owner": "audit"
         },
         "evidence_refs": {
-          "description": "Evidence supporting the finding.",
-          "items": {
-            "$ref": "#/$defs/CcureEvidenceRefV1"
-          },
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CcureEvidenceRefV1"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Evidence supporting the finding. null: Audit does not issue evidence references yet — which is not the same as an empty list, which would state that no evidence exists.",
           "title": "Evidence Refs",
-          "type": "array",
-          "x-ccure-availability": "available",
+          "x-ccure-availability": "not_implemented",
           "x-ccure-owner": "audit"
         },
         "exploit": {

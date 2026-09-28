@@ -28,9 +28,9 @@ What this mapper cannot say, and does not pretend to:
 * ``basis`` is always ``automated`` and ``disposition`` always ``none``:
   scan verdicts are automated by construction, and attestations and
   dispositions live in the compliance register, which this view does not read.
-* ``finding_refs`` and ``evidence_refs`` are empty — a FAIL's finding id is
-  minted by ``core`` and the evidence store has no identifiers yet. Both are
-  listed as pre-freeze clarifications.
+* ``finding_refs`` and ``evidence_refs`` are null — the contract's "not
+  implemented". A FAIL's finding id is minted by ``core`` and the evidence
+  store has no identifiers yet; an empty list would claim there are none.
 """
 
 from __future__ import annotations
@@ -235,8 +235,8 @@ def _control_result(control: _Control) -> dict:
         "asset_counts": _counts(r.state for r in per_host.values()),
         "rules": rules,
         "gap_description": _gap_description(control) if state == "FAIL" else None,
-        "finding_refs": [],
-        "evidence_refs": [],
+        "finding_refs": None,
+        "evidence_refs": None,
     }
 
 

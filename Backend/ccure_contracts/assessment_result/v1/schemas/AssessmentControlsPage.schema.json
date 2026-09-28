@@ -92,23 +92,39 @@
           "x-ccure-owner": "audit"
         },
         "evidence_refs": {
-          "description": "Evidence supporting the state.",
-          "items": {
-            "$ref": "#/$defs/CcureEvidenceRefV1"
-          },
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CcureEvidenceRefV1"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Evidence supporting the state. null: Audit does not issue evidence references yet — which is not the same as an empty list, which would state that no evidence exists.",
           "title": "Evidence Refs",
-          "type": "array",
-          "x-ccure-availability": "available",
+          "x-ccure-availability": "not_implemented",
           "x-ccure-owner": "audit"
         },
         "finding_refs": {
-          "description": "Findings that caused a FAIL.",
-          "items": {
-            "$ref": "#/$defs/CcureFindingRefV1"
-          },
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CcureFindingRefV1"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Findings that caused a FAIL. null: Audit does not link control results to findings yet — which is not the same as an empty list, which would state that no finding caused it.",
           "title": "Finding Refs",
-          "type": "array",
-          "x-ccure-availability": "available",
+          "x-ccure-availability": "not_implemented",
           "x-ccure-owner": "audit"
         },
         "gap_description": {
@@ -392,7 +408,7 @@
           "x-ccure-owner": "audit"
         },
         "rule_id": {
-          "description": "Audit's rule identifier.",
+          "description": "Audit's rule identifier — the same namespace as BaselineCoverage.controls[].audit_rules[].rule_id, so a result can be matched to the coverage that promised it.",
           "maxLength": 400,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
@@ -594,7 +610,7 @@
   "$id": "https://ccurepro.cdac.in/contracts/assessment_result/v1/AssessmentControlsPage.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "``GET /api/v1/integrations/assessment-results/{result_id}/controls?cursor=``",
+  "description": "``GET /api/v1/integrations/assessment-results/{result_id}/controls?cursor=``\n\n**An empty page is not a clean result.** Audit lists a control only when the\nassessment stored a verdict record for a check mapped to it. An assessment\nthat reached no asset therefore has no control results at all. Whether that\nis \"nothing failed\" or \"nothing was assessed\" is answered by the\n``AssessmentResult`` named by ``result_id`` — its ``coverage`` and per-asset\n``coverage`` states — and never by this page alone.",
   "properties": {
     "causation_id": {
       "anyOf": [
@@ -634,7 +650,7 @@
       "x-ccure-owner": "producer"
     },
     "items": {
-      "description": "Control results.",
+      "description": "Control results for the controls the assessment stored verdicts for. Empty does not mean compliant; see result_id.",
       "items": {
         "$ref": "#/$defs/CcureControlResultV1"
       },
@@ -670,7 +686,7 @@
       "x-ccure-owner": "producer"
     },
     "result_id": {
-      "description": "The result these control results belong to.",
+      "description": "The result these control results belong to. Read its coverage before interpreting an empty or short list.",
       "maxLength": 400,
       "minLength": 1,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",

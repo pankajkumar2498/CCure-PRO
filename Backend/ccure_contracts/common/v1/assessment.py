@@ -124,7 +124,12 @@ class CcureSlaStateCountsV1(ContractModel):
 class CcureRuleResultV1(ContractModel):
     """One Audit rule's outcome across the assessed scope, within a control."""
 
-    rule_id: OpaqueId = owned("audit", "Audit's rule identifier.")
+    rule_id: OpaqueId = owned(
+        "audit",
+        "Audit's rule identifier — the same namespace as "
+        "BaselineCoverage.controls[].audit_rules[].rule_id, so a result can be "
+        "matched to the coverage that promised it.",
+    )
     title: ShortText = owned("audit", "Rule title.")
     severity: Severity = owned("audit", "Rule severity.")
     state: AssessmentState = owned("audit", "The rule's rolled-up state.")
@@ -174,11 +179,21 @@ class CcureControlResultV1(ContractModel):
     gap_description: Optional[LongText] = owned(
         "audit", "What failed, for a FAIL. Plain language.", default=None
     )
-    finding_refs: List[CcureFindingRefV1] = owned(
-        "audit", "Findings that caused a FAIL.", default_factory=list
+    finding_refs: Optional[List[CcureFindingRefV1]] = owned(
+        "audit",
+        "Findings that caused a FAIL. null: Audit does not link control results "
+        "to findings yet — which is not the same as an empty list, which would "
+        "state that no finding caused it.",
+        default=None,
+        availability="not_implemented",
     )
-    evidence_refs: List[CcureEvidenceRefV1] = owned(
-        "audit", "Evidence supporting the state.", default_factory=list
+    evidence_refs: Optional[List[CcureEvidenceRefV1]] = owned(
+        "audit",
+        "Evidence supporting the state. null: Audit does not issue evidence "
+        "references yet — which is not the same as an empty list, which would "
+        "state that no evidence exists.",
+        default=None,
+        availability="not_implemented",
     )
 
     @model_validator(mode="after")
@@ -478,9 +493,10 @@ class CcureFindingRiskV1(ContractModel):
     audit_priority: Optional[Literal["P0", "P1", "P2", "P3", "P4"]] = owned(
         "audit",
         "Audit's own KEV/EPSS/exploit priority (core/vuln_intel.compute_priority). "
-        "Not the SRS score.",
+        "Not the SRS score. Computed for display and not stored on the finding, "
+        "so not published yet; always null.",
         default=None,
-        availability="partial",
+        availability="not_implemented",
     )
 
 
@@ -560,6 +576,11 @@ class CcureFindingV1(ContractModel):
     last_assessment: CcureAssessmentRefV1 = owned(
         "audit", "The assessment that last detected it."
     )
-    evidence_refs: List[CcureEvidenceRefV1] = owned(
-        "audit", "Evidence supporting the finding.", default_factory=list
+    evidence_refs: Optional[List[CcureEvidenceRefV1]] = owned(
+        "audit",
+        "Evidence supporting the finding. null: Audit does not issue evidence "
+        "references yet — which is not the same as an empty list, which would "
+        "state that no evidence exists.",
+        default=None,
+        availability="not_implemented",
     )

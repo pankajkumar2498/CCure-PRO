@@ -60,7 +60,7 @@
         },
         "installed_for_tenant": true,
         "controls_total": 93,
-        "controls_automated": 30
+        "controls_automated": 15
       },
       {
         "framework": {
@@ -69,18 +69,10 @@
         },
         "installed_for_tenant": true,
         "controls_total": 106,
-        "controls_automated": 27
+        "controls_automated": 29
       }
     ],
-    "baseline_parameters": [
-      {
-        "name": "password_min_length",
-        "datatype": "integer",
-        "unit": "characters",
-        "honoured": false,
-        "description": "Minimum password length the organisation requires."
-      }
-    ],
+    "baseline_parameters": [],
     "methods": [
       {
         "method": "discovery",

@@ -62,7 +62,9 @@
           "NOT_APPLICABLE": 0,
           "MANUAL_REVIEW": 0,
           "ERROR": 0
-        }
+        },
+        "finding_refs": null,
+        "evidence_refs": null
       },
       {
         "control": {
@@ -115,11 +117,8 @@
           }
         ],
         "gap_description": "1 asset has an open critical vulnerability (CVE-2021-44228).",
-        "finding_refs": [
-          {
-            "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228"
-          }
-        ]
+        "finding_refs": null,
+        "evidence_refs": null
       },
       {
         "control": {
@@ -141,13 +140,8 @@
           "MANUAL_REVIEW": 0,
           "ERROR": 0
         },
-        "evidence_refs": [
-          {
-            "evidence_id": "evd_chk_win_fw_192_0_2_10",
-            "kind": "check_observation",
-            "collected_at": "2026-09-26T02:40:31Z"
-          }
-        ]
+        "evidence_refs": null,
+        "finding_refs": null
       },
       {
         "control": {
@@ -169,14 +163,8 @@
           "MANUAL_REVIEW": 0,
           "ERROR": 0
         },
-        "evidence_refs": [
-          {
-            "evidence_id": "evd_upload_policy_signed_2026",
-            "kind": "uploaded_file",
-            "collected_at": "2026-09-20T11:00:00Z",
-            "sha256": "0fbb0f9c13422e62372d2b67704522dae492fae78bcdfa57987a6ab537f14799"
-          }
-        ]
+        "evidence_refs": null,
+        "finding_refs": null
       },
       {
         "control": {
@@ -197,7 +185,9 @@
           "NOT_APPLICABLE": 0,
           "MANUAL_REVIEW": 0,
           "ERROR": 0
-        }
+        },
+        "finding_refs": null,
+        "evidence_refs": null
       },
       {
         "control": {
@@ -218,9 +208,11 @@
           "NOT_APPLICABLE": 0,
           "MANUAL_REVIEW": 0,
           "ERROR": 0
-        }
+        },
+        "finding_refs": null,
+        "evidence_refs": null
       }
     ],
-    "content_sha256": "d81fb7e554b4d4eb949c10d20818818d3543e3fe2b8d9d111150cebfe89f7341"
+    "content_sha256": "4c43f800331b9f5f2075b6dc61d23332d9ec48c096e5e3208bf700463499aa82"
   }
 }

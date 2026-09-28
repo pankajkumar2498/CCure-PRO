@@ -285,6 +285,8 @@ def test_a_cve_finding_maps_and_round_trips():
     assert message.risk.cvss_component.value == 7.5
     assert message.remediation.guidance == "Upgrade to 1.2.4."
     assert message.last_assessment.assessment_id == "scn_mapper"
+    # Not implemented is null, never an empty list claiming there is none.
+    assert message.evidence_refs is None
 
 
 def test_what_audit_does_not_implement_is_stated_never_zero():
@@ -598,6 +600,7 @@ def test_a_control_passes_only_where_every_asset_that_ran_it_passed():
     assert result.asset_counts.pass_ == 1 and result.state_reason is None
     assert result.basis == "automated"
     assert result.disposition is cv.ComplianceDisposition.NONE
+    assert result.finding_refs is None and result.evidence_refs is None
 
 
 def test_an_unassessed_host_keeps_the_control_from_passing():
@@ -856,8 +859,8 @@ def test_every_mapping_state_maps_and_the_summary_adds_up():
                     entry="192.168.0.0/16", reason="outside the authorised scope"
                 ),
             ),
-            asset_tags=(),
-            unmatched_tags=(),
+            asset_tags=("finance",),
+            unmatched_tags=("finance",),
         ),
     )
     message = _map_coverage(view)
@@ -875,11 +878,17 @@ def test_every_mapping_state_maps_and_the_summary_adds_up():
     assert data.controls[0].audit_rules[0].platforms == ["linux"]
     assert data.controls[0].reason is None
     assert data.parameters[0].handling is cv.ParameterHandling.UNKNOWN_PARAMETER
-    assert data.scope.applied and data.scope.rejected_entries == ["192.168.0.0/16"]
+    scope = data.scope
+    assert scope.applied and scope.organisation_scope_configured
+    (rejected,) = scope.rejected_entries
+    assert rejected.entry == "192.168.0.0/16"
+    assert rejected.reason == "outside the authorised scope"
+    # Inside the scope but matching nothing: reported, never refused.
+    assert scope.unmatched_asset_tags == ["finance"]
     assert data.activation == "pending_review"
 
 
-def test_notes_travel_in_the_reason_even_for_an_automated_control():
+def test_notes_and_applicability_have_their_own_fields():
     control = _coverage_control(
         "req-1",
         "A.8.9",
@@ -889,7 +898,26 @@ def test_notes_travel_in_the_reason_even_for_an_automated_control():
         notes=("Declared not applicable by the baseline.",),
     )
     (mapped,) = _map_coverage(_coverage(control)).data.controls
-    assert mapped.reason == "Declared not applicable by the baseline."
+    assert mapped.applicability is cv.Applicability.NOT_APPLICABLE
+    assert mapped.notes == ["Declared not applicable by the baseline."]
+    # reason keeps its contract meaning: why the control is not automated.
+    assert mapped.reason is None
+
+
+def test_an_unconfigured_organisation_scope_is_said_out_loud():
+    view = _coverage(
+        _coverage_control("req-1", "A.8.9", "automated", rules=[_rule()]),
+        scope=ScopeOutcomeView(
+            requested=True,
+            org_scope_configured=False,
+            accepted_cidrs=("10.0.0.0/24",),
+            rejected_cidrs=(),
+            asset_tags=(),
+            unmatched_tags=(),
+        ),
+    )
+    scope = _map_coverage(view).data.scope
+    assert scope.applied and scope.organisation_scope_configured is False
 
 
 def test_an_automated_control_with_no_assessing_rule_is_refused():

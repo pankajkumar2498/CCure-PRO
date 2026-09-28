@@ -23,9 +23,9 @@ zero, a ``False`` or an empty string standing in for a value.
   acceptance leaves reason and date behind, and the state, not the residue,
   decides (CLAUDE.md, WITHDRAWN ≠ ACCEPTED).
 * **Evidence** is referenced, not embedded, and Audit has no evidence
-  identifier or endpoint yet, so ``evidence_refs`` is empty. The contract
-  cannot yet say "not implemented" for a list; that is a pre-freeze
-  clarification in the Phase 5 document.
+  identifier or endpoint yet, so ``evidence_refs`` is null — the
+  contract's "not implemented", never an empty list, which would state
+  that no evidence exists.
 """
 
 from __future__ import annotations
@@ -205,7 +205,7 @@ def _finding_data(view: FindingView) -> dict:
         "remediation": _remediation(view, where),
         "risk": _risk(view),
         "last_assessment": {"assessment_id": view.scan_id},
-        "evidence_refs": [],
+        "evidence_refs": None,
     }
 
 

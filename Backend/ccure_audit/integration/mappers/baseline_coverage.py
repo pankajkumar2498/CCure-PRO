@@ -7,17 +7,10 @@ until the integration phase adds the store. The mapper therefore takes those
 as arguments and decides none of them; ``activation`` in particular has no
 default, because only the store knows whether a baseline governs anything.
 
-Three things the view knows that the contract has no field for, each carried
-as honestly as the contract allows and listed as a pre-freeze clarification in
-the Phase 5 document:
-
-* the per-control **notes** (declared not applicable; framework not installed
-  for this tenant) are appended to ``reason``, which is otherwise only
-  required for a state other than AUTOMATED;
-* a rejected scope entry's **reason** is dropped — ``rejected_entries`` is a
-  list of strings;
-* **unmatched asset tags** are not rejected entries (they lie inside the
-  authorised scope; they match nothing yet) and are not reported at all.
+Since the Phase 7 contract corrections, everything the view knows has a place:
+the per-control ``notes`` and ``applicability`` echo, each rejected scope entry
+with its reason, the unmatched asset tags, and whether the organisation has a
+scan scope configured at all.
 """
 
 from __future__ import annotations
@@ -48,12 +41,8 @@ def _rule(rule: CatalogueRuleView, where: str) -> dict:
     }
 
 
-def _reason(control: ControlCoverageView) -> Optional[str]:
-    parts: List[str] = []
-    if control.mapping.reason:
-        parts.append(control.mapping.reason.strip())
-    parts.extend(n.strip() for n in control.notes if n and n.strip())
-    return vocab.short_text(" ".join(parts)) if parts else None
+def _notes(control: ControlCoverageView) -> List[str]:
+    return [vocab.short_text(n) for n in control.notes if n and n.strip()]
 
 
 def _control(control: ControlCoverageView) -> dict:
@@ -68,9 +57,11 @@ def _control(control: ControlCoverageView) -> dict:
         "control": control_ref(
             key.framework_code, key.framework_version, key.control_id, where
         ),
+        "applicability": "applicable" if control.applicable else "not_applicable",
         "mapping_state": state,
         "audit_rules": rules,
-        "reason": _reason(control),
+        "reason": vocab.short_text(control.mapping.reason),
+        "notes": _notes(control),
     }
 
 
@@ -118,7 +109,12 @@ def baseline_coverage(
         ],
         "scope": {
             "applied": view.scope.applied,
-            "rejected_entries": [r.entry for r in view.scope.rejected_cidrs],
+            "organisation_scope_configured": view.scope.org_scope_configured,
+            "rejected_entries": [
+                {"entry": r.entry, "reason": vocab.short_text(r.reason)}
+                for r in view.scope.rejected_cidrs
+            ],
+            "unmatched_asset_tags": list(view.scope.unmatched_tags),
         },
     }
     return build(

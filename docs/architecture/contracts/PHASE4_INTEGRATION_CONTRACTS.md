@@ -1147,8 +1147,29 @@ Two related facts that are **not** gaps, stated so nobody records them as one:
 | Q8  | **Accepted:** HTTPS + outbox for v1. Kafka is deferred.                                                                                                                                       |
 | Q9  | **Resolved:** a correction is a new `AssessmentResult` with `supersedes_result_id` and `correction_reason`; an existing result is never modified. Added to v1.0 (still a draft schema).       |
 
+### 14.1a Corrections before the v1 freeze (plan Phase 7, 28 Sep 2026)
+
+Building the Audit mappers (Phase 5.6) found six places where the draft could
+not say what Audit knows or does not know. All six are corrected in the models,
+schemas and examples. v1 is still `draft` until the freeze is approved.
+
+| #   | Correction                                                                                                                                                                                                                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | `finding_refs` / `evidence_refs` on a control result, and `evidence_refs` on a finding, are **nullable and `not_implemented`**. `null` means Audit does not report them yet; `[]` would state that none exist. The examples now show `null`.                                                             |
+| C2  | `CcureControlMappingV1` gains **`applicability`** (an echo of what the baseline declared) and **`notes`** (e.g. "framework not installed for this tenant"). `reason` keeps its one meaning: why the control is not fully automated.                                                                      |
+| C3  | `CcureScopeOutcomeV1`: **`rejected_entries` carries objects `{entry, reason}`**, plus **`organisation_scope_configured`** and **`unmatched_asset_tags`**. "Outside the scope" and "not a valid CIDR" need different fixes, and a scope of tags that match nothing assesses nothing.                      |
+| C4  | `AssessmentControlsPage` states that **an empty page is not a clean result**; coverage is read from the `AssessmentResult` named by `result_id`.                                                                                                                                                         |
+| C5  | `rule_id` in `BaselineCoverage` and in `ControlResult.rules` is **one namespace** (Audit's compliance rule id, which is also the check id), stated on both fields.                                                                                                                                       |
+| C6  | `audit_priority` is **`not_implemented`**, not `partial`. It is computed for display and not stored on a finding. The examples no longer show `P0`.                                                                                                                                                      |
+| C7  | The Capabilities example matched no real installation. It now shows **ISO 27001 15 and NIST CSF 29 automated controls** (measured read-only on 28 Sep 2026) and **no baseline parameters**, because Audit's parameter vocabulary is empty. The coverage example answers `UNKNOWN_PARAMETER` accordingly. |
+
+**Transport under the platform plan's revision 4** (28 Sep 2026) is unchanged for the payloads:
+
+- Contracts 1–3 run in-process inside the core service.
+- Contracts 4–5 cross the network between the core and the IR service through the API Gateway. The gateway authenticates every call, including service-to-service calls (§4.2).
+
 The table below keeps the original proposals for the record; where it differs,
-§14.1 wins.
+§14.1 and §14.1a win.
 
 ### 14.2 Questions as raised
 

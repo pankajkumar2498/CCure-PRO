@@ -266,13 +266,30 @@ class CcureAssessmentFindingsPageV1(CcureEnvelopeV1):
 
 
 class CcureAssessmentControlsPageV1(CcureEnvelopeV1):
-    """``GET /api/v1/integrations/assessment-results/{result_id}/controls?cursor=``"""
+    """
+    ``GET /api/v1/integrations/assessment-results/{result_id}/controls?cursor=``
+
+    **An empty page is not a clean result.** Audit lists a control only when the
+    assessment stored a verdict record for a check mapped to it. An assessment
+    that reached no asset therefore has no control results at all. Whether that
+    is "nothing failed" or "nothing was assessed" is answered by the
+    ``AssessmentResult`` named by ``result_id`` — its ``coverage`` and per-asset
+    ``coverage`` states — and never by this page alone.
+    """
 
     contract: Literal["ccure.audit.assessment_controls_page"] = owned(
         "producer", "Contract name."
     )
-    result_id: OpaqueId = owned("audit", "The result these control results belong to.")
-    items: List[CcureControlResultV1] = owned("audit", "Control results.")
+    result_id: OpaqueId = owned(
+        "audit",
+        "The result these control results belong to. Read its coverage before "
+        "interpreting an empty or short list.",
+    )
+    items: List[CcureControlResultV1] = owned(
+        "audit",
+        "Control results for the controls the assessment stored verdicts for. "
+        "Empty does not mean compliant; see result_id.",
+    )
     position: CcureFeedPositionV1 = owned("audit", "Paging.")
 
 

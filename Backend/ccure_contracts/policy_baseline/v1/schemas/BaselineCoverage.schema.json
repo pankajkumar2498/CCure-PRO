@@ -1,5 +1,14 @@
 {
   "$defs": {
+    "Applicability": {
+      "description": "Whether the policy owner declares a control applicable to the organisation.",
+      "enum": [
+        "applicable",
+        "not_applicable"
+      ],
+      "title": "Applicability",
+      "type": "string"
+    },
     "BaselineMappingState": {
       "description": "How Audit can assess one control of a received policy baseline.",
       "enum": [
@@ -38,7 +47,7 @@
           "x-ccure-owner": "audit"
         },
         "rule_id": {
-          "description": "Audit's rule identifier.",
+          "description": "Audit's rule identifier — the same namespace as ControlResult.rules[].rule_id, so a result can be matched to the coverage that promised it.",
           "maxLength": 400,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
@@ -218,6 +227,16 @@
     "CcureControlMappingV1": {
       "additionalProperties": false,
       "properties": {
+        "applicability": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Applicability"
+            }
+          ],
+          "description": "Echo of the applicability the baseline declared. A not-applicable control is still mapped, so the owner can see what Audit could have assessed; Audit does not assess it.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
         "audit_rules": {
           "description": "The Audit rules the control maps to. Empty for ATTESTATION_REQUIRED, UNKNOWN_CONTROL and UNSUPPORTED.",
           "items": {
@@ -252,6 +271,18 @@
             "7.3.2.1"
           ]
         },
+        "notes": {
+          "description": "Anything else the owner must know about this control, whatever its mapping state — e.g. that its framework is not installed for this tenant, so Audit will not assess it until it is.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
         "reason": {
           "anyOf": [
             {
@@ -283,6 +314,7 @@
       "required": [
         "requirement_id",
         "control",
+        "applicability",
         "mapping_state"
       ],
       "title": "CcureControlMappingV1",
@@ -480,23 +512,70 @@
           "x-ccure-availability": "available",
           "x-ccure-owner": "audit"
         },
+        "organisation_scope_configured": {
+          "description": "Whether the organisation has an authorised scan scope at all. When false, a CIDR is narrowing an unrestricted scope and was not checked against one — which is different from having passed a check.",
+          "title": "Organisation Scope Configured",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
         "rejected_entries": {
-          "description": "Scope entries refused because they lie outside the organisation's authorised scan scope.",
+          "description": "Scope entries refused, each with its reason.",
+          "items": {
+            "$ref": "#/$defs/CcureScopeRejectionV1"
+          },
+          "title": "Rejected Entries",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "unmatched_asset_tags": {
+          "description": "Asset tags no asset of this tenant carries today. Not refused — a tag may be applied later — but a scope made only of these assesses nothing.",
           "items": {
             "maxLength": 500,
             "minLength": 1,
             "type": "string"
           },
-          "title": "Rejected Entries",
+          "title": "Unmatched Asset Tags",
           "type": "array",
           "x-ccure-availability": "available",
           "x-ccure-owner": "audit"
         }
       },
       "required": [
-        "applied"
+        "applied",
+        "organisation_scope_configured"
       ],
       "title": "CcureScopeOutcomeV1",
+      "type": "object"
+    },
+    "CcureScopeRejectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "description": "Echo of the refused scope entry.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Entry",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "reason": {
+          "description": "Why it was refused — outside the authorised scope, or not a valid CIDR. Each needs a different fix.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "entry",
+        "reason"
+      ],
+      "title": "CcureScopeRejectionV1",
       "type": "object"
     },
     "CcureSourceV1": {

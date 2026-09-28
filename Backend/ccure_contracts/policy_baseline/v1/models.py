@@ -202,7 +202,12 @@ class CcurePolicyBaselineV1(CcureEnvelopeV1):
 class CcureAuditRuleRefV1(ContractModel):
     """An Audit assessment rule a control maps to. Audit's, and opaque."""
 
-    rule_id: OpaqueId = owned("audit", "Audit's rule identifier.")
+    rule_id: OpaqueId = owned(
+        "audit",
+        "Audit's rule identifier — the same namespace as "
+        "ControlResult.rules[].rule_id, so a result can be matched to the "
+        "coverage that promised it.",
+    )
     title: ShortText = owned("audit", "Rule title, for display.")
     check_type: ShortText = owned(
         "audit",
@@ -221,6 +226,12 @@ class CcureControlMappingV1(ContractModel):
         "policy_pro", "Echo of the baseline requirement this entry answers."
     )
     control: CcureControlRefV1 = owned("policy_pro", "Echo of the control.")
+    applicability: Applicability = owned(
+        "policy_pro",
+        "Echo of the applicability the baseline declared. A not-applicable "
+        "control is still mapped, so the owner can see what Audit could have "
+        "assessed; Audit does not assess it.",
+    )
     mapping_state: BaselineMappingState = owned(
         "audit", "How Audit can assess the control.", srs=("7.3.1.2", "7.3.2.1")
     )
@@ -234,6 +245,13 @@ class CcureControlMappingV1(ContractModel):
         "audit",
         "Why the control is not (fully) automated. Required unless AUTOMATED.",
         default=None,
+    )
+    notes: List[ShortText] = owned(
+        "audit",
+        "Anything else the owner must know about this control, whatever its "
+        "mapping state — e.g. that its framework is not installed for this "
+        "tenant, so Audit will not assess it until it is.",
+        default_factory=list,
     )
 
     @model_validator(mode="after")
@@ -266,12 +284,33 @@ class CcureParameterOutcomeV1(ContractModel):
     )
 
 
+class CcureScopeRejectionV1(ContractModel):
+    entry: ShortText = owned("policy_pro", "Echo of the refused scope entry.")
+    reason: ShortText = owned(
+        "audit",
+        "Why it was refused — outside the authorised scope, or not a valid "
+        "CIDR. Each needs a different fix.",
+    )
+
+
 class CcureScopeOutcomeV1(ContractModel):
     applied: bool = owned("audit", "Whether any scope narrowing was applied.")
-    rejected_entries: List[ShortText] = owned(
+    organisation_scope_configured: bool = owned(
         "audit",
-        "Scope entries refused because they lie outside the organisation's "
-        "authorised scan scope.",
+        "Whether the organisation has an authorised scan scope at all. When "
+        "false, a CIDR is narrowing an unrestricted scope and was not checked "
+        "against one — which is different from having passed a check.",
+    )
+    rejected_entries: List[CcureScopeRejectionV1] = owned(
+        "audit",
+        "Scope entries refused, each with its reason.",
+        default_factory=list,
+    )
+    unmatched_asset_tags: List[ShortText] = owned(
+        "audit",
+        "Asset tags no asset of this tenant carries today. Not refused — a tag "
+        "may be applied later — but a scope made only of these assesses "
+        "nothing.",
         default_factory=list,
     )
 

@@ -38,6 +38,7 @@
           },
           "control_id": "A.5.17"
         },
+        "applicability": "applicable",
         "mapping_state": "ATTESTATION_REQUIRED",
         "reason": "Audit's rule for A.5.17 is an attestation placeholder; the password-length checks are not yet crosswalked to this control."
       },
@@ -50,6 +51,7 @@
           },
           "control_id": "A.8.8"
         },
+        "applicability": "applicable",
         "mapping_state": "AUTOMATED",
         "audit_rules": [
           {
@@ -79,6 +81,7 @@
           },
           "control_id": "A.8.9"
         },
+        "applicability": "applicable",
         "mapping_state": "AUTOMATED",
         "audit_rules": [
           {
@@ -118,6 +121,7 @@
           },
           "control_id": "A.5.1"
         },
+        "applicability": "applicable",
         "mapping_state": "ATTESTATION_REQUIRED",
         "reason": "An organisational control; no technical check can establish it."
       },
@@ -130,8 +134,12 @@
           },
           "control_id": "A.7.4"
         },
+        "applicability": "not_applicable",
         "mapping_state": "ATTESTATION_REQUIRED",
-        "reason": "A physical control; declared not applicable by the baseline."
+        "reason": "A physical control; no technical check can establish it.",
+        "notes": [
+          "Declared not applicable by the baseline; Audit reports it as not applicable and does not assess it."
+        ]
       },
       {
         "requirement_id": "REQ-ORG-07",
@@ -142,6 +150,7 @@
           },
           "control_id": "PWD-01"
         },
+        "applicability": "applicable",
         "mapping_state": "UNKNOWN_CONTROL",
         "reason": "Framework ORG_INTERNAL/3 is not in Audit's catalogue."
       }
@@ -150,15 +159,20 @@
       {
         "requirement_id": "REQ-ACC-01",
         "name": "password_min_length",
-        "handling": "RECORDED_NOT_HONOURED",
-        "reason": "Audit's rules do not take parameters yet (plan Phase 13); the value is recorded and reported."
+        "handling": "UNKNOWN_PARAMETER",
+        "reason": "Audit has no parameter vocabulary yet: its rules take no parameters. The value is recorded, not applied."
       }
     ],
     "scope": {
       "applied": true,
+      "organisation_scope_configured": true,
       "rejected_entries": [
-        "198.51.100.0/24"
-      ]
+        {
+          "entry": "198.51.100.0/24",
+          "reason": "Outside the organisation's authorised scan scope; a baseline may only narrow it."
+        }
+      ],
+      "unmatched_asset_tags": []
     }
   }
 }

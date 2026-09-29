@@ -12,7 +12,7 @@ Endpoints
 
 from typing import List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from core.quota import check_scan_quota, get_quota_status
 from core.tasks import (
     run_asset_discovery_task,
@@ -21,7 +21,7 @@ from core.tasks import (
     run_vulnerability_audit_task,
 )
 from db.base import get_db
-from db.models import Scan, User
+from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from scan_helpers import (
@@ -47,13 +47,13 @@ router = APIRouter(tags=["Phase-Selective Scans"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (
         getattr(getattr(user, "role", None), "name", "") or ""
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: str | None) -> str:
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -73,7 +73,7 @@ def _org_scope(db: Session, org_id: str):
 
 
 def _continuation_scan(
-    db: Session, user: User, scan_id: str | None, org_id: str | None
+    db: Session, user: CurrentUser, scan_id: str | None, org_id: str | None
 ):
     """
     Load the scan a Phase 2 or Phase 3 request continues, as this caller may see it.
@@ -158,7 +158,7 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
 def get_scan_quota(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Return the organisation's current scan quota status.
@@ -427,7 +427,7 @@ async def scan_host_discovery(
     response: Response,
     req: HostDiscoveryRequest,
     org_id: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """
@@ -615,7 +615,7 @@ async def scan_asset_discovery(
     response: Response,
     req: AssetDiscoveryRequest,
     org_id: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """
@@ -686,7 +686,7 @@ async def scan_vulnerability_audit(
     response: Response,
     req: VulnerabilityAuditRequest,
     org_id: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """
@@ -741,7 +741,7 @@ async def scan_phases(
     request: Request,
     response: Response,
     req: PhasesRequest,
-    current_user: User = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
     db: Session = Depends(get_db),
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""

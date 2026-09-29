@@ -238,6 +238,12 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `organizations` in step 8.4, and the 11 mentions in identity's own code
     are a baseline that reaches zero there.
 - **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+- **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
+  (step 8.5) and take `require_permission` / `require_role` /
+  `current_user_flexible` from the API, never from `auth.*` or `db.models`.
+  Only three identity imports remain in module code, each with its reason
+  beside `KNOWN_IDENTITY_IMPORTS`: `core.tasks`'s mail-task re-export (a legacy
+  path), and the two WebSocket ticket logins (Phase 10).
 - **Module code asks `ccure_platform.api` (since step 8.3)**, never
   `users`/`organizations`/`roles` directly:
   - `api.user()` and `api.organisation()` return frozen views;

@@ -111,6 +111,19 @@ def test_the_measurement_walks_the_backend(measured):
         # an Audit model is not identity, and neither is a local class named User
         ("from db.models import Scan\nq = db.query(Scan)\n", []),
         ("class User: ...\nq = db.query(User)\n", []),
+        # CurrentUser is the identity model under the API's name: importing it
+        # is not an identity import, but querying through it is a query
+        (
+            "from ccure_platform.api import CurrentUser\n"
+            "def f(db, user: CurrentUser): return db.query(CurrentUser).first()\n",
+            [("query", "User")],
+        ),
+        (
+            "from ccure_platform import api as platform_api\n"
+            "a = db.query(platform_api.CurrentUser.id).all()\n"
+            "b = db.get(platform_api.CurrentUser, 'u1')\n",
+            [("query", "User"), ("query", "User")],
+        ),
         # the platform's own entry point is the permitted way in …
         (
             "from ccure_platform import api\nfrom ccure_platform.api import current_user\n",

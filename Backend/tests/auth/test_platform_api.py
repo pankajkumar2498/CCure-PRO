@@ -165,6 +165,8 @@ def test_request_identity_is_the_existing_dependencies():
     assert api.current_user_flexible is dependencies.get_current_user_flexible
     assert api.require_permission is rbac.require_permission
     assert api.require_role is rbac.require_role
+    # the principal's type is the identity model, named by the platform (8.5)
+    assert api.CurrentUser is User
 
 
 # ── tenancy ───────────────────────────────────────────────────────────────────

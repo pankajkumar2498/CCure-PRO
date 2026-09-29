@@ -86,6 +86,11 @@ IDENTITY_PACKAGES = ("auth",)
 PLATFORM_PACKAGE = "ccure_platform"
 PLATFORM_API = "ccure_platform.api"
 
+#: Names ``ccure_platform.api`` exports that *are* an identity model. Importing
+#: one is not an identity import (it goes through the API), but querying
+#: through one is still a direct identity query and is counted as one.
+API_MODEL_ALIASES = {"CurrentUser": "User"}
+
 #: Everything ``ccure_platform.api`` may ever export. It holds shared identity,
 #: tenancy and RBAC primitives only — never Audit's quotas, scan scope or any
 #: other module's business logic. A name added here needs a reason in review.
@@ -107,6 +112,8 @@ PLATFORM_API_SURFACE = frozenset(
         "user",
         "UserView",
         "active_members_with_roles",
+        # step 8.5: the type routes annotate the authenticated principal with
+        "CurrentUser",
         # step 8.4: the organisation plan, one removable feature per group
         "ScanLimits",
         "ScanLimitsView",
@@ -190,9 +197,19 @@ def _is_platform_internal(module: str) -> bool:
     return _under(module, PLATFORM_PACKAGE) and not _under(module, PLATFORM_API)
 
 
-def _root_name(node: ast.AST) -> str | None:
-    """The name an expression such as ``User.id`` or ``func.count(User.id)`` hangs off."""
+def _root_name(node: ast.AST, dotted: frozenset[str] = frozenset()) -> str | None:
+    """
+    The name an expression such as ``User.id`` or ``func.count(User.id)`` hangs
+    off. ``dotted`` holds ``alias.Name`` pairs (``platform_api.CurrentUser``)
+    that count as a root in their own right.
+    """
     while True:
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and f"{node.value.id}.{node.attr}" in dotted
+        ):
+            return f"{node.value.id}.{node.attr}"
         if isinstance(node, ast.Attribute):
             node = node.value
         elif isinstance(node, ast.Call) and node.args and not node.keywords:
@@ -234,6 +251,8 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
                 elif base in IDENTITY_MODEL_SOURCES and alias.name in IDENTITY_MODELS:
                     sites.append(Site(module, node.lineno, "import", symbol))
                     bound[alias.asname or alias.name] = alias.name
+                elif base == PLATFORM_API and alias.name in API_MODEL_ALIASES:
+                    bound[alias.asname or alias.name] = API_MODEL_ALIASES[alias.name]
                 elif base == PLATFORM_PACKAGE and alias.name != "api":
                     sites.append(Site(module, node.lineno, "import", symbol))
                 elif _is_platform_internal(base) and base != PLATFORM_PACKAGE:
@@ -244,6 +263,15 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
                     _is_platform_internal(alias.name) and alias.name != PLATFORM_PACKAGE
                 ):
                     sites.append(Site(module, node.lineno, "import", alias.name))
+
+    # ``from ccure_platform import api as X`` makes ``X.CurrentUser`` a model too.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == PLATFORM_PACKAGE:
+            for alias in node.names:
+                if alias.name == "api":
+                    for name, model in API_MODEL_ALIASES.items():
+                        bound[f"{alias.asname or alias.name}.{name}"] = model
+    dotted = frozenset(k for k in bound if "." in k)
 
     if not bound:
         return sites
@@ -263,18 +291,27 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
         )
         if is_statement:
             for arg in node.args:
-                root = _root_name(arg)
+                root = _root_name(arg, dotted)
                 if root in bound:
                     sites.append(Site(module, node.lineno, "query", bound[root]))
                     break
         elif name == "get" and isinstance(node.func, ast.Attribute):
             first = node.args[0]
-            if isinstance(first, ast.Name) and first.id in bound:
-                sites.append(Site(module, node.lineno, "query", bound[first.id]))
+            root = (
+                first.id
+                if isinstance(first, ast.Name)
+                else (
+                    _root_name(first, dotted)
+                    if isinstance(first, ast.Attribute)
+                    else None
+                )
+            )
+            if root in bound and (isinstance(first, ast.Name) or root in dotted):
+                sites.append(Site(module, node.lineno, "query", bound[root]))
         elif (name in _JOIN_METHODS and isinstance(node.func, ast.Attribute)) or (
             name in _EAGER_LOADS
         ):
-            root = _root_name(node.args[0])
+            root = _root_name(node.args[0], dotted)
             if root in bound:
                 sites.append(Site(module, node.lineno, "join", bound[root]))
     return sites
@@ -366,9 +403,16 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 # explicit reason in review. Steps 8.3 and 8.5 bring all three to empty.
 
 #: module -> identity symbols it imports. 32 modules and 80 symbols on
-#: 28 Sep 2026; 31 after core.email_security_tasks moved into the platform (8.3).
+#: 28 Sep 2026; 3 after step 8.5, each kept on purpose:
+#:
+#: * ``core.tasks`` re-exports the five mail tasks from ``auth.mail_tasks`` so
+#:   the patch targets ``core.tasks.send_*_task`` keep resolving. It is a
+#:   legacy compatibility path, kept while the other legacy paths are (8.5
+#:   deletes none of them).
+#: * ``routers.scan_history`` and ``routers.web_scans`` authenticate a WebSocket
+#:   ticket themselves (``decode_token`` plus a ``User`` query). That is gateway
+#:   work, deliberately left for Phase 10.
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
-    "core.audit": frozenset({"db.models.User"}),
     "core.tasks": frozenset(
         {
             "auth.mail_tasks.send_account_approved_email_task",
@@ -378,55 +422,10 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.mail_tasks.send_verification_email_task",
         }
     ),
-    "routers.admin_nvd": frozenset({"auth.rbac.require_role", "db.models.User"}),
-    "routers.assets": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.compliance": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.config_audit": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.credentialed": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.credentials": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.dashboard": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.findings": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.health": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.phase_scans": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.remediation": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.reports": frozenset(
-        {"auth.dependencies.get_current_user_flexible", "db.models.User"}
-    ),
     "routers.scan_history": frozenset(
-        {
-            "auth.jwt_handler.decode_token",
-            "auth.rbac.require_permission",
-            "db.models.User",
-        }
+        {"auth.jwt_handler.decode_token", "db.models.User"}
     ),
-    "routers.scan_policies": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.scan_schedules": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.topology": frozenset({"auth.rbac.require_permission", "db.models.User"}),
-    "routers.traditional_scans": frozenset(
-        {"auth.rbac.require_permission", "db.models.User"}
-    ),
-    "routers.web_scans": frozenset(
-        {
-            "auth.jwt_handler.decode_token",
-            "auth.rbac.require_permission",
-            "auth.rbac.user_has_permission",
-            "db.models.User",
-        }
-    ),
+    "routers.web_scans": frozenset({"auth.jwt_handler.decode_token", "db.models.User"}),
 }
 
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on

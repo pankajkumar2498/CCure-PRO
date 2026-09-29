@@ -20,9 +20,8 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
-from auth.rbac import require_role
+from ccure_platform.api import CurrentUser, require_role
 from db.base import get_db
-from db.models import User
 from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin NVD Catalog"])
@@ -75,7 +74,7 @@ async def trigger_nvd_sync(
             "frontier past anything it failed to retrieve."
         ),
     ),
-    current_user: User = Depends(_superadmin_only),
+    current_user: CurrentUser = Depends(_superadmin_only),
 ):
     """
     Trigger a live NVD 2.0 sync into the application vulnerability catalogue.
@@ -122,7 +121,7 @@ async def trigger_nvd_sync(
 
 @router.get("/nvd-sync-status")
 async def get_sync_status(
-    current_user: User = Depends(_superadmin_only),
+    current_user: CurrentUser = Depends(_superadmin_only),
 ):
     """
     Check NVD 2.0 sync progress, last sync timestamp, and the catalogue count.

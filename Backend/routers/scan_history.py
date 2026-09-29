@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from auth.jwt_handler import decode_token
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from db.base import SessionLocal, get_db, utcnow
 from ccure_platform import api as platform_api
 from db.models import User
@@ -63,13 +63,13 @@ TERMINAL_STATUSES = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (
         getattr(getattr(user, "role", None), "name", "") or ""
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: str | None) -> str:
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -159,12 +159,12 @@ def _scan_to_dict(
     return d
 
 
-def _user_can_read_all_scans(user: User, db: Session) -> bool:
+def _user_can_read_all_scans(user: CurrentUser, db: Session) -> bool:
     return platform_api.user_has_permission(db, user, "scans", "read_all")
 
 
 def _get_scan_or_404(
-    scan_id: str, user: User, db: Session, org_id: str | None = None
+    scan_id: str, user: CurrentUser, db: Session, org_id: str | None = None
 ) -> Scan:
     target_org_id = _resolve_org(user, org_id)
     query = (
@@ -229,7 +229,7 @@ SORTABLE_COLUMNS = {
 
 def _build_scans_query(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     scope: str,
     created_by: str | None = None,
@@ -332,7 +332,7 @@ def _build_scans_query(
 
 def _scan_history_snapshot(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     scope: str,
     skip: int,
@@ -382,7 +382,7 @@ def _scan_history_snapshot(
     }
 
 
-def _get_websocket_user(websocket: WebSocket) -> User:
+def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
     ticket = websocket.query_params.get("ticket")
 
     if not ticket:
@@ -458,7 +458,7 @@ def list_scans(
     ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
@@ -498,7 +498,7 @@ async def stream_scan_history(
     status: str | None = Query(None),
     search: str | None = Query(None),
     pipeline_mode: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
@@ -673,7 +673,7 @@ def get_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -691,7 +691,7 @@ def scan_policy_record(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     The assessment configuration this scan actually ran under.
@@ -812,7 +812,7 @@ def compare_scan(
     include_findings: bool = Query(True),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     What changed between this scan and a baseline.
@@ -872,7 +872,7 @@ def archive_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "archive")),
+    user: CurrentUser = Depends(require_permission("scans", "archive")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -902,7 +902,7 @@ def stop_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
 ):
     """
     Terminates an active scan session.
@@ -985,7 +985,7 @@ def restore_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "restore")),
+    user: CurrentUser = Depends(require_permission("scans", "restore")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -1026,7 +1026,7 @@ def delete_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "recycle")),
+    user: CurrentUser = Depends(require_permission("scans", "recycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -1052,7 +1052,7 @@ def purge_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "purge")),
+    user: CurrentUser = Depends(require_permission("scans", "purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)

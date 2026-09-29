@@ -1,12 +1,12 @@
 # Phase 8 — Identity, organisations and roles into `ccure_platform`
 
-|               |                                                                                                                                                                                                                                                                                                                   |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Approved** by the project owner, 28 Sep 2026, step by step with a review stop after each commit. **Steps 8.1–8.3 done.** Step 8.4 is redesigned: the owner decided on 29 Sep 2026 that plan and entitlement settings are platform-owned — see [`PHASE8_4_ORGANISATION_PLAN.md`](PHASE8_4_ORGANISATION_PLAN.md). |
-| **Date**      | 28 Sep 2026                                                                                                                                                                                                                                                                                                       |
-| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 8, rule 13, §3.9 (future authentication service), Phase 19 (single-organisation mode)                                                                                                                             |
-| **Builds on** | Phases 1–7: 0 layering violations, 0 import cycles, contracts v1 (draft), Audit's read services                                                                                                                                                                                                                   |
-| **Audience**  | Project owner (owner of `ccure_platform`, D6); Audit team                                                                                                                                                                                                                                                         |
+|               |                                                                                                                                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Steps 8.1–8.5 done** (29 Sep 2026). Step 8.4 was redesigned — plan and entitlements are platform-owned, see [`PHASE8_4_ORGANISATION_PLAN.md`](PHASE8_4_ORGANISATION_PLAN.md). Phase 9 not started. |
+| **Date**      | 28 Sep 2026                                                                                                                                                                                          |
+| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 8, rule 13, §3.9 (future authentication service), Phase 19 (single-organisation mode)                |
+| **Builds on** | Phases 1–7: 0 layering violations, 0 import cycles, contracts v1 (draft), Audit's read services                                                                                                      |
+| **Audience**  | Project owner (owner of `ccure_platform`, D6); Audit team                                                                                                                                            |
 
 ## 1. What this phase is for
 
@@ -483,3 +483,93 @@ exempts it.
   alerts-preference rule, and the permission rule by ORM user and by id.
 - the Celery test for the moved screening tasks;
 - the identity baselines, lowered at each batch.
+
+## 11. Step 8.5 — as built
+
+**Goal:** module code reaches identity through `ccure_platform.api`, with the
+two WebSocket logins left for Phase 10 and the legacy paths kept working.
+
+### Identity imports in module code, before → after
+
+| Module                                                                                                                                                                                                                            | Before 8.5                                                                                                                                               | After                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15 routers: `assets`, `compliance`, `config_audit`, `credentialed`, `credentials`, `dashboard`, `findings`, `health`, `phase_scans`, `remediation`, `reports`, `scan_policies`, `scan_schedules`, `topology`, `traditional_scans` | `auth.rbac.require_permission` (`reports`: `auth.dependencies.get_current_user_flexible`); `db.models.User`, as the annotation of the authenticated user | `ccure_platform.api`: `require_permission` / `current_user_flexible` (the same objects) and `CurrentUser`                                   |
+| `routers.admin_nvd`                                                                                                                                                                                                               | `auth.rbac.require_role`, `db.models.User`                                                                                                               | `api.require_role`, `api.CurrentUser`                                                                                                       |
+| `routers.scan_history`                                                                                                                                                                                                            | `auth.rbac.require_permission`, `auth.jwt_handler.decode_token`, `db.models.User`                                                                        | `api.require_permission` and `api.CurrentUser` for routes. **Kept:** `decode_token` and `User`, for the WebSocket ticket login              |
+| `routers.web_scans`                                                                                                                                                                                                               | the same plus `auth.rbac.user_has_permission`                                                                                                            | `api.require_permission`, `api.user_has_permission`, `api.CurrentUser`. **Kept:** `decode_token` and `User`, for the WebSocket ticket login |
+| `core.audit`                                                                                                                                                                                                                      | `db.models.User` (the actor's annotation)                                                                                                                | a local `AuditActor` protocol — `id`, `org_id`, `username`, exactly what the log reads                                                      |
+| `core.tasks`                                                                                                                                                                                                                      | `auth.mail_tasks.*` ×5 (re-export)                                                                                                                       | **Kept** (below)                                                                                                                            |
+
+**Counts:**
+
+| Measure                  | Before 8.5 | After |
+| ------------------------ | ---------- | ----- |
+| Files importing identity | 20         | **3** |
+| Direct identity queries  | 2          | **2** |
+| Joins and eager loads    | 2          | **2** |
+
+### What `ccure_platform.api` gained
+
+One name: **`CurrentUser`**, the type a route annotates the authenticated user
+with. It is the identity model itself (`CurrentUser is User`), and the API's
+docstring says so rather than pretending otherwise.
+
+Before, a route needed `from db.models import User` purely to write
+`user: User = Depends(require_permission(...))`. Now a route depends on the
+platform's name for the principal, not on where the model lives, so narrowing
+it later (a view, or a separate authentication service, §3.9) changes one
+line.
+
+The ratchet treats it as the model it is. Importing `CurrentUser` is not an
+identity import, but `db.query(CurrentUser)` or
+`db.get(platform_api.CurrentUser, …)` counts as a direct identity query, and a
+detector test proves it.
+
+No function was added, and no Audit logic entered the API.
+
+### Kept on purpose
+
+- **`core.tasks` → `auth.mail_tasks`.** `core.tasks` re-exports the five mail
+  tasks so the patch targets `core.tasks.send_*_task`, used by 8 tests, keep
+  resolving. It is a legacy compatibility path, and 8.5 deletes no legacy
+  path. It goes when the legacy paths do.
+- **`routers.scan_history` and `routers.web_scans` → `decode_token` and
+  `User`.** They authenticate a WebSocket ticket themselves: 2 queries and 2
+  eager loads. That is gateway work, reserved for Phase 10 by the owner.
+
+**The legacy paths all still work**: `auth.*`, `db.models.users` / `.rbac`,
+`core.email_security_tasks` and `core.tasks.send_*_task`. Deleting them is not
+part of Phase 8.
+
+### Behaviour
+
+- **URLs, permissions, roles, authentication, tokens and rate limits are
+  unchanged.** Every dependency a route uses is the same function object as
+  before, imported by another name.
+- **FastAPI does not read a dependency parameter's annotation**, so
+  `CurrentUser` changes nothing in the OpenAPI document.
+
+**Verified against `d48770f`, the end of 8.4:**
+
+- the OpenAPI document is byte-identical;
+- the 91 limiter route keys and 45 Celery task names are identical;
+- the live probe (login, refresh, logout, a missing token, a bad token on an
+  identity route and a permission-guarded route) is identical after
+  restarting all Python services.
+
+**Architecture checks:** 0 layer violations, 0 module-level cycles, and the
+component-level cycle figure is still 24.
+
+### Phase 8 against its definition of done
+
+- **No module imports `auth.*` or an identity model.** True, except the three
+  kept imports above, each recorded in the baseline with its reason.
+- **No module queries or joins an identity table.** True, except the two
+  WebSocket logins reserved for Phase 10.
+- **No module configuration lives on `organizations`.** Superseded by the
+  owner's decision: the plan is platform-owned, and module code names no plan
+  field (a ratchet at zero).
+- **CI keeps all of this true.** The identity ratchets, the plan-field
+  ratchet, the plan-feature containment test and the layer rules hold it.
+- **Sign-in, quotas and scan scope behave exactly as before.** Verified at
+  every step as above.

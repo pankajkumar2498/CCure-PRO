@@ -41,7 +41,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from core.audit import log_audit_event
 from core.scheduling.dispatcher import advance_schedule, dispatch_schedule
 from core.scheduling.recurrence import (
@@ -55,7 +55,7 @@ from core.scheduling.recurrence import (
 )
 from db.base import gen_scan_schedule_id, get_db
 from ccure_platform import api as platform_api
-from db.models import ComplianceCredential, User
+from db.models import ComplianceCredential
 from db.models.scan_schedules import (
     DISPATCHABLE_SCAN_KINDS,
     RECURRENCE_CUSTOM,
@@ -83,13 +83,13 @@ router = APIRouter(prefix="/scan-schedules", tags=["Scan Schedules"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
         "superadmin"
     )
 
 
-def _resolve_org(user: User, requested: Optional[str]) -> str:
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     """
     The organisation this request acts on.
 
@@ -458,7 +458,7 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
 def list_timezones(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
 ):
     """
     The IANA zones this server can resolve.
@@ -477,7 +477,7 @@ def list_selectable_credentials(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -524,7 +524,7 @@ def list_schedules(
     org_id: Optional[str] = Query(None),
     scan_kind: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -544,7 +544,7 @@ def create_schedule(
     response: Response,
     body: ScanScheduleCreate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "create")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "create")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -627,7 +627,7 @@ def get_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
     db: Session = Depends(get_db),
 ):
     schedule = _get_schedule(db, schedule_id, _resolve_org(user, org_id))
@@ -642,7 +642,7 @@ def update_schedule(
     schedule_id: str,
     body: ScanScheduleUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "update")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -744,7 +744,7 @@ def set_enabled(
     schedule_id: str,
     body: ScanScheduleEnableBody,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "update")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -784,7 +784,7 @@ def run_now(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "execute")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "execute")),
     db: Session = Depends(get_db),
 ):
     """
@@ -832,7 +832,7 @@ def list_runs(
     schedule_id: str,
     limit: int = Query(50, ge=1, le=500),
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -857,7 +857,7 @@ def delete_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "delete")),
+    user: CurrentUser = Depends(require_permission("scan_schedules", "delete")),
     db: Session = Depends(get_db),
 ):
     """

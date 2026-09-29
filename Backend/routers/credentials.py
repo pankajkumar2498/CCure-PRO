@@ -47,12 +47,12 @@ ticket. The four WinRM error classes map to four different messages and a
 import logging
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from core.audit import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
 from ccure_platform import api as platform_api
-from db.models import ComplianceCredential, User
+from db.models import ComplianceCredential
 from db.models.compliance import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
@@ -152,13 +152,13 @@ def _database_drivers() -> Dict[str, bool]:
     return available_engines()
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
         "superadmin"
     )
 
 
-def _resolve_org(user: User, requested: Optional[str]) -> str:
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     if requested and _is_superadmin(user):
         return requested
     return str(user.org_id)
@@ -341,7 +341,7 @@ def _apply_type_rules(
 def credential_types(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_permission("credentials", "read")),
 ):
     """
     What this build can authenticate with — read from the code, not hardcoded
@@ -435,7 +435,7 @@ def list_credentials(
     response: Response,
     credential_type: Optional[str] = Query(None),
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_permission("credentials", "read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -453,7 +453,7 @@ def create_credential(
     response: Response,
     body: ScanCredentialCreate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "create")),
+    user: CurrentUser = Depends(require_permission("credentials", "create")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -534,7 +534,7 @@ def get_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_permission("credentials", "read")),
     db: Session = Depends(get_db),
 ):
     return _serialize(_get(db, credential_id, _resolve_org(user, org_id)))
@@ -548,7 +548,7 @@ def update_credential(
     credential_id: str,
     body: ScanCredentialUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "update")),
+    user: CurrentUser = Depends(require_permission("credentials", "update")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -631,7 +631,7 @@ def validate_credential(
     credential_id: str,
     body: ScanCredentialValidateRequest,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "validate")),
+    user: CurrentUser = Depends(require_permission("credentials", "validate")),
     db: Session = Depends(get_db),
 ):
     """
@@ -757,7 +757,7 @@ def delete_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "delete")),
+    user: CurrentUser = Depends(require_permission("credentials", "delete")),
     db: Session = Depends(get_db),
 ):
     """

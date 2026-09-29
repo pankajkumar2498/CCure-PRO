@@ -60,7 +60,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from core.audit import log_audit_event
 from core.remediation import (
     ACTIVE_STATES,
@@ -88,7 +88,6 @@ from core.remediation.sla import (
 )
 from db.base import get_db
 from ccure_platform import api as platform_api
-from db.models import User
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, FindingRemediationEvent
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -107,13 +106,13 @@ router = APIRouter(prefix="/remediation", tags=["Remediation"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
         "superadmin"
     )
 
 
-def _resolve_org(user: User, requested: Optional[str]) -> str:
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     if requested and _is_superadmin(user):
         return requested
     return str(user.org_id)
@@ -278,7 +277,7 @@ def remediation_summary(
     response: Response,
     org_id: Optional[str] = Query(None),
     asset_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -403,7 +402,7 @@ def overdue_findings(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -431,7 +430,7 @@ def pending_verification(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -460,7 +459,7 @@ def finding_remediation(
     response: Response,
     finding_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -476,7 +475,7 @@ def finding_history(
     finding_id: str,
     org_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -542,7 +541,7 @@ def get_sla_policy(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -561,7 +560,7 @@ def set_sla_policy(
     response: Response,
     body: RemediationSlaPolicyUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("settings", "update")),
+    user: CurrentUser = Depends(require_permission("settings", "update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -631,7 +630,7 @@ def assign(
     response: Response,
     body: RemediationAssign,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_permission("findings", "update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -707,7 +706,7 @@ def set_state(
     finding_id: str,
     body: RemediationStateUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_permission("findings", "update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -764,7 +763,7 @@ def append_note(
     finding_id: str,
     body: RemediationNote,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_permission("findings", "update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -798,7 +797,7 @@ def accept_finding_risk(
     finding_id: str,
     body: RemediationAcceptRisk,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_permission("findings", "accept_risk")),
     db: Session = Depends(get_db),
 ):
     """
@@ -860,7 +859,7 @@ def withdraw_finding_acceptance(
     finding_id: str,
     body: RemediationWithdraw,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_permission("findings", "accept_risk")),
     db: Session = Depends(get_db),
 ):
     """Return an accepted finding to the remediation queue by hand."""

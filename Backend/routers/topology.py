@@ -10,9 +10,9 @@ Endpoints:
 
 import logging
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from db.base import get_db
-from db.models import Scan, User
+from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -24,18 +24,20 @@ router = APIRouter(tags=["Network Topology"])
 _ORG_WIDE_ROLES = {"superadmin", "org_admin"}
 
 
-def _role_name(user: User) -> str:
+def _role_name(user: CurrentUser) -> str:
     return (getattr(getattr(user, "role", None), "name", "") or "").lower()
 
 
-def _resolve_org(user: User, requested_org: str | None) -> str:
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
     """Resolve org_id: superadmins can override, others use their own."""
     if _role_name(user) == "superadmin" and requested_org:
         return requested_org
     return str(user.org_id)
 
 
-def _authorize_scan(db: Session, user: User, scan_id: str, resolved_org: str) -> None:
+def _authorize_scan(
+    db: Session, user: CurrentUser, scan_id: str, resolved_org: str
+) -> None:
     """
     Confirm the caller may read this scan's topology.
 
@@ -80,7 +82,7 @@ def get_topology_map(
     subnet_mask: int = _SUBNET_MASK_QUERY,
     active_within_days: int | None = _ACTIVE_WITHIN_QUERY,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Return the network topology graph for the organization.
@@ -117,7 +119,7 @@ def get_topology_map_by_scan(
     subnet_mask: int = _SUBNET_MASK_QUERY,
     active_within_days: int | None = _ACTIVE_WITHIN_QUERY,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Return the network topology graph for a specific scan.

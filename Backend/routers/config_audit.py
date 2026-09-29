@@ -41,7 +41,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from core.config_audit import (
     CHECK_TYPES,
     COMPARISON_OPERATORS,
@@ -52,7 +52,6 @@ from core.config_audit import (
     collector_registry,
 )
 from core.config_audit.builtin import builtin_checks, builtin_checks_by_id
-from db.models import User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from scan_helpers import limiter
@@ -156,7 +155,7 @@ def list_checks(
     platform: Optional[str] = Query(None),
     check_type: Optional[str] = Query(None),
     domain: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     The configuration checks this build can run.
@@ -180,7 +179,7 @@ def list_checks(
 def capabilities(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Which check types actually have a collector, per platform.
@@ -211,7 +210,7 @@ def get_check(
     request: Request,
     response: Response,
     check_id: str,
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     check = builtin_checks_by_id().get(check_id)
     if check is None:
@@ -225,7 +224,7 @@ def validate_rule(
     request: Request,
     response: Response,
     body: ConfigAuditValidateIn,
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Check that a rule definition is executable, without contacting any target.

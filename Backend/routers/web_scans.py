@@ -19,7 +19,7 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from auth.rbac import require_permission, user_has_permission
+from ccure_platform.api import CurrentUser, require_permission, user_has_permission
 from auth.jwt_handler import decode_token
 from core.audit import log_audit_event
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
@@ -57,13 +57,13 @@ router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (
         getattr(getattr(user, "role", None), "name", "") or ""
     ).lower() == "superadmin"
 
 
-def _resolve_org(user: User, requested_org: str | None) -> str:
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
     if _is_superadmin(user) and requested_org:
         return requested_org
     return str(user.org_id)
@@ -450,7 +450,7 @@ def start_web_scan(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
 ):
     """
     Start a new web application scan.
@@ -607,7 +607,7 @@ def list_web_scans(
     status: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """List web scans for the resolved organization."""
     target_org_id = _resolve_org(user, org_id)
@@ -644,7 +644,7 @@ def get_web_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """Get detailed web scan information including phase progress."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -695,7 +695,7 @@ def get_web_scan_findings(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
 ):
     """Get findings for a web scan with filtering and pagination."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -743,7 +743,7 @@ def get_web_scan_assets(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """Get discovered web assets/endpoints for a scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -782,7 +782,7 @@ def get_web_scan_parameters(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     The attack surface at parameter granularity (Phase 23b relational model):
@@ -865,7 +865,7 @@ def get_web_scan_forms(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """The discovered form inventory (Codex item 1) — first-class WebForm rows
     with their inputs, file-upload and password flags."""
@@ -913,7 +913,7 @@ def get_web_scan_api_operations(
     per_page: int = Query(200, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
     as first-class WebApiOperation rows, with a per-kind roll-up."""
@@ -966,7 +966,7 @@ def cancel_web_scan(
     request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
 ):
     """Cancel a running web scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1036,7 +1036,7 @@ def triage_finding(
     request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_permission("findings", "update")),
 ):
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1129,7 +1129,7 @@ def get_finding_screenshot(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_permission("findings", "read")),
 ):
     """
     Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
@@ -1171,7 +1171,7 @@ def download_web_scan_report(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Generate and download a PDF report for a completed web scan.
@@ -1337,7 +1337,7 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
         await pubsub.close()
 
 
-def _get_websocket_user(websocket: WebSocket) -> User:
+def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
     ticket = websocket.query_params.get("ticket")
     if not ticket:
         raise HTTPException(
@@ -1426,7 +1426,7 @@ def _normalize_idempotency_key(value: str | None) -> str | None:
 
 def _find_duplicate_web_scan(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     target_url: str,
     idempotency_key: str | None,
@@ -1479,7 +1479,7 @@ def _start_scan_response(
 
 
 def _get_scan_or_404(
-    db: Session, scan_id: str, user: User, org_id: str | None = None
+    db: Session, scan_id: str, user: CurrentUser, org_id: str | None = None
 ) -> WebScan:
     target_org_id = _resolve_org(user, org_id)
     scan = (

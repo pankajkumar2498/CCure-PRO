@@ -45,19 +45,33 @@ head across its own work and could deadlock against one that did not.
 """
 
 import logging
+from typing import Optional, Protocol
 
 from core.audit_taxonomy import redact_changes, severity_for
 from core.ip_resolver import get_client_ip
-from db.models import AuditLog, User
+from db.models import AuditLog
 from fastapi import Request
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
+class AuditActor(Protocol):
+    """
+    What the activity log reads from the account an event is attributed to,
+    and nothing more. The authenticated principal a route holds satisfies it,
+    and so does ``ccure_platform.api.UserView`` (Phase 8.3); the log never needed
+    the identity model itself (Phase 8.5).
+    """
+
+    id: str
+    org_id: str
+    username: str
+
+
 def log_audit_event(
     db: Session,
-    user: User,
+    user: Optional[AuditActor],
     action: str,
     resource_type: str = None,
     resource_id: str = None,

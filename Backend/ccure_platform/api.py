@@ -16,7 +16,9 @@ ceiling, and a test fails on anything outside it):
   ``require_permission``, ``require_role``: the FastAPI dependencies routes
   already use, re-exported unchanged. They still hand a route the ORM ``User``,
   because every route reads its attributes; views for those are a later
-  decision, not a side effect of this step.
+  decision, not a side effect of this step. ``CurrentUser`` (step 8.5) is the
+  name a route annotates that parameter with, so a route depends on the
+  platform's name for the principal rather than on where the model lives.
 * **RBAC** — ``user_has_permission``: the single implementation behind
   ``require_permission``, for checks a dependency cannot express.
 * **Accounts** — ``user`` / ``UserView``, ``user_display_names``,
@@ -62,7 +64,17 @@ from ccure_platform.rbac.dependencies import (
 from db.models import Organization, Role, User
 from sqlalchemy.orm import Session
 
+#: The account a request is authenticated as — what ``current_user``,
+#: ``current_user_flexible``, ``require_permission`` and ``require_role`` hand a
+#: route. Today it *is* the identity model, and the alias says so rather than
+#: pretending otherwise; naming it here is what lets a later phase (a narrower
+#: view, or a separate authentication service, plan §3.9) change one line
+#: instead of every route. It is a type for annotations, not a way to query
+#: ``users``: the identity-boundary ratchet counts a query through it.
+CurrentUser = User
+
 __all__ = (
+    "CurrentUser",
     "current_user",
     "current_user_flexible",
     "require_permission",

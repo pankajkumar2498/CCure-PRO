@@ -11,9 +11,8 @@ Endpoints
   GET /api/workflow-example     → documentation: frontend orchestration example
 """
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from db.base import get_db
-from db.models import User
 from fastapi import APIRouter, Depends
 from scan_helpers import PIPELINE_PHASES, get_api
 from scans.progress import read_progress as _db_read_progress
@@ -49,7 +48,7 @@ async def root():
 async def get_scan_progress(
     scan_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("scans", "read")),
+    current_user: CurrentUser = Depends(require_permission("scans", "read")),
 ):
     """
     Get real-time progress for an ongoing scan (multi-worker safe).

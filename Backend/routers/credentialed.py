@@ -12,9 +12,9 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_permission
 from db.base import SessionLocal
-from db.models import ComplianceCredential, User
+from db.models import ComplianceCredential
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
 from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
@@ -27,7 +27,7 @@ router = APIRouter(tags=["Credentialed Scans"])
 
 
 def _enforce_credentialed_scan_scope(
-    hosts: list[str], user: User, org_id: str | None
+    hosts: list[str], user: CurrentUser, org_id: str | None
 ) -> None:
     """
     Deny hosts outside the organisation's authorised scan scope.
@@ -163,7 +163,7 @@ async def scan_credentialed(
     response: Response,
     req: CredentialedScanRequest,
     org_id: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_permission("scans", "execute")),
 ):
     """
     SSH Credentialed Scan (Trigger Background Task).

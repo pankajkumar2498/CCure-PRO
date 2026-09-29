@@ -12,11 +12,11 @@ import os
 import time
 from typing import Optional
 
-from auth.dependencies import get_current_user_flexible
+from ccure_platform.api import CurrentUser, current_user_flexible
 from core.audit import log_audit_event
 from db.base import get_db
 from ccure_platform import api as platform_api
-from db.models import Scan, User
+from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from scan_helpers import limiter
 from fastapi.responses import FileResponse
@@ -357,7 +357,7 @@ def _resolve_report_path(stored: str | None) -> str | None:
     return candidate if os.path.isfile(candidate) else None
 
 
-def _require_reports_read(user: User, db: Session) -> None:
+def _require_reports_read(user: CurrentUser, db: Session) -> None:
     role = getattr(user, "role", None)
     role_name = (getattr(role, "name", "") or "").lower()
 
@@ -379,7 +379,7 @@ def _require_reports_read(user: User, db: Session) -> None:
         )
 
 
-def _require_reports_delete(user: User, db: Session) -> None:
+def _require_reports_delete(user: CurrentUser, db: Session) -> None:
     role = getattr(user, "role", None)
     role_name = (getattr(role, "name", "") or "").lower()
 
@@ -400,17 +400,19 @@ def _require_reports_delete(user: User, db: Session) -> None:
         )
 
 
-def _is_superadmin(user: User) -> bool:
+def _is_superadmin(user: CurrentUser) -> bool:
     return (
         getattr(getattr(user, "role", None), "name", "") or ""
     ).lower() == "superadmin"
 
 
-def _can_read_all_org_scans(user: User, db: Session) -> bool:
+def _can_read_all_org_scans(user: CurrentUser, db: Session) -> bool:
     return platform_api.user_has_permission(db, user, "scans", "read_all")
 
 
-def _audit_report_download(db: Session, user: User, request, scan, report_format: str):
+def _audit_report_download(
+    db: Session, user: CurrentUser, request, scan, report_format: str
+):
     """
     Record that a report left the platform.
 
@@ -461,7 +463,7 @@ def download_report(
     min_severity: str = "Info",
     ticket: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     _require_reports_read(user, db)
 
@@ -647,7 +649,7 @@ def _safe_export_name(*parts: str) -> str:
 
 
 def _scan_for_user(
-    db: Session, user: User, scan_id: str, org_id: str | None = None
+    db: Session, user: CurrentUser, scan_id: str, org_id: str | None = None
 ) -> Scan:
     """
     The scan, or 404 — under this caller's own visibility rules.
@@ -677,7 +679,7 @@ def _scan_for_user(
 
 
 def _comparison_for(
-    db: Session, scan: Scan, baseline_id: str | None, user: User | None
+    db: Session, scan: Scan, baseline_id: str | None, user: CurrentUser | None
 ):
     """
     The GAP-13 comparison for this scan, or None.
@@ -718,7 +720,7 @@ def _comparison_for(
 
 
 def _build_scan_workbook(
-    db: Session, scan: Scan, *, user: User | None = None, **filters
+    db: Session, scan: Scan, *, user: CurrentUser | None = None, **filters
 ) -> tuple[str, str]:
     """
     Assemble the whole-scan workbook and return ``(path, filename)``.
@@ -807,7 +809,7 @@ def export_scan_dataset(
     include_comparison: bool = Query(True),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     """
     Export one scan's assessment results as a workbook, a CSV or JSON.
@@ -983,7 +985,7 @@ def _csv_safe(value) -> str:
 def delete_report(
     scan_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     _require_reports_delete(user, db)
 

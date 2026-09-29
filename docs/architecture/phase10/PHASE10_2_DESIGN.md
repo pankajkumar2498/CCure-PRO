@@ -1,13 +1,13 @@
 # Phase 10.2 — Gateway authentication: design (not implemented)
 
-|                                   |                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**                        | **10.2a committed** (`42128b9`, §15). **10.2b committed** (`f5d7da1`, §16): the `gateway-auth` checker. **10.2c committed** with this revision: the route-policy generator, see §17. 10.2d is design only. No nginx, Compose, routing, port, trust boundary or token policy was changed, and nothing was deployed.                                                                                                                  |
-| **Owner decisions (29 Sep 2026)** | **X2 = X2-a**: preserve the current 401 behaviour; no `WWW-Authenticate` is added. **X6 = X6-a**: preserve 404/405/307-before-auth for unrouted requests. So **`/api/ir/*` stays the current 404 throughout Phase 10**; the `MODULE_NOT_DEPLOYED` 503 stub is not introduced. **`DELETE /reports/{id}` stays ticket-or-bearer** in 10.2, since preserving behaviour is the scope; any ticket narrowing is a separate decision (O4). |
-| **Baseline**                      | Phase 10.1 is complete and is the golden baseline. The valid-credential characterisation is **confirmed** by the owner. M3 is still sampling; it is needed only later, to size nginx connections.                                                                                                                                                                                                                                   |
-| **Inputs**                        | [`PHASE10_1_CHARACTERISATION.md`](PHASE10_1_CHARACTERISATION.md), `route_auth_matrix.json`, decision record [`../PHASE10_API_GATEWAY.md`](../PHASE10_API_GATEWAY.md) §§12–14                                                                                                                                                                                                                                                        |
-| **Governing rule**                | **Preserve observed behaviour.** Every response the gateway generates must be the response the application gives today for the same request, apart from `X-Request-ID` being absent. The only exceptions are the two open decisions X2 and X6, and the gateway must not pick either one silently.                                                                                                                                   |
-| **Scope of 10.2**                 | Build and test the shared verification module, the `gateway-auth` checker, the generated nginx configuration and the test harness. All of it runs **only** in unit tests and in a disposable, isolated compose project (`ccure-gw-test`) with a stub upstream. Nothing is attached to the live network; that is 10.3.                                                                                                               |
+|                                   |                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**                        | **10.2a committed** (`42128b9`, §15). **10.2b committed** (`f5d7da1`, §16): the `gateway-auth` checker. **10.2c committed** (`5cd89c3`, §17): the route-policy generator. **10.2d committed** with this revision: the nginx `auth_request` configuration and its local harness, see §18. Phase 10.2 is complete; nothing is deployed. No nginx, Compose, routing, port, trust boundary or token policy was changed, and nothing was deployed. |
+| **Owner decisions (29 Sep 2026)** | **X2 = X2-a**: preserve the current 401 behaviour; no `WWW-Authenticate` is added. **X6 = X6-a**: preserve 404/405/307-before-auth for unrouted requests. So **`/api/ir/*` stays the current 404 throughout Phase 10**; the `MODULE_NOT_DEPLOYED` 503 stub is not introduced. **`DELETE /reports/{id}` stays ticket-or-bearer** in 10.2, since preserving behaviour is the scope; any ticket narrowing is a separate decision (O4).           |
+| **Baseline**                      | Phase 10.1 is complete and is the golden baseline. The valid-credential characterisation is **confirmed** by the owner. M3 is still sampling; it is needed only later, to size nginx connections.                                                                                                                                                                                                                                             |
+| **Inputs**                        | [`PHASE10_1_CHARACTERISATION.md`](PHASE10_1_CHARACTERISATION.md), `route_auth_matrix.json`, decision record [`../PHASE10_API_GATEWAY.md`](../PHASE10_API_GATEWAY.md) §§12–14                                                                                                                                                                                                                                                                  |
+| **Governing rule**                | **Preserve observed behaviour.** Every response the gateway generates must be the response the application gives today for the same request, apart from `X-Request-ID` being absent. The only exceptions are the two open decisions X2 and X6, and the gateway must not pick either one silently.                                                                                                                                             |
+| **Scope of 10.2**                 | Build and test the shared verification module, the `gateway-auth` checker, the generated nginx configuration and the test harness. All of it runs **only** in unit tests and in a disposable, isolated compose project (`ccure-gw-test`) with a stub upstream. Nothing is attached to the live network; that is 10.3.                                                                                                                         |
 
 ---
 
@@ -421,7 +421,7 @@ The module reads no configuration, environment, key directory, file, database or
 - the image is not deployed;
 - M3 still pending, for connection sizing in 10.2d/10.3.
 
-## 17. 10.2c — the route-policy generator (committed with this revision)
+## 17. 10.2c — the route-policy generator (committed `5cd89c3`)
 
 **Files**
 
@@ -482,3 +482,85 @@ The inventory must also equal the Phase 10.1 characterisation (`route_table.json
 **Not in 10.2c:** no nginx configuration beyond the generated fragment, no public-route `location` blocks (design §4 item 2 moves to 10.2d, since they need the proxy settings 10.2d writes), no compose wiring, no deployment.
 
 **Found, not fixed (pre-existing, unrelated):** the tracked `Backend/openapi.json` lacks `/auth/jwks.json` and `/auth/service-token` (Phase 9.3/9.5) and was last regenerated on 25 Sep (`f9fbee1`), so CI's OpenAPI contract gate would already fail at `f5d7da1`. 10.2c leaves the schema byte-identical to HEAD.
+
+## 18. 10.2d — nginx `auth_request` configuration and local harness (committed with this revision)
+
+**Files**
+
+| File                                                | What it is                                                                                                                              |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateway/nginx/gateway.conf`                        | The gateway: request classification, `auth_request`, refusal rendering, fail-closed handling, redacted logging                          |
+| `gateway/nginx/proxy_api.conf`                      | The proxy settings every forwarding location shares: prefix strip, identity stripping, forwarding headers, WebSocket upgrade, streaming |
+| `gateway/nginx/site/harness.conf`                   | Per-environment settings **for the harness only**: upstreams and the one trusted edge address. Production gets its own file in 10.3     |
+| `gateway/nginx/entrypoint/40-ccure-cors-origins.sh` | Renders the CORS allow-list map from `CCURE_CORS_ALLOW_ORIGINS` at start; refuses a malformed origin                                    |
+| `gateway/harness/docker-compose.yml`                | The isolated harness (project `ccure-gw-harness`, internal network `10.254.10.0/24`, no published port)                                 |
+| `gateway/harness/stub_api.py`                       | The API stand-in, built from `gateway/policy/route_policy.json`                                                                         |
+| `gateway/harness/outsider.py`                       | An untrusted client, for the trust-boundary tests                                                                                       |
+| `gateway/harness/run.sh`                            | The end-to-end driver                                                                                                                   |
+| `gateway/harness/scan_logs.py`                      | The log-redaction scan                                                                                                                  |
+| `gateway/harness/tests/`                            | 62 harness tests (53 with gateway-auth up, 9 with it stopped), 13 of them static configuration checks                                   |
+
+**Flow.**
+
+1. **Classification.** The **generated** `route_policy.map` classifies every `/api/` request (`$ccure_scope:$request_method:$ccure_app_path`, with the application path being the URI minus `/api`).
+2. **Unauthenticated classes.** Policy `none` (public, `OPTIONS`, unrouted) is sent with `return 418` → `@ccure_noauth` in the rewrite phase, before the access phase in which `auth_request` runs. These requests never touch gateway-auth. That is how X6-a is preserved, and why public routes, preflights and unrouted requests keep working while gateway-auth is down.
+3. **Protected classes.** Everything else goes through `auth_request /_ccure_auth`:
+   - 204 → forwarded with `X-Ccure-Auth-{Sub,Jti,Ptype,Kind}` from gateway-auth;
+   - 401/403 + `X-Ccure-Refusal` → `@ccure_refuse`, which renders the application's own status and body for that code;
+   - any other outcome → `@ccure_auth_unavailable` → `503 AUTH_UNAVAILABLE` + `Retry-After: 5`, and nothing is forwarded.
+4. **The subrequest** carries the client's `Authorization` and the gateway-set `X-Ccure-Policy/Method/Args`; `Cookie`, `Upgrade` and the body are removed. The client cannot supply its own policy, method or query.
+
+**Refusals.**
+
+- **Codes:** the five JSON codes return the characterised body with `request_id: null`.
+- **Headers:** the application's security headers (`nosniff`, `DENY`, `no-referrer`, the API CSP, `CORP same-site`), and the CORS headers the application's CORSMiddleware would send: `Access-Control-Allow-Credentials` whenever an `Origin` is present, and `Access-Control-Allow-Origin` + `Vary: Origin` for an allowed one. There is **no `X-Request-ID`** and **no `WWW-Authenticate`** (X2-a).
+- **WebSockets:** `ws_refused` is a bare `403`, `text/plain`, zero length.
+- **Unknown codes:** a code nginx does not know fails closed as 503.
+
+**Headers.** `add_header` appears only in the two locations that generate responses. Proxied responses are untouched, so every application header arrives exactly once. Measured: header counts via the gateway equal those direct from the stub.
+
+**Identity.** On every forwarded request the gateway clears `X-Tenant-ID`, `X-Tenant`, `X-Org(-ID)`, `X-Organization-ID`, `X-User(-ID/-Email/-Role)`, `X-Auth-User`, `X-Auth-Request-User/-Email`, `X-Forwarded-User/-Email`, `X-Remote-User`, `Remote-User` and every `X-Ccure-*`, then sets `X-Ccure-Auth-*` from gateway-auth only. On the unauthenticated path those are absent.
+
+**Trust boundary.**
+
+- `realip` trusts **one** edge address (`set_real_ip_from`, harness: 10.254.10.10). `X-Real-IP` and `X-Forwarded-For` are **set** to the resolved client, never appended.
+- `X-Forwarded-Proto` is believed only from that edge (`geo` on `$realip_remote_addr`).
+- An untrusted peer's claims are ignored. This is proven with a second client, at 10.254.10.20.
+- The core's own `--forwarded-allow-ips` remains the 10.3 change (F10-1).
+
+**Streaming.**
+
+- `proxy_buffering` and `proxy_request_buffering` are off, with `proxy_max_temp_file_size 0` and 3600 s timeouts.
+- **Proof that nothing touches disk:** the harness mounts both nginx temp directories **read-only and empty**, so any attempt to buffer to disk would fail the request. A 30 MiB download and a 25 MiB upload passed byte-identical (SHA-256).
+- **SSE:** events arrive one second apart as produced; the first arrives in < 0.5 s.
+- **WebSockets:** upgrade to 101 with the frame relayed.
+
+**Logging.**
+
+- The access log is JSON (`escape=json`): peer, resolved client, method, `$uri` captured before the rewrite, status, bytes, times, upstream status, class, policy, refusal code, `sub` and `jti`.
+- **Never** `$request`, `$request_uri`, `$args`, a cookie, `Authorization` or the Referer; a static test pins it.
+- The error log is `crit` only (design R2).
+- `scan_logs.py` found **0** of the 24 tokens minted during a run, no `ticket=`/`token=`, no JWT-shaped string, no `Bearer <value>`, `Authorization`, `Cookie` or `Referer`, in 245 gateway and gateway-auth log lines. It fails on a planted leak (negative control).
+
+**Proof against the Phase 10.1 baseline.**
+
+- **Refusals:** every authentication-layer refusal the characterisation recorded from the **real application** (the edge probe's direct target) — 25 HTTP cases and 10 WebSocket cases — was replayed through the gateway. Status, body (apart from `request_id`), header names and the security, content-type and CORS values are equal.
+- **Valid-credential cases** (9 HTTP, 4 WebSocket) match the recorded status and message.
+- **Unrouted requests** (404, 405 + `Allow`, 307 + `Location`, `HEAD`, `/api/ir/*`, `%2F`) get the same answer through the gateway as from the stub directly.
+
+**Security posture.**
+
+- nginx (digest-pinned `nginx:stable-alpine` 1.30.5) runs as uid 101 and gateway-auth as uid 10001. Both have a read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, and no published port.
+- The harness network is `internal` (no route out).
+- The gateway-auth image holds no `.env`, keyset or private key; neither container gets a database, Redis, JWT secret or MFA key.
+
+**Where the implementation refined this design** (each found or settled by the harness):
+
+- **Public routes** are not generated `location` blocks (§4 item 2). The map's `none` policy routes them, together with `OPTIONS` and unrouted requests, to `@ccure_noauth` before authentication. There is one source (the generated map), no second list, and `OPTIONS` no longer depends on gateway-auth (§7's accepted trade-off is gone).
+- **Refusals carry `X-Content-Type-Options`**, as the application's own do (§8 had left it to host nginx). Host nginx hides the upstream copy and adds its own, so the client still sees exactly one.
+- **Server-level `set` runs again inside the auth subrequest** (with the subrequest's empty `$args` and its own `$uri`). Request facts are therefore captured inside `location /api/`. The first harness run caught this as tickets never reaching gateway-auth; map caching had hidden it for the policy.
+- **nginx runs `auth_request_set` on every outcome**, not only on 2xx/401/403. So "authentication had already succeeded" is `$ccure_auth_status ~ ^2`.
+- **`return 403 ""` makes nginx serve its HTML error page.** The empty WebSocket body is an empty _variable_.
+- **`add_header` applies to a whole location**, so `Retry-After` comes from a map on `$status` (503 only).
+
+**Not in 10.2d:** host-nginx cutover, the core's `--forwarded-allow-ips` / `TRUSTED_PROXIES`, the production site file, `127.0.0.1:8082`, closing `:8000`, the root `docker-compose.yml`, and any deployment. Those are 10.3 onwards. The stale `Backend/openapi.json` (§17) is still not fixed.

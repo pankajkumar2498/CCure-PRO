@@ -1,0 +1,149 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CCure gateway — LOCAL TEST HARNESS (Phase 10.2d). Not part of the live stack.
+# ──────────────────────────────────────────────────────────────────────────────
+# Its own project, its own internal network (no route out, no published port),
+# its own volumes. It does not touch the root docker-compose.yml, the live
+# containers, host nginx or port 8082. Run it with gateway/harness/run.sh.
+#
+#   gateway       the real gateway configuration (gateway/nginx/*) and the
+#                 generated route policy, mounted exactly as they are committed
+#   gateway-auth  the real token-check image (gateway/token_check)
+#   stub-api      a stand-in for the core API with the application's route
+#                 table (gateway/harness/stub_api.py); authenticates nothing
+#   outsider      an untrusted client (trust-boundary tests)
+#   runner        the test runner; plays the trusted edge (host nginx)
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: ccure-gw-harness
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+
+networks:
+  harness:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.254.10.0/24
+
+volumes:
+  harness-keys:
+  harness-out:
+
+services:
+  gateway:
+    # nginx:stable-alpine (1.30.5), pinned by digest.
+    image: nginx@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /run:uid=101,gid=101,mode=0755
+      - /var/cache/nginx:uid=101,gid=101,mode=0755
+      - /tmp
+    environment:
+      # The core's CORS_ALLOW_ORIGINS, as characterised in Phase 10.1.
+      CCURE_CORS_ALLOW_ORIGINS: "https://ccurepro.cdac.in,https://10.180.22.127,https://localhost,http://localhost:3200,http://127.0.0.1:3200,http://localhost:8000,http://127.0.0.1:8000"
+    volumes:
+      - ../nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../nginx/proxy_api.conf:/etc/nginx/ccure/proxy_api.conf:ro
+      - ../policy/route_policy.map:/etc/nginx/ccure/route_policy.map:ro
+      - ../nginx/site/harness.conf:/etc/nginx/ccure/site.conf:ro
+      - ../nginx/entrypoint/40-ccure-cors-origins.sh:/docker-entrypoint.d/40-ccure-cors-origins.sh:ro
+      # Read-only and empty: any attempt to buffer a body to disk fails the
+      # request, so a passing streaming test proves nothing was buffered.
+      - ./empty:/var/cache/nginx/ccure_proxy_temp:ro
+      - ./empty:/var/cache/nginx/ccure_body_temp:ro
+    depends_on: [stub-api, gateway-auth]
+    networks:
+      harness:
+        ipv4_address: 10.254.10.2
+    logging: *default-logging
+
+  gateway-auth:
+    build:
+      context: ../..
+      dockerfile: gateway/token_check/Dockerfile
+    image: ccure-gateway-auth:harness
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    environment:
+      CCURE_TOKEN_ISSUER: "https://issuer.harness.test"
+      CCURE_TOKEN_USER_AUDIENCE: "urn:ccure:api"
+      CCURE_JWKS_URL: "http://stub-api:8000/auth/jwks.json"
+      CCURE_JWKS_MIN_REFETCH_SECONDS: "1"
+    networks:
+      harness:
+        ipv4_address: 10.254.10.3
+    logging: *default-logging
+
+  stub-api:
+    image: ccure-audit-pro-backend:latest
+    command: ["python", "-m", "uvicorn", "stub_api:app", "--app-dir", "/harness",
+              "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CCURE_ROUTE_POLICY: /gateway/policy/route_policy.json
+      CORS_ALLOW_ORIGINS: "https://ccurepro.cdac.in,https://10.180.22.127,https://localhost,http://localhost:3200,http://127.0.0.1:3200,http://localhost:8000,http://127.0.0.1:8000"
+    volumes:
+      - ./:/harness:ro
+      - ../policy:/gateway/policy:ro
+      - harness-keys:/harness-keys:ro
+    networks:
+      harness:
+        ipv4_address: 10.254.10.4
+    logging: *default-logging
+
+  outsider:
+    image: ccure-audit-pro-backend:latest
+    command: ["python", "/harness/outsider.py"]
+    read_only: true
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./:/harness:ro
+    networks:
+      harness:
+        ipv4_address: 10.254.10.20
+    logging: *default-logging
+
+  # One-shot: hand the two shared volumes to the image's user (uid 1000), so
+  # the runner can write the harness JWKS and its run record without root.
+  keys-init:
+    image: ccure-audit-pro-backend:latest
+    profiles: ["run"]
+    user: "0:0"
+    network_mode: none
+    command: ["chown", "1000:1000", "/harness-keys", "/harness-out"]
+    volumes:
+      - harness-keys:/harness-keys
+      - harness-out:/harness-out
+    logging: *default-logging
+
+  runner:
+    image: ccure-audit-pro-backend:latest
+    profiles: ["run"]
+    working_dir: /gateway/harness
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /gateway:/gateway/harness/tests
+      CCURE_HARNESS_ISSUER: "https://issuer.harness.test"
+      CCURE_HARNESS_AUDIENCE: "urn:ccure:api"
+    volumes:
+      - ../:/gateway:ro
+      - ../../docs:/docs:ro
+      - harness-keys:/harness-keys
+      - harness-out:/harness-out
+    networks:
+      harness:
+        ipv4_address: 10.254.10.10
+    logging: *default-logging

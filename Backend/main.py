@@ -134,15 +134,24 @@ async def lifespan(app: FastAPI):
     # How tokens will be issued (Phase 9.4). A core that cannot sign must not
     # come up half-working (design §3.7), so with ES256 selected and no usable
     # active key the API refuses to start — here, before any database work.
-    from ccure_platform.identity.tokens import SigningUnavailable, assert_signing_ready
+    from ccure_platform.identity.tokens import (
+        SigningUnavailable,
+        assert_signing_ready,
+        legacy_verification_status,
+    )
 
+    # Logged before the issuance check, so a refusal below is always preceded
+    # by the state that caused it (step 9.6a).
+    logging.getLogger("ccure.security").info(
+        "Legacy HS256 verification: %s", legacy_verification_status()
+    )
     try:
         _issuing = assert_signing_ready()
     except SigningUnavailable as exc:
         logging.getLogger("ccure.security").critical(
             "Refusing to start: tokens cannot be issued (%s). Activate a "
-            "signing key, or set CCURE_TOKEN_SIGNING_ALG=HS256 to issue legacy "
-            "tokens.",
+            "signing key, or set CCURE_TOKEN_SIGNING_ALG=HS256 (which needs "
+            "CCURE_ACCEPT_LEGACY_HS256=true) to issue legacy tokens.",
             exc,
         )
         raise

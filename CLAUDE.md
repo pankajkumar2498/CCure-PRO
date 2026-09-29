@@ -249,8 +249,12 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - **Live token issuance is ES256** since 29 Sep 2026 (step 9.4), with the
     promoted `active` key `7jKp…`. Tokens are signed only by `tokens.sign()`,
     which sets `iss`, `aud`, `ptype`, `nbf` and `jti` itself.
-  - **Legacy HS256 tokens still verify.** That lasts until the 9.6 cut-off,
-    which needs its own review.
+  - **Legacy HS256 tokens still verify** while `CCURE_ACCEPT_LEGACY_HS256=true`
+    (api only; root `.env`). The 9.6b cut-off sets it to `false` once no HS256
+    refresh session remains; the query and runbook are in Phase 9 doc §17.
+  - **With the switch off, HS256 issuance is refused**, and the API will not
+    start with `CCURE_TOKEN_SIGNING_ALG=HS256`: it would issue tokens it then
+    refuses.
   - **Rollback.** Set `CCURE_TOKEN_SIGNING_ALG=HS256` in the root `.env`, then
     `docker compose up -d --no-deps api`. Tokens already issued ES256 stay
     valid.

@@ -1,12 +1,12 @@
 # Phase 9 — Verifiable tokens and service identities (design proposal)
 
-|               |                                                                                                                                                                                                                           |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16). 9.6 not started. |
-| **Date**      | 29 Sep 2026                                                                                                                                                                                                               |
-| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9                     |
-| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                                       |
-| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                                             |
+|               |                                                                                                                                                                                                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16); 9.6a done, the 9.6b cut-off waits on the measurement (§17). |
+| **Date**      | 29 Sep 2026                                                                                                                                                                                                                                                          |
+| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9                                                                |
+| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                                                                                  |
+| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                                                                                        |
 
 ## 0. What the plan already says, and what it leaves open
 
@@ -1415,3 +1415,137 @@ the identity.
   corrected** (outside this step):
   - its totals table says 155 HTTP operations against 271 registered;
   - its JWKS section still says tokens are HS256 until 9.4.
+
+## 17. Step 9.6 — the legacy HS256 cut-off
+
+**What 9.6 is (the owner's decisions, 29 Sep 2026):**
+
+| Decision                                  | Chosen                                                                                                                                                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scope                                     | **Verification cut-off only.** `CCURE_ACCEPT_LEGACY_HS256=false` for the api. The HS256 code, HS256 issuance and `JWT_SECRET_KEY` stay as the rollback; removing them is a later step with its own review |
+| When (O8)                                 | **Measured**: when no HS256 refresh session remains live. Nobody is signed out                                                                                                                            |
+| Evidence ("runtime checks complete", §11) | **The session query returns 0, plus a live rehearsal** of the flip and its rollback. No new observation code                                                                                              |
+| F9-8                                      | **Recorded, fixed later**, separately                                                                                                                                                                     |
+
+9.6 is two steps. **9.6a** prepares the switch and changes nothing live.
+**9.6b** flips it, when the measurement allows.
+
+### 17.1 Step 9.6a — as built
+
+- **`tokens.py`**:
+  - `signing_algorithm()` refuses HS256 issuance while
+    `CCURE_ACCEPT_LEGACY_HS256=false`. The API would otherwise issue tokens that
+    it then refuses, which signs every user out at their next request.
+  - Start-up and `sign()` both go through it, so the refusal cannot be
+    bypassed at run time.
+  - `legacy_verification_status()` gives the start-up line.
+- **`main.py`**: the lifespan logs
+  `Legacy HS256 verification: enabled (CCURE_ACCEPT_LEGACY_HS256=true)`
+  **before** the issuance check, so a refusal is always preceded by the state
+  that caused it. It sits next to `Token issuance: …`.
+- **`docker-compose.yml`**: the api only gains
+  `CCURE_ACCEPT_LEGACY_HS256=${CCURE_ACCEPT_LEGACY_HS256:-true}`. The root
+  `.env` (git-ignored) carries `CCURE_ACCEPT_LEGACY_HS256=true`, and
+  `.env.example` documents it. The switch is unchanged from its 9.3 meaning:
+  any value except `false` keeps HS256 verifying.
+- **Tests:**
+
+  - `tests/auth/test_legacy_cutoff.py` is new (30 tests). With the switch
+    **off**, HS256 is refused on:
+
+    - a protected route;
+    - a download ticket, over HTTP and through the dependency;
+    - both WebSocket ticket logins (`routers.scan_history`, `routers.web_scans`);
+    - the rate-limit audit's caller identification;
+    - refresh, over HTTP and in-process;
+    - logout, which can no longer name the session, while the token stays
+      unusable;
+    - every kind through `verify` and the legacy decode.
+
+    Each refusal is logged `reason=legacy_disabled`.
+
+  - **ES256 is unaffected** on every one of those paths, and so are service
+    tokens.
+  - With the switch **on again**, the same HS256 tokens verify, and HS256
+    issuance — the 9.4 rollback — works.
+  - The API refuses to start with HS256 issuance and the switch off.
+  - Default parsing is checked in fresh processes.
+  - `test_token_guardrails.py` gains a check that only the api carries
+    `CCURE_TOKEN_SIGNING_ALG` and `CCURE_ACCEPT_LEGACY_HS256`.
+  - Mutation-checked, 4 of 4 caught: no guard, the switch ignored when
+    verifying, the status line not logged, the status line inverted.
+  - The compose guardrail is also mutation-checked, by giving the worker the
+    switch.
+
+### 17.2 The measurement (29 Sep 2026, 16:40 IST)
+
+The query that decides the cut-off (read-only). `09:14:35 UTC` is when the api
+started issuing ES256 (§15.3), so anything issued before it is HS256:
+
+```sql
+SELECT count(*), count(DISTINCT user_id), max(expires_at)
+FROM refresh_token_sessions
+WHERE issued_at < '2026-09-29 09:14:35+00'
+  AND revoked_at IS NULL
+  AND expires_at > now();
+```
+
+- **Result:** 14 live HS256 refresh sessions across 5 accounts — superadmin,
+  chandan_scanner, admin_chandan, dhananjay and pankaj. The last expires
+  naturally at **3 Oct 2026, 22:12 IST**.
+- **The figure can only fall.** Using one of those sessions rotates it to
+  ES256, and nothing issues HS256.
+- **Nothing else HS256 can still be valid.** Access tokens (30 minutes),
+  tickets (60 seconds) and MFA challenges (5 minutes) from before 14:44:35 IST
+  on 29 Sep have all expired.
+
+### 17.3 Step 9.6b — the runbook (not started)
+
+**Condition:** the query above returns **0**, at the earliest 3 Oct 22:12 IST,
+with a margin (planned: 4 Oct).
+
+1. **Evidence.**
+   - Re-run the query: it must return 0.
+   - The api's start-up log shows no MFA-fallback warning, so the MFA key is
+     read from `MFA_ENCRYPTION_KEY` (9.2).
+   - The log reads `Token issuance: ES256 with key …`.
+2. **Back up.** Run `scripts/backup_db.sh --skip-reference-data`.
+3. **Flip.** In the root `.env`, set `CCURE_ACCEPT_LEGACY_HS256=false`, then
+   run `docker compose up -d --no-deps api`. The log must read
+   `Legacy HS256 verification: disabled (CCURE_ACCEPT_LEGACY_HS256=false)`.
+4. **Rehearse, live.** Every check below must hold:
+   - an HS256 access token, minted in the api container for a user that does
+     not exist, is refused, and logged `reason=legacy_disabled`;
+   - an ES256 one reaches the user lookup;
+   - the owner's browser login, refresh and logout work;
+   - a download ticket works;
+   - then flip back to `true` and recreate: the same HS256 token reaches the
+     user lookup — the rollback is proven;
+   - then flip to `false` again and recreate.
+5. **Confirm.** The Phase 8 live probe is identical. Worker, web-worker and
+   beat are not restarted and have no signing key.
+6. **Close.** Record it here, update CLAUDE.md, and commit the docs.
+
+**Rollback at any time:** set `CCURE_ACCEPT_LEGACY_HS256=true` in the root
+`.env`, then `docker compose up -d --no-deps api`. HS256 tokens still inside
+their lifetime verify again.
+
+### 17.4 Not in 9.6, and why
+
+- **Removing the HS256 code, HS256 issuance and `JWT_SECRET_KEY`.** A later
+  step, after a quiet period with the switch off, with its own review.
+  Removing them also removes both rollbacks.
+- **F9-8 is a separate follow-up**, and its shape changed with a finding on
+  29 Sep:
+  - **Compose is not the only route.** All four containers mount `./Backend`,
+    so worker, web-worker and beat can read `Backend/.env`. That file holds
+    `JWT_SECRET_KEY` **and** `MFA_ENCRYPTION_KEY`. Removing the secret from
+    their compose environment alone changes nothing.
+  - **Removing it outright breaks start-up.** An unset `JWT_SECRET_KEY` falls
+    back to the development default, which `jwt_handler` refuses in
+    production.
+  - **The fix is a secrets-layout change**: move both secrets to api-only
+    configuration. It moves the MFA key, whose value must never change, so it
+    is reviewed on its own.
+  - **The exposure shrinks after 9.6b:** with HS256 verification off, the JWT
+    secret verifies nothing, and 9.5 already refuses HS256 service tokens.

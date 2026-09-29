@@ -205,7 +205,22 @@ def signing_algorithm() -> str:
             f"CCURE_TOKEN_SIGNING_ALG={JWTConfig.TOKEN_SIGNING_ALG!r} is not one "
             f"of {', '.join(SIGNING_ALGORITHMS)}"
         )
+    if alg == ALGORITHM and not JWTConfig.ACCEPT_LEGACY_HS256:
+        # Step 9.6a. With legacy verification off, an HS256 token is refused
+        # everywhere, so issuing one would sign every user out at their next
+        # request. Refused here, so start-up and sign() both refuse it.
+        raise SigningUnavailable(
+            "CCURE_TOKEN_SIGNING_ALG=HS256 while CCURE_ACCEPT_LEGACY_HS256=false: "
+            "HS256 tokens would be issued and then refused"
+        )
     return alg
+
+
+def legacy_verification_status() -> str:
+    """One line for the start-up log: whether HS256 tokens still verify."""
+    if JWTConfig.ACCEPT_LEGACY_HS256:
+        return "enabled (CCURE_ACCEPT_LEGACY_HS256=true)"
+    return "disabled (CCURE_ACCEPT_LEGACY_HS256=false)"
 
 
 def signing_key() -> keyset_mod.SigningKey:

@@ -217,3 +217,33 @@ def test_only_the_api_service_can_reach_the_signing_keys():
     ], f"the token keyset reaches {holders}; only api may hold it"
     (mount,) = keys_mounts(services["api"])
     assert mount.endswith(":ro"), f"the keyset mount must be read-only: {mount}"
+
+
+def test_only_the_api_service_carries_the_token_settings():
+    """
+    Step 9.6a: the issuance algorithm and the legacy HS256 switch are api
+    settings. A worker given either would suggest it issues or verifies user
+    tokens, which none does. Skipped where docker-compose.yml is not reachable.
+    """
+    import pytest
+    import yaml
+
+    from testpaths import REPO_ROOT
+
+    compose = REPO_ROOT / "docker-compose.yml"
+    if not compose.is_file():
+        pytest.skip(f"docker-compose.yml is not reachable from {REPO_ROOT}")
+    services = yaml.safe_load(compose.read_text())["services"]
+
+    def names(service):
+        env = service.get("environment") or []
+        items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
+        return {str(e).split("=", 1)[0] for e in items}
+
+    api_only = (
+        "CCURE_ACCEPT_LEGACY_HS256",
+        "CCURE_TOKEN_SIGNING_ALG",
+    )
+    for setting in api_only:
+        holders = sorted(n for n, s in services.items() if setting in names(s))
+        assert holders == ["api"], f"{setting} reaches {holders}; only api may hold it"

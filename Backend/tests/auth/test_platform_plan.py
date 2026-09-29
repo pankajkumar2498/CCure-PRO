@@ -35,11 +35,11 @@ from ccure_platform.plan.scan_limits import plan_default_scan_limits
 def test_plan_defaults_are_core_quotas_figures(plan, expected):
     limits = plan_default_scan_limits(plan)
     assert (
-        limits.max_scans_per_day,
-        limits.max_concurrent_scans,
-        limits.max_subnet_prefix,
-        limits.max_ips_per_scan,
-        limits.max_custom_ports,
+        limits.scans_per_day,
+        limits.concurrent_scans,
+        limits.largest_subnet_prefix,
+        limits.ips_per_scan,
+        limits.custom_ports,
     ) == expected
 
 
@@ -57,9 +57,9 @@ def test_overrides_change_what_is_enforced_not_the_plan_defaults(db_session, tes
 
     view = api.scan_limits(db_session, test_org.id)
     assert view.plan == "pro"
-    assert view.effective.max_scans_per_day == 7
-    assert view.effective.max_concurrent_scans == 2
-    assert view.effective.max_ips_per_scan == 65_534  # no override for these
+    assert view.effective.scans_per_day == 7
+    assert view.effective.concurrent_scans == 2
+    assert view.effective.ips_per_scan == 65_534  # no override for these
     assert view.plan_defaults == plan_default_scan_limits("pro")
 
 

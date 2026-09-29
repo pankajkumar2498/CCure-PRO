@@ -23,11 +23,11 @@ from sqlalchemy.orm import Session
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ScanLimits:
     #: ``None`` means unlimited.
-    max_scans_per_day: int | None
-    max_concurrent_scans: int
-    max_subnet_prefix: int
-    max_ips_per_scan: int
-    max_custom_ports: int
+    scans_per_day: int | None
+    concurrent_scans: int
+    largest_subnet_prefix: int
+    ips_per_scan: int
+    custom_ports: int
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -50,25 +50,25 @@ class ScanLimitsView:
 
 _PLAN_SCAN_LIMITS: dict[str, ScanLimits] = {
     "community": ScanLimits(
-        max_scans_per_day=5,
-        max_concurrent_scans=1,
-        max_subnet_prefix=24,
-        max_ips_per_scan=254,
-        max_custom_ports=100,
+        scans_per_day=5,
+        concurrent_scans=1,
+        largest_subnet_prefix=24,
+        ips_per_scan=254,
+        custom_ports=100,
     ),
     "pro": ScanLimits(
-        max_scans_per_day=50,
-        max_concurrent_scans=5,
-        max_subnet_prefix=16,
-        max_ips_per_scan=65_534,
-        max_custom_ports=1000,
+        scans_per_day=50,
+        concurrent_scans=5,
+        largest_subnet_prefix=16,
+        ips_per_scan=65_534,
+        custom_ports=1000,
     ),
     "enterprise": ScanLimits(
-        max_scans_per_day=None,
-        max_concurrent_scans=20,
-        max_subnet_prefix=8,
-        max_ips_per_scan=16_777_214,
-        max_custom_ports=65535,
+        scans_per_day=None,
+        concurrent_scans=20,
+        largest_subnet_prefix=8,
+        ips_per_scan=16_777_214,
+        custom_ports=65535,
     ),
 }
 
@@ -92,8 +92,8 @@ def scan_limits(db: Session, org_id: str) -> ScanLimitsView:
     )
     plan = plan_of(row)
     defaults = plan_default_scan_limits(plan)
-    per_day = defaults.max_scans_per_day
-    concurrent = defaults.max_concurrent_scans
+    per_day = defaults.scans_per_day
+    concurrent = defaults.concurrent_scans
     if row is not None and row.max_scans_per_day is not None:
         per_day = row.max_scans_per_day
     if row is not None and row.max_concurrent_scans is not None:
@@ -102,11 +102,11 @@ def scan_limits(db: Session, org_id: str) -> ScanLimitsView:
         org_id=str(org_id),
         plan=plan,
         effective=ScanLimits(
-            max_scans_per_day=per_day,
-            max_concurrent_scans=concurrent,
-            max_subnet_prefix=defaults.max_subnet_prefix,
-            max_ips_per_scan=defaults.max_ips_per_scan,
-            max_custom_ports=defaults.max_custom_ports,
+            scans_per_day=per_day,
+            concurrent_scans=concurrent,
+            largest_subnet_prefix=defaults.largest_subnet_prefix,
+            ips_per_scan=defaults.ips_per_scan,
+            custom_ports=defaults.custom_ports,
         ),
         plan_defaults=defaults,
     )

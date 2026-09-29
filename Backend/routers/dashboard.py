@@ -9,7 +9,7 @@ All imports verified against actual codebase files:
   - db/base.py          → get_db, utcnow
   - db/models/*.py      → exact model + field names
   - core/vuln_intel.py  → compute_priority(cvss_score, epss_score, in_kev, has_exploit)
-  - core/quota.py       → _limits(plan) → (max_day, max_concurrent, ?, ?)
+  - core/quota.py       → displayed_scan_limits → (plan, max_day, max_concurrent)
 
 VulnerabilityDefinition NOTE:
   This model has NO epss_score, in_kev, has_exploit, cvss_v3_vector columns.
@@ -35,7 +35,6 @@ from db.models.findings import (
     TLSDetail,
     VulnerabilityDefinition,
 )
-from db.models.rbac import Organization
 from db.models.scans import Scan
 from fastapi import APIRouter, Depends, Query
 from scans.cvss import canonical_severity, display_severity
@@ -81,7 +80,7 @@ def get_dashboard_summary(
       scan counts      → Scan table with 24h rolling window
       kev count        → VulnerabilityDefinition.source = 'kev' proxy
                          (no in_kev column exists — use source field instead)
-      quota            → core/quota._limits(plan)
+      quota            → core/quota.displayed_scan_limits (the plan's figures)
     """
     org = _resolve_org(user, org_id)
     now = _now()
@@ -221,14 +220,9 @@ def get_dashboard_summary(
     )
 
     # ── Quota ─────────────────────────────────────────────────────────────────
-    org_obj = db.query(Organization).filter(Organization.id == org).first()
-    plan = getattr(org_obj, "plan", "community") or "community"
-    try:
-        from core.quota import _limits
+    from core.quota import displayed_scan_limits
 
-        max_day, max_conc = _limits(plan)[:2]
-    except Exception:
-        max_day, max_conc = 50, 5
+    plan, max_day, max_conc = displayed_scan_limits(db, org)
 
     avg_risk = round(float(ast_row.avg_risk or 0), 1)
     risk_level = (

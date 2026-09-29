@@ -370,7 +370,6 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
     "ccure_audit.services.baseline_mapping": frozenset({"db.models.Organization"}),
     "core.audit": frozenset({"db.models.User"}),
-    "core.quota": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.reporting": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.workflow": frozenset({"db.models.rbac.Organization"}),
     "core.scheduling.dispatcher": frozenset({"db.models.Organization"}),
@@ -399,13 +398,7 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
     "routers.credentials": frozenset(
         {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
     ),
-    "routers.dashboard": frozenset(
-        {
-            "auth.rbac.require_permission",
-            "db.models.User",
-            "db.models.rbac.Organization",
-        }
-    ),
+    "routers.dashboard": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.findings": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.health": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.phase_scans": frozenset(
@@ -448,14 +441,12 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
 KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
     "ccure_audit.services.baseline_mapping": {"Organization": 1},
-    "core.quota": {"Organization": 1},
     "core.remediation.reporting": {"Organization": 1},
     "core.remediation.workflow": {"Organization": 1},
     "core.scheduling.dispatcher": {"Organization": 1},
     "core.tasks": {"Organization": 2, "RefreshTokenSession": 1, "User": 1},
     "routers.credentialed": {"Organization": 1},
     "routers.credentials": {"Organization": 1},
-    "routers.dashboard": {"Organization": 1},
     "routers.phase_scans": {"Organization": 1},
     "routers.remediation": {"Organization": 1},
     "routers.scan_history": {"User": 1},
@@ -476,7 +467,6 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
 #: reaches zero there.
 KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {
     "ccure_audit.services.baseline_mapping": {"scan_scope_cidrs": 1},
-    "core.quota": {"max_concurrent_scans": 2, "max_scans_per_day": 2},
     "core.remediation.sla": {"remediation_sla": 1},
     "core.scan_scope": {"scan_scope_cidrs": 1},
 }

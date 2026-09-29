@@ -1,12 +1,12 @@
 # Phase 9 — Verifiable tokens and service identities (design proposal)
 
-|               |                                                                                                                                                                                                                                                                      |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16); 9.6a done, the 9.6b cut-off waits on the measurement (§17). |
-| **Date**      | 29 Sep 2026                                                                                                                                                                                                                                                          |
-| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9                                                                |
-| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                                                                                  |
-| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                                                                                        |
+|               |                                                                                                                                                                                                                                                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16); 9.6a done; 9.6b done as a **forced** cut-off on 29 Sep 2026 — legacy HS256 verification off since 17:40 IST (§17.5). |
+| **Date**      | 29 Sep 2026                                                                                                                                                                                                                                                                                                                   |
+| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9                                                                                                                         |
+| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                                                                                                                                           |
+| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                                                                                                                                                 |
 
 ## 0. What the plan already says, and what it leaves open
 
@@ -1499,10 +1499,11 @@ WHERE issued_at < '2026-09-29 09:14:35+00'
   tickets (60 seconds) and MFA challenges (5 minutes) from before 14:44:35 IST
   on 29 Sep have all expired.
 
-### 17.3 Step 9.6b — the runbook (not started)
+### 17.3 Step 9.6b — the runbook for a measured cut-off
 
 **Condition:** the query above returns **0**, at the earliest 3 Oct 22:12 IST,
-with a margin (planned: 4 Oct).
+with a margin (planned: 4 Oct). On this installation the owner instead chose
+a forced cut-off on 29 Sep; §17.5 records it.
 
 1. **Evidence.**
    - Re-run the query: it must return 0.
@@ -1549,3 +1550,121 @@ their lifetime verify again.
     is reviewed on its own.
   - **The exposure shrinks after 9.6b:** with HS256 verification off, the JWT
     secret verifies nothing, and 9.5 already refuses HS256 service tokens.
+
+### 17.5 Step 9.6b — as run: a FORCED cut-off (29 Sep 2026)
+
+**The measured condition of §17.3 was not waited for.** At 17:32 IST the
+query still returned 14. The project owner then decided on a **forced**
+cut-off: the application has no active users, so there was nothing to gain
+from waiting until 3 Oct 22:12 IST. The 14 remaining HS256 sessions were
+**intentionally invalidated**, and the switch was flipped the same day. This
+replaces the "measured" choice of O8 for this installation only; the runbook
+in §17.3 remains the procedure where live users exist.
+
+**Before anything changed (17:39 IST):**
+
+- The §17.2 query returned **14 live HS256 refresh sessions across 5
+  accounts**: superadmin ×6, dhananjay ×3, admin_chandan ×2, pankaj ×2,
+  chandan_scanner ×1. The last would have expired on 3 Oct at 22:12 IST.
+- The session ids were 7316, 7319, 7337, 7360, 7399, 7414, 7417, 7418, 7419,
+  7424, 7425, 7429, 7430 and 7439. No token material was read or recorded.
+- **Backup:** `ccure_db_20260929_173912_ops.dump`, which contains the
+  `refresh_token_sessions` data (checked with `pg_restore -l`).
+
+**The cut-off:**
+
+| Step                  | When (IST) | What                                                                                                                                                                                                                               |
+| --------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Revoke the 14         | 17:39:27   | One statement: `revoked_at = now()` for exactly those ids, still unrevoked and unexpired, which rolls itself back unless exactly 14 rows change. It changed 14. The rows are kept: a revoked row is the audit record of a sign-out |
+| Count                 | 17:39:27   | The query returns **0**                                                                                                                                                                                                            |
+| Flip                  | 17:40:04   | Root `.env`: `CCURE_ACCEPT_LEGACY_HS256=false`, the only line changed. Then `docker compose up -d --no-deps api`                                                                                                                   |
+| Rollback rehearsal on | 17:47:23   | Switch `true`, api recreated                                                                                                                                                                                                       |
+| Final state           | 17:48:19   | Switch `false` again, api recreated. It has been in this state since                                                                                                                                                               |
+
+The key is untouched: the `7jKp…` file has been unchanged since 11:19, and
+`keyset.json` since the 14:44 promotion.
+
+**Live verification, all passed:**
+
+- **Start-up.** The log reads
+  `Legacy HS256 verification: disabled (CCURE_ACCEPT_LEGACY_HS256=false)` and
+  `Token issuance: ES256 with key 7jKpUJt99bl-…`, with 0 restarts.
+- **HS256 refused.** HS256 tokens were minted in a separate process, for a
+  user id that does not exist:
+
+  - the access token answers `401 Invalid or expired token`;
+  - the ticket answers `401 Invalid or expired download ticket.`;
+  - both refusals are logged by `ccure.tokens` with the reason code
+    `legacy_disabled`.
+
+  ES256 tokens of both kinds reach the user lookup (`User not found`).
+
+- **A real login flow, over HTTPS through host nginx**, with the same calls
+  the SPA makes, on the owner's account (no MFA) at 17:55:
+
+  - **Login:** 200, an ES256 access token, the refresh cookie set, and
+    `/auth/me` 200.
+  - **Refresh:** a page reload refreshes, because the SPA holds the access
+    token in memory only. `/auth/refresh` returned 200 with a new ES256
+    token. Session 7484 was revoked with `replaced_by` pointing at session
+    7485, and `/auth/me` returned 200.
+  - **Download ticket:** `/auth/ticket` returned 200, an ES256 ticket.
+    `/reports/download/scn_defa_c522b539_29sep26_fh9j?fmt=JSON` returned 200,
+    a 46,191-byte PDF served from the stored file, and wrote the audit event
+    `report.downloaded`.
+  - **Logout:** 200. Session 7485 was revoked (audit event `user.logout`),
+    and a refresh afterwards was refused with 401.
+
+  The audit sequence is `user.login` → `report.downloaded` → `user.logout`,
+  all `success`, with no refusal and no error logged. (Two earlier manual
+  browser attempts logged in and out within 3–5 seconds and did not exercise
+  refresh or a download, so they are not counted.)
+
+- **JWKS.** One key, `7jKp…`, public members only.
+- **The Phase 8 live probe is identical.**
+- **Worker, web-worker and beat** were not restarted (started 05:49 UTC).
+  They have no `CCURE_ACCEPT_LEGACY_HS256`, `CCURE_TOKEN_SIGNING_ALG` or
+  `CCURE_TOKEN_KEYS_DIR`, no keys mount, and no key file anywhere in their
+  filesystems.
+- **Rollback rehearsal.** With the switch on, the same kinds of HS256 access
+  token and ticket verified again (they reached the user lookup, with 0
+  refusals), and HS256 issuance passed its start-up check
+  (`HS256 (legacy issuance, …)`) in a separate process. Switched off again,
+  HS256 was refused (`legacy_disabled`) and ES256 accepted.
+
+**Final live state (from 29 Sep 2026, 17:48 IST):**
+
+- **Issuance:** ES256, with the active key `7jKpUJt99bl-…`, unchanged.
+- **Legacy HS256 verification:** disabled. `CCURE_ACCEPT_LEGACY_HS256=false`
+  in the root `.env` and on the api only.
+- **Live HS256 refresh sessions:** 0. Nothing issues HS256.
+- **Still present, by decision (§17.4):** the HS256 code, the HS256 issuance
+  mode and `JWT_SECRET_KEY`. They are the rollback.
+
+**Rollback.** In the root `.env`, set `CCURE_ACCEPT_LEGACY_HS256=true`, then
+`docker compose up -d --no-deps api`. The log must read
+`Legacy HS256 verification: enabled`.
+
+- **What it restores:** acceptance of HS256 tokens. None legitimately exists
+  any more — the 14 sessions are revoked, and nothing issues HS256.
+- **Rolling issuance back to HS256 too** (the 9.4 rollback) needs this step
+  first, then `CCURE_TOKEN_SIGNING_ALG=HS256`. With the switch off, the API
+  refuses to start in HS256 mode by design (§17.1).
+- **The 14 revoked sessions are not restored by any rollback.** Restoring them
+  would mean restoring the revoked rows from
+  `ccure_db_20260929_173912_ops.dump` into a scratch database and copying
+  them back — not advised, since their users are simply asked to sign in
+  again.
+
+**Findings:**
+
+- **`certs/ccure-internal-ca.crt` in the repository is not the root that signs
+  host nginx's certificate on this VM.** The live chain is signed by "CCure
+  Audit PRO Internal Root CA (Linux Dev)", which is in the VM's system trust
+  store. Recorded, not changed.
+- **Phase 9 is complete for its approved scope.**
+  - A token verifies with the public key alone (§14–15).
+  - A service can obtain its own token (§16).
+  - HS256 tokens were retired by a controlled cut-off (this section).
+  - What remains is the removal step and F9-8 (§17.4), each needing its own
+    decision.

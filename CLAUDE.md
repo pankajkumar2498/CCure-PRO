@@ -249,15 +249,18 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - **Live token issuance is ES256** since 29 Sep 2026 (step 9.4), with the
     promoted `active` key `7jKp…`. Tokens are signed only by `tokens.sign()`,
     which sets `iss`, `aud`, `ptype`, `nbf` and `jti` itself.
-  - **Legacy HS256 tokens still verify** while `CCURE_ACCEPT_LEGACY_HS256=true`
-    (api only; root `.env`). The 9.6b cut-off sets it to `false` once no HS256
-    refresh session remains; the query and runbook are in Phase 9 doc §17.
+  - **Legacy HS256 tokens no longer verify** — `CCURE_ACCEPT_LEGACY_HS256=false`
+    (api only; root `.env`) since a forced cut-off on 29 Sep 2026, 17:40 IST,
+    which revoked the last 14 HS256 sessions (Phase 9 doc §17.5). The HS256
+    code, issuance mode and `JWT_SECRET_KEY` remain as the rollback; removing
+    them is a later, separately reviewed step.
   - **With the switch off, HS256 issuance is refused**, and the API will not
     start with `CCURE_TOKEN_SIGNING_ALG=HS256`: it would issue tokens it then
     refuses.
-  - **Rollback.** Set `CCURE_TOKEN_SIGNING_ALG=HS256` in the root `.env`, then
-    `docker compose up -d --no-deps api`. Tokens already issued ES256 stay
-    valid.
+  - **Rollback.** Set `CCURE_ACCEPT_LEGACY_HS256=true` in the root `.env` and
+    `docker compose up -d --no-deps api`; only then can
+    `CCURE_TOKEN_SIGNING_ALG=HS256` roll issuance back too. Tokens already
+    issued ES256 stay valid either way.
   - **With ES256 selected and no active key, the API refuses to start** —
     deliberately (design §3.7). Set HS256 before demoting or removing the
     active key. See Phase 9 doc §15.3.
@@ -625,8 +628,9 @@ dump": up to six hours of operational data.
   signed by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,
   mounted read-only into **api only**) and publishes it at `/auth/jwks.json`.
   It issues ES256 with the `active` key `7jKp…`. The root `.env` sets
-  `CCURE_TOKEN_SIGNING_ALG=ES256`, live since 29 Sep 2026; HS256 there is the
-  rollback. See Phase 9 doc §15.3.
+  `CCURE_TOKEN_SIGNING_ALG=ES256` (live since 29 Sep 2026) and
+  `CCURE_ACCEPT_LEGACY_HS256=false` (since the 9.6b cut-off). See Phase 9 doc
+  §15.3 and §17.5.
   - **Key management.** Keys are managed only with
     `scripts/security/manage_token_keys.py`, run in the backend image as root —
     never by hand.

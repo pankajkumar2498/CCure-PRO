@@ -2,7 +2,11 @@
 Token guardrails — Phase 9.1.
 
 Signing and verification live in ``ccure_platform.identity.tokens`` and nowhere
-else (docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md §6):
+else (docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md §6). Since
+Phase 10.2a the verification *rules* are in ``ccure_platform.identity.verification``,
+with keys and configuration injected so the gateway can run them too; the two
+modules are the closed set below, and ``test_verification_agreement.py`` guards
+what the second may import:
 
 * **no other module imports a JWT library**, so no module can quietly verify
   tokens its own way;
@@ -25,6 +29,9 @@ from testpaths import BACKEND_ROOT
 
 JWT_LIBRARIES = ("jose", "jwt", "joserfc", "authlib", "jwcrypto")
 TOKEN_MODULE = "ccure_platform.identity.tokens"
+VERIFICATION_MODULE = "ccure_platform.identity.verification"
+#: The only modules that may import a JWT library or read a token's type.
+TOKEN_MODULES = frozenset({TOKEN_MODULE, VERIFICATION_MODULE})
 
 #: Who may still call the any-kind ``decode_token``, and why. Shrinks only.
 LEGACY_DECODE_CALLERS = {
@@ -53,20 +60,21 @@ def test_only_the_token_module_imports_a_jwt_library():
     for module, path in _modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for name, _ in _imports(tree):
-            if name.split(".")[0] in JWT_LIBRARIES and module != TOKEN_MODULE:
+            if name.split(".")[0] in JWT_LIBRARIES and module not in TOKEN_MODULES:
                 offenders.append(f"{module}: {name}")
     assert not offenders, (
-        "a module other than ccure_platform.identity.tokens imports a JWT "
-        "library — sign and verify through the token module:\n  "
+        "a module other than ccure_platform.identity.tokens / .verification "
+        "imports a JWT library — sign and verify through the token module:\n  "
         + "\n  ".join(offenders)
     )
 
 
 def test_the_token_module_does_import_one():
-    """The check above is only meaningful if the token module is found."""
-    path = dict(_modules())[TOKEN_MODULE]
-    names = {n.split(".")[0] for n, _ in _imports(ast.parse(path.read_text()))}
-    assert names & set(JWT_LIBRARIES)
+    """The check above is only meaningful if both modules are found."""
+    for module in TOKEN_MODULES:
+        path = dict(_modules())[module]
+        names = {n.split(".")[0] for n, _ in _imports(ast.parse(path.read_text()))}
+        assert names & set(JWT_LIBRARIES), module
 
 
 def test_verify_requires_the_expected_kind_issuer_and_audience():
@@ -118,7 +126,7 @@ def test_the_platform_checks_no_token_type_by_hand():
         in_platform = module.startswith("ccure_platform.") or module in (
             "routers.user_profile",
         )
-        if not in_platform or module == TOKEN_MODULE:
+        if not in_platform or module in TOKEN_MODULES:
             continue
         for number, line in enumerate(path.read_text().splitlines(), 1):
             if pattern.search(line):

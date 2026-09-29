@@ -68,56 +68,40 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 
 from ccure_platform.identity import keys as keyset_mod
+from ccure_platform.identity import verification
+from ccure_platform.identity.verification import (  # noqa: F401 — re-exported
+    ACCESS,
+    KIND_PTYPE,
+    KINDS,
+    MFA_CHALLENGE,
+    PTYPE_SERVICE,
+    PTYPE_USER,
+    REFRESH,
+    REQUIRED_ASYMMETRIC_CLAIMS,
+    SERVICE_ACCESS,
+    SERVICE_ASSERTION_MAX_LIFETIME,
+    TICKET,
+    USER_KINDS,
+)
 from config import JWTConfig
 from cryptography.hazmat.primitives import serialization
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+from jose import jwt
 
 log = logging.getLogger("ccure.tokens")
 
-#: The token kinds, as carried in the ``type`` claim. Unchanged.
-ACCESS = "access"
-REFRESH = "refresh"
-TICKET = "ticket"
-MFA_CHALLENGE = "mfa_challenge"
-USER_KINDS = frozenset({ACCESS, REFRESH, TICKET, MFA_CHALLENGE})
-#: The one kind issued to a service identity (Phase 9.5). Never by sign().
-SERVICE_ACCESS = "service_access"
-KINDS = USER_KINDS | {SERVICE_ACCESS}
-
-#: The principal type each kind is issued to. Explicit, never inferred from
-#: ``sub`` (owner's decision, Phase 9 review).
-PTYPE_USER = "user"
-PTYPE_SERVICE = "service"
-KIND_PTYPE = {
-    ACCESS: PTYPE_USER,
-    REFRESH: PTYPE_USER,
-    TICKET: PTYPE_USER,
-    MFA_CHALLENGE: PTYPE_USER,
-    SERVICE_ACCESS: PTYPE_SERVICE,
-}
+# The token kinds, the principal type each is issued to and the claims an
+# asymmetric token must carry are defined in ``verification`` (Phase 10.2a) and
+# re-exported here, so the rules exist once and every caller's names still work.
 
 SECRET_KEY: str = JWTConfig.SECRET_KEY
-ALGORITHM = "HS256"
+ALGORITHM = verification.LEGACY_ALGORITHM
 
 #: The platform issuer and the audience of user tokens (owner's decisions,
 #: 29 Sep 2026). The issuer must never change for the life of the platform.
 ISSUER: str = JWTConfig.TOKEN_ISSUER
 USER_AUDIENCE: str = JWTConfig.TOKEN_USER_AUDIENCE
 
-#: Claims an asymmetric token must carry.
-REQUIRED_ASYMMETRIC_CLAIMS = (
-    "iss",
-    "aud",
-    "sub",
-    "type",
-    "ptype",
-    "jti",
-    "iat",
-    "nbf",
-    "exp",
-)
-_REFUSED_HEADERS = frozenset({"jku", "x5u", "jwk", "x5c", "crit"})
+_REFUSED_HEADERS = verification.REFUSED_HEADERS
 
 #: What tokens may be issued with (``CCURE_TOKEN_SIGNING_ALG``). ES256 is the
 #: platform algorithm; HS256 is the rollback and issues exactly the 9.3 token.
@@ -139,8 +123,7 @@ SERVICE_SUBJECT_PREFIX = "svc:"
 #: The client assertion (RFC 7523): audience is the token endpoint's URL, the
 #: lifetime at most 60 seconds, and each jti is accepted once.
 SERVICE_ASSERTION_AUDIENCE = f"{ISSUER}/api/auth/service-token"
-SERVICE_ASSERTION_MAX_LIFETIME = timedelta(seconds=60)
-_SERVICE_ASSERTION_ALGORITHM = "ES256"
+_SERVICE_ASSERTION_ALGORITHM = verification.SERVICE_ASSERTION_ALGORITHM
 
 
 class SigningUnavailable(RuntimeError):
@@ -340,11 +323,20 @@ def sign_service_token(
 
 
 # ── verification ─────────────────────────────────────────────────────────────
+#
+# The rules live in ``verification`` (Phase 10.2a), with the keyset, the legacy
+# secret, the issuer and the audience injected. This module supplies them from
+# the core service's configuration — read at call time, as before, so the
+# ``CCURE_ACCEPT_LEGACY_HS256`` switch and a swapped keyset take effect on the
+# next call — and turns a refusal into a log line on ``ccure.tokens`` and None.
 
 #: Reasons that are routine in normal use and logged at INFO; every other
 #: refusal is WARNING, because it means a malformed, forged or misdirected token.
 _ROUTINE_REFUSALS = frozenset({"expired", "wrong_kind"})
 _LOGGED_VALUE_LIMIT = 64
+
+_reason_for = verification.reason_for
+_header = verification.header_of
 
 
 def _loggable(value: Any) -> str | None:
@@ -363,12 +355,7 @@ def _refuse(reason: str, token: str, header: Mapping | None, *, legacy: bool) ->
     logged: only the reason and the unverified kid, jti and ptype, which
     correlate a refusal with an issuance without being replayable.
     """
-    try:
-        claims = jwt.get_unverified_claims(token)
-    except JWTError:
-        claims = {}
-    if not isinstance(claims, dict):
-        claims = {}
+    claims = verification.claims_of(token)
     header = header if isinstance(header, Mapping) else {}
     log.log(
         logging.INFO if reason in _ROUTINE_REFUSALS else logging.WARNING,
@@ -382,80 +369,36 @@ def _refuse(reason: str, token: str, header: Mapping | None, *, legacy: bool) ->
     return None
 
 
-def _reason_for(exc: JWTError) -> str:
-    """A reason code for a python-jose refusal."""
-    if isinstance(exc, ExpiredSignatureError):
-        return "expired"
-    message = str(exc).lower()
-    if "missing" in message:
-        return "missing_claim"
-    if isinstance(exc, JWTClaimsError):
-        if "audience" in message:
-            return "wrong_audience"
-        if "issuer" in message:
-            return "wrong_issuer"
-        if "not yet valid" in message:
-            return "not_yet_valid"
-        return "invalid_claims"
-    if "signature" in message:
-        return "bad_signature"
-    return "malformed"
+def _settle(outcome: Any, token: str) -> Any:
+    """A verification outcome as this module has always returned it."""
+    if isinstance(outcome, verification.Refusal):
+        return _refuse(outcome.reason, token, outcome.header, legacy=outcome.legacy)
+    return outcome
+
+
+def _legacy() -> verification.LegacyHS256 | None:
+    """The legacy HS256 policy in force now: the secret while it is on."""
+    if not JWTConfig.ACCEPT_LEGACY_HS256:
+        return None
+    return verification.LegacyHS256(SECRET_KEY)
+
+
+def _keyset_source() -> keyset_mod.KeySet | None:
+    return _current_keyset()
 
 
 def _decode(token: str, *, issuer: str, audience: str) -> dict | None:
     """Signature, expiry and — for asymmetric tokens — issuer, audience, claims."""
-    try:
-        header = jwt.get_unverified_header(token)
-    except JWTError:
-        return _refuse("malformed", token, None, legacy=False)
-    if not isinstance(header, dict):
-        return _refuse("malformed", token, None, legacy=False)
-    if _REFUSED_HEADERS & set(header):
-        return _refuse("refused_header", token, header, legacy=False)
-    alg, kid = header.get("alg"), header.get("kid")
-
-    if alg == ALGORITHM and kid is None:
-        # Legacy HS256, fenced: no kid, HMAC secret, until the 9.6 cut-off.
-        if not JWTConfig.ACCEPT_LEGACY_HS256:
-            return _refuse("legacy_disabled", token, header, legacy=True)
-        try:
-            return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        except JWTError as exc:
-            return _refuse(_reason_for(exc), token, header, legacy=True)
-
-    if not isinstance(kid, str) or not kid:
-        return _refuse("missing_kid", token, header, legacy=False)
-    keyset = _current_keyset()
-    if keyset is None:
-        return _refuse("no_keyset", token, header, legacy=False)
-    key = keyset.verification_key(kid)
-    if key is None:
-        return _refuse("unknown_kid", token, header, legacy=False)
-    if alg != key.alg:
-        return _refuse("alg_mismatch", token, header, legacy=False)
-    try:
-        payload = jwt.decode(
+    return _settle(
+        verification.decode(
             token,
-            key.public_pem,
-            algorithms=[key.alg],
-            audience=audience,
             issuer=issuer,
-            options={
-                "require_aud": True,
-                "require_iss": True,
-                "require_sub": True,
-                "require_jti": True,
-                "require_iat": True,
-                "require_nbf": True,
-                "require_exp": True,
-                "leeway": 0,
-            },
-        )
-    except JWTError as exc:
-        return _refuse(_reason_for(exc), token, header, legacy=False)
-    if any(claim not in payload for claim in REQUIRED_ASYMMETRIC_CLAIMS):
-        return _refuse("missing_claim", token, header, legacy=False)
-    return payload
+            audience=audience,
+            keyset=_keyset_source,
+            legacy=_legacy(),
+        ),
+        token,
+    )
 
 
 def decode_any_kind(token: str) -> dict | None:
@@ -466,32 +409,26 @@ def decode_any_kind(token: str) -> dict | None:
     callers (see the module docstring). Asymmetric tokens are held to the
     platform issuer, the user audience and the ``user`` principal type.
     """
-    payload = _decode(token, issuer=ISSUER, audience=USER_AUDIENCE)
-    header = _header(token)
-    if payload and "kid" in header and payload.get("ptype") != PTYPE_USER:
-        return _refuse("wrong_ptype", token, header, legacy=False)
-    return payload
-
-
-def _header(token: str) -> dict:
-    try:
-        return jwt.get_unverified_header(token)
-    except JWTError:
-        return {}
+    return _settle(
+        verification.decode_any_kind(
+            token,
+            issuer=ISSUER,
+            audience=USER_AUDIENCE,
+            keyset=_keyset_source,
+            legacy=_legacy(),
+        ),
+        token,
+    )
 
 
 def unverified_header(token: str) -> dict:
     """A token's header, **not verified** — for logging and audit only."""
-    return _header(token)
+    return verification.header_of(token)
 
 
 def unverified_claims(token: str) -> dict:
     """A token's claims, **not verified** — for logging and audit only."""
-    try:
-        claims = jwt.get_unverified_claims(token)
-    except JWTError:
-        return {}
-    return claims if isinstance(claims, dict) else {}
+    return verification.claims_of(token)
 
 
 def verify(
@@ -505,22 +442,17 @@ def verify(
     ``expected_kind``, ``issuer`` and ``audience`` have no defaults. A kind this
     module does not issue is a programming error and raises.
     """
-    if expected_kind not in KINDS:
-        raise ValueError(f"unknown token kind {expected_kind!r}")
-    payload = _decode(token, issuer=issuer, audience=audience)
-    if not payload:
-        return None
-    header = _header(token)
-    legacy = "kid" not in header
-    if legacy and KIND_PTYPE[expected_kind] == PTYPE_SERVICE:
-        # HS256 rests on a secret the api and every worker hold; no service
-        # may authenticate with it (no shared secret, owner's decision).
-        return _refuse("legacy_service", token, header, legacy=True)
-    if payload.get("type") != expected_kind:
-        return _refuse("wrong_kind", token, header, legacy=legacy)
-    if not legacy and payload.get("ptype") != KIND_PTYPE[expected_kind]:
-        return _refuse("wrong_ptype", token, header, legacy=False)
-    return payload
+    return _settle(
+        verification.verify(
+            token,
+            expected_kind=expected_kind,
+            issuer=issuer,
+            audience=audience,
+            keyset=_keyset_source,
+            legacy=_legacy(),
+        ),
+        token,
+    )
 
 
 # ── service assertions (RFC 7523 client authentication, Phase 9.5) ────────────
@@ -544,54 +476,12 @@ def verify_service_assertion(
     jti was seen before is the caller's check, after this one, so an
     unauthenticated caller can never fill the replay store.
     """
-    try:
-        header = jwt.get_unverified_header(assertion)
-        claims = jwt.get_unverified_claims(assertion)
-    except JWTError:
-        return _refuse("malformed", assertion, None, legacy=False)
-    if not isinstance(header, dict) or not isinstance(claims, dict):
-        return _refuse("malformed", assertion, None, legacy=False)
-    if _REFUSED_HEADERS & set(header):
-        return _refuse("refused_header", assertion, header, legacy=False)
-    kid, service_id = header.get("kid"), claims.get("iss")
-    if header.get("alg") != _SERVICE_ASSERTION_ALGORITHM:
-        return _refuse("alg_mismatch", assertion, header, legacy=False)
-    if not isinstance(kid, str) or not kid:
-        return _refuse("missing_kid", assertion, header, legacy=False)
-    if not isinstance(service_id, str) or not service_id:
-        return _refuse("missing_claim", assertion, header, legacy=False)
-    key = key_for(service_id, kid)
-    if key is None:
-        return _refuse("unknown_service_key", assertion, header, legacy=False)
-    try:
-        verified = jwt.decode(
+    return _settle(
+        verification.verify_service_assertion(
             assertion,
-            key.public_pem,
-            algorithms=[_SERVICE_ASSERTION_ALGORITHM],
+            key_for=key_for,
             audience=SERVICE_ASSERTION_AUDIENCE,
-            issuer=service_id,
-            options={
-                "require_aud": True,
-                "require_iss": True,
-                "require_sub": True,
-                "require_jti": True,
-                "require_iat": True,
-                "require_exp": True,
-                "leeway": 0,
-            },
-        )
-    except JWTError as exc:
-        return _refuse(_reason_for(exc), assertion, header, legacy=False)
-    if verified.get("sub") != service_id:
-        return _refuse("subject_mismatch", assertion, header, legacy=False)
-    iat, exp = verified.get("iat"), verified.get("exp")
-    if not isinstance(iat, (int, float)) or not isinstance(exp, (int, float)):
-        return _refuse("invalid_claims", assertion, header, legacy=False)
-    now = _utcnow().timestamp()
-    if iat > now:
-        return _refuse("not_yet_valid", assertion, header, legacy=False)
-    if exp - iat > SERVICE_ASSERTION_MAX_LIFETIME.total_seconds():
-        return _refuse("lifetime_too_long", assertion, header, legacy=False)
-    if not isinstance(verified.get("jti"), str) or not verified["jti"]:
-        return _refuse("missing_claim", assertion, header, legacy=False)
-    return verified
+            now=lambda: _utcnow(),
+        ),
+        assertion,
+    )

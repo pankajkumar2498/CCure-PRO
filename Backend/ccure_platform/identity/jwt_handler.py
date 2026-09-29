@@ -22,7 +22,7 @@ from core.user_agent import describe_request
 from db.base import SessionLocal
 from db.models import RefreshTokenSession, User
 from fastapi import Request
-from jose import JWTError, jwt
+from ccure_platform.identity import tokens
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 from config import JWTConfig as _JWTCfg
 
 ENVIRONMENT = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
-SECRET_KEY: str = _JWTCfg.SECRET_KEY
-ALGORITHM = "HS256"
+# Signing lives in ccure_platform.identity.tokens (Phase 9.1). These names
+# stay importable from here, with the same values, for existing callers.
+SECRET_KEY: str = tokens.SECRET_KEY
+ALGORITHM = tokens.ALGORITHM
 ACCESS_TOKEN_EXPIRE = timedelta(minutes=_JWTCfg.ACCESS_TOKEN_EXPIRES_MINUTES)
 REFRESH_TOKEN_EXPIRE = timedelta(days=_JWTCfg.REFRESH_TOKEN_EXPIRES_DAYS)
 
@@ -117,11 +119,7 @@ def _utcnow() -> datetime:
 
 
 def _create_token(data: dict, expires_delta: timedelta) -> str:
-    now = _utcnow()
-    payload = data.copy()
-    payload["iat"] = now
-    payload["exp"] = now + expires_delta
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return tokens.sign(data, expires_delta)
 
 
 def _hash_token(token: str) -> str:
@@ -235,18 +233,20 @@ def create_refresh_token(
 
 def decode_token(token: str) -> dict | None:
     """
-    Decode and validate a JWT.
+    Decode and validate a JWT of **any** kind.
     Returns the payload dict, or None if invalid / expired.
+
+    Kept, unchanged, for the callers outside Phase 9 — the two WebSocket
+    ticket logins (Phase 10) and the rate-limit audit — which check the kind
+    themselves. Everything else verifies through
+    ``tokens.verify(token, expected_kind=…)``.
     """
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        return None
+    return tokens.decode_any_kind(token)
 
 
 def _get_refresh_session(db: Session, refresh_token: str) -> RefreshTokenSession | None:
-    payload = decode_token(refresh_token)
-    if not payload or payload.get("type") != "refresh":
+    payload = tokens.verify(refresh_token, expected_kind=tokens.REFRESH)
+    if not payload:
         return None
 
     token_jti = payload.get("jti")

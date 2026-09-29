@@ -238,6 +238,16 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `organizations` in step 8.4, and the 11 mentions in identity's own code
     are a baseline that reaches zero there.
 - **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+- **Tokens are signed and verified only in `ccure_platform.identity.tokens`**
+  (Phase 9.1). No other module imports a JWT library.
+  - Verify with `tokens.verify(token, expected_kind=…)`; the kind is required,
+    so an endpoint cannot accept the wrong kind of token. Never check
+    `payload.get("type")` by hand.
+  - The any-kind `decode_token` is kept only for the two WebSocket logins
+    (Phase 10) and the rate-limit audit.
+  - `tests/repo/test_token_guardrails.py` enforces all of this.
+  - Still HS256, and **`MFA_ENCRYPTION_KEY` derives from `JWT_SECRET_KEY` until
+    step 9.2**: do not rotate or unset the JWT secret before then.
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
   (step 8.5) and take `require_permission` / `require_role` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.

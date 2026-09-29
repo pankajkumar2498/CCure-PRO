@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Proposal for review.** Nothing here is implemented. No production code, configuration or database has changed.                                                                                      |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Step 9.1 done**; 9.2 not started.                                                                                  |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
 | **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
@@ -636,4 +636,126 @@ none` refused; wrong-key signature refused; each kind refused where another
 | F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                 |
 | F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6 |
 | F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                    |
-| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed first (9.1)                                                                                 |
+| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed in 9.1 (25 characterisation tests)                                                          |
+| F9-11 | 401s lose the `WWW-Authenticate: Bearer` header the dependency sets (the error handler does not forward exception headers)                   | Found by 9.1's characterisation; pinned as observed, not fixed                                    |
+
+## 11. Owner's review of this proposal (29 Sep 2026)
+
+**Approved:**
+
+- the scope: verifiable tokens and service identities only;
+- 9.1 and 9.2 (9.2 is **mandatory** before any rotation or retirement of the
+  JWT secret, and its proof is that existing MFA secrets decrypt before and
+  after);
+- **ES256** as the signing algorithm;
+- service identities kept distinct from human users (the `scanner` account
+  and role are not repurposed);
+- **D4 direction**: each service owns a key pair, signs a short-lived
+  assertion, the core verifies it and issues a short-lived service token, and
+  there is no shared service secret;
+- worker, web-worker and beat receive no private key;
+- the verifier requires expected kind, issuer and audience, with no call path
+  that omits them;
+- principal type is an explicit claim, not inferred from the `svc:` namespace.
+
+**Not approved, or changed:**
+
+- **HS256 retirement (9.6) is not approved in advance.** It needs evidence at
+  the time: no legacy sessions or tokens, MFA separated, rollback verified,
+  runtime checks complete — and its own review.
+- **A:** no python-jose → PyJWT migration in 9.1. A library change, if still
+  wanted, is a separate reviewed change.
+- **B: D9 is not decided.** First document IR's authorisation requirements,
+  whether IR must authorise user actions while the core is unavailable, and
+  the permission-staleness trade-off.
+- **C: the service-identity tables are not approved.** 9.5 first needs the
+  exact schema, ownership, constraints, tenant binding, key rotation and
+  revocation, indexes, audit requirements and migration/rollback plan,
+  reviewed.
+- **D: JWKS is an intentional API addition.** After it, prove the OpenAPI
+  delta is exactly the approved endpoint and nothing else, rather than
+  byte-identity.
+- **E:** replace manual token-type checks with a verifier that requires the
+  expected kind.
+- **F:** the two WebSocket authentication paths stay untouched in Phase 9.
+
+## 12. Step 9.1 — as built
+
+**New: `ccure_platform/identity/tokens.py`**
+
+- It is the only module that imports a JWT library (still python-jose, per A).
+- `sign(claims, lifetime)` is exactly the old `_create_token`: the same
+  `iat`/`exp`, HS256, and `JWT_SECRET_KEY` from `config.JWTConfig`.
+- `verify(token, *, expected_kind)` is keyword-only with no default. An unknown
+  kind raises. It returns the payload only for a correctly signed, unexpired
+  token **of that kind**.
+- `decode_any_kind(token)` is the legacy behaviour, kept separate. Issuer and
+  audience become required keyword-only arguments of `verify` when the claims
+  exist (9.3/9.4), so adding them fails every caller at once.
+
+**Routed through it:**
+
+- **`jwt_handler`:**
+  - `_create_token` calls `tokens.sign`;
+  - `decode_token` calls `tokens.decode_any_kind`;
+  - `_get_refresh_session` calls `verify(…, REFRESH)`;
+  - `SECRET_KEY` and `ALGORITHM` stay importable with the same values;
+  - every public name, signature and return is unchanged.
+- **Manual `payload.get("type")` checks replaced by `verify(…, expected_kind=…)`
+  (E):**
+
+  - `dependencies._decode_access_payload` (ACCESS);
+  - `get_current_user_flexible`'s ticket branch (TICKET);
+  - logout (REFRESH);
+  - both MFA challenge endpoints (MFA_CHALLENGE);
+  - `routers.user_profile._current_session_jti` (REFRESH).
+
+  The error bodies and status codes are unchanged.
+
+- **Untouched (F and the scope):**
+  - the two WebSocket logins, which still call `decode_token`;
+  - `main.py` and `core.rate_limit_audit`;
+  - configuration, the database, compose and the frontend.
+
+**Characterisation** (`tests/auth/test_token_characterisation.py`, 25 tests):
+written first, passing against the code **before** the change, and unchanged
+since. For all four kinds it covers:
+
+- the header (`{"alg":"HS256","typ":"JWT"}`), the exact claim set and the
+  lifetime (access 30 min, refresh 7 days, ticket 60 s, challenge 5 min);
+- acceptance by the consuming path;
+- refusal, with that path's own uniform error, of 13 invalid variants:
+  tampered signature, tampered payload, wrong key, `alg: none` (with and
+  without the trailing dot), HS512 with the right key, expired, no `type`,
+  empty, garbage, two segments, three junk segments, and a non-JSON payload;
+- refusal of each of the three other kinds;
+- the legacy `decode_token` accepting every valid kind and refusing every
+  invalid variant;
+- refresh rotating once, a correctly signed refresh token with no session
+  refused, and logout revoking.
+
+**The characterisation found F9-11.** A protected route raises its 401 with
+`WWW-Authenticate: Bearer`, but the application's error handler does not
+forward exception headers, so clients receive none. It is pinned as observed,
+not fixed.
+
+**Guardrails** (`tests/repo/test_token_guardrails.py`, 7 tests):
+
+- only the token module imports a JWT library;
+- `verify` requires the kind;
+- the any-kind decode has exactly the recorded callers (the two WebSocket
+  routers and `main.py`), a set that can only shrink;
+- no platform code checks `payload.get("type")` by hand;
+- no private key material in the repository (a PEM block with a body, or a
+  JWK `d`; a form placeholder showing only the header is not a match).
+
+A mutation run with a planted module (a `jose` import, a hand type check, a
+`decode_token` import) fails three of them.
+
+**Continuity:**
+
+- With the clock frozen, all four token kinds minted by the old code (HEAD)
+  and by the new code are **byte-identical**.
+- Each version decodes the other's tokens identically.
+- A token issued before the deploy is therefore valid after it, and the
+  reverse.

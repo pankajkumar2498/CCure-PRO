@@ -203,17 +203,17 @@ def _current_session_jti(request: Request) -> str | None:
     raise, because failing to identify the current session is not a reason to
     refuse to list sessions.
     """
-    from auth.jwt_handler import decode_token
     from auth.router import REFRESH_COOKIE_NAME
+    from ccure_platform.identity.tokens import REFRESH, verify
 
     token = request.cookies.get(REFRESH_COOKIE_NAME)
     if not token:
         return None
     try:
-        payload = decode_token(token)
+        payload = verify(token, expected_kind=REFRESH)
     except Exception:
         return None
-    if not payload or payload.get("type") != "refresh":
+    if not payload:
         return None
     return payload.get("jti")
 

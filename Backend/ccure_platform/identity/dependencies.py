@@ -11,7 +11,7 @@ adopt_legacy_name(__name__, "auth.dependencies")
 from dataclasses import dataclass
 from typing import Optional
 
-from ccure_platform.identity.jwt_handler import decode_token
+from ccure_platform.identity.tokens import ACCESS, TICKET, verify
 from db.base import get_db
 from db.models import User
 from fastapi import Depends, HTTPException, status
@@ -30,9 +30,8 @@ class AuthContext:
 
 
 def _decode_access_payload(token: str) -> dict:
-    payload = decode_token(token)
-
-    if not payload or payload.get("type") != "access":
+    payload = verify(token, expected_kind=ACCESS)
+    if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -152,8 +151,8 @@ def get_current_user_flexible(
     The user's Role is eagerly loaded for RBAC enforcement.
     """
     if ticket:
-        payload = decode_token(ticket)
-        if not payload or payload.get("type") != "ticket":
+        payload = verify(ticket, expected_kind=TICKET)
+        if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired download ticket.",

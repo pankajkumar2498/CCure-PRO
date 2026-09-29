@@ -31,12 +31,12 @@ from ccure_platform.identity.email_utils import (
     normalize_email,
     username_matches,
 )
+from ccure_platform.identity import tokens
 from ccure_platform.identity.jwt_handler import (
     REFRESH_TOKEN_EXPIRE,
     create_access_token,
     create_download_ticket,
     create_refresh_token,
-    decode_token,
     hash_password,
     refresh_access_token,
     revoke_refresh_token,
@@ -1127,10 +1127,10 @@ def logout(
             detail="Invalid or expired refresh token",
         )
 
-    payload = decode_token(refresh_token)
+    payload = tokens.verify(refresh_token, expected_kind=tokens.REFRESH)
     session_row = None
     user = None
-    if payload and payload.get("type") == "refresh" and payload.get("jti"):
+    if payload and payload.get("jti"):
         session_row = (
             db.query(RefreshTokenSession)
             .filter(RefreshTokenSession.token_jti == payload.get("jti"))
@@ -1553,8 +1553,8 @@ def send_email_otp(
     from ccure_platform.identity.mail_dispatch import dispatch_email
     from db.base import utcnow
 
-    payload = decode_token(req.mfa_token)
-    if not payload or payload.get("type") != "mfa_challenge":
+    payload = tokens.verify(req.mfa_token, expected_kind=tokens.MFA_CHALLENGE)
+    if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired challenge token.",
@@ -1597,8 +1597,8 @@ def verify_mfa(
     from core.audit import log_audit_event
     from db.base import utcnow
 
-    payload = decode_token(req.mfa_token)
-    if not payload or payload.get("type") != "mfa_challenge":
+    payload = tokens.verify(req.mfa_token, expected_kind=tokens.MFA_CHALLENGE)
+    if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired challenge token.",

@@ -246,8 +246,15 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - The any-kind `decode_token` is kept only for the two WebSocket logins
     (Phase 10) and the rate-limit audit.
   - `tests/repo/test_token_guardrails.py` enforces all of this.
-  - Still HS256, and **`MFA_ENCRYPTION_KEY` derives from `JWT_SECRET_KEY` until
-    step 9.2**: do not rotate or unset the JWT secret before then.
+  - Still HS256.
+- **MFA encryption is separate from the JWT secret since step 9.2.**
+  - `MFA_ENCRYPTION_KEY` (in `Backend/.env`) derives the Fernet key for
+    `users.totp_secret`. It was initialised to the JWT secret's value, so the
+    key did not change.
+  - **Never change `MFA_ENCRYPTION_KEY`**: every stored MFA secret would become
+    undecryptable. The JWT secret may now rotate without touching it.
+  - Unset falls back to the JWT secret, and the API logs a
+    `ccure.security` warning at start-up.
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
   (step 8.5) and take `require_permission` / `require_role` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.

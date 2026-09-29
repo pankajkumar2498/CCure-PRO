@@ -5,6 +5,8 @@ Centralized configuration for CCure Audit PRO.
 Loads settings from environment variables with sensible defaults.
 """
 
+import base64
+import hashlib
 import os
 from pathlib import Path
 
@@ -92,7 +94,29 @@ class JWTConfig:
         os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30")
     )
     REFRESH_TOKEN_EXPIRES_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7"))
-    MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", SECRET_KEY)
+
+    # The secret the MFA Fernet key is derived from (it encrypts
+    # users.totp_secret). Independently configurable since Phase 9.2 so the JWT
+    # signing secret can later be rotated or retired without making every stored
+    # MFA secret undecryptable. When unset — or set empty, which would otherwise
+    # derive a key from "" — it falls back to JWT_SECRET_KEY, exactly as before,
+    # and the start-up log says so (main.py). Set it to the *current*
+    # JWT_SECRET_KEY value to separate the two without changing the key.
+    _MFA_ENCRYPTION_KEY_ENV = os.getenv("MFA_ENCRYPTION_KEY")
+    MFA_ENCRYPTION_KEY: str = _MFA_ENCRYPTION_KEY_ENV or SECRET_KEY
+    MFA_KEY_SOURCE: str = (
+        "MFA_ENCRYPTION_KEY" if _MFA_ENCRYPTION_KEY_ENV else "JWT_SECRET_KEY (fallback)"
+    )
+
+
+def derive_mfa_fernet_key(secret: str) -> bytes:
+    """
+    The Fernet key that encrypts ``users.totp_secret``: urlsafe base64 of
+    SHA-256 of the configured MFA secret. The formula is unchanged since
+    before Phase 9.2 — changing it would make every stored MFA secret
+    undecryptable.
+    """
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
 
 
 class ScanConfig:
@@ -882,13 +906,7 @@ class AppConfig:
     MFA_ENCRYPTION_KEY = JWTConfig.MFA_ENCRYPTION_KEY
 
     # Derived Fernet key (32 bytes urlsafe base64 encoded)
-    MFA_KEY: bytes = (
-        lambda key=JWTConfig.MFA_ENCRYPTION_KEY: (
-            __import__("base64").urlsafe_b64encode(
-                __import__("hashlib").sha256(key.encode()).digest()
-            )
-        )
-    )()
+    MFA_KEY: bytes = derive_mfa_fernet_key(JWTConfig.MFA_ENCRYPTION_KEY)
 
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT

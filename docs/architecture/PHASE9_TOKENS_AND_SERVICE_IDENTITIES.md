@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Step 9.1 done**; 9.2 not started.                                                                                  |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1 and 9.2 done**; 9.3 not started.                                                                         |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
 | **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
@@ -625,19 +625,19 @@ none` refused; wrong-key signature refused; each kind refused where another
 
 ## 10. Findings recorded by this investigation (not fixed by Phase 9 unless listed)
 
-| #     | Finding                                                                                                                                      | Phase 9 handling                                                                                  |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| F9-1  | The MFA encryption key derives from `JWT_SECRET_KEY` (unset separately; 3 users with TOTP secrets)                                           | **Fixed first** (9.2)                                                                             |
-| F9-2  | python-jose 3.3.0 has published advisories                                                                                                   | Library decision O4                                                                               |
-| F9-3  | `decode_token` does not bind the token kind; 10 call sites check `type` by hand (7 platform, the rate-limit audit, 2 WebSocket)              | Structural fix in 9.1: the kind is a required argument                                            |
-| F9-4  | Tickets are reusable for 60 s and travel in URLs, which reach access logs                                                                    | Recorded; O10; Phase 10's access-log configuration                                                |
-| F9-5  | Refresh tokens are also accepted from the request body and returned in it                                                                    | Preserved for API-client compatibility; recorded                                                  |
-| F9-6  | The Celery broker (Redis) has no authentication, and task messages carry no sender identity; anything that can reach Redis can enqueue tasks | Out of Phase 9 scope (rule 12); recorded for a separate decision                                  |
-| F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                 |
-| F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6 |
-| F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                    |
-| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed in 9.1 (25 characterisation tests)                                                          |
-| F9-11 | 401s lose the `WWW-Authenticate: Bearer` header the dependency sets (the error handler does not forward exception headers)                   | Found by 9.1's characterisation; pinned as observed, not fixed                                    |
+| #     | Finding                                                                                                                                      | Phase 9 handling                                                                                     |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| F9-1  | The MFA encryption key derived from `JWT_SECRET_KEY` (unset separately; 3 users with TOTP secrets)                                           | **Resolved in 9.2**: `MFA_ENCRYPTION_KEY` set to the same value; derived key identical; all 3 proven |
+| F9-2  | python-jose 3.3.0 has published advisories                                                                                                   | Library decision O4                                                                                  |
+| F9-3  | `decode_token` does not bind the token kind; 10 call sites check `type` by hand (7 platform, the rate-limit audit, 2 WebSocket)              | Structural fix in 9.1: the kind is a required argument                                               |
+| F9-4  | Tickets are reusable for 60 s and travel in URLs, which reach access logs                                                                    | Recorded; O10; Phase 10's access-log configuration                                                   |
+| F9-5  | Refresh tokens are also accepted from the request body and returned in it                                                                    | Preserved for API-client compatibility; recorded                                                     |
+| F9-6  | The Celery broker (Redis) has no authentication, and task messages carry no sender identity; anything that can reach Redis can enqueue tasks | Out of Phase 9 scope (rule 12); recorded for a separate decision                                     |
+| F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                    |
+| F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6    |
+| F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                       |
+| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed in 9.1 (25 characterisation tests)                                                             |
+| F9-11 | 401s lose the `WWW-Authenticate: Bearer` header the dependency sets (the error handler does not forward exception headers)                   | Found by 9.1's characterisation; pinned as observed, not fixed                                       |
 
 ## 11. Owner's review of this proposal (29 Sep 2026)
 
@@ -759,3 +759,70 @@ A mutation run with a planted module (a `jose` import, a hand type check, a
 - Each version decodes the other's tokens identically.
 - A token issued before the deploy is therefore valid after it, and the
   reverse.
+
+## 13. Step 9.2 — as built
+
+**The derivation.** The formula is unchanged, now named
+`config.derive_mfa_fernet_key`: the Fernet key is the urlsafe base64 of
+SHA-256 of the MFA secret.
+
+|                                     | Before 9.2                                                                                                  | After 9.2                                                                                                                                                                         |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source of the MFA secret            | `MFA_ENCRYPTION_KEY` if set, else `JWT_SECRET_KEY`. It was set nowhere, so it was **always the JWT secret** | `MFA_ENCRYPTION_KEY`, now set in `Backend/.env` to the JWT secret's value at the time. The fallback still exists for an install that has not set it, and is announced at start-up |
+| Empty value                         | derived a key from `""`                                                                                     | treated as unset, so it falls back                                                                                                                                                |
+| Effect of changing `JWT_SECRET_KEY` | every stored MFA secret undecryptable                                                                       | none                                                                                                                                                                              |
+
+**Code:**
+
+- `config.py`: `JWTConfig.MFA_ENCRYPTION_KEY`, `JWTConfig.MFA_KEY_SOURCE`,
+  `derive_mfa_fernet_key()`; `AppConfig.MFA_KEY` uses it.
+- `main.py`: a `ccure.security` warning in the lifespan while the key still
+  falls back.
+- `tests/conftest.py`: pins the test process's `MFA_ENCRYPTION_KEY` to the test
+  JWT secret, which is the key it always derived, so a developer's real
+  `Backend/.env` never reaches tests.
+- `Backend/.env.example`: documents the variable.
+- **Unchanged:** the MFA endpoints, the stored records, the JWT secret, compose.
+
+**The operator step.** `MFA_ENCRYPTION_KEY` was appended to `Backend/.env`.
+The value was copied from `JWT_SECRET_KEY`, after checking that the root
+`.env` (the copy compose injects) and `Backend/.env` hold the same value. The
+file was backed up first to `Backend/.env.bak-pre-9.2` (mode 600,
+git-ignored), and both files are git-ignored. No value was printed.
+
+**Proof on the live database** (read-only, hashes only):
+
+| Account                            | Before: decrypts | After: decrypts | Same plaintext | Ciphertext untouched |
+| ---------------------------------- | ---------------- | --------------- | -------------- | -------------------- |
+| `usr_self_a2cbaf04_chandan_6sis`   | yes              | yes             | yes            | yes                  |
+| `usr_self_a2cbaf04_dhananjay_2i04` | yes              | yes             | yes            | yes                  |
+| `usr_self_a2cbaf04_pankaj_r4v5`    | yes              | yes             | yes            | yes                  |
+
+- The key source changed from `fallback:JWT_SECRET_KEY` to
+  `MFA_ENCRYPTION_KEY`, and the derived Fernet key is **identical** (compared
+  by SHA-256 of the key, never the key).
+- **Separation shown live.** A throwaway process given a **random**
+  `JWT_SECRET_KEY` still decrypts all 3 to the same plaintext. The same
+  process with the old coupling (`MFA_ENCRYPTION_KEY` empty) decrypts **0 of
+  3** — the lockout 9.2 removes. The real JWT secret was not touched.
+
+**Tests:** `tests/auth/test_mfa_key_separation.py` (10). Fresh interpreters
+with `SKIP_DOTENV_LOAD=1` cover:
+
+- the formula;
+- the fallback when unset or empty;
+- the key when set;
+- **changing the JWT secret alone leaves the MFA key unchanged**;
+- the coupling it replaces;
+- that initialising at the current JWT value is byte-identical;
+- a secret encrypted before the separation decrypting after a JWT rotation
+  (and not without the separation);
+- the endpoints using the configured key.
+
+**Rollback.** Remove the `MFA_ENCRYPTION_KEY` line, or restore
+`Backend/.env.bak-pre-9.2`, then restart. The fallback derives the identical
+key, so nothing breaks — as long as the JWT secret has not been rotated in the
+meantime. **After any JWT rotation, `MFA_ENCRYPTION_KEY` must stay.**
+
+**Not done, as instructed:** the JWT secret is not rotated; nothing from 9.3
+(keys, JWKS, ES256), no service identities, no MFA record modified.

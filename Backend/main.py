@@ -114,6 +114,18 @@ async def lifespan(app: FastAPI):
     # so anything logged then had no handler to reach.
     log_trust_boundary()
 
+    # Whether MFA encryption is still tied to the JWT signing secret. While it
+    # is, rotating or unsetting JWT_SECRET_KEY makes every stored MFA secret
+    # undecryptable (Phase 9.2). Reported here for the same reason as above.
+    from config import JWTConfig
+
+    if JWTConfig.MFA_KEY_SOURCE != "MFA_ENCRYPTION_KEY":
+        logging.getLogger("ccure.security").warning(
+            "MFA_ENCRYPTION_KEY is not set: the key protecting stored MFA "
+            "secrets is derived from JWT_SECRET_KEY. Set MFA_ENCRYPTION_KEY to "
+            "the current JWT_SECRET_KEY value before rotating the JWT secret."
+        )
+
     # Whether the audit tamper-evidence chain is armed. Reported for the same
     # reason and at the same point.
     #

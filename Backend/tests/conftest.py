@@ -350,6 +350,10 @@ def _ensure_test_db_exists(url: str):
 _ensure_test_db_exists(database_url)
 
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
+# Pinned to the same value the MFA key fell back to before Phase 9.2, so the
+# test process derives exactly the key it always did — and never the real one
+# a developer's Backend/.env may now carry.
+os.environ["MFA_ENCRYPTION_KEY"] = os.environ["JWT_SECRET_KEY"]
 
 from main import app
 

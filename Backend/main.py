@@ -128,6 +128,23 @@ async def lifespan(app: FastAPI):
     else:
         logging.getLogger("ccure.security").warning("Token keyset %s", keyset_status())
 
+    # How tokens will be issued (Phase 9.4). A core that cannot sign must not
+    # come up half-working (design §3.7), so with ES256 selected and no usable
+    # active key the API refuses to start — here, before any database work.
+    from ccure_platform.identity.tokens import SigningUnavailable, assert_signing_ready
+
+    try:
+        _issuing = assert_signing_ready()
+    except SigningUnavailable as exc:
+        logging.getLogger("ccure.security").critical(
+            "Refusing to start: tokens cannot be issued (%s). Activate a "
+            "signing key, or set CCURE_TOKEN_SIGNING_ALG=HS256 to issue legacy "
+            "tokens.",
+            exc,
+        )
+        raise
+    logging.getLogger("ccure.security").info("Token issuance: %s", _issuing)
+
     if JWTConfig.MFA_KEY_SOURCE != "MFA_ENCRYPTION_KEY":
         logging.getLogger("ccure.security").warning(
             "MFA_ENCRYPTION_KEY is not set: the key protecting stored MFA "

@@ -22,6 +22,12 @@ cover:
 Tokens are minted directly rather than through ``/auth/login``, so no test
 commits a login (CLAUDE.md: "Do not test this through TestClient with
 auth_headers").
+
+**Since Phase 9.4** new tokens are ES256 by default
+(``tests/auth/test_token_issuance.py`` characterises those). Every test here
+runs with ``CCURE_TOKEN_SIGNING_ALG=HS256``, the rollback, so this file now pins
+two things at once: the rollback still issues byte-for-byte the pre-9.4 token,
+and the HS256 tokens still in circulation are treated exactly as before.
 """
 
 from __future__ import annotations
@@ -53,6 +59,12 @@ EXPECTED_LIFETIME = {
     "ticket": timedelta(seconds=60),
     "mfa_challenge": timedelta(minutes=5),
 }
+
+
+@pytest.fixture(autouse=True)
+def _hs256_issuance(monkeypatch):
+    """The legacy issuance mode (see the module docstring)."""
+    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

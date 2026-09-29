@@ -115,6 +115,11 @@ class JWTConfig:
     # The keyset directory (keyset.json + PEM files), mounted read-only into the
     # api container only. Unset means no asymmetric verification and no JWKS.
     TOKEN_KEYS_DIR: str = os.getenv("CCURE_TOKEN_KEYS_DIR", "")
+    # The algorithm new tokens are issued with (Phase 9.4). ES256 signs with the
+    # keyset's active key, and the API refuses to start without one. HS256 is
+    # the rollback: it issues exactly the 9.3 token, and tokens already issued
+    # ES256 stay valid because verification accepts both.
+    TOKEN_SIGNING_ALG: str = os.getenv("CCURE_TOKEN_SIGNING_ALG", "ES256")
     # Whether legacy HS256 tokens (no kid) still verify. On until the step 9.6
     # cut-off, which needs its own evidence and review.
     ACCEPT_LEGACY_HS256: bool = (

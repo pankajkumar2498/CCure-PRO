@@ -355,6 +355,24 @@ os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
 # a developer's Backend/.env may now carry.
 os.environ["MFA_ENCRYPTION_KEY"] = os.environ["JWT_SECRET_KEY"]
 
+# Token issuance (Phase 9.4). The suite runs the target state — ES256 from a
+# throwaway keyset generated for this session — whatever the container's own
+# CCURE_TOKEN_* settings are, and never with the deployment's real keys. The
+# directory is created here, before config is imported, and removed at exit.
+import atexit
+import shutil
+import tempfile
+
+_TEST_TOKEN_KEYS_DIR = tempfile.mkdtemp(prefix="ccure-pytest-keys-")
+atexit.register(shutil.rmtree, _TEST_TOKEN_KEYS_DIR, ignore_errors=True)
+os.environ["CCURE_TOKEN_KEYS_DIR"] = _TEST_TOKEN_KEYS_DIR
+os.environ["CCURE_TOKEN_SIGNING_ALG"] = "ES256"
+os.environ["CCURE_ACCEPT_LEGACY_HS256"] = "true"
+
+from scripts.security.manage_token_keys import generate as _generate_token_key
+
+_generate_token_key(_TEST_TOKEN_KEYS_DIR, "active", owner=None)
+
 from main import app
 
 # ── Disable rate limiting during tests ───────────────────────────────────────

@@ -246,7 +246,14 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - The any-kind `decode_token` is kept only for the two WebSocket logins
     (Phase 10) and the rate-limit audit.
   - `tests/repo/test_token_guardrails.py` enforces all of this.
-  - Still HS256.
+  - New tokens are ES256 since step 9.4, signed only by `tokens.sign()`, which
+    sets `iss`, `aud`, `ptype`, `nbf` and `jti` itself. HS256 tokens still
+    verify until the 9.6 cut-off. `CCURE_TOKEN_SIGNING_ALG=HS256` is the
+    rollback, and the root `.env` sets it while the live key is not yet
+    active.
+  - **With ES256 selected and no active key, the API refuses to start** —
+    deliberately (design §3.7). Promote the key before removing that `.env`
+    line: Phase 9 doc §15.3.
 - **MFA encryption is separate from the JWT secret since step 9.2.**
   - `MFA_ENCRYPTION_KEY` (in `Backend/.env`) derives the Fernet key for
     `users.totp_secret`. It was initialised to the JWT secret's value, so the
@@ -590,16 +597,23 @@ dump": up to six hours of operational data.
   confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
   working tokens for an `analyst`, which carries `scans:execute`.
 
-- **Token signing keys (Phase 9.3)** — the API *verifies* ES256 tokens signed
-  by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,
-  mounted read-only into **api only**) and publishes it at `/auth/jwks.json`;
-  it still *issues* HS256 until 9.4. Keys are managed only with
-  `scripts/security/manage_token_keys.py`, run in the backend image as root —
-  never by hand. The private key files are owned by uid 1000, which on this VM
-  is also the `monitor` login account, so the directory must stay inside
-  `/home/cdac`. The compose variable is required: an unset one stops
-  `docker compose` rather than mounting an empty directory. Runbook and the
-  as-built record: `docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md` §14.
+- **Token signing keys (Phase 9.3, 9.4)** — the API verifies ES256 tokens
+  signed by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,
+  mounted read-only into **api only**) and publishes it at `/auth/jwks.json`.
+  It issues ES256 with the `active` key when `CCURE_TOKEN_SIGNING_ALG` is
+  ES256; the root `.env` holds it at HS256 until the live key is promoted
+  (Phase 9 doc §15.3).
+  - **Key management.** Keys are managed only with
+    `scripts/security/manage_token_keys.py`, run in the backend image as root —
+    never by hand.
+  - **Tests never use these keys.** The suite signs with a throwaway keyset
+    that `conftest.py` generates.
+  - **The directory must stay inside `/home/cdac`.** The private key files are
+    owned by uid 1000, which on this VM is also the `monitor` login account.
+  - **The compose variable is required.** An unset one stops `docker compose`
+    rather than mounting an empty directory.
+  - **Runbook and as-built record:**
+    `docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md` §14–15.
 
 - **Rate limiting** — two layers in the application plus one at the edge, and
   they answer different questions. Reviewed against OWASP/NIST guidance in

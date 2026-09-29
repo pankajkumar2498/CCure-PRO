@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1, 9.2 and 9.3 done**; 9.4 not started.                                                                    |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1, 9.2 and 9.3 done**; 9.4 built, awaiting review.                                                         |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
 | **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
@@ -263,7 +263,7 @@ check read them.
 | `type`                       | `access` / `refresh` / `ticket` / `mfa_challenge` (unchanged) | `service_access`                                                                         | token kind, checked by the verifier, not by the caller                             |
 | `jti`                        | all kinds (new for access, ticket, MFA)                       | yes                                                                                      | audit correlation; enables single-use tickets if chosen (O10)                      |
 | `iat`, `exp`                 | unchanged                                                     | ≤ 15 min (O11)                                                                           |                                                                                    |
-| `nbf`                        | = `iat`                                                       | = `iat`                                                                                  | small leeway (O15)                                                                 |
+| `nbf`                        | = `iat`                                                       | = `iat`                                                                                  | no leeway (O15: 0 s, decided)                                                      |
 | `role`, `org_id`, `username` | unchanged                                                     | —                                                                                        | compatibility; `org_id` stays validated against the database on every core request |
 | `tenant`                     | —                                                             | the one organisation the token is bound to, or absent for a platform-wide service (§3.5) | tenant context from the credential, never from a header                            |
 | `scope`                      | — (D9 may add module permissions, §H)                         | space-separated atoms (`audit:incident_evidence:write`)                                  | least privilege                                                                    |
@@ -365,7 +365,7 @@ check read them.
 | **Algorithm confusion**               | The key is chosen by `kid` only. Each key is pinned to its algorithm, and the verifier passes `algorithms=[key.alg]`. `none` is refused. `jku`, `x5u`, `jwk` and `x5c` headers are ignored, so no key is ever fetched from a token. The legacy HS256 path is taken only when `alg == "HS256"` **and** there is no `kid` **and** legacy acceptance is on. It uses the HMAC secret, never a public key, so a token forged by signing HS256 with the public key fails. A test proves each case. |
 | **Issuer validation**                 | `iss` is required and must match the configured issuer. Tokens without it are accepted only as legacy HS256 during the transition.                                                                                                                                                                                                                                                                                                                                                           |
 | **Audience validation**               | `aud` is required and must contain the verifier's audience. The core refuses a token minted for IR, and IR one minted for the core.                                                                                                                                                                                                                                                                                                                                                          |
-| **Expiry**                            | `exp` is required. `nbf` and `iat` are checked, with a small leeway (O15).                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Expiry**                            | `exp` is required. `nbf` and `iat` are checked, with no leeway (O15: 0 s).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Key IDs**                           | `kid` is required on every asymmetric token, and an unknown `kid` is refused after one rate-limited keyset refresh.                                                                                                                                                                                                                                                                                                                                                                          |
 | **Key rotation**                      | The `next`/`active`/`retired` states (§3.6), with a runbook and a test that a retired key still verifies and a removed key does not.                                                                                                                                                                                                                                                                                                                                                         |
 | **Replay**                            | Access tokens are bearer tokens, bounded by 30 minutes and TLS. Refresh rotation limits replay to one use, with optional family revocation (O13). Tickets are replayable for 60 seconds today (optional single-use `jti`, O10). Service tokens are short, `jti` goes to the audit log, and integration writes are idempotent on `message_id` (contracts §4.1).                                                                                                                               |
@@ -561,7 +561,7 @@ none` refused; wrong-key signature refused; each kind refused where another
 | **O12**     | One verification library for the gateway and IR                            | a leaf package in this repo · each uses a standard library against JWKS                             | A small leaf package (stdlib + library only, like `ccure_contracts`), so there is exactly one verification implementation                                                                   |
 | **O13**     | Refresh-token reuse detection                                              | add family revocation · leave as is                                                                 | Leave for Phase 9 (behaviour change); record as a follow-up                                                                                                                                 |
 | **O14**     | Service identities for the Celery workers and beat                         | none (rule 12) · yes                                                                                | **None**                                                                                                                                                                                    |
-| **O15**     | Clock-skew leeway                                                          | 0 · 30 s · 60 s                                                                                     | 30 s                                                                                                                                                                                        |
+| **O15**     | Clock-skew leeway                                                          | 0 · 30 s · 60 s                                                                                     | 30 s. **Decided 29 Sep 2026 by the project owner: 0 s** (see §11)                                                                                                                           |
 
 ---
 
@@ -679,6 +679,11 @@ none` refused; wrong-key signature refused; each kind refused where another
 - **E:** replace manual token-type checks with a verifier that requires the
   expected kind.
 - **F:** the two WebSocket authentication paths stay untouched in Phase 9.
+
+**O15, decided 29 Sep 2026 (after 9.3):** the JWT clock-skew leeway is **0
+seconds**, for every token kind and on both verification paths. This is the
+value 9.3 already implements and the HS256 path always used, so the decision
+changed no code. The recommendation of 30 s is not adopted.
 
 ## 12. Step 9.1 — as built
 
@@ -928,9 +933,10 @@ neither rotated nor retired.
 - **§3.7 "the reason is logged server-side"** (`unknown_kid`, `wrong_audience`,
   …) is **not** implemented in 9.3. It is worth most once tokens are issued,
   and belongs with 9.4. Responses are uniform, as required.
-- **O15 (clock-skew leeway) is not decided.** 9.3 uses **0**, which is what the
-  HS256 path has always used, so nothing about expiry changes. The
-  recommendation (30 s) awaits a decision.
+- **O15 (clock-skew leeway)** was undecided when 9.3 was built, and 9.3 used
+  **0**, which is what the HS256 path has always used. The project owner has
+  since decided on 0 s (§11), so the implementation already matches and no
+  change was needed.
 
 ### 14.3 The live keyset
 
@@ -1030,3 +1036,156 @@ owned by uid 1000:
     expired token".
   - `sign()` still produces HS256.
   - The Phase 8 live probe is identical.
+
+## 15. Step 9.4 — as built
+
+**What 9.4 does.** New tokens of all four kinds (`access`, `refresh`, `ticket`,
+`mfa_challenge`) are signed **ES256** with the keyset's `active` key, and carry
+the full claim set of §3.3. Legacy HS256 tokens still verify, and a legacy
+session moves onto ES256 at its next refresh. Nothing else changed: no API,
+route, rate limit, Celery task, WebSocket path, MFA key, service identity or
+key-rotation behaviour.
+
+**The owner's decisions for this step (29 Sep 2026):**
+
+- **Code and tests only.** The live API keeps issuing HS256 until the owner
+  reviews 9.4 and approves promoting the key. The escrow copy of `7jKp…` has
+  been taken.
+- **No active key means no start.** With ES256 selected and no usable active
+  key, the API refuses to start (§3.7). It does not fall back to HS256.
+- **Refusal logging is part of 9.4** (deferred from 9.3, §14.2).
+
+### 15.1 Code
+
+- **`tokens.py`** — the only place tokens are signed:
+  - `sign()` under ES256 signs with `signing_key()` (the one `active` key),
+    puts its `kid` in the header, and sets `iss`, `aud`, `ptype` (from the kind),
+    `iat`, `nbf` (= `iat`) and `exp` itself. It adds a `jti` unless the caller
+    chose one — the refresh token does, because its session row is keyed on it.
+  - A caller supplying `iss`, `aud`, `ptype`, `iat`, `nbf` or `exp`, or a kind
+    this module does not issue, is refused with `ValueError`, not overwritten.
+  - `sign()` under HS256 is the 9.3 function unchanged: the rollback issues
+    byte-for-byte the pre-9.4 token.
+  - `signing_algorithm()`, `signing_key()` and `assert_signing_ready()` raise
+    `SigningUnavailable` for an unknown setting, no keyset, or no active key.
+  - Every refusal is logged with a reason code (§15.2). Accept and refuse
+    decisions are unchanged from 9.3.
+- **`config.py`** — `JWTConfig.TOKEN_SIGNING_ALG` (`CCURE_TOKEN_SIGNING_ALG`,
+  default `ES256`, case-insensitive; `HS256` is the rollback).
+- **`main.py`** — the lifespan calls `assert_signing_ready()` straight after
+  the keyset log and before any database work. It logs
+  `Token issuance: <how>`, or logs CRITICAL naming the fix and re-raises, which
+  stops the API starting.
+- **`docker-compose.yml`** — the api only gains
+  `CCURE_TOKEN_SIGNING_ALG=${CCURE_TOKEN_SIGNING_ALG:-ES256}`. The workers and
+  beat never sign, and a worker that tried would raise, since it has no keyset.
+- **`tests/conftest.py`** — the suite runs the target state: ES256 from a
+  throwaway keyset generated per session under `/tmp`, never the deployment's
+  keys and whatever the container's own `CCURE_TOKEN_*` settings say.
+- **Unchanged:** `jwt_handler.py` (the plan named it as where the claims would
+  be added; they are added in `sign()` instead, so no caller can mint a token
+  without them), every router, the WebSocket paths, the MFA key.
+
+### 15.2 Refusal logging
+
+Logger `ccure.tokens`, one line per refusal:
+`token refused: reason=<code> legacy=<bool> kid=… jti=… ptype=…`. The kid, jti
+and ptype are the token's own **unverified** values, each cut to 64 characters.
+**The token is never logged.** Responses are unchanged and uniform.
+
+| Reason                                    | Level   | Meaning                                                    |
+| ----------------------------------------- | ------- | ---------------------------------------------------------- |
+| `expired`                                 | INFO    | past `exp` — routine for a 30-minute access token          |
+| `wrong_kind`                              | INFO    | a valid token of another kind (e.g. a refresh as a Bearer) |
+| `malformed`                               | WARNING | not a JWT, or an unreadable header                         |
+| `refused_header`                          | WARNING | `jku`, `x5u`, `jwk`, `x5c` or `crit` present               |
+| `legacy_disabled`                         | WARNING | HS256 with legacy acceptance off (after 9.6)               |
+| `missing_kid`, `unknown_kid`, `no_keyset` | WARNING | no key to verify with                                      |
+| `alg_mismatch`                            | WARNING | the header's `alg` is not the key's algorithm              |
+| `bad_signature`                           | WARNING | signature does not verify                                  |
+| `wrong_issuer`, `wrong_audience`          | WARNING | a token for another issuer or service                      |
+| `not_yet_valid`, `missing_claim`          | WARNING | `nbf` in the future; a required claim absent               |
+| `wrong_ptype`                             | WARNING | a principal type this kind is not issued to                |
+
+### 15.3 The live state after 9.4
+
+- **Code:** the API runs the 9.4 code (recreated 29 Sep 2026, 13:04).
+- **Issuance:** HS256, because the root `.env` pins
+  `CCURE_TOKEN_SIGNING_ALG=HS256`. The start-up log reads
+  `Token issuance: HS256 (legacy issuance, CCURE_TOKEN_SIGNING_ALG=HS256)`.
+- **Key:** `7jKp…` is still `next`. Proven against the real keyset: with
+  ES256 selected it refuses, "the token keyset has no active key". **Removing
+  the `.env` line before promoting the key stops the API.** That is the
+  designed behaviour, and the reason the line is there.
+
+**Switching the live API to ES256**, after review:
+
+1. Promote the key:
+   `docker run --rm -u 0 -v /home/cdac/ccure-keys:/keys -v "$PWD/Backend":/app -w /app ccure-audit-pro-backend:latest python -m scripts.security.manage_token_keys --keys-dir /keys set-state 7jKpUJt99bl-LKmPjhDmFCtzSHQ80eW3W-vOTtdJJAs active`
+2. Set `CCURE_TOKEN_SIGNING_ALG=ES256` in the root `.env`, or delete the line.
+3. Run `docker compose up -d --no-deps api`. The log must read
+   `Token issuance: ES256 with key 7jKp…`.
+4. Run the plan's live checks: a login shows the `kid`, an HS256 session
+   refreshes into ES256, WebSocket progress and a report download work, and a
+   429 names its caller.
+
+**Rollback:** set `CCURE_TOKEN_SIGNING_ALG=HS256` and recreate the api. Tokens
+already issued ES256 stay valid. Leave the key `active`; demoting it is not a
+rollback step.
+
+### 15.4 Findings
+
+- **Tokens roughly double in size.** For realistic claims, access 289 → 560
+  characters, refresh 271 → 500, ticket 233 → 504. That is well within
+  cookie (4 KB) and URL limits. The ticket travels in a URL (F9-4), so it
+  now fills a little more of an access-log line.
+- **`refresh_access_token` commits the rotation before it signs the new
+  access token.** A signing failure at that moment would leave the old
+  session revoked and no token issued. This predates 9.4. It is unreachable
+  now, because the key is loaded once and checked at start-up, so it is
+  recorded, not changed.
+- **The characterisation suite (9.1) now runs in HS256 mode.** That makes it
+  the proof that the rollback issues byte-for-byte the pre-9.4 token. The
+  ES256 tokens are characterised by `test_token_issuance.py`.
+
+### 15.5 Verification
+
+- **Tests:** `tests/auth/test_token_issuance.py` is new, with 54 tests:
+  - the ES256 header with the active `kid`, per kind;
+  - the claim set (legacy claims plus `iss`, `aud`, `ptype`, `jti`, `nbf`) with
+    their values and lifetimes;
+  - a unique `jti` per token, and the refresh `jti` matching its session row;
+  - verification from the published JWKS alone;
+  - acceptance by each consuming path (Bearer route, download ticket, legacy
+    decode for the WebSockets and the rate-limit audit, MFA challenge,
+    refresh rotation);
+  - claim consistency still enforced;
+  - a legacy refresh token replaced by ES256 tokens, a mixed-age session, and
+    logout of either era;
+  - ES256 tokens surviving a rollback to HS256;
+  - every `sign()` refusal, and an unknown algorithm setting;
+  - the API refusing to start without an active key;
+  - refusal reasons and levels, the token and its signature never in the
+    log, and oversized values truncated.
+- **Updated:**
+  - `test_token_keys.py` mints its legacy tokens through the HS256 mode, and
+    its "nothing issues ES256 yet" test became "only the active key signs".
+  - `test_token_characterisation.py` runs in HS256 mode, with no assertion
+    weakened.
+- **Mutation-checked** on a copy (8 of 8 caught): no `aud`, the wrong key
+  signing, no start-up refusal, the token in the log, the caller's `jti`
+  overwritten, the HS256 rollback gaining a claim, a non-active key signing,
+  and reserved claims silently overwritten.
+- **Suites:**
+  - `tests/auth`, `tests/security` and `tests/repo`: 820 passed, 2 skipped.
+  - The full suite: **6105 passed, 209 skipped, 0 failed** — 6051 at 9.3 plus
+    the 54 new tests.
+- **OpenAPI, rate-limit keys (92) and Celery tasks (45)** against `950e599`:
+  byte-identical.
+- **Architecture:** 0 violations, 0 cycles, component cycle 24, identity
+  3/2/2.
+- **Live:**
+  - The API starts in HS256 mode with the new log line.
+  - The Phase 8 probe is identical.
+  - A token issued in the API container is HS256 and verifies.
+  - ES256 selected against the live keyset refuses.

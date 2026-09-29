@@ -144,6 +144,11 @@ services:
       # service that verifies or will sign platform tokens; worker, web-worker
       # and beat deliberately get neither the variable nor the mount.
       - CCURE_TOKEN_KEYS_DIR=/run/ccure/keys
+      # The algorithm new tokens are issued with (Phase 9.4). ES256 needs an
+      # active key in the keyset above, or the api refuses to start; HS256 is
+      # the rollback. Set in the root .env while a deployment's key is not yet
+      # active.
+      - CCURE_TOKEN_SIGNING_ALG=${CCURE_TOKEN_SIGNING_ALG:-ES256}
     depends_on:
       redis:
         condition: service_healthy

@@ -1127,7 +1127,12 @@ def logout(
             detail="Invalid or expired refresh token",
         )
 
-    payload = tokens.verify(refresh_token, expected_kind=tokens.REFRESH)
+    payload = tokens.verify(
+        refresh_token,
+        expected_kind=tokens.REFRESH,
+        issuer=tokens.ISSUER,
+        audience=tokens.USER_AUDIENCE,
+    )
     session_row = None
     user = None
     if payload and payload.get("jti"):
@@ -1159,6 +1164,29 @@ def logout(
         )
         db.commit()
     return {"detail": "Logged out successfully."}
+
+
+@router.get("/jwks.json")
+# Public by nature — verifiers fetch it without credentials — and cheap, but
+# still bounded: a verifier caches it and refetches only on an unknown kid, so
+# a client needing more than this is misbehaving (Phase 9.3).
+@limiter.limit("60/minute")
+def jwks(request: Request, response: Response):
+    """
+    The platform's token-verification keys, as a JSON Web Key Set.
+
+    Public key material only. Every key a token may currently be signed or
+    verified with is listed, identified by its kid. Answers 503 when no signing
+    keyset is configured.
+    """
+    key_set = tokens.public_jwks()
+    if key_set is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Token signing keys are not configured.",
+        )
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return key_set
 
 
 @router.get("/me", response_model=UserOut)
@@ -1553,7 +1581,12 @@ def send_email_otp(
     from ccure_platform.identity.mail_dispatch import dispatch_email
     from db.base import utcnow
 
-    payload = tokens.verify(req.mfa_token, expected_kind=tokens.MFA_CHALLENGE)
+    payload = tokens.verify(
+        req.mfa_token,
+        expected_kind=tokens.MFA_CHALLENGE,
+        issuer=tokens.ISSUER,
+        audience=tokens.USER_AUDIENCE,
+    )
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1597,7 +1630,12 @@ def verify_mfa(
     from core.audit import log_audit_event
     from db.base import utcnow
 
-    payload = tokens.verify(req.mfa_token, expected_kind=tokens.MFA_CHALLENGE)
+    payload = tokens.verify(
+        req.mfa_token,
+        expected_kind=tokens.MFA_CHALLENGE,
+        issuer=tokens.ISSUER,
+        audience=tokens.USER_AUDIENCE,
+    )
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

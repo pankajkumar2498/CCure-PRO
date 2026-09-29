@@ -204,13 +204,15 @@ def _current_session_jti(request: Request) -> str | None:
     refuse to list sessions.
     """
     from auth.router import REFRESH_COOKIE_NAME
-    from ccure_platform.identity.tokens import REFRESH, verify
+    from ccure_platform.identity.tokens import ISSUER, REFRESH, USER_AUDIENCE, verify
 
     token = request.cookies.get(REFRESH_COOKIE_NAME)
     if not token:
         return None
     try:
-        payload = verify(token, expected_kind=REFRESH)
+        payload = verify(
+            token, expected_kind=REFRESH, issuer=ISSUER, audience=USER_AUDIENCE
+        )
     except Exception:
         return None
     if not payload:

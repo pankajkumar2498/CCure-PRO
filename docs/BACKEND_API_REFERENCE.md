@@ -105,7 +105,7 @@ The frontend's `api/admin.js` sends the trailing-slash form.
 
 ## 2. Authentication — `/auth`
 
-Source: `Backend/auth/router.py` — 15 operations.
+Source: `Backend/ccure_platform/identity/router.py` (legacy path `auth/router.py`) — 18 operations.
 
 | Method | Path                         | Auth                       | Rate limit | Purpose                                  |
 | ------ | ---------------------------- | -------------------------- | ---------- | ---------------------------------------- |
@@ -119,6 +119,7 @@ Source: `Backend/auth/router.py` — 15 operations.
 | GET    | `/auth/me`                   | authenticated              | —          | Current user + role + permissions + org  |
 | POST   | `/auth/refresh`              | public (cookie/body token) | —          | Rotate refresh, issue access             |
 | POST   | `/auth/ticket`               | authenticated              | —          | 60-second WebSocket/download ticket      |
+| GET    | `/auth/jwks.json`            | public                     | 60/min     | Token-verification public keys (JWKS)    |
 | POST   | `/auth/forgot-password`      | public                     | 3/min      | Send reset link                          |
 | POST   | `/auth/reset-password`       | public                     | —          | Consume reset token                      |
 | POST   | `/auth/login/send-email-otp` | MFA challenge token        | 5/min      | Email a 6-digit OTP                      |
@@ -348,6 +349,17 @@ a deactivated organization.
 
 Returns `{"ticket": "<JWT>"}` with `type="ticket"`, valid **60 seconds**. Used
 for WebSocket connections and for `GET /reports/download/{scan_id}?ticket=`.
+
+### `GET /auth/jwks.json`
+
+The platform's token-verification keys as a JSON Web Key Set (RFC 7517), added
+in Phase 9.3. **Public key material only**: each key is
+`{"kty":"EC","crv":"P-256","x","y","kid","alg":"ES256","use":"sig"}`. The `kid`
+is the RFC 7638 thumbprint of the key. Every key in the `next`, `active` and
+`retired` states is listed. `Cache-Control: public, max-age=300`. Answers **503**
+when no signing keyset is configured. Verifiers (the gateway, IR) cache it and
+refetch only on an unknown `kid`. Tokens are still issued HS256 until Phase 9.4,
+so no issued token uses these keys yet.
 
 ### `POST /auth/forgot-password`
 

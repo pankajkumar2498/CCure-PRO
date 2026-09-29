@@ -245,7 +245,12 @@ def decode_token(token: str) -> dict | None:
 
 
 def _get_refresh_session(db: Session, refresh_token: str) -> RefreshTokenSession | None:
-    payload = tokens.verify(refresh_token, expected_kind=tokens.REFRESH)
+    payload = tokens.verify(
+        refresh_token,
+        expected_kind=tokens.REFRESH,
+        issuer=tokens.ISSUER,
+        audience=tokens.USER_AUDIENCE,
+    )
     if not payload:
         return None
 

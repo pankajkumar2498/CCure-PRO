@@ -104,6 +104,23 @@ class JWTConfig:
     # JWT_SECRET_KEY value to separate the two without changing the key.
     _MFA_ENCRYPTION_KEY_ENV = os.getenv("MFA_ENCRYPTION_KEY")
     MFA_ENCRYPTION_KEY: str = _MFA_ENCRYPTION_KEY_ENV or SECRET_KEY
+    # ── Token issuer, audience and signing keys (Phase 9.3) ─────────────────
+    # The issuer every asymmetric token names, chosen by the project owner on
+    # 29 Sep 2026. It must not change for the life of the platform: every
+    # verifier compares against it.
+    TOKEN_ISSUER: str = os.getenv("CCURE_TOKEN_ISSUER", "https://ccurepro.cdac.in")
+    # The one audience user tokens carry (owner's decision): everything behind
+    # the gateway; each module decides authorisation itself.
+    TOKEN_USER_AUDIENCE: str = "urn:ccure:api"
+    # The keyset directory (keyset.json + PEM files), mounted read-only into the
+    # api container only. Unset means no asymmetric verification and no JWKS.
+    TOKEN_KEYS_DIR: str = os.getenv("CCURE_TOKEN_KEYS_DIR", "")
+    # Whether legacy HS256 tokens (no kid) still verify. On until the step 9.6
+    # cut-off, which needs its own evidence and review.
+    ACCEPT_LEGACY_HS256: bool = (
+        os.getenv("CCURE_ACCEPT_LEGACY_HS256", "true").strip().lower() != "false"
+    )
+
     MFA_KEY_SOURCE: str = (
         "MFA_ENCRYPTION_KEY" if _MFA_ENCRYPTION_KEY_ENV else "JWT_SECRET_KEY (fallback)"
     )

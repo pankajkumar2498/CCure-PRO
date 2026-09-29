@@ -140,6 +140,10 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CELERY_TASK_ALWAYS_EAGER=${CELERY_TASK_ALWAYS_EAGER:-True}
       - RELOAD=false
+      # Token signing keyset (Phase 9.3), mounted below. The api is the only
+      # service that verifies or will sign platform tokens; worker, web-worker
+      # and beat deliberately get neither the variable nor the mount.
+      - CCURE_TOKEN_KEYS_DIR=/run/ccure/keys
     depends_on:
       redis:
         condition: service_healthy
@@ -151,6 +155,12 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./Backend:/app
+      # Token signing keys: a host directory OUTSIDE the repository, read-only.
+      # Required rather than defaulted: a missing source would otherwise be
+      # created empty by Docker and read as "no keyset". Private key files are
+      # owned by the container user (uid 1000) with mode 600 -- see
+      # scripts/security/manage_token_keys.py for generation and rotation.
+      - ${CCURE_TOKEN_KEYS_HOST_DIR:?CCURE_TOKEN_KEYS_HOST_DIR must name the token signing keyset directory (outside the repository)}:/run/ccure/keys:ro
       # Internal root CA, so libpq can verify the PostgreSQL server
       # certificate (sslmode=verify-full). Read-only: the container has
       # no reason to alter a trust anchor.

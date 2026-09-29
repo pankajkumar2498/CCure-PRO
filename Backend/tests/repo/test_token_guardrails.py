@@ -69,16 +69,22 @@ def test_the_token_module_does_import_one():
     assert names & set(JWT_LIBRARIES)
 
 
-def test_verify_requires_the_expected_kind():
+def test_verify_requires_the_expected_kind_issuer_and_audience():
     from ccure_platform.identity import tokens
 
-    param = inspect.signature(tokens.verify).parameters["expected_kind"]
-    assert param.kind is inspect.Parameter.KEYWORD_ONLY
-    assert param.default is inspect.Parameter.empty
+    params = inspect.signature(tokens.verify).parameters
+    for name in ("expected_kind", "issuer", "audience"):
+        assert params[name].kind is inspect.Parameter.KEYWORD_ONLY, name
+        assert params[name].default is inspect.Parameter.empty, name
     import pytest
 
     with pytest.raises(ValueError):
-        tokens.verify("x", expected_kind="accesss")
+        tokens.verify(
+            "x",
+            expected_kind="accesss",
+            issuer=tokens.ISSUER,
+            audience=tokens.USER_AUDIENCE,
+        )
 
 
 def test_the_legacy_any_kind_decode_has_a_fixed_set_of_callers():
@@ -174,3 +180,40 @@ def test_the_key_scan_recognises_a_key():
     assert _PEM_KEY.search(sample)
     placeholder = 'placeholder="-----BEGIN OPENSSH ' + 'PRIVATE KEY-----"'
     assert not _PEM_KEY.search(placeholder)
+
+
+def test_only_the_api_service_can_reach_the_signing_keys():
+    """
+    Owner's decision (Phase 9 review): worker, web-worker and beat receive no
+    private key. The keyset reaches a container only through the compose mount,
+    so the compose file is where that is enforced. Skipped where the file is not
+    reachable (the API container mounts Backend/ only); runs on the host and CI.
+    """
+    import pytest
+    import yaml
+
+    from testpaths import REPO_ROOT
+
+    compose = REPO_ROOT / "docker-compose.yml"
+    if not compose.is_file():
+        pytest.skip(f"docker-compose.yml is not reachable from {REPO_ROOT}")
+    services = yaml.safe_load(compose.read_text())["services"]
+
+    def keys_mounts(service):
+        return [
+            v
+            for v in service.get("volumes") or []
+            if isinstance(v, str) and "CCURE_TOKEN_KEYS_HOST_DIR" in v
+        ]
+
+    def keys_env(service):
+        env = service.get("environment") or []
+        items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
+        return [e for e in items if str(e).startswith("CCURE_TOKEN_KEYS_DIR")]
+
+    holders = sorted(n for n, s in services.items() if keys_mounts(s) or keys_env(s))
+    assert holders == [
+        "api"
+    ], f"the token keyset reaches {holders}; only api may hold it"
+    (mount,) = keys_mounts(services["api"])
+    assert mount.endswith(":ro"), f"the keyset mount must be read-only: {mount}"

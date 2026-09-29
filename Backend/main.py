@@ -119,6 +119,15 @@ async def lifespan(app: FastAPI):
     # undecryptable (Phase 9.2). Reported here for the same reason as above.
     from config import JWTConfig
 
+    # The token keyset (Phase 9.3): which kids are published, or why none is.
+    # Asymmetric tokens are refused without one; HS256 is unaffected.
+    from ccure_platform.identity.tokens import keyset_status, public_jwks
+
+    if public_jwks() is not None:
+        logging.getLogger("ccure.security").info("Token keyset: %s", keyset_status())
+    else:
+        logging.getLogger("ccure.security").warning("Token keyset %s", keyset_status())
+
     if JWTConfig.MFA_KEY_SOURCE != "MFA_ENCRYPTION_KEY":
         logging.getLogger("ccure.security").warning(
             "MFA_ENCRYPTION_KEY is not set: the key protecting stored MFA "

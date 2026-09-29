@@ -11,7 +11,13 @@ adopt_legacy_name(__name__, "auth.dependencies")
 from dataclasses import dataclass
 from typing import Optional
 
-from ccure_platform.identity.tokens import ACCESS, TICKET, verify
+from ccure_platform.identity.tokens import (
+    ACCESS,
+    ISSUER,
+    TICKET,
+    USER_AUDIENCE,
+    verify,
+)
 from db.base import get_db
 from db.models import User
 from fastapi import Depends, HTTPException, status
@@ -30,7 +36,7 @@ class AuthContext:
 
 
 def _decode_access_payload(token: str) -> dict:
-    payload = verify(token, expected_kind=ACCESS)
+    payload = verify(token, expected_kind=ACCESS, issuer=ISSUER, audience=USER_AUDIENCE)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -151,7 +157,9 @@ def get_current_user_flexible(
     The user's Role is eagerly loaded for RBAC enforcement.
     """
     if ticket:
-        payload = verify(ticket, expected_kind=TICKET)
+        payload = verify(
+            ticket, expected_kind=TICKET, issuer=ISSUER, audience=USER_AUDIENCE
+        )
         if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

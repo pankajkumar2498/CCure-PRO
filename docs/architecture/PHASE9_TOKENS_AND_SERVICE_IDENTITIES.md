@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1 and 9.2 done**; 9.3 not started.                                                                         |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1, 9.2 and 9.3 done**; 9.4 not started.                                                                    |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
 | **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
@@ -625,19 +625,20 @@ none` refused; wrong-key signature refused; each kind refused where another
 
 ## 10. Findings recorded by this investigation (not fixed by Phase 9 unless listed)
 
-| #     | Finding                                                                                                                                      | Phase 9 handling                                                                                     |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| F9-1  | The MFA encryption key derived from `JWT_SECRET_KEY` (unset separately; 3 users with TOTP secrets)                                           | **Resolved in 9.2**: `MFA_ENCRYPTION_KEY` set to the same value; derived key identical; all 3 proven |
-| F9-2  | python-jose 3.3.0 has published advisories                                                                                                   | Library decision O4                                                                                  |
-| F9-3  | `decode_token` does not bind the token kind; 10 call sites check `type` by hand (7 platform, the rate-limit audit, 2 WebSocket)              | Structural fix in 9.1: the kind is a required argument                                               |
-| F9-4  | Tickets are reusable for 60 s and travel in URLs, which reach access logs                                                                    | Recorded; O10; Phase 10's access-log configuration                                                   |
-| F9-5  | Refresh tokens are also accepted from the request body and returned in it                                                                    | Preserved for API-client compatibility; recorded                                                     |
-| F9-6  | The Celery broker (Redis) has no authentication, and task messages carry no sender identity; anything that can reach Redis can enqueue tasks | Out of Phase 9 scope (rule 12); recorded for a separate decision                                     |
-| F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                    |
-| F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6    |
-| F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                       |
-| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed in 9.1 (25 characterisation tests)                                                             |
-| F9-11 | 401s lose the `WWW-Authenticate: Bearer` header the dependency sets (the error handler does not forward exception headers)                   | Found by 9.1's characterisation; pinned as observed, not fixed                                       |
+| #     | Finding                                                                                                                                      | Phase 9 handling                                                                                                                                                           |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F9-1  | The MFA encryption key derived from `JWT_SECRET_KEY` (unset separately; 3 users with TOTP secrets)                                           | **Resolved in 9.2**: `MFA_ENCRYPTION_KEY` set to the same value; derived key identical; all 3 proven                                                                       |
+| F9-2  | python-jose 3.3.0 has published advisories                                                                                                   | Library decision O4                                                                                                                                                        |
+| F9-3  | `decode_token` does not bind the token kind; 10 call sites check `type` by hand (7 platform, the rate-limit audit, 2 WebSocket)              | Structural fix in 9.1: the kind is a required argument                                                                                                                     |
+| F9-4  | Tickets are reusable for 60 s and travel in URLs, which reach access logs                                                                    | Recorded; O10; Phase 10's access-log configuration                                                                                                                         |
+| F9-5  | Refresh tokens are also accepted from the request body and returned in it                                                                    | Preserved for API-client compatibility; recorded                                                                                                                           |
+| F9-6  | The Celery broker (Redis) has no authentication, and task messages carry no sender identity; anything that can reach Redis can enqueue tasks | Out of Phase 9 scope (rule 12); recorded for a separate decision                                                                                                           |
+| F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                                                                                          |
+| F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6                                                                          |
+| F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                                                                                             |
+| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed in 9.1 (25 characterisation tests)                                                                                                                                   |
+| F9-11 | 401s lose the `WWW-Authenticate: Bearer` header the dependency sets (the error handler does not forward exception headers)                   | Found by 9.1's characterisation; pinned as observed, not fixed                                                                                                             |
+| F9-12 | Host uid 1000, which owns the private key files so the api container can read them, is a real login account on the VM (`monitor`)            | Contained by location: the keyset sits under `/home/cdac` (mode 750), which `monitor` cannot enter. Recorded in §14; do not move the directory somewhere world-traversable |
 
 ## 11. Owner's review of this proposal (29 Sep 2026)
 
@@ -826,3 +827,206 @@ meantime. **After any JWT rotation, `MFA_ENCRYPTION_KEY` must stay.**
 
 **Not done, as instructed:** the JWT secret is not rotated; nothing from 9.3
 (keys, JWKS, ES256), no service identities, no MFA record modified.
+
+## 14. Step 9.3 — as built
+
+**What 9.3 adds, and what it does not.** The platform can now _verify_ ES256
+tokens signed by its own keyset, and publishes that keyset's public keys at
+`GET /auth/jwks.json`. **Nothing issues an ES256 token yet** (that is 9.4):
+`sign()` is unchanged and every token the platform hands out is still HS256.
+Legacy HS256 tokens and live sessions are unaffected. No service identity, no
+database change, no change to the two WebSocket paths, and the JWT secret is
+neither rotated nor retired.
+
+**The owner's values (29 Sep 2026):**
+
+| Decision (§7)               | Value                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O5 issuer                   | `https://ccurepro.cdac.in` (`JWTConfig.TOKEN_ISSUER`; must never change)                                                                               |
+| O5 user audience            | `urn:ccure:api`, one platform-wide value (`JWTConfig.TOKEN_USER_AUDIENCE`, not configurable)                                                           |
+| O6 storage, cadence, escrow | a host directory outside the repository, mounted read-only into **api only**; rotated every 180 days; an offline escrow copy held by the project owner |
+| O7 JWKS                     | `/auth/jwks.json`, in the OpenAPI schema                                                                                                               |
+
+### 14.1 Code
+
+- **`ccure_platform/identity/keys.py`** (new) — the keyset. A directory
+  holding `keyset.json` (version, and per key: `kid`, `alg`, `state`, `file`)
+  and one unencrypted PKCS#8 PEM per private key. States: `next`, `active`,
+  `retired`; _removed_ means absent from the manifest. `load_keyset()`
+  **refuses the whole keyset** for any of:
+
+  - a `kid` that is not the RFC 7638 thumbprint of its file's key;
+  - a duplicate `kid`;
+  - an unknown state, or an algorithm other than ES256;
+  - a key that is not P-256;
+  - a file name that is not a plain basename (no traversal, no hidden file);
+  - a missing file;
+  - more than one `active` key, or more than one `next`;
+  - no keys at all — an empty JWKS would tell verifiers to trust nothing, and
+    they cache it.
+
+  A refused keyset is never partially used. `SigningKey` keeps the private key
+  out of its `repr`.
+
+- **`tokens.py`** — dual verification, in `_decode`:
+
+  1. Any `jku`, `x5u`, `jwk`, `x5c` or `crit` header is refused. No key is ever
+     taken from, or fetched because of, a token.
+  2. `alg: HS256` with **no** `kid` is the legacy path. It verifies with the HMAC
+     secret, only while `CCURE_ACCEPT_LEGACY_HS256` is on (the default until
+     9.6), and exactly as before — no issuer or audience is checked, because
+     legacy tokens carry neither.
+  3. Anything else must carry a `kid` naming a key in the keyset. It is verified
+     with that key's own algorithm (`alg` must equal it) and its public key, with
+     `iss`, `aud`, `sub`, `jti`, `iat`, `nbf` and `exp` all required and leeway 0.
+     `type` and `ptype` must be present too.
+  4. `verify()` then checks the kind, as since 9.1, and for a `kid` token that
+     `ptype` is the principal type the kind is issued to (`user` for all four
+     kinds today).
+
+  `verify(token, *, expected_kind, issuer, audience)` has **no defaults**. All
+  seven call sites pass the platform issuer and user audience.
+  `decode_any_kind` (the legacy any-kind decode, for its three fixed callers)
+  applies the same rules with the platform issuer and user audience, so the
+  unchanged WebSocket callers will accept an ES256 ticket once 9.4 issues one.
+
+- **`config.py`** — `TOKEN_ISSUER`, `TOKEN_USER_AUDIENCE`, `TOKEN_KEYS_DIR`
+  (`CCURE_TOKEN_KEYS_DIR`), `ACCEPT_LEGACY_HS256`.
+- **`ccure_platform/identity/router.py`** — `GET /auth/jwks.json`:
+  - public, 60/minute;
+  - `Cache-Control: public, max-age=300`;
+  - **503** "Token signing keys are not configured." when there is no usable
+    keyset — never an empty set, which a verifier would read as "trust
+    nothing" and cache;
+  - it publishes every key in `next`, `active` or `retired`, with `kty`, `crv`,
+    `x`, `y`, `kid`, `alg` and `use` only.
+- **`main.py`** — the lifespan logs `Token keyset: <kid> (<state>), …`, or a
+  warning naming why there is none.
+- **`scripts/security/manage_token_keys.py`** (new; the plan called it
+  `generate_signing_key.py` — it also rotates, so it was renamed). Commands are
+  `list`, `generate --state next`, `set-state KID STATE` and `remove KID`.
+  - Every change is validated by loading the whole resulting keyset, and rolled
+    back if it would not load.
+  - Key files are created `O_EXCL`, mode 600, and optionally chowned.
+  - `remove` refuses the active key, and leaves the file on disk for escrow and
+    forensics — it is untrusted because the manifest no longer names it.
+  - The tool never prints key material.
+- **`docker-compose.yml`** — `api` only gains `CCURE_TOKEN_KEYS_DIR=/run/ccure/keys`
+  and `${CCURE_TOKEN_KEYS_HOST_DIR:?…}:/run/ccure/keys:ro`. The variable is
+  **required**: were it defaulted, a missing directory would be created empty by
+  Docker and read as "no keyset". Worker, web-worker and beat get neither.
+- **Docs** — `BACKEND_API_REFERENCE.md` (the route), `.env.example` and
+  `Backend/.env.example` (the variables).
+
+### 14.2 Where §3 and §5 were not followed, and why
+
+- **§3.7 "a failing key store at start-up refuses to start"** applies from 9.4,
+  when signing depends on the keyset. In 9.3 nothing signs, so refusing to
+  start would take authentication down for a keyset nothing yet uses. Instead
+  the API starts, logs the reason, answers 503 on the JWKS, and refuses every
+  `kid` token, while HS256 carries on.
+- **§3.7 "the reason is logged server-side"** (`unknown_kid`, `wrong_audience`,
+  …) is **not** implemented in 9.3. It is worth most once tokens are issued,
+  and belongs with 9.4. Responses are uniform, as required.
+- **O15 (clock-skew leeway) is not decided.** 9.3 uses **0**, which is what the
+  HS256 path has always used, so nothing about expiry changes. The
+  recommendation (30 s) awaits a decision.
+
+### 14.3 The live keyset
+
+- Directory `/home/cdac/ccure-keys` (mode 711), inside `/home/cdac` (mode 750).
+- `keyset.json` is 644 (kids and states only).
+- The private key is owned by 1000:1000 (the container user `ccure`) with mode 600. The host account `cdac` cannot read it.
+- **F9-12:** host uid 1000 is the `monitor` login account. It is kept out only
+  because it cannot traverse `/home/cdac`. **Do not move the keyset anywhere
+  another account can traverse.**
+- One key, generated 29 Sep 2026: `7jKpUJt99bl-LKmPjhDmFCtzSHQ80eW3W-vOTtdJJAs`,
+  state **`next`**. It is published and verifies, and nothing signs with it; 9.4
+  promotes it to `active`.
+- `CCURE_TOKEN_KEYS_HOST_DIR=/home/cdac/ccure-keys` is in the root `.env`
+  (git-ignored).
+- **Escrow is pending:** the project owner takes the offline copy of
+  `es256-20260929T054911Z-7jKpUJt9.pem`. It is readable only as root or uid
+  1000, for example
+  `sudo cp /home/cdac/ccure-keys/es256-*.pem <escrow medium>`.
+
+### 14.4 Runbook
+
+Every command runs the tool in the backend image as root, so files can be
+owned by uid 1000:
+
+    docker run --rm -u 0 -v /home/cdac/ccure-keys:/keys -v "$PWD/Backend":/app -w /app \
+        ccure-audit-pro-backend:latest \
+        python -m scripts.security.manage_token_keys --keys-dir /keys <command>
+
+- **Inspect:** `list` prints kid, state, algorithm and file, then validates.
+- **Apply a change:** `docker compose restart api`. The keyset is read once per
+  process, and the start-up log names what was loaded.
+- **Rotate** (every 180 days, from 9.4 onwards):
+  1. `generate --state next --owner 1000:1000`, restart, and escrow the new file.
+  2. Wait at least the JWKS cache time (5 minutes).
+  3. `set-state <old> retired`, `set-state <new> active`, restart. The tool
+     refuses two active keys, so retire first.
+  4. After the longest token lifetime (7 days, the refresh token) plus a margin,
+     `remove <old>` and restart.
+- **Emergency revocation of a key:** `set-state` another key `active` if needed,
+  `remove` the compromised one, restart. Every token it signed stops verifying,
+  refresh sessions included, and those users sign in again (§3.6).
+- **Roll back 9.3:** revert the commit and remove the compose lines. Nothing
+  was ever issued with the new keys, so no token or session is affected. The
+  key directory can stay.
+
+### 14.5 Verification
+
+- **Tests:**
+  - `tests/auth/test_token_keys.py` is new, with 39 tests:
+    - all four legacy HS256 kinds still verify with a keyset loaded, and
+      nothing issues ES256;
+    - legacy off refuses HS256;
+    - `next`, `active` and `retired` keys verify, and a full rotation removes a
+      key's tokens;
+    - an ES256 access token reaches `/auth/me`;
+    - a verifier holding **only the JWKS** checks a token;
+    - 25 forged or malformed tokens are refused by `verify`, by the legacy
+      decode and uniformly by a protected route: unknown or missing `kid`; a known `kid` over another key; HS256 with a `kid`; HS256 keyed
+      with the public key, with and without its `kid`; an `ES384`/`RS256`
+      header; `alg: none`; `jwk`, `jku`, `x5u` and `crit` headers; wrong or
+      missing `iss`/`aud`; a service or missing `ptype`; missing `jti`, `nbf`
+      or `iat`; not yet valid; expired; the wrong kind;
+    - ten invalid keysets (including an empty one) and two non-P-256 keys
+      are refused whole;
+    - a refused keyset leaves ES256 off;
+    - the JWKS has exactly the public members, 503 without a keyset,
+      `Cache-Control`, and a registered limit;
+    - no key reaches a `repr`.
+  - Mutation-checked: removing the `kid` fence on the legacy path, the
+    audience, the header refusal, the `ptype` check, the legacy flag or the
+    thumbprint check each fails the suite.
+  - `test_token_guardrails.py` changes: `verify` requires `issuer` and
+    `audience` too; and **only `api` carries the keyset mount, read-only**
+    (reads `docker-compose.yml`, skipped inside the container, which mounts
+    `Backend/` only; mutation-checked by giving `worker` the mount, and by
+    making it writable).
+  - The 9.1 characterisation suite passes unchanged.
+  - `tests/security/test_rbac_routes.py`: `/auth/jwks.json` added to the
+    public-route allowlist, with its reason. The first full run failed there,
+    which is that test doing its job: a new unauthenticated route needs a
+    recorded decision.
+- **OpenAPI** against `cf394ff`: 232 → 233 paths. The one added is
+  `GET /auth/jwks.json`; no existing path, component or top-level member
+  changed. Limiter keys 91 → 92 (`auth.router.jwks` only). Celery tasks: 45,
+  identical.
+- **Architecture:** 0 violations, 0 module cycles, component cycle 24, and
+  identity imports/queries/joins 3/2/2 — all unchanged.
+- **Live:**
+  - The start-up log names the key.
+  - `/auth/jwks.json` returns one key with no private member, directly and
+    through host nginx.
+  - `docker inspect`: the mount is `rw=false` on api, and worker, web-worker and
+    beat have neither the mount nor the variable.
+  - An ES256 token minted in the api container for a non-existent user answers
+    "User not found" — verification passed. The same token with a wrong
+    audience, or over a foreign key under the live `kid`, answers "Invalid or
+    expired token".
+  - `sign()` still produces HS256.
+  - The Phase 8 live probe is identical.

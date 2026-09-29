@@ -590,6 +590,17 @@ dump": up to six hours of operational data.
   confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
   working tokens for an `analyst`, which carries `scans:execute`.
 
+- **Token signing keys (Phase 9.3)** — the API *verifies* ES256 tokens signed
+  by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,
+  mounted read-only into **api only**) and publishes it at `/auth/jwks.json`;
+  it still *issues* HS256 until 9.4. Keys are managed only with
+  `scripts/security/manage_token_keys.py`, run in the backend image as root —
+  never by hand. The private key files are owned by uid 1000, which on this VM
+  is also the `monitor` login account, so the directory must stay inside
+  `/home/cdac`. The compose variable is required: an unset one stops
+  `docker compose` rather than mounting an empty directory. Runbook and the
+  as-built record: `docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md` §14.
+
 - **Rate limiting** — two layers in the application plus one at the edge, and
   they answer different questions. Reviewed against OWASP/NIST guidance in
   August 2026; the findings and their fixes are below.

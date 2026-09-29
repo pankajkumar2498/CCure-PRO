@@ -2,7 +2,7 @@
 
 |                                   |                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**                        | **10.2a committed** (`42128b9`, §15). **10.2b committed** with this document: the `gateway-auth` checker in `gateway/token_check/`, see §16. 10.2c–d are design only. No nginx, Compose, routing, port, trust boundary or token policy was changed, and nothing was deployed.                                                                                                                                                       |
+| **Status**                        | **10.2a committed** (`42128b9`, §15). **10.2b committed** (`f5d7da1`, §16): the `gateway-auth` checker. **10.2c committed** with this revision: the route-policy generator, see §17. 10.2d is design only. No nginx, Compose, routing, port, trust boundary or token policy was changed, and nothing was deployed.                                                                                                                  |
 | **Owner decisions (29 Sep 2026)** | **X2 = X2-a**: preserve the current 401 behaviour; no `WWW-Authenticate` is added. **X6 = X6-a**: preserve 404/405/307-before-auth for unrouted requests. So **`/api/ir/*` stays the current 404 throughout Phase 10**; the `MODULE_NOT_DEPLOYED` 503 stub is not introduced. **`DELETE /reports/{id}` stays ticket-or-bearer** in 10.2, since preserving behaviour is the scope; any ticket narrowing is a separate decision (O4). |
 | **Baseline**                      | Phase 10.1 is complete and is the golden baseline. The valid-credential characterisation is **confirmed** by the owner. M3 is still sampling; it is needed only later, to size nginx connections.                                                                                                                                                                                                                                   |
 | **Inputs**                        | [`PHASE10_1_CHARACTERISATION.md`](PHASE10_1_CHARACTERISATION.md), `route_auth_matrix.json`, decision record [`../PHASE10_API_GATEWAY.md`](../PHASE10_API_GATEWAY.md) §§12–14                                                                                                                                                                                                                                                        |
@@ -354,7 +354,7 @@ The module reads no configuration, environment, key directory, file, database or
 - `alg: none` carrying a known `kid` is refused as `alg_mismatch`;
 - an any-kind decode of a service token fails on the user audience.
 
-## 16. 10.2b — the `gateway-auth` checker (committed with this document)
+## 16. 10.2b — the `gateway-auth` checker (committed `f5d7da1`)
 
 **Files** (`gateway/token_check/`):
 
@@ -420,3 +420,65 @@ The module reads no configuration, environment, key directory, file, database or
 - no compose service or live network;
 - the image is not deployed;
 - M3 still pending, for connection sizing in 10.2d/10.3.
+
+## 17. 10.2c — the route-policy generator (committed with this revision)
+
+**Files**
+
+| File                                                      | What it is                                                                                                                                                                                                                           |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Backend/scripts/gateway/route_policy.py`                 | The generator: `live_inventory(app)` → `compile_policy()` → `render_json()` / `render_map()`, plus `evaluate()` (nginx map semantics). CLI: `python -m scripts.gateway.route_policy` with `--check`, `--write` or `--emit json\|map` |
+| `gateway/policy/route_policy.json`                        | The machine-readable policy (schema `ccure.gateway.route_policy/1`), generated                                                                                                                                                       |
+| `gateway/policy/route_policy.map`                         | The nginx fragment for 10.2d, generated. Two maps: `$ccure_route_class` keyed on `$ccure_scope:$request_method:$ccure_app_path`, and `$ccure_policy`, the checker policy per class                                                   |
+| `Backend/tests/repo/test_gateway_route_policy.py`         | 50 tests                                                                                                                                                                                                                             |
+| `gateway/token_check/tests/test_route_policy_contract.py` | Every policy the generator can emit is one `gateway-auth` knows                                                                                                                                                                      |
+
+**Source.** The live application's route table (`main.app.routes`), in route order: one entry per (route, method), with WebSocket routes as scope `websocket`. Each route is classified by the dependencies it resolves:
+
+- `get_current_user_flexible` → ticket_or_bearer;
+- `get_current_user` / `get_current_auth_context` → bearer;
+- neither → public;
+- a service-token dependency → **refused** (no gateway policy until Phase 14).
+
+The inventory must also equal the Phase 10.1 characterisation (`route_table.json`) row for row.
+
+**Classes and counts**
+
+| Class            | Checker policy     |                                    Count |
+| ---------------- | ------------------ | ---------------------------------------: |
+| public           | `none`             |                                       17 |
+| bearer           | `bearer`           |                                      251 |
+| ticket_or_bearer | `ticket_or_bearer` |    3 (incl. `DELETE /reports/{scan_id}`) |
+| websocket        | `ticket`           |                                        2 |
+| options          | `none`             | every `OPTIONS`; a rule before any route |
+| unrouted         | `none`             |                        the map's default |
+| **total routes** |                    |                                  **273** |
+
+**Order.**
+
+- **The Starlette rule:** Starlette dispatches to the first route whose path and method match.
+- **The nginx rule:** an nginx `map` checks exact keys first, then regexes in order.
+- **How the generator reconciles them:** a literal path becomes an exact key only when no earlier route of the same scope and method matches it; otherwise it becomes a regex in its place, and every templated route is a regex in its place. For the current table that gives 151 exact keys, 122 regexes and 0 shadowed routes.
+- **Refusals:** a duplicate with a different class, or a literal shadowed by an earlier template of a different class, is refused, as is any path converter, any `OPTIONS` route, and any key unsafe in nginx.
+
+**X6-a and `/api/ir/*`.** An unrouted request (unknown path, wrong method, trailing-slash redirect, `HEAD` on a `GET` route, a plain `GET` to a WebSocket path, all of `/api/ir/*`) resolves to `unrouted` → checker policy `none`. It reaches the application unauthenticated, and the application answers 404/405/307 as today. X2-a: the map carries no `WWW-Authenticate`.
+
+**Proof of equivalence.**
+
+- `evaluate()` (nginx semantics) equals **Starlette's own router** (`route.matches()`, first FULL match) for every route and for over 1,500 matched and unmatched samples.
+- **Real nginx** (`nginx:stable-alpine`, scratch config, no network) evaluated the generated map on 1,868 requests and agreed with `evaluate()` on all of them.
+
+**Determinism and drift.**
+
+- **Determinism:** the output depends only on the route table: no timestamps, a fixed key order, and a trailing newline. Two independent generations, in separate containers and separate processes, were byte-identical.
+- **Drift:** `test_committed_policy_matches_the_live_application` regenerates from the live app and compares bytes with `gateway/policy/*`. `test_inventory_matches_the_phase_10_1_characterisation` compares the inventory with the characterisation. `--check` exits 1 naming the stale file.
+- **Where the byte comparison runs:** in the api container `gateway/` is not mounted, so the test skips with that reason (the compose-file precedent). CI runs on a full checkout.
+- **Proven on a full read-only checkout:**
+  - the clean tree passes;
+  - a tampered map (DELETE flipped to bearer) fails;
+  - a missing JSON fails;
+  - **an added application route fails**: it would have been classified public, making 274 routes and 18 public.
+
+**Not in 10.2c:** no nginx configuration beyond the generated fragment, no public-route `location` blocks (design §4 item 2 moves to 10.2d, since they need the proxy settings 10.2d writes), no compose wiring, no deployment.
+
+**Found, not fixed (pre-existing, unrelated):** the tracked `Backend/openapi.json` lacks `/auth/jwks.json` and `/auth/service-token` (Phase 9.3/9.5) and was last regenerated on 25 Sep (`f9fbee1`), so CI's OpenAPI contract gate would already fail at `f5d7da1`. 10.2c leaves the schema byte-identical to HEAD.

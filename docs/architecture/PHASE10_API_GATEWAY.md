@@ -1,11 +1,11 @@
 # Phase 10 — The API Gateway (proposal)
 
-|                    |                                                                                                                                                                                                                                               |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**         | Approved in principle (29 Sep 2026). Decisions in §15. Implementation is staged: 10.1 characterisation done, 10.2a committed `42128b9`, 10.2b committed with this record; 10.2c onwards not started. No live infrastructure has been changed. |
-| **Baseline**       | HEAD `fc38b31`, measured live on `ccurepro` (10.180.22.127) on 29 Sep 2026                                                                                                                                                                    |
-| **Plan reference** | `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` rev 4: §3.2, rules 9 and 12, Phase 10 row, decisions D7 and D10                                                                                                                                      |
-| **Decides**        | D7 (gateway technology), D10 (TLS termination), the fate of `alt-gateway`, and `/api/ir/*` routing                                                                                                                                            |
+|                    |                                                                                                                                                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**         | Approved in principle (29 Sep 2026). Decisions in §15. Implementation is staged: 10.1 characterisation done, 10.2a committed `42128b9`, 10.2b `f5d7da1`, 10.2c (route-policy generator) committed with this revision; 10.2d onwards not started. No live infrastructure has been changed. |
+| **Baseline**       | HEAD `fc38b31`, measured live on `ccurepro` (10.180.22.127) on 29 Sep 2026                                                                                                                                                                                                                |
+| **Plan reference** | `CCURE_PLATFORM_MODULAR_ARCHITECTURE.md` rev 4: §3.2, rules 9 and 12, Phase 10 row, decisions D7 and D10                                                                                                                                                                                  |
+| **Decides**        | D7 (gateway technology), D10 (TLS termination), the fate of `alt-gateway`, and `/api/ir/*` routing                                                                                                                                                                                        |
 
 ---
 

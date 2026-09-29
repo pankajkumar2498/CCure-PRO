@@ -5,7 +5,7 @@
 # ── Build Stage ────────────────────────────────────────────────────────────
 # Node 22, the version CI tests and lints the frontend with. The image used to
 # build on 20, so what shipped was compiled by a toolchain CI never ran.
-FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS build
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS build
 
 WORKDIR /app
 

@@ -302,3 +302,22 @@ def test_each_moved_module_adopts_its_legacy_name_first(legacy, new):
     assert isinstance(call, ast.Expr) and isinstance(call.value, ast.Call)
     assert call.value.func.id == "adopt_legacy_name"
     assert call.value.args[1].value == legacy
+
+
+def test_account_maintenance_tasks_keep_their_names_and_queue():
+    """The two purges moved out of core.tasks in Phase 8.4; beat names them."""
+    import ccure_platform.identity.account_maintenance as maintenance
+    from core.celery_app import celery_app
+
+    for name in (
+        "ccure.tasks.purge_stale_unverified_accounts",
+        "ccure.tasks.purge_expired_refresh_sessions",
+    ):
+        task = celery_app.tasks[name]
+        assert task.__module__ == maintenance.__name__, name
+        assert task.queue == "default", name
+    assert maintenance.__name__ in celery_app.conf.include
+    scheduled = {entry["task"] for entry in celery_app.conf.beat_schedule.values()}
+    assert "ccure.tasks.purge_stale_unverified_accounts" in scheduled
+    assert "ccure.tasks.purge_expired_refresh_sessions" in scheduled
+    assert maintenance.log.name == "ccure.tasks"

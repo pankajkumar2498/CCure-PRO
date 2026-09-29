@@ -1,8 +1,8 @@
-# Phase 8.4 — Organisation plan and entitlements in `ccure_platform` (design proposal)
+# Phase 8.4 — Organisation plan and entitlements in `ccure_platform`
 
 |               |                                                                                                                                                                                                                               |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design for review.** Nothing here is implemented, and no database change has been made.                                                                                                                                     |
+| **Status**    | **Implemented** (Option A), 29 Sep 2026, after the project owner approved Option A and the recommendations for the six questions (§8). No database change.                                                                    |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                                                   |
 | **Replaces**  | Step 8.4 as first written in [`PHASE8_PLATFORM_IDENTITY.md`](PHASE8_PLATFORM_IDENTITY.md) §4, which moved quota and scope into an Audit-owned `audit_organisation_settings`. The project owner has decided otherwise (below). |
 | **Builds on** | Steps 8.1–8.3: identity in `ccure_platform`, `ccure_platform.api`, and 17 identity queries left in module code, 13 of which read the settings this step is about                                                              |
@@ -357,3 +357,111 @@ last.
 6. **The two identity purge tasks** still in `core.tasks` (from the 8.3
    report): may they move into `ccure_platform/identity/`? It can be done in
    8.4a or separately.
+
+## 9. Removing a plan feature
+
+The owner's direction (29 Sep 2026): scan limits, scope, SLA and the like are
+not needed to run an assessment, and stakeholders may ask for them to go.
+Each is therefore contained. It has one platform module, one or two API
+functions, and **exactly one Audit seam**. `tests/repo/test_plan_feature_containment.py`
+fails if a second Audit module starts calling a feature, or if one feature
+module imports another.
+
+**Scan limits (quota):**
+
+1. In `core/quota.py`, make `check_scan_quota` a no-op, or delete it together
+   with its three calls in `routers/phase_scans.py` (×2) and
+   `core/scheduling/dispatcher.py`.
+2. Delete `get_quota_status`, `GET /scan/quota` and the dashboard's quota
+   fields, and remove `ScanQuotaBar` from the frontend. These change the API,
+   so they need the frontend change in the same release.
+3. Delete `ccure_platform/plan/scan_limits.py` and `scan_limits`,
+   `ScanLimits` and `ScanLimitsView` from `ccure_platform.api` and
+   `PLATFORM_API_SURFACE`.
+4. Optionally drop `max_scans_per_day` and `max_concurrent_scans` in a
+   migration. `plan` stays while any other feature uses it.
+
+Nothing in the scan pipeline, engines, findings or reports changes.
+
+**Scan scope.** This is a security control: removing it means any
+authenticated user can aim the scanner at any address. Decide that
+explicitly, then:
+
+1. In `core/scan_scope.py`, make `org_scan_scope` return `None` and
+   `scope_for_org` return `None`, meaning unrestricted.
+2. Delete `ccure_platform/plan/scan_scope.py` and its API names.
+3. Delete the admin scan-scope endpoints.
+
+The callers keep calling the seam and need no change.
+
+**Remediation SLA:**
+
+1. In `core/remediation/sla.py`, make `org_sla_setting` return `None`. Every
+   organisation then gets the product defaults.
+2. Alternatively, remove SLA computation from Audit altogether. That is a
+   larger Audit change, because due dates feed the remediation queue and the
+   reports.
+3. Delete `ccure_platform/plan/remediation_sla.py` and its API names, and
+   remove `PUT /remediation/sla-policy`.
+
+## 10. As built (29 Sep 2026)
+
+**Commits:**
+
+| Commit         | Content                                                                           |
+| -------------- | --------------------------------------------------------------------------------- |
+| 8.4a `9f0b485` | `ccure_platform/plan/`, the API functions, the plan-field ratchet inverted        |
+| 8.4b `b8b5e83` | quota seam: `core.quota`                                                          |
+| 8.4c `ec8a765` | scope seam: `core.scan_scope`                                                     |
+| 8.4d `67c3f48` | SLA seam: `core.remediation.sla`, plus the containment test                       |
+| 8.4e           | the two purge tasks move to `ccure_platform/identity/account_maintenance.py` (Q6) |
+
+**Owner's answers to §8:**
+
+- **Q1:** Option A.
+- **Q2 and Q3:** the product SLA defaults and `REQUIRE_SCAN_SCOPE` stay with
+  Audit.
+- **Q4:** findings F1–F4 are recorded and not fixed.
+- **Q5:** removing the ORM relationships `Organization.assets` / `.scans` is a
+  separate item.
+- **Q6:** the purge tasks moved.
+
+### Old access → new
+
+| Consumer                                                                                                                                                                                                | Before                               | After                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core.quota.check_scan_quota`                                                                                                                                                                           | organisation row plus `_PLAN_LIMITS` | `effective_scan_limits()` → `api.scan_limits().effective`                                                                                     |
+| `get_quota_status`, dashboard                                                                                                                                                                           | `_limits(plan)`                      | `api.scan_limits().plan_defaults` (F2 preserved)                                                                                              |
+| `scope_for_org`, `enforce_org_scan_scope`, `validate_scan_targets`, orchestrator                                                                                                                        | organisation row                     | a `ScanScopeView` from `core.scan_scope.org_scan_scope()`; `validate_scan_targets(…, scope=)`                                                 |
+| `routers.phase_scans` ×3, `routers.scan_schedules`, `core.scheduling.dispatcher`, `routers.credentialed`, `routers.credentials`, `core.tasks._bind_scan_scope`, `ccure_audit.services.baseline_mapping` | `db.query(Organization)`             | `org_scan_scope(db, org_id)`. None means the organisation does not exist, so the dispatcher's and `baseline_mapping`'s refusals are unchanged |
+| `sla_policy_for_org` and its callers (`core.tasks` SLA pass, `remediation.reporting`, `remediation.workflow.apply_sla`, `routers.remediation` ×7)                                                       | `org.settings["remediation_sla"]`    | `sla_policy_for_org_id()` / `org_sla_setting()` → `api.remediation_sla_setting()`; `apply_sla(…, policy=)`                                    |
+| `PUT /remediation/sla-policy`                                                                                                                                                                           | wrote `org.settings`                 | `stored_sla_setting()` then `store_sla_setting()` → `api.store_remediation_sla_setting()`                                                     |
+| `normalise_scope` (admin write-side validation)                                                                                                                                                         | `core.scan_scope`                    | `ccure_platform.plan.scan_scope`                                                                                                              |
+| purge of unverified accounts and expired sessions                                                                                                                                                       | `core.tasks`                         | `ccure_platform.identity.account_maintenance`, with the same names, queue, logger and beat entries                                            |
+
+### Counts
+
+| Measure                         | Before 8.4 | After                                                 |
+| ------------------------------- | ---------- | ----------------------------------------------------- |
+| Direct identity queries         | 17         | **2**: the WebSocket ticket logins, kept for Phase 10 |
+| Identity joins and eager loads  | 2          | **2**: the same two, kept for Phase 10                |
+| Module code naming a plan field | 7          | **0**, held at zero by the ratchet                    |
+| Files importing identity        | 25         | 20                                                    |
+
+### Verification
+
+- **Behaviour.** Every organisation (4, plus a missing one) was resolved
+  read-only against the live database through the old code and then the new,
+  and the two JSON documents are identical: enforced and displayed limits,
+  the whole `GET /scan/quota` payload, the scope with `REQUIRE_SCAN_SCOPE` on
+  and off, and the resolved SLA policy.
+- **OpenAPI.** The test pinning it caught one endpoint docstring edit, and a
+  second was found by review. Both are restored and noted in comments.
+- **Two defects my own edits introduced, caught before commit:**
+  - `baseline_mapping` read `org.id` in a second method;
+  - the SLA endpoint's docstring change altered OpenAPI.
+- **The test pinning a view field to a column name.** `ScanLimits` first
+  named its fields like the columns (`max_scans_per_day`), and the inverted
+  ratchet flagged the seam as reading the columns. The view's fields were
+  renamed (`scans_per_day`, `concurrent_scans`, …) so the two cannot be
+  confused.

@@ -412,7 +412,9 @@ def test_expired_sessions_are_swept_but_recent_history_is_kept(
     import datetime
 
     from config import AppConfig
-    from core.tasks import purge_expired_refresh_sessions
+    from ccure_platform.identity.account_maintenance import (
+        purge_expired_refresh_sessions,
+    )
     from db.models import RefreshTokenSession
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -468,6 +470,6 @@ def test_session_purge_is_scheduled():
     assert entry, "no beat entry for the refresh-session sweep"
     assert entry["task"] == "ccure.tasks.purge_expired_refresh_sessions"
 
-    import core.tasks  # noqa: F401
+    import ccure_platform.identity.account_maintenance  # noqa: F401
 
     assert "ccure.tasks.purge_expired_refresh_sessions" in celery_app.tasks

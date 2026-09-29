@@ -243,10 +243,20 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - `api.user()` and `api.organisation()` return frozen views;
   - `api.user_has_permission()` is `require_permission`'s own rule. Do not
     hand-copy the superadmin check again; six copies were removed.
-  - **`OrganisationView` deliberately has no quota, scope, plan or settings.**
-    The 13 remaining `Organization` queries read exactly those, for Audit, and
-    move in step 8.4, which should include the SLA policy in
-    `settings["remediation_sla"]`.
+  - **The organisation plan is platform-owned** (project owner, 29 Sep 2026):
+    plan, scan limits (quota), scan scope and the remediation SLA live in
+    `ccure_platform/plan/`, one module per feature. Audit consumes each through
+    **one seam**: `core.quota`, `core.scan_scope` and `core.remediation.sla`.
+    `tests/repo/test_plan_feature_containment.py` fails on a second caller,
+    because stakeholders may ask for any of these to be removed, and
+    containment is what keeps that small. The removal recipes are in
+    `docs/architecture/PHASE8_4_ORGANISATION_PLAN.md` §9.
+  - **Platform owns the entitlement; Audit owns the check.** The platform
+    holds limits, ranges and configured deadlines. Audit counts its own scans,
+    admits targets and computes due dates. `OrganisationView` carries no plan
+    field. Module code names no plan column; a ratchet keeps it at zero.
+  - **An endpoint's docstring is its OpenAPI description.** Editing one
+    changes the published API document; put notes in comments.
 - **Identity's code lives in `ccure_platform` since step 8.2.**
   - **The moves:**
     - `auth/*` → `ccure_platform/identity/`;

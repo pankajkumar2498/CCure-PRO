@@ -376,8 +376,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.mail_tasks.send_password_changed_email_task",
             "auth.mail_tasks.send_password_reset_email_task",
             "auth.mail_tasks.send_verification_email_task",
-            "db.models.RefreshTokenSession",
-            "db.models.User",
         }
     ),
     "routers.admin_nvd": frozenset({"auth.rbac.require_role", "db.models.User"}),
@@ -434,7 +432,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
 KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
-    "core.tasks": {"RefreshTokenSession": 1, "User": 1},
     "routers.scan_history": {"User": 1},
     "routers.web_scans": {"User": 1},
 }

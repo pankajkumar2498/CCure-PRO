@@ -16,6 +16,7 @@ celery_app = Celery(
         "core.compliance_tasks",  # Compliance scan background jobs
         "core.email_security_tasks",  # Email domain screening and account hygiene
         "auth.mail_tasks",  # Outgoing application email
+        "ccure_platform.identity.account_maintenance",  # Account and session purges
     ],
 )
 

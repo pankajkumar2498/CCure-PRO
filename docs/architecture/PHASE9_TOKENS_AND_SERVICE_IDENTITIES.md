@@ -1,12 +1,12 @@
 # Phase 9 — Verifiable tokens and service identities (design proposal)
 
-|               |                                                                                                                                                                                                       |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.4 done**; ES256 issuance live since 29 Sep 2026 (§15.3). 9.5 not started.                              |
-| **Date**      | 29 Sep 2026                                                                                                                                                                                           |
-| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
-| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
-| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                         |
+|               |                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16). 9.6 not started. |
+| **Date**      | 29 Sep 2026                                                                                                                                                                                                               |
+| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9                     |
+| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                                       |
+| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                                             |
 
 ## 0. What the plan already says, and what it leaves open
 
@@ -680,6 +680,12 @@ none` refused; wrong-key signature refused; each kind refused where another
   expected kind.
 - **F:** the two WebSocket authentication paths stay untouched in Phase 9.
 
+**For 9.5, decided 29 Sep 2026:** O9 → a static registry, no migration (tables
+only after a reviewed schema); O11 and the service half of O5 → 10-minute
+service tokens, `aud` = the target service (`urn:ccure:core`, `urn:ccure:ir`),
+no denylist; assertions ≤ 60 s, single use, replay store Redis fail-closed; the
+live registry starts empty. Recorded in §16.
+
 **O15, decided 29 Sep 2026 (after 9.3):** the JWT clock-skew leeway is **0
 seconds**, for every token kind and on both verification paths. This is the
 value 9.3 already implements and the HS256 path always used, so the decision
@@ -1242,3 +1248,170 @@ rollback step.
   - The Phase 8 probe is identical.
   - A token issued in the API container is HS256 and verifies.
   - ES256 selected against the live keyset refuses.
+
+## 16. Step 9.5 — as built
+
+**What 9.5 adds.** Platform-owned service identities, and service-to-service
+authentication, by D4 option A (`private_key_jwt`, RFC 7523). A service proves
+who it is with a short assertion signed by **its own** private key. The core
+verifies it against the public key registered to that service and issues a
+10-minute ES256 `service_access` token, signed by the platform key.
+
+- **Nothing is shared.** No secret passes between the platform and any
+  service.
+- **Nothing changed for people.** Human authentication is unchanged, and so is
+  every existing route.
+- **Out of scope:** IR, and the 9.6 cut-off. Legacy HS256 verification is
+  still on.
+
+**The owner's decisions for this step (29 Sep 2026):**
+
+| Decision                                            | Chosen                                                                                                                                                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O9 storage                                          | **Static registry, no migration**: `services.json` plus public keys, in a host directory outside the repository, read-only into the api only. Tables later, only with a reviewed schema                            |
+| O11 lifetime and revocation; the service half of O5 | **10-minute** service tokens, no denylist; the identity re-checked on every request. `aud` = the target service, `urn:ccure:core` or `urn:ccure:ir`. Assertions **≤ 60 s**, single use, `aud` = the token endpoint |
+| Replay store                                        | **Redis, fail closed**: an assertion `jti` is `SET NX` with a TTL, and an unreachable store refuses (503)                                                                                                          |
+| Live registration                                   | **Empty registry**, nothing live: no credential exists until a service does (IR, Phase 13). `require_service_scope` stays out of `ccure_platform.api` until its first consumer (§3.5)                              |
+
+### 16.1 Code
+
+- **`ccure_platform/service_identity/`** (new):
+
+  - **`registry.py`** — the format and a whole-registry validation that
+    refuses rather than repairs. It checks:
+
+    - the id pattern;
+    - status `active` or `disabled`;
+    - an audience from the service set;
+    - scopes of the form `module:resource:action`;
+    - at least one tenant;
+    - safe file names;
+    - each `kid` equals its key's RFC 7638 thumbprint;
+    - keys are P-256.
+
+    It also **refuses any file holding a private key**, a `kid` registered to
+    two services, and a `kid` that is a platform signing key. The registry is
+    loaded once per process, and unset means an empty registry.
+
+  - **`replay.py`** — single use of an assertion `jti`, in Redis, failing
+    closed.
+  - **`router.py`** — `POST /auth/service-token`, form-encoded per RFC 6749
+    §4.4 and RFC 7523, rate limit 30/minute. The checks, in order:
+
+    1. the grant and assertion types;
+    2. the assertion against the key registered to **that** service;
+    3. the identity's status;
+    4. single use of the assertion — after authentication, so an
+       unauthenticated caller cannot fill the store;
+    5. the requested scopes are a non-empty subset of those allowed;
+    6. the tenant is one of those granted, and the organisation exists and is
+       active.
+
+    Then it signs the token and writes a `service.token_issued` audit event,
+    actor `svc:<id>`, under the tenant, in one transaction. Every
+    authentication failure answers the same 401 `invalid_client`; the reason
+    goes to the log only.
+
+  - **`dependencies.py`** — `service_principal_for(audience)` and
+    `require_service_scope(scope)`, for the first consumer (Phase 14). Tenant
+    context comes from the token's `tenant` claim only; `X-Tenant-ID` is never
+    read. The identity's status and tenant grant are re-checked on every
+    request.
+
+- **`ccure_platform/identity/tokens.py`**:
+  - The new kind `service_access`, with `ptype` `service`.
+  - `sign_service_token()`: always ES256 with the active key, never HS256,
+    even in the HS256 rollback mode.
+  - `verify_service_assertion()`: the assertion check, living here because
+    only this module may touch a JWT library.
+  - `sign()` refuses the service kind, and `verify()` refuses it on the legacy
+    HS256 path.
+  - `unverified_header()` and `unverified_claims()`, for audit fields.
+- **`config.py`** — `JWTConfig.SERVICE_REGISTRY_DIR`
+  (`CCURE_SERVICE_REGISTRY_DIR`).
+- **`main.py`** — the router is included, and the start-up log reads
+  `Service identities: …`. A refused registry is a warning, not a stop:
+  human sign-in must not depend on it.
+- **`scripts/security/register_service_identity.py`** (new) — `register`,
+  `add-key` (import the public key a service generated), `generate-key`
+  (private key to a separate directory, never the registry or the platform
+  keyset), `remove-key`, `set-status`, `set-scopes`, `set-tenants`, `list`.
+  Each change is validated before it is kept, and no key material is printed.
+- **Tests and guardrails:**
+  - `tests/auth/test_service_identity.py` is new (65 tests).
+  - `tests/security/test_rbac_routes.py` lists the endpoint as public, with
+    its reason.
+  - `tests/repo/test_platform_identity_move.py`'s limiter-key check now names
+    the modules moved in 8.2, rather than every `ccure_platform.` key. A
+    module created in the platform has no legacy name to keep.
+    Mutation-checked: removing the identity router's legacy name still fails
+    it.
+- **Docs** — `BACKEND_API_REFERENCE.md` (the route), `Backend/.env.example`,
+  this section, CLAUDE.md.
+- **No schema change.** No migration, no table, and no `table_ownership.yaml`
+  entry. `users`, `roles` and passwords are not touched: a service identity
+  is not a user.
+
+### 16.2 The service-token flow
+
+```
+service (e.g. IR, Phase 13)                        core (platform)
+───────────────────────────                        ────────────────
+signs an assertion with ITS OWN private key:
+  header {alg: ES256, kid: <its key thumbprint>}
+  {iss = sub = "ir",
+   aud = https://ccurepro.cdac.in/api/auth/service-token,
+   jti = <unique>, iat, exp ≤ iat + 60 s}
+POST /auth/service-token  (form)          ──►  key_for("ir", kid): the key registered
+  grant_type=client_credentials                 to ir, or refuse (401 invalid_client)
+  client_assertion_type=…:jwt-bearer            verify ES256, aud, iss = sub, lifetime
+  client_assertion=<JWT>                        identity active? jti unused? (Redis, fail closed)
+  scope=audit:findings:read                     scopes ⊆ allowed?  tenant granted and active?
+                                          ◄──   200 {access_token, Bearer, 600, scope, tenant}
+                                                audit: service.token_issued (actor svc:ir)
+Authorization: Bearer <service token>     ──►  require_service_scope("audit:findings:read"):
+  token: ES256, platform kid,                   verify(kind service_access, aud urn:ccure:core),
+  aud urn:ccure:core, sub svc:ir,               identity still active, tenant still granted,
+  ptype service, tenant, scope                  scope present; tenant = the token's, never
+                                                X-Tenant-ID
+```
+
+Verifiers other than the core (IR, the gateway) check the token against the
+public JWKS alone.
+
+### 16.3 Operating the registry (when the first service exists)
+
+The live registry is empty, and `CCURE_SERVICE_REGISTRY_DIR` is not set on the
+api, so every assertion answers 401. To register the first service:
+
+1. Create the host directory (for example `/home/cdac/ccure-services`,
+   inside `/home/cdac`, as for the keyset).
+2. Register the service, and add the public key it generated:
+   `register ir --name "Incident Response" --module ir --audience urn:ccure:core --scope … --tenant …`,
+   then `add-key ir --public-key ir.pub.pem`. Run the tool with
+   `--platform-keys-dir` so a platform `kid` is refused.
+3. Mount the directory read-only on the api, at `/run/ccure/services`, with
+   `CCURE_SERVICE_REGISTRY_DIR` set. That is a compose change made with the
+   first registration.
+4. Recreate the api. The log must read `Service identities: ir (active, 1 key(s))`.
+
+To revoke, `set-status ir disabled` or `remove-key`, then restart the api.
+Tokens already issued stop working at once, because every request re-checks
+the identity.
+
+### 16.4 Findings
+
+- **The audit log redacts any field whose name contains "token".** The
+  issued token's `jti` is therefore recorded as `issued_jti`. A first draft
+  used `token_jti`, and the log stored `[REDACTED]`.
+- **Platform-wide service identities (§3.5) are not implemented.** Every
+  service token is bound to exactly one tenant: the identity's own, or one of
+  its grants named in the request. A token with no tenant needs a consumer and
+  a design; the national Rank of §8.2 is the first candidate.
+- **Revocation latency is an api restart.** That is the static-registry
+  trade-off the owner chose. Every request re-checks the in-memory registry,
+  so a restart takes effect for live tokens too.
+- **Two pre-existing inaccuracies in `BACKEND_API_REFERENCE.md`, not
+  corrected** (outside this step):
+  - its totals table says 155 HTTP operations against 271 registered;
+  - its JWKS section still says tokens are HS256 until 9.4.

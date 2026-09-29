@@ -170,7 +170,13 @@ def test_limiter_route_keys_are_unchanged():
 
     for endpoint in ("login", "register", "forgot_password", "reset_password_endpoint"):
         assert limiter._route_limits.get(f"auth.router.{endpoint}"), endpoint
-    assert not any(k.startswith("ccure_platform.") for k in limiter._route_limits)
+    # No *moved* module registers under its new name. A module created in
+    # ccure_platform (the Phase 9.5 service-identity router) has no legacy name
+    # to keep, and its key is new by design.
+    from ccure_platform._legacy import MOVED_MODULES
+
+    moved = tuple(f"{new}." for new in MOVED_MODULES.values())
+    assert not any(k.startswith(moved) for k in limiter._route_limits)
 
 
 @pytest.mark.parametrize(

@@ -120,6 +120,7 @@ Source: `Backend/ccure_platform/identity/router.py` (legacy path `auth/router.py
 | POST   | `/auth/refresh`              | public (cookie/body token) | —          | Rotate refresh, issue access             |
 | POST   | `/auth/ticket`               | authenticated              | —          | 60-second WebSocket/download ticket      |
 | GET    | `/auth/jwks.json`            | public                     | 60/min     | Token-verification public keys (JWKS)    |
+| POST   | `/auth/service-token`        | service assertion          | 30/min     | Service identity → service token (9.5)   |
 | POST   | `/auth/forgot-password`      | public                     | 3/min      | Send reset link                          |
 | POST   | `/auth/reset-password`       | public                     | —          | Consume reset token                      |
 | POST   | `/auth/login/send-email-otp` | MFA challenge token        | 5/min      | Email a 6-digit OTP                      |
@@ -360,6 +361,47 @@ is the RFC 7638 thumbprint of the key. Every key in the `next`, `active` and
 when no signing keyset is configured. Verifiers (the gateway, IR) cache it and
 refetch only on an unknown `kid`. Tokens are still issued HS256 until Phase 9.4,
 so no issued token uses these keys yet.
+
+### `POST /auth/service-token`
+
+A service exchanges a signed assertion for a service token (Phase 9.5). Served by
+`Backend/ccure_platform/service_identity/router.py`, not the identity router.
+Standard OAuth 2.0 client credentials (RFC 6749 §4.4) with `private_key_jwt`
+client authentication (RFC 7523). **No user token, cookie or shared secret is
+involved, and a user token is refused.**
+
+Form-encoded body:
+
+| Field                   | Value                                                                |
+| ----------------------- | -------------------------------------------------------------------- |
+| `grant_type`            | `client_credentials`                                                 |
+| `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`             |
+| `client_assertion`      | JWT signed ES256 by the **service's own** registered key (below)     |
+| `scope`                 | space-separated scopes, each within those the identity is allowed    |
+| `tenant`                | organisation id; required only for a service granted several tenants |
+
+The assertion carries `kid` (a key registered to that service), `iss` = `sub` =
+the service id, `aud` = `https://ccurepro.cdac.in/api/auth/service-token`, a
+`jti` used once only, and `iat`/`exp` at most 60 seconds apart.
+
+Returns `{"access_token", "token_type": "Bearer", "expires_in": 600, "scope",
+"tenant"}` with `Cache-Control: no-store`. The token is ES256, signed by the
+platform's active key, with `aud` = the service the caller may call
+(`urn:ccure:core` or `urn:ccure:ir`), `sub` = `svc:<id>`,
+`type` = `service_access`, `ptype` = `service`, and `tenant` and `scope` claims.
+Issuance writes a `service.token_issued` audit event.
+
+Errors:
+
+- **401 `invalid_client`** — any authentication failure: unknown service, bad
+  signature, wrong key, expired, replayed, or a disabled identity. The cause is
+  logged, never returned.
+- **400** — `invalid_scope` or `invalid_request`.
+- **403** — a tenant the service is not granted, or an inactive organisation.
+- **503** — the registry or the replay store is unavailable.
+
+Identities live in a static registry (`CCURE_SERVICE_REGISTRY_DIR`); none is
+registered yet.
 
 ### `POST /auth/forgot-password`
 

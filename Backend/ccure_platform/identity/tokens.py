@@ -39,6 +39,15 @@ ES256 stay valid because verification accepts both. With ES256 selected and no
 usable active key, :func:`assert_signing_ready` refuses — the API does not start
 (design §3.7) rather than issue tokens nobody can verify, or silently fall back.
 
+**9.5 adds service tokens.** :func:`sign_service_token` issues the one
+service kind, ``service_access`` (``ptype`` ``service``, ``sub`` ``svc:<id>``,
+``aud`` the service it is for, a ``tenant`` and a ``scope``), always ES256 with
+the active key — never HS256, whose secret is shared. :func:`sign` refuses that
+kind, and :func:`verify` refuses it on the legacy path. A service proves itself
+with an assertion signed by its own key, checked by
+:func:`verify_service_assertion` against the key registered to that service
+(``ccure_platform/service_identity/``).
+
 **Refusals are logged, never the token.** Every refusal names a reason code
 (``expired``, ``unknown_kid``, ``wrong_audience``, …) with the unverified
 ``kid``, ``jti`` and ``ptype`` — enough to correlate, nothing to replay.
@@ -56,7 +65,7 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from ccure_platform.identity import keys as keyset_mod
 from config import JWTConfig
@@ -71,16 +80,21 @@ ACCESS = "access"
 REFRESH = "refresh"
 TICKET = "ticket"
 MFA_CHALLENGE = "mfa_challenge"
-KINDS = frozenset({ACCESS, REFRESH, TICKET, MFA_CHALLENGE})
+USER_KINDS = frozenset({ACCESS, REFRESH, TICKET, MFA_CHALLENGE})
+#: The one kind issued to a service identity (Phase 9.5). Never by sign().
+SERVICE_ACCESS = "service_access"
+KINDS = USER_KINDS | {SERVICE_ACCESS}
 
 #: The principal type each kind is issued to. Explicit, never inferred from
 #: ``sub`` (owner's decision, Phase 9 review).
 PTYPE_USER = "user"
+PTYPE_SERVICE = "service"
 KIND_PTYPE = {
     ACCESS: PTYPE_USER,
     REFRESH: PTYPE_USER,
     TICKET: PTYPE_USER,
     MFA_CHALLENGE: PTYPE_USER,
+    SERVICE_ACCESS: PTYPE_SERVICE,
 }
 
 SECRET_KEY: str = JWTConfig.SECRET_KEY
@@ -111,6 +125,22 @@ SIGNING_ALGORITHMS = ("ES256", ALGORITHM)
 #: Claims sign() sets itself on an ES256 token. A caller supplying one is a
 #: programming error, refused rather than silently overwritten.
 _SIGNER_SET_CLAIMS = frozenset({"iss", "aud", "ptype", "iat", "nbf", "exp"})
+
+
+#: Service tokens (Phase 9.5, owner's decisions of 29 Sep 2026). The audience
+#: is the service the token is for, never the user audience, so a service
+#: token is refused wherever a user token is expected and the reverse.
+CORE_SERVICE_AUDIENCE = "urn:ccure:core"
+IR_SERVICE_AUDIENCE = "urn:ccure:ir"
+SERVICE_AUDIENCES = frozenset({CORE_SERVICE_AUDIENCE, IR_SERVICE_AUDIENCE})
+SERVICE_TOKEN_LIFETIME = timedelta(minutes=10)
+#: A service's own sub namespace, which no user id can take.
+SERVICE_SUBJECT_PREFIX = "svc:"
+#: The client assertion (RFC 7523): audience is the token endpoint's URL, the
+#: lifetime at most 60 seconds, and each jti is accepted once.
+SERVICE_ASSERTION_AUDIENCE = f"{ISSUER}/api/auth/service-token"
+SERVICE_ASSERTION_MAX_LIFETIME = timedelta(seconds=60)
+_SERVICE_ASSERTION_ALGORITHM = "ES256"
 
 
 class SigningUnavailable(RuntimeError):
@@ -223,6 +253,9 @@ def sign(claims: Mapping[str, Any], lifetime: timedelta) -> str:
     """
     now = _utcnow()
     payload = dict(claims)
+    if payload.get("type") == SERVICE_ACCESS:
+        # Service tokens come only from sign_service_token(), never HS256.
+        raise ValueError("service tokens are issued by sign_service_token()")
     if signing_algorithm() == ALGORITHM:
         payload["iat"] = now
         payload["exp"] = now + lifetime
@@ -232,7 +265,7 @@ def sign(claims: Mapping[str, Any], lifetime: timedelta) -> str:
     if reserved:
         raise ValueError(f"sign() sets {sorted(reserved)} itself")
     kind = payload.get("type")
-    if kind not in KINDS:
+    if kind not in USER_KINDS:
         raise ValueError(f"unknown token kind {kind!r}")
     key = signing_key()
     payload.update(
@@ -244,6 +277,48 @@ def sign(claims: Mapping[str, Any], lifetime: timedelta) -> str:
         exp=now + lifetime,
     )
     payload.setdefault("jti", secrets.token_urlsafe(16))
+    return jwt.encode(
+        payload, _private_pem(key), algorithm=key.alg, headers={"kid": key.kid}
+    )
+
+
+def sign_service_token(
+    *, service_id: str, audience: str, scopes: frozenset[str] | set[str], tenant: str
+) -> str:
+    """
+    A ``service_access`` token (Phase 9.5) for ``service_id``, to call the
+    service named by ``audience``, bound to one ``tenant``, carrying exactly
+    ``scopes``. Always ES256 with the active key: a service token is never
+    HS256, whatever CCURE_TOKEN_SIGNING_ALG says, because the HMAC secret is
+    shared and service authentication must not rest on a shared secret.
+
+    The caller has already authenticated the service and checked that the
+    scopes and the tenant are granted; this function only refuses what no
+    caller may ask for.
+    """
+    if audience not in SERVICE_AUDIENCES:
+        raise ValueError(f"unknown service audience {audience!r}")
+    if not service_id or SERVICE_SUBJECT_PREFIX in service_id:
+        raise ValueError(f"invalid service id {service_id!r}")
+    if not scopes:
+        raise ValueError("a service token needs at least one scope")
+    if not tenant:
+        raise ValueError("a service token is bound to exactly one tenant")
+    key = signing_key()
+    now = _utcnow()
+    payload = {
+        "iss": ISSUER,
+        "aud": audience,
+        "sub": f"{SERVICE_SUBJECT_PREFIX}{service_id}",
+        "type": SERVICE_ACCESS,
+        "ptype": PTYPE_SERVICE,
+        "scope": " ".join(sorted(scopes)),
+        "tenant": str(tenant),
+        "jti": secrets.token_urlsafe(16),
+        "iat": now,
+        "nbf": now,
+        "exp": now + SERVICE_TOKEN_LIFETIME,
+    }
     return jwt.encode(
         payload, _private_pem(key), algorithm=key.alg, headers={"kid": key.kid}
     )
@@ -390,6 +465,20 @@ def _header(token: str) -> dict:
         return {}
 
 
+def unverified_header(token: str) -> dict:
+    """A token's header, **not verified** — for logging and audit only."""
+    return _header(token)
+
+
+def unverified_claims(token: str) -> dict:
+    """A token's claims, **not verified** — for logging and audit only."""
+    try:
+        claims = jwt.get_unverified_claims(token)
+    except JWTError:
+        return {}
+    return claims if isinstance(claims, dict) else {}
+
+
 def verify(
     token: str, *, expected_kind: str, issuer: str, audience: str
 ) -> dict | None:
@@ -408,8 +497,86 @@ def verify(
         return None
     header = _header(token)
     legacy = "kid" not in header
+    if legacy and KIND_PTYPE[expected_kind] == PTYPE_SERVICE:
+        # HS256 rests on a secret the api and every worker hold; no service
+        # may authenticate with it (no shared secret, owner's decision).
+        return _refuse("legacy_service", token, header, legacy=True)
     if payload.get("type") != expected_kind:
         return _refuse("wrong_kind", token, header, legacy=legacy)
     if not legacy and payload.get("ptype") != KIND_PTYPE[expected_kind]:
         return _refuse("wrong_ptype", token, header, legacy=False)
     return payload
+
+
+# ── service assertions (RFC 7523 client authentication, Phase 9.5) ────────────
+
+
+def verify_service_assertion(
+    assertion: str, *, key_for: Callable[[str, str], Any]
+) -> dict | None:
+    """
+    The claims of a service's client assertion, or None (reason logged).
+
+    The assertion is signed by the **service's own** private key. ``key_for``
+    is the registry's lookup ``(service_id, kid) -> key | None``: it returns a
+    key only if that kid is registered **to that service**, so one service's
+    key can never authenticate another, and a platform signing key — never
+    registered to a service — authenticates nothing.
+
+    Required: ES256 with a kid; ``iss`` = ``sub`` = the service id; ``aud`` =
+    the token endpoint; ``jti``; ``iat`` not in the future; ``exp`` within
+    ``SERVICE_ASSERTION_MAX_LIFETIME`` of ``iat``. Leeway 0 (O15). Whether the
+    jti was seen before is the caller's check, after this one, so an
+    unauthenticated caller can never fill the replay store.
+    """
+    try:
+        header = jwt.get_unverified_header(assertion)
+        claims = jwt.get_unverified_claims(assertion)
+    except JWTError:
+        return _refuse("malformed", assertion, None, legacy=False)
+    if not isinstance(header, dict) or not isinstance(claims, dict):
+        return _refuse("malformed", assertion, None, legacy=False)
+    if _REFUSED_HEADERS & set(header):
+        return _refuse("refused_header", assertion, header, legacy=False)
+    kid, service_id = header.get("kid"), claims.get("iss")
+    if header.get("alg") != _SERVICE_ASSERTION_ALGORITHM:
+        return _refuse("alg_mismatch", assertion, header, legacy=False)
+    if not isinstance(kid, str) or not kid:
+        return _refuse("missing_kid", assertion, header, legacy=False)
+    if not isinstance(service_id, str) or not service_id:
+        return _refuse("missing_claim", assertion, header, legacy=False)
+    key = key_for(service_id, kid)
+    if key is None:
+        return _refuse("unknown_service_key", assertion, header, legacy=False)
+    try:
+        verified = jwt.decode(
+            assertion,
+            key.public_pem,
+            algorithms=[_SERVICE_ASSERTION_ALGORITHM],
+            audience=SERVICE_ASSERTION_AUDIENCE,
+            issuer=service_id,
+            options={
+                "require_aud": True,
+                "require_iss": True,
+                "require_sub": True,
+                "require_jti": True,
+                "require_iat": True,
+                "require_exp": True,
+                "leeway": 0,
+            },
+        )
+    except JWTError as exc:
+        return _refuse(_reason_for(exc), assertion, header, legacy=False)
+    if verified.get("sub") != service_id:
+        return _refuse("subject_mismatch", assertion, header, legacy=False)
+    iat, exp = verified.get("iat"), verified.get("exp")
+    if not isinstance(iat, (int, float)) or not isinstance(exp, (int, float)):
+        return _refuse("invalid_claims", assertion, header, legacy=False)
+    now = _utcnow().timestamp()
+    if iat > now:
+        return _refuse("not_yet_valid", assertion, header, legacy=False)
+    if exp - iat > SERVICE_ASSERTION_MAX_LIFETIME.total_seconds():
+        return _refuse("lifetime_too_long", assertion, header, legacy=False)
+    if not isinstance(verified.get("jti"), str) or not verified["jti"]:
+        return _refuse("missing_claim", assertion, header, legacy=False)
+    return verified

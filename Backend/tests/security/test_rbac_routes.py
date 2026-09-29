@@ -34,6 +34,11 @@ PUBLIC_ROUTE_WHITELIST = {
     # serves public key material only, which tests/auth/test_token_keys.py
     # asserts, and its rate limit is asserted there too.
     "/auth/jwks.json",
+    # Service identities (Phase 9.5). Unauthenticated in the FastAPI sense
+    # because the caller is a service proving itself with a signed assertion,
+    # which the route verifies; rate-limited, and covered by
+    # tests/auth/test_service_identity.py.
+    "/auth/service-token",
     "/docs",
     "/redoc",
     "/openapi.json",

@@ -22,6 +22,9 @@ from orchestrator.host_discovery_api import HostDiscoveryAPI
 
 # ── Router imports ────────────────────────────────────────────────────────────
 from auth.router import router as auth_router
+from ccure_platform.service_identity.router import (
+    router as service_identity_router,
+)
 from db.models.users import ensure_user_schema
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -144,6 +147,22 @@ async def lifespan(app: FastAPI):
         )
         raise
     logging.getLogger("ccure.security").info("Token issuance: %s", _issuing)
+
+    # Service identities (Phase 9.5). A refused registry authenticates no
+    # service but must not stop human sign-in, so it is a warning, not a stop.
+    from ccure_platform.service_identity.registry import (
+        current_registry,
+        registry_status,
+    )
+
+    if current_registry() is None:
+        logging.getLogger("ccure.security").warning(
+            "Service identities %s", registry_status()
+        )
+    else:
+        logging.getLogger("ccure.security").info(
+            "Service identities: %s", registry_status()
+        )
 
     if JWTConfig.MFA_KEY_SOURCE != "MFA_ENCRYPTION_KEY":
         logging.getLogger("ccure.security").warning(
@@ -1031,6 +1050,7 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
 # ── Router registration ──────────────────────────────────────────────────────
 
 app.include_router(auth_router)
+app.include_router(service_identity_router)
 app.include_router(scans_router)
 app.include_router(health_router)
 app.include_router(traditional_scans_router)

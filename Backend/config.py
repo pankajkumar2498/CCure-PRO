@@ -120,6 +120,10 @@ class JWTConfig:
     # the rollback: it issues exactly the 9.3 token, and tokens already issued
     # ES256 stay valid because verification accepts both.
     TOKEN_SIGNING_ALG: str = os.getenv("CCURE_TOKEN_SIGNING_ALG", "ES256")
+    # The service-identity registry (Phase 9.5): services.json plus each
+    # service's public keys, mounted read-only into the api only. Unset means
+    # no service is registered, and every service assertion is refused.
+    SERVICE_REGISTRY_DIR: str = os.getenv("CCURE_SERVICE_REGISTRY_DIR", "")
     # Whether legacy HS256 tokens (no kid) still verify. On until the step 9.6
     # cut-off, which needs its own evidence and review.
     ACCEPT_LEGACY_HS256: bool = (

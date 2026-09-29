@@ -257,6 +257,23 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - **With ES256 selected and no active key, the API refuses to start** —
     deliberately (design §3.7). Set HS256 before demoting or removing the
     active key. See Phase 9 doc §15.3.
+- **Service identities (step 9.5) are not users.** They live in a static
+  registry — `services.json` plus public keys, in `CCURE_SERVICE_REGISTRY_DIR`,
+  read-only into the api — never in `users`, `roles` or any table.
+  - **The flow.** A service authenticates at `POST /auth/service-token` with an
+    assertion signed by **its own** key (RFC 7523). It receives a 10-minute
+    ES256 `service_access` token: `aud` = the target service
+    (`urn:ccure:core`/`urn:ccure:ir`), `sub` `svc:<id>`, one `tenant`, and
+    least-privilege `scope`s.
+  - **The registry.** Manage it only with
+    `scripts/security/register_service_identity.py`. It refuses private keys
+    and platform `kid`s. Changes take effect on an api restart.
+  - **The dependencies.** `require_service_scope` and `service_principal_for`
+    (`ccure_platform/service_identity/dependencies.py`) take the tenant from
+    the verified token only — **never read `X-Tenant-ID`**. They stay out of
+    `ccure_platform.api` until their first consumer, Phase 14.
+  - **Live state.** The registry is empty; no service is registered. Phase 9
+    doc §16.
 - **MFA encryption is separate from the JWT secret since step 9.2.**
   - `MFA_ENCRYPTION_KEY` (in `Backend/.env`) derives the Fernet key for
     `users.totp_secret`. It was initialised to the JWT secret's value, so the

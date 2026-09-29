@@ -2,7 +2,7 @@
 
 |               |                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1, 9.2 and 9.3 done**; 9.4 built, awaiting review.                                                         |
+| **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.4 done**; ES256 issuance live since 29 Sep 2026 (§15.3). 9.5 not started.                              |
 | **Date**      | 29 Sep 2026                                                                                                                                                                                           |
 | **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
 | **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
@@ -1109,28 +1109,81 @@ and ptype are the token's own **unverified** values, each cut to 64 characters.
 
 ### 15.3 The live state after 9.4
 
-- **Code:** the API runs the 9.4 code (recreated 29 Sep 2026, 13:04).
-- **Issuance:** HS256, because the root `.env` pins
-  `CCURE_TOKEN_SIGNING_ALG=HS256`. The start-up log reads
-  `Token issuance: HS256 (legacy issuance, CCURE_TOKEN_SIGNING_ALG=HS256)`.
-- **Key:** `7jKp…` is still `next`. Proven against the real keyset: with
-  ES256 selected it refuses, "the token keyset has no active key". **Removing
-  the `.env` line before promoting the key stops the API.** That is the
-  designed behaviour, and the reason the line is there.
+**New tokens are issued ES256 in production since 29 Sep 2026, 14:44 IST**,
+signed by the promoted `active` key. The code is the committed 9.4 (`71ec3df`).
+Promotion followed the owner's review of 9.4 and the owner's escrow copy of the
+key. **Legacy HS256 verification stays enabled**
+(`CCURE_ACCEPT_LEGACY_HS256`, default on): HS256 tokens issued before the
+switch keep working until they expire. Turning it off is the 9.6 cut-off,
+which needs its own evidence and review.
 
-**Switching the live API to ES256**, after review:
+|                                      | Before (14:43:40)                                                        | After (from 14:44:43)                                             |
+| ------------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Key `7jKpUJt99bl-…` in `keyset.json` | `next`                                                                   | `active` — the manifest's `state` only; the key file is untouched |
+| Root `.env`                          | `CCURE_TOKEN_SIGNING_ALG=HS256`                                          | `CCURE_TOKEN_SIGNING_ALG=ES256`                                   |
+| api start-up log                     | `Token issuance: HS256 (legacy issuance, CCURE_TOKEN_SIGNING_ALG=HS256)` | `Token issuance: ES256 with key 7jKpUJt99bl-…`                    |
 
-1. Promote the key:
-   `docker run --rm -u 0 -v /home/cdac/ccure-keys:/keys -v "$PWD/Backend":/app -w /app ccure-audit-pro-backend:latest python -m scripts.security.manage_token_keys --keys-dir /keys set-state 7jKpUJt99bl-LKmPjhDmFCtzSHQ80eW3W-vOTtdJJAs active`
-2. Set `CCURE_TOKEN_SIGNING_ALG=ES256` in the root `.env`, or delete the line.
-3. Run `docker compose up -d --no-deps api`. The log must read
-   `Token issuance: ES256 with key 7jKp…`.
-4. Run the plan's live checks: a login shows the `kid`, an HS256 session
-   refreshes into ES256, WebSocket progress and a report download work, and a
-   429 names its caller.
+- **The keyset holds one key, and it is `active`.** The JWKS publishes that
+  key only.
+- **Worker, web-worker and beat have no key and no signing setting.**
+- **Never leave ES256 selected without an active key.** ES256 is also the code
+  default, so the API would refuse to start. That was proven against this
+  keyset before promotion: "the token keyset has no active key". Set HS256
+  first (the rollback below) before demoting or removing the active key.
 
-**Rollback:** set `CCURE_TOKEN_SIGNING_ALG=HS256` and recreate the api. Tokens
-already issued ES256 stay valid. Leave the key `active`; demoting it is not a
+**The promotion, as run:**
+
+1. A database backup: `ccure_db_20260929_144352_ops.dump`.
+2. Promote the key:
+   `docker run --rm -u 0 -v /home/cdac/ccure-keys:/keys -v "$PWD/Backend":/app -w /app ccure-audit-pro-backend:latest python -m scripts.security.manage_token_keys --keys-dir /keys set-state 7jKpUJt99bl-LKmPjhDmFCtzSHQ80eW3W-vOTtdJJAs active`.
+3. In the root `.env`, change `CCURE_TOKEN_SIGNING_ALG=HS256` to `ES256`.
+   Nothing else in the file changed.
+4. Run `docker compose up -d --no-deps api`.
+
+**Live checks, all passed (29 Sep 2026):**
+
+- **Start-up.** The API was healthy with
+  `Token issuance: ES256 with key 7jKpUJt99bl-…` and 0 restarts.
+- **Fresh tokens.** Access, refresh, ticket and MFA-challenge tokens minted in
+  the api container are ES256, with the active `kid` and the full claim set.
+  - The live API accepted an ES256 access token and an ES256 download ticket.
+    Each reached the user lookup, for a user id that does not exist.
+  - Both controls were refused: a garbage ticket, and a refresh token
+    presented as a Bearer.
+- **Existing HS256.** A token the API issued before the switch still verified
+  after it.
+- **Login → refresh → logout**, by the owner in a browser:
+  - a fresh login rotated its session and was revoked at logout;
+  - the browser's own **3-day-old HS256 session** (issued 26 Sep) refreshed
+    into an ES256-era session, which the next logout revoked — a live legacy
+    session crossing onto ES256;
+  - no token was refused, and no 401 or error was logged during the test.
+- **JWKS.** Only the active key, public members only, both directly and
+  through host nginx.
+- **Phase 8 live probe.** Identical.
+- **Worker, web-worker and beat.** Not restarted. No key mount, no setting,
+  and no key file anywhere on their filesystems.
+- **Repository.** HEAD `71ec3df`, the working tree unchanged, and no
+  application code touched.
+
+**Not exercised live:** WebSocket progress, and the rate-limit audit naming a
+caller. Both read tokens through the unchanged legacy decode, which accepts
+every ES256 kind (`test_token_issuance.py`).
+
+The SPA rotated the refresh token four times in three seconds after the login.
+The same burst appears on 26 Sep, before ES256, so it is the SPA's behaviour on
+page load, not an effect of 9.4. It is relevant to refresh-token reuse
+detection (O13).
+
+**Rollback to HS256 issuance:**
+
+1. In the root `.env`, set `CCURE_TOKEN_SIGNING_ALG=HS256`.
+2. Run `docker compose up -d --no-deps api`.
+3. The start-up log must read
+   `Token issuance: HS256 (legacy issuance, CCURE_TOKEN_SIGNING_ALG=HS256)`.
+
+Tokens already issued ES256 stay valid, because verification accepts both and
+the key stays published. Leave the key `active`; demoting it is not a
 rollback step.
 
 ### 15.4 Findings

@@ -368,11 +368,9 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 #: module -> identity symbols it imports. 32 modules and 80 symbols on
 #: 28 Sep 2026; 31 after core.email_security_tasks moved into the platform (8.3).
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
-    "ccure_audit.services.baseline_mapping": frozenset({"db.models.Organization"}),
     "core.audit": frozenset({"db.models.User"}),
     "core.remediation.reporting": frozenset({"db.models.rbac.Organization"}),
     "core.remediation.workflow": frozenset({"db.models.rbac.Organization"}),
-    "core.scheduling.dispatcher": frozenset({"db.models.Organization"}),
     "core.tasks": frozenset(
         {
             "auth.mail_tasks.send_account_approved_email_task",
@@ -380,7 +378,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.mail_tasks.send_password_changed_email_task",
             "auth.mail_tasks.send_password_reset_email_task",
             "auth.mail_tasks.send_verification_email_task",
-            "db.models.Organization",
             "db.models.RefreshTokenSession",
             "db.models.User",
             "db.models.rbac.Organization",
@@ -393,16 +390,16 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
         {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.credentialed": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.credentials": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.dashboard": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.findings": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.health": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.phase_scans": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.remediation": frozenset(
         {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
@@ -421,7 +418,7 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
         {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.scan_schedules": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.topology": frozenset({"auth.rbac.require_permission", "db.models.User"}),
     "routers.traditional_scans": frozenset(
@@ -440,17 +437,11 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
 KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
-    "ccure_audit.services.baseline_mapping": {"Organization": 1},
     "core.remediation.reporting": {"Organization": 1},
     "core.remediation.workflow": {"Organization": 1},
-    "core.scheduling.dispatcher": {"Organization": 1},
-    "core.tasks": {"Organization": 2, "RefreshTokenSession": 1, "User": 1},
-    "routers.credentialed": {"Organization": 1},
-    "routers.credentials": {"Organization": 1},
-    "routers.phase_scans": {"Organization": 1},
+    "core.tasks": {"Organization": 1, "RefreshTokenSession": 1, "User": 1},
     "routers.remediation": {"Organization": 1},
     "routers.scan_history": {"User": 1},
-    "routers.scan_schedules": {"Organization": 1},
     "routers.web_scans": {"User": 1},
 }
 
@@ -466,9 +457,7 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
 #: themselves. Step 8.4 moves every read behind ``ccure_platform.api``, and this
 #: reaches zero there.
 KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {
-    "ccure_audit.services.baseline_mapping": {"scan_scope_cidrs": 1},
     "core.remediation.sla": {"remediation_sla": 1},
-    "core.scan_scope": {"scan_scope_cidrs": 1},
 }
 
 

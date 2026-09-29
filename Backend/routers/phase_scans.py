@@ -59,17 +59,17 @@ def _resolve_org(user: User, requested_org: str | None) -> str:
     return str(user.org_id)
 
 
-def _org_row(db: Session, org_id: str):
+def _org_scope(db: Session, org_id: str):
     """
-    Load the Organization that a scan's authorisation scope is read from.
+    The organisation's authorised scan scope (``core.scan_scope.org_scan_scope``).
 
-    Returns None if the row is missing, which core.scan_scope treats as "no
+    None if the organisation is missing, which core.scan_scope treats as "no
     scope configured" — the same as a NULL scope, so a dangling org_id cannot
     become a way to scan without a scope under REQUIRE_SCAN_SCOPE.
     """
-    from db.models import Organization
+    from core.scan_scope import org_scan_scope
 
-    return db.query(Organization).filter(Organization.id == org_id).first()
+    return org_scan_scope(db, org_id)
 
 
 def _continuation_scan(
@@ -133,7 +133,7 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
             )
         addresses.append(str(address).strip())
 
-    validate_scan_targets(addresses, org=_org_row(db, scan.org_id))
+    validate_scan_targets(addresses, scope=_org_scope(db, scan.org_id))
 
     admitted: set[str] = set()
     for target in scan.target_hosts or []:
@@ -454,7 +454,7 @@ async def scan_host_discovery(
 
     # ── Target gate — reject unusable input before it costs quota, and
     #    unauthorised targets before anything touches the network ─────────────
-    targets = validate_scan_targets(req.targets, org=_org_row(db, resolved_org))
+    targets = validate_scan_targets(req.targets, scope=_org_scope(db, resolved_org))
 
     # ── Quota gate — raises HTTP 400/429 if over limit ────────────────────────
     check_scan_quota(
@@ -746,7 +746,7 @@ async def scan_phases(
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""
     targets = validate_scan_targets(
-        req.targets, org=_org_row(db, str(current_user.org_id))
+        req.targets, scope=_org_scope(db, str(current_user.org_id))
     )
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),

@@ -629,7 +629,7 @@ def set_scan_scope(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    from core.scan_scope import normalise_scope
+    from ccure_platform.plan.scan_scope import normalise_scope
 
     if payload.cidrs is None:
         new_scope = None

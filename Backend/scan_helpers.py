@@ -127,13 +127,14 @@ def _is_scannable_address(value: str) -> bool:
 
 
 # Distinguishes "this caller does not do scope enforcement" from "this caller
-# enforces scope and the org row could not be loaded". The second must still be
-# denied under REQUIRE_SCAN_SCOPE, so it cannot share a default with the first.
+# enforces scope and the organisation does not exist" (scope=None). The second
+# must still be denied under REQUIRE_SCAN_SCOPE, so it cannot share a default
+# with the first.
 _SCOPE_NOT_CHECKED = object()
 
 
 def validate_scan_targets(
-    targets: list[str] | None, org=_SCOPE_NOT_CHECKED
+    targets: list[str] | None, scope=_SCOPE_NOT_CHECKED
 ) -> list[str]:
     """
     Reject a scan request that can never produce results, before it costs anything.
@@ -143,13 +144,13 @@ def validate_scan_targets(
     seconds later with a reason the API never returned. A typo should come back
     as an error the operator can fix, not as a scan that quietly dies.
 
-    When `org` is supplied the targets are additionally checked against that
-    organisation's authorised scan scope (see core/scan_scope.py). The two
-    checks are distinct and both belong here: everything above `org` is a
-    usability filter answering "can this scan work?", the scope check is an
-    authorisation boundary answering "is this scan permitted?". Callers that
-    omit `org` get validation only — which is why every scan-creating route
-    passes it.
+    When `scope` is supplied — the organisation's ``ScanScopeView`` from
+    ``core.scan_scope.org_scan_scope`` — the targets are additionally checked
+    against it. The two checks are distinct and both belong here: everything
+    above `scope` is a usability filter answering "can this scan work?", the
+    scope check is an authorisation boundary answering "is this scan
+    permitted?". Callers that omit `scope` get validation only — which is why
+    every scan-creating route passes it.
 
     Returns the cleaned target list.
     """
@@ -209,11 +210,11 @@ def validate_scan_targets(
             ),
         )
 
-    if org is not _SCOPE_NOT_CHECKED:
+    if scope is not _SCOPE_NOT_CHECKED:
         from core.scan_scope import ScanScopeError, enforce_org_scan_scope
 
         try:
-            enforce_org_scan_scope(cleaned, org)
+            enforce_org_scan_scope(cleaned, scope)
         except ScanScopeError as exc:
             # 403, not 422: the request is well-formed and the operator is
             # authenticated. What is missing is authorisation for this target.

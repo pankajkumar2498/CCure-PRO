@@ -52,7 +52,7 @@ from core.audit import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
 from ccure_platform import api as platform_api
-from db.models import ComplianceCredential, Organization, User
+from db.models import ComplianceCredential, User
 from db.models.compliance import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
@@ -646,15 +646,14 @@ def validate_credential(
     address — otherwise it is a way to make this host try credentials against
     anything on the network.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope
+    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
     org = _resolve_org(user, org_id)
     cred = _get(db, credential_id, org)
     target = body.target.strip()
 
-    org_row = db.query(Organization).filter(Organization.id == org).first()
     try:
-        enforce_org_scan_scope([target], org_row)
+        enforce_org_scan_scope([target], org_scan_scope(db, org))
     except ScanScopeError as exc:
         raise HTTPException(status_code=403, detail=exc.message) from exc
 

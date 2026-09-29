@@ -36,8 +36,7 @@ def _enforce_credentialed_scan_scope(
     scans. It lives here rather than there because this route expands its own
     targets and never calls that helper.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope
-    from db.models import Organization
+    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
     role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     target_org_id = (
@@ -46,9 +45,8 @@ def _enforce_credentialed_scan_scope(
 
     db = SessionLocal()
     try:
-        org = db.query(Organization).filter(Organization.id == target_org_id).first()
         try:
-            enforce_org_scan_scope(hosts, org)
+            enforce_org_scan_scope(hosts, org_scan_scope(db, target_org_id))
         except ScanScopeError as exc:
             raise HTTPException(status_code=403, detail=exc.message) from exc
     finally:

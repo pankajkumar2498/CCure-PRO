@@ -44,8 +44,7 @@ from ccure_audit.services.compliance_catalogue import (
     ControlMappingView,
 )
 from ccure_audit.services.views import view
-from core.scan_scope import scope_for_org
-from db.models import Organization
+from core.scan_scope import org_scan_scope, scope_for_org
 from db.models.assets import Asset, AssetTag
 
 ParameterValue = Union[bool, int, float, str]
@@ -313,8 +312,9 @@ class BaselineMappingService:
     def map_baseline(self, *, org_id: str, baseline: BaselineInput) -> CoverageView:
         if not org_id:
             raise ValueError("org_id is required: a baseline belongs to one tenant")
-        org = self._db.query(Organization).filter(Organization.id == org_id).first()
-        if org is None:
+        # None exactly when the organisation does not exist.
+        org_scope = org_scan_scope(self._db, org_id)
+        if org_scope is None:
             raise ValueError(f"unknown organisation {org_id!r}")
 
         seen: set = set()
@@ -367,12 +367,12 @@ class BaselineMappingService:
             ),
             controls=tuple(controls),
             parameters=tuple(parameters),
-            scope=self._scope(org, baseline.scope),
+            scope=self._scope(org_scope, baseline.scope),
         )
 
-    def _scope(self, org, scope: Optional[BaselineScopeInput]) -> ScopeOutcomeView:
-        org_scope = scope_for_org(org)
-        configured = getattr(org, "scan_scope_cidrs", None) is not None
+    def _scope(self, org_view, scope: Optional[BaselineScopeInput]) -> ScopeOutcomeView:
+        org_scope = scope_for_org(org_view)
+        configured = org_view.configured
         if scope is None:
             return ScopeOutcomeView(
                 requested=False,
@@ -390,7 +390,7 @@ class BaselineMappingService:
             accepted_cidrs=accepted,
             rejected_cidrs=rejected,
             asset_tags=tags,
-            unmatched_tags=self._unmatched_tags(org.id, tags),
+            unmatched_tags=self._unmatched_tags(org_view.org_id, tags),
         )
 
     def _unmatched_tags(self, org_id: str, tags: Tuple[str, ...]) -> Tuple[str, ...]:

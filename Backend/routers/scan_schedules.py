@@ -55,7 +55,7 @@ from core.scheduling.recurrence import (
 )
 from db.base import gen_scan_schedule_id, get_db
 from ccure_platform import api as platform_api
-from db.models import ComplianceCredential, Organization, User
+from db.models import ComplianceCredential, User
 from db.models.scan_schedules import (
     DISPATCHABLE_SCAN_KINDS,
     RECURRENCE_CUSTOM,
@@ -443,8 +443,9 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
     cleaned = [str(t).strip() for t in (targets or []) if str(t or "").strip()]
     if not cleaned:
         raise HTTPException(status_code=400, detail="At least one target is required.")
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    return validate_scan_targets(cleaned, org=org)
+    from core.scan_scope import org_scan_scope
+
+    return validate_scan_targets(cleaned, scope=org_scan_scope(db, org_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

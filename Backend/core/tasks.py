@@ -120,7 +120,7 @@ def _bind_scan_scope(
     was admitted for. Falling back to the user's current org covers the
     traditional-scan path, which carries no scan id.
     """
-    from db.models import Organization
+    from core.scan_scope import org_scan_scope
 
     org_id = None
     if scan_id:
@@ -130,12 +130,7 @@ def _bind_scan_scope(
         owner = platform_api.user(db, user_id)
         org_id = owner.org_id if owner is not None else None
 
-    org = (
-        db.query(Organization).filter(Organization.id == org_id).first()
-        if org_id
-        else None
-    )
-    orch.apply_scan_scope(org)
+    orch.apply_scan_scope(org_scan_scope(db, org_id) if org_id else None)
 
 
 def _run_async(coro):

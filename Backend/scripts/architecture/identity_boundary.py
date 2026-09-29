@@ -107,17 +107,29 @@ PLATFORM_API_SURFACE = frozenset(
         "user",
         "UserView",
         "active_members_with_roles",
+        # step 8.4: the organisation plan, one removable feature per group
+        "ScanLimits",
+        "ScanLimitsView",
+        "scan_limits",
+        "ScanScopeView",
+        "scan_scope",
+        "RemediationSlaSettingView",
+        "remediation_sla_setting",
+        "store_remediation_sla_setting",
     }
 )
 
-#: Audit's configuration that sits on ``organizations`` today. Step 8.4 moves it
-#: to the Audit-owned ``audit_organisation_settings``; it must never become a
-#: platform concern, so no name in ``ccure_platform`` may mention it.
-AUDIT_SETTINGS_ON_ORGANIZATIONS = (
+#: The organisation's plan fields, stored on ``organizations``. Platform-owned
+#: (project owner, 29 Sep 2026): ``ccure_platform.plan`` reads and writes them,
+#: and a module reaches them only through ``ccure_platform.api``. The 8.1 ratchet
+#: assumed the opposite ownership and was inverted in step 8.4.
+PLAN_FIELDS = (
     "max_assets",
+    "max_users",
     "max_scans_per_day",
     "max_concurrent_scans",
     "scan_scope_cidrs",
+    "remediation_sla",
 )
 
 #: Identity's own code and its own consumers, which are the platform and are
@@ -268,7 +280,7 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
     return sites
 
 
-def audit_setting_references(module: str, source: str) -> list[Site]:
+def plan_field_references(module: str, source: str) -> list[Site]:
     """
     Every mention of an Audit setting in one module, as a name, an attribute, a
     keyword, a parameter or a string. Column definitions in a model class body
@@ -276,7 +288,7 @@ def audit_setting_references(module: str, source: str) -> list[Site]:
     unused, for a release after step 8.4.
     """
     tree = ast.parse(source)
-    settings = set(AUDIT_SETTINGS_ON_ORGANIZATIONS)
+    settings = set(PLAN_FIELDS)
     definitions: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -307,13 +319,13 @@ def audit_setting_references(module: str, source: str) -> list[Site]:
     return sites
 
 
-def measure_platform_settings(root: Path = BACKEND_ROOT) -> list[Site]:
-    """Audit settings mentioned by platform-side code (identity, its routers)."""
+def measure_module_plan_fields(root: Path = BACKEND_ROOT) -> list[Site]:
+    """Plan fields named by module code — code outside the platform."""
     sites: list[Site] = []
     for module, path in sorted(discover_modules(root).items()):
-        if not is_platform_side(module):
+        if is_platform_side(module):
             continue
-        sites.extend(audit_setting_references(module, path.read_text(encoding="utf-8")))
+        sites.extend(plan_field_references(module, path.read_text(encoding="utf-8")))
     return sites
 
 
@@ -458,15 +470,15 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
     "routers.web_scans": {"User": 1},
 }
 
-#: platform-side module -> {Audit setting: mentions}. 11 in 2 modules, measured
-#: 28 Sep 2026. Registration gives a new self-service organisation an Audit
-#: asset quota (``ccure_platform.identity.router``), and the organisation administration router
-#: edits quotas and scan scope. Step 8.4 moves both to Audit — the URLs stay —
-#: and this reaches zero there.
-KNOWN_AUDIT_SETTING_REFERENCES: dict[str, dict[str, int]] = {
-    # auth.router until Phase 8.2 moved it; the mention is the same one.
-    "ccure_platform.identity.router": {"max_assets": 1},
-    "routers.admin_orgs": {"max_assets": 6, "scan_scope_cidrs": 4},
+#: module -> {plan field: mentions} in module code. Measured 29 Sep 2026 when
+#: step 8.4 made the plan platform-owned: the four seams read the columns
+#: themselves. Step 8.4 moves every read behind ``ccure_platform.api``, and this
+#: reaches zero there.
+KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {
+    "ccure_audit.services.baseline_mapping": {"scan_scope_cidrs": 1},
+    "core.quota": {"max_concurrent_scans": 2, "max_scans_per_day": 2},
+    "core.remediation.sla": {"remediation_sla": 1},
+    "core.scan_scope": {"scan_scope_cidrs": 1},
 }
 
 

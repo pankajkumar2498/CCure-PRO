@@ -221,12 +221,14 @@ def test_the_baseline_is_the_one_measured_on_28_sep_2026():
     """
     queries = sum(sum(v.values()) for v in ib.KNOWN_IDENTITY_QUERIES.values())
     joins = sum(sum(v.values()) for v in ib.KNOWN_IDENTITY_JOINS.values())
-    settings = sum(sum(v.values()) for v in ib.KNOWN_AUDIT_SETTING_REFERENCES.values())
+    plan_fields = sum(
+        sum(v.values()) for v in ib.KNOWN_MODULE_PLAN_FIELD_REFERENCES.values()
+    )
     assert len(ib.KNOWN_IDENTITY_IMPORTS) <= 32
     assert queries <= 53
     assert len(ib.KNOWN_IDENTITY_QUERIES) <= 23
     assert joins <= 8
-    assert settings <= 11
+    assert plan_fields <= 7
 
 
 # ── the platform stays shared ────────────────────────────────────────────────
@@ -254,10 +256,18 @@ def test_the_platform_api_exports_only_declared_primitives():
     ), f"public names not in __all__: {sorted(public - exported)}"
 
 
-def test_the_platform_api_surface_names_no_audit_setting():
-    for name in ib.PLATFORM_API_SURFACE:
-        for setting in ib.AUDIT_SETTINGS_ON_ORGANIZATIONS + ("quota", "scope", "scan"):
-            assert setting not in name.lower(), name
+def test_plan_features_are_separate_from_organisation_identity():
+    """
+    Each plan feature has its own function and view, so removing one touches
+    neither the others nor ``organisation()``.
+    """
+    import dataclasses
+
+    import ccure_platform.api as api
+
+    identity_fields = {f.name for f in dataclasses.fields(api.OrganisationView)}
+    assert not identity_fields & set(ib.PLAN_FIELDS)
+    assert "plan" not in identity_fields
 
 
 @pytest.fixture(scope="module")
@@ -327,10 +337,10 @@ def test_every_model_module_is_classified_for_the_platform_rule():
     )
 
 
-# ── Audit's settings are Audit's ─────────────────────────────────────────────
+# ── the plan is the platform's ─────────────────────────────────────────────
 
 
-def test_audit_settings_detector():
+def test_plan_field_detector():
     source = textwrap.dedent(
         """
         class Organization(Base):
@@ -340,28 +350,31 @@ def test_audit_settings_detector():
         org = Organization(max_assets=100)
         cap = org.max_scans_per_day
         payload = {"scan_scope_cidrs": []}
-        def f(max_concurrent_scans): ...
+        sla = org.settings.get("remediation_sla")
+        def f(max_concurrent_scans, max_users): ...
         """
     )
-    found = sorted(s.what for s in ib.audit_setting_references("x", source))
+    found = sorted(s.what for s in ib.plan_field_references("x", source))
     assert found == [
         "max_assets",
         "max_concurrent_scans",
         "max_scans_per_day",
+        "max_users",
+        "remediation_sla",
         "scan_scope_cidrs",
     ]
 
 
-def test_audit_settings_on_the_platform_side_only_ever_fall():
-    current = ib.counts_by_module(ib.measure_platform_settings(), "setting")
-    grown, shrunk = _diff_counts(current, ib.KNOWN_AUDIT_SETTING_REFERENCES)
+def test_module_code_names_plan_fields_only_ever_less():
+    current = ib.counts_by_module(ib.measure_module_plan_fields(), "setting")
+    grown, shrunk = _diff_counts(current, ib.KNOWN_MODULE_PLAN_FIELD_REFERENCES)
     assert not grown, (
-        "platform-side code mentions an Audit setting (quota or scan scope) it "
-        "did not before:\n"
+        "module code names an organisation plan field it did not before:\n"
         + "\n".join(grown)
-        + "\nThese are Audit's; step 8.4 moves them to audit_organisation_settings."
+        + "\nThe plan is platform-owned: ask ccure_platform.api (scan_limits, "
+        "scan_scope, remediation_sla_setting) through the feature's seam."
     )
     assert not shrunk, (
-        "fewer Audit-setting mentions than recorded — lower "
-        "KNOWN_AUDIT_SETTING_REFERENCES:\n" + "\n".join(shrunk)
+        "fewer plan-field mentions than recorded — lower "
+        "KNOWN_MODULE_PLAN_FIELD_REFERENCES:\n" + "\n".join(shrunk)
     )

@@ -1,0 +1,639 @@
+# Phase 9 — Verifiable tokens and service identities (design proposal)
+
+|               |                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**    | **Proposal for review.** Nothing here is implemented. No production code, configuration or database has changed.                                                                                      |
+| **Date**      | 29 Sep 2026                                                                                                                                                                                           |
+| **Plan**      | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 9, §3.2 (gateway), §3.5 (IR), §3.9 (future auth service), §8.1–8.2, rules 9, 12, 13; decisions D4, D9 |
+| **Contracts** | [`contracts/PHASE4_INTEGRATION_CONTRACTS.md`](contracts/PHASE4_INTEGRATION_CONTRACTS.md) §4.1–4.3 (integration endpoints, service identity, tenant)                                                   |
+| **Builds on** | Phase 8 complete at `ef668dc`                                                                                                                                                                         |
+
+## 0. What the plan already says, and what it leaves open
+
+**Phase 9 in the plan:**
+
+> Access and refresh tokens move from HS256 to RS256/ES256, with the public key
+> at a JWKS endpoint. **During the switch both signatures are accepted** —
+> refresh tokens are JWTs that live 7 days — so nobody is signed out. The
+> platform issues service identities, and the core and IR each get one. D4 and
+> D9 are settled here.
+>
+> _Done when:_ a token verifies with the public key alone; a service obtains
+> its own token; an old HS256 token still refreshes until it expires.
+
+**Already fixed elsewhere in the plan and contracts** (and followed here):
+
+- **Asymmetric signing.** The gateway and every service can verify a token and
+  none can mint one (§8.1).
+- **Tokens are verified twice.** The gateway verifies first, then the service
+  that handles the request (§3.2, rule 9).
+- **Identity comes only from a verified credential.** The tenant comes from
+  the token's claims. A caller-set `X-Tenant-ID` is never accepted (§8.2).
+- **Integration calls come from services, never users.** Every call is made by
+  a service identity. Scopes are module-prefixed atoms such as
+  `audit:incident_evidence:write`. Every call is written to the audit log and
+  carries its own rate limits (contracts §4.2).
+- **Internal processes are not clients.** The Celery workers and beat talk to
+  their own service's database and queues and never call another service
+  (rule 12).
+- **The issuer must be movable** to a separate authentication service later
+  without touching modules (§3.9).
+
+**Left open, and not silently chosen here (§H):**
+
+- RS256 or ES256.
+- D4: client credentials or platform-issued keys.
+- D9: IR's permissions in the token, or looked up.
+- The issuer and audience values.
+- Key storage.
+- The JWKS path.
+- The transition window.
+- Service-identity storage.
+- The JWT library.
+
+Each has a recommendation and needs the owner's answer.
+
+---
+
+## 1. Current token architecture — measured baseline (29 Sep 2026)
+
+Measured from source at `ef668dc`, and from the running deployment with
+read-only checks. No secret value was read or printed.
+
+### 1.1 Token types
+
+All are JWTs signed by one function, `jwt_handler._create_token`.
+
+| `type` claim    | Created by                                                | Lifetime                                | Claims                                                    | Carried as                                                                               | Verified by                                                                                                                                                         |
+| --------------- | --------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `access`        | `create_access_token` (login, MFA verify, refresh)        | 30 min (`ACCESS_TOKEN_EXPIRES_MINUTES`) | `sub`, `username`, `type`, `role`, `org_id`, `iat`, `exp` | `Authorization: Bearer`                                                                  | `identity.dependencies._decode_access_payload` → every protected route                                                                                              |
+| `refresh`       | `create_refresh_token`, `refresh_access_token` (rotation) | 7 days (`REFRESH_TOKEN_EXPIRES_DAYS`)   | `sub`, `type`, `jti`, `iat`, `exp`                        | HttpOnly cookie `ccure_refresh_token` **or the request body** (`_resolve_refresh_token`) | `_get_refresh_session`: signature **plus** a `refresh_token_sessions` row matched on `jti` and a SHA-256 hash of the token, not revoked, not expired, `sub` matches |
+| `ticket`        | `create_download_ticket` (`POST /auth/ticket`)            | 60 s                                    | `sub`, `username`, `type`, `iat`, `exp`                   | `?ticket=` query parameter                                                               | `get_current_user_flexible` (report and evidence downloads); **the two WebSocket logins** (`routers.scan_history`, `routers.web_scans`)                             |
+| `mfa_challenge` | `create_mfa_challenge_token` (login step 1)               | 5 min                                   | `sub`, `username`, `type`, `role`, `org_id`, `iat`, `exp` | request body `mfa_token`                                                                 | `/auth/mfa/*` verify handlers                                                                                                                                       |
+
+**None of them carries `iss`, `aud`, `nbf`, `kid` or a `jti`** — except the
+refresh token, whose `jti` is its session key.
+
+### 1.2 Algorithm, keys and library
+
+- **HS256**, one symmetric secret (`JWT_SECRET_KEY`) for every token type.
+  `ALGORITHM = "HS256"` is a module constant.
+- **Library:** `python-jose[cryptography]==3.3.0`. PyJWT is not installed.
+  `cryptography` 46.0.7 is present.
+  - Version 3.3.0 has published 2024 advisories (algorithm confusion with
+    certain key types; unbounded JWE decompression). Re-verify them against
+    the advisory databases before implementation.
+  - The current code pins `algorithms=["HS256"]` on decode, which is the usual
+    mitigation for the first.
+- **Configuration:** `config.JWTConfig.SECRET_KEY`, from the environment.
+  - Compose **requires** `JWT_SECRET_KEY` from the root `.env` and injects it
+    into **api, worker, web-worker and beat**. `Backend/.env` holds the same
+    value.
+  - A development default exists, and a known-weak-key list refuses it when
+    `APP_ENV=production`.
+- **Key reuse — the most important constraint (finding F9-1).**
+  `MFA_ENCRYPTION_KEY` defaults to `JWT_SECRET_KEY`, and it is **unset** in
+  both env files and all four containers. `AppConfig.MFA_KEY` is a Fernet key
+  derived as `sha256(MFA_ENCRYPTION_KEY)`, and it encrypts `users.totp_secret`.
+  **Three accounts hold an encrypted TOTP secret.** Rotating, replacing or
+  unsetting `JWT_SECRET_KEY` before this is decoupled makes their MFA secrets
+  undecryptable, which locks them out.
+
+### 1.3 Verification behaviour
+
+- **`decode_token(token)`** pins the algorithm, checks the signature and
+  `exp`, and returns the payload or `None`.
+  - It **does not check `type`**. Every caller checks it separately — ten
+    call sites, each written by hand: seven in platform code, plus the
+    rate-limit audit and the two WebSocket logins (F9-3).
+- **Access tokens:**
+  - The `type` must be `access`.
+  - The user is loaded **on every request**. The request is refused if the
+    account is deleted or inactive, or its organisation is deactivated.
+  - The `role` and `org_id` claims must match the database when present. This
+    is a compatibility rule for tokens issued before those claims existed.
+  - So an access token has **no token-level revocation**, but deactivating an
+    account or organisation takes effect on the next request.
+- **Refresh tokens:**
+  - They are stateful: rotation on every use, and the old row is marked
+    `revoked_at` / `replaced_by`.
+  - Logout revokes the presented token. Password reset, admin reset and any
+    MFA change revoke all of the user's sessions.
+  - **There is no reuse detection**: a replayed, already-rotated refresh token
+    is refused but does not revoke its family.
+  - Rows are purged daily (`purge_expired_refresh_sessions`).
+- **Tickets are reusable for their 60 seconds** (no single-use `jti`), and
+  travel in URLs, so they can appear in access logs (F9-4).
+- **Rate-limit audit** (`core.rate_limit_audit`, wired in `main.py`) decodes
+  any non-refresh token to name the caller in a 429 record.
+
+### 1.4 Where tokens are made and read
+
+| Where                                           | What                                                                   | Kind                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------- |
+| `ccure_platform.identity.jwt_handler`           | all creation; `decode_token`; refresh rotation and revocation          | platform                               |
+| `ccure_platform.identity.dependencies`          | access and ticket verification for routes                              | platform                               |
+| `ccure_platform.identity.router`                | login, MFA challenge and verify, refresh, logout, ticket issue         | platform                               |
+| `routers.user_profile`                          | reads the refresh cookie's `jti` to mark the current session           | platform-side router                   |
+| `main.py`                                       | hands `decode_token` to `core.rate_limit_audit`                        | composition root                       |
+| `core.rate_limit_audit`                         | decodes via the injected decoder                                       | infrastructure                         |
+| **`routers.scan_history`, `routers.web_scans`** | **their own WebSocket ticket login** (`decode_token` + a `User` query) | module code, **reserved for Phase 10** |
+| `scripts/admin/create_admin.py`                 | `hash_password` only                                                   | tooling                                |
+
+**No other module touches token internals.** The Phase 8 identity ratchet
+holds that: only the two WebSocket files and `core.tasks`'s mail re-export
+still import identity internals.
+
+### 1.5 Tests that pin token behaviour today
+
+| Area                                 | Tests                                                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Sessions, refresh, revocation, purge | `tests/auth/test_session_management.py` (10+)                                                                                       |
+| MFA                                  | `tests/auth/test_mfa.py`                                                                                                            |
+| Org deactivation vs tokens           | `tests/security/test_org_deactivation.py` (4)                                                                                       |
+| Claims                               | `tests/security/test_tenant_isolation_admin.py::test_access_token_contains_org_and_role_claims`                                     |
+| Ticket boundary                      | `tests/security/test_nvd_admin_authorization.py::test_a_download_ticket_cannot_reach_these_routes`; report and audit download tests |
+| Uniform bad-token answer             | `tests/security/test_rate_limiting.py::test_bad_token_answers_uniformly_whatever_is_wrong_with_it`                                  |
+| Password reset retires sessions      | `tests/auth/test_auth_self_reset.py`, `test_admin_reset_password.py`                                                                |
+
+**Gap:** nothing tests the JWT layer itself — `alg: none`, a signature from a
+different key, a refresh token presented as an access token, an expired access
+token, or a missing `type`. Phase 9 writes these as characterisation tests
+_before_ changing anything (step 9.1).
+
+### 1.6 Compatibility constraints
+
+- **The SPA** holds the access token **in memory** (`api/tokenStorage.js`) and
+  refreshes via the cookie (`axiosInstance` → `POST /auth/refresh` with an
+  empty body). It asks `POST /auth/ticket` for WebSocket and download tickets.
+- **API clients** may hold refresh tokens: login and refresh return
+  `refresh_token` in the body (`TokenResponse.refresh_token`), and refresh
+  accepts one in the body.
+- **Live refresh sessions last up to 7 days.** Signing out everyone is not
+  acceptable (plan).
+- **The two WebSocket paths call `decode_token` directly** and must not be
+  modified in Phase 9.
+- **Tickets have a 60-second life**, and downloads use them via
+  `current_user_flexible`.
+- **The endpoint inventory test** requires every unauthenticated route to have
+  a rate limit or an allowlist entry, so a JWKS endpoint needs one.
+- **The OpenAPI document** has been byte-identical since Phase 8.1. A new
+  endpoint changes it, and needs an explicit decision (§H, O7).
+
+---
+
+## 2. Current service-identity baseline — measured
+
+| Asked about                                      | What exists                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Service-to-service authentication                | **None.** No service calls another over HTTP. No production code in `Backend/` makes an HTTP request to the API.                                                                                                                                                   |
+| Worker / service identities                      | **None.** The workers and beat are Celery processes. They connect to Redis (`redis://…:6379/0`, **no password**, bound to loopback and the Compose bridge) and to PostgreSQL as `ccure_user`. Celery messages carry no sender identity (F9-6).                     |
+| API-to-API authentication                        | **None.** There is only one API.                                                                                                                                                                                                                                   |
+| Scheduled / background tasks                     | Beat publishes by task name. Tasks act with the database's authority, and audit events from them name a `system_actor` string (`"system:retention"`, `core.audit_retention`) instead of a user.                                                                    |
+| Gateway-to-core                                  | **None in use.** The `gateway` compose service is nginx, behind the `alt-gateway` profile, not started, doing no authentication. Host nginx does TLS and rate limits only.                                                                                         |
+| Core-to-IR                                       | **Does not exist** (IR is Phase 13).                                                                                                                                                                                                                               |
+| Anything service-like                            | The **`scanner` role** is a _human_ login role (`scans:create/execute/read`, `credentials:read`, `scan_policies:read`), held by one account that signs in interactively and has no MFA. **It is not a service identity and must not be repurposed as one** (F9-7). |
+| Secrets held by processes that never mint tokens | The HMAC signing secret is injected into worker, web-worker and beat, which never issue a token (F9-8).                                                                                                                                                            |
+
+The plan's statement "service identities do not exist (only the `scanner`
+role)" is confirmed.
+
+---
+
+## 3. Phase 9 target architecture
+
+### 3.1 One issuer, many verifiers
+
+```
+   ccure_platform.identity (in the core)                 verifiers
+   ┌───────────────────────────────────────┐    ┌──────────────────────────────┐
+   │ TokenIssuer  — private signing key(s) │    │ core routes (today)          │
+   │   user tokens: access/refresh/ticket/ │    │ gateway token-check (Ph 10)  │
+   │                mfa_challenge          │    │ IR service (Ph 13)           │
+   │   service tokens (client credentials) │    │                              │
+   │ TokenVerifier — keyset by kid         │◄───┤ JWKS (public keys only)      │
+   │ JWKS endpoint — public keys only      │    │ TokenVerifier (same code)    │
+   └───────────────────────────────────────┘    └──────────────────────────────┘
+```
+
+- **Issuance stays where it is**, in `ccure_platform.identity`, on the core.
+  Only the core holds a private key. **Worker, web-worker and beat get no key
+  at all.** They mint nothing, which fixes F9-8.
+- **Verification is one implementation** (`TokenVerifier`). It takes the
+  expected token kind, issuer and audience as **required** arguments; there is
+  no parameterless decode. Every verifier uses it: the core's dependencies
+  now, the gateway's token-check component in Phase 10, and IR in Phase 13.
+  Whether it ships as a small leaf package the gateway and IR can install is
+  O12.
+- **Public keys are published** as a JWK Set at a public, rate-limited
+  endpoint (path: O7). Verifiers cache it and refetch on an unknown `kid`,
+  rate-limited so a stream of bogus `kid`s cannot hammer the issuer.
+- **Moving the issuer later is a key-address change.** A separate
+  authentication service (§3.9) takes over the private key and the JWKS URL,
+  and verifiers do not change.
+
+### 3.2 Signing
+
+- **Algorithm** — RS256 or ES256 (O3). Recommendation: **ES256**. Tokens are
+  smaller (they travel in URLs as tickets and in cookies), signing is faster,
+  and it is supported by every mainstream library and by nginx-adjacent
+  token-check tooling.
+- **`kid`** — the RFC 7638 JWK thumbprint of the public key, set in every
+  token header. A verifier selects the key **only** by `kid`, and each key
+  carries its own algorithm, so the token's `alg` header can never choose the
+  key type.
+- **Keyset states:**
+  - `active`: signs, and is published;
+  - `next`: published, not yet signing — pre-distribution for a rotation;
+  - `retired`: published, verify only, until every token it signed has
+    expired;
+  - `removed`: gone.
+
+### 3.3 Claims
+
+User tokens keep every claim they carry today; clients and the claim-consistency
+check read them.
+
+| Claim                        | User tokens                                                   | Service tokens                                                                           | Why                                                                                |
+| ---------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `iss`                        | platform issuer (O5)                                          | same                                                                                     | issuer validation                                                                  |
+| `aud`                        | the user-API audience (O5)                                    | the target service (`ccure:core` / `ccure:ir`, O5)                                       | audience validation; a token for IR is refused by the core and vice versa          |
+| `sub`                        | user id (unchanged)                                           | `svc:<service_id>` — a namespace no user id can take                                     | separates humans from services structurally                                        |
+| `ptype`                      | `"user"`                                                      | `"service"`                                                                              | required; the dependencies refuse the wrong kind                                   |
+| `type`                       | `access` / `refresh` / `ticket` / `mfa_challenge` (unchanged) | `service_access`                                                                         | token kind, checked by the verifier, not by the caller                             |
+| `jti`                        | all kinds (new for access, ticket, MFA)                       | yes                                                                                      | audit correlation; enables single-use tickets if chosen (O10)                      |
+| `iat`, `exp`                 | unchanged                                                     | ≤ 15 min (O11)                                                                           |                                                                                    |
+| `nbf`                        | = `iat`                                                       | = `iat`                                                                                  | small leeway (O15)                                                                 |
+| `role`, `org_id`, `username` | unchanged                                                     | —                                                                                        | compatibility; `org_id` stays validated against the database on every core request |
+| `tenant`                     | —                                                             | the one organisation the token is bound to, or absent for a platform-wide service (§3.5) | tenant context from the credential, never from a header                            |
+| `scope`                      | — (D9 may add module permissions, §H)                         | space-separated atoms (`audit:incident_evidence:write`)                                  | least privilege                                                                    |
+
+### 3.4 Service identities
+
+- **What a service identity is:** a platform-owned record with a stable id, a
+  display name, the owning module (`core`, `ir`, later others), allowed scopes,
+  a tenant binding (one organisation, or platform-wide with explicit tenant
+  grants), a status (active or disabled), and credentials. It has **no
+  password, no role and no row in `users`**, so it can never sign in to the SPA
+  or pass `current_user`.
+- **How a service authenticates** — D4, still open. The three candidates:
+
+  | Option                                                                        | How                                                                                                                                                                                             | For                                                                                                                                                                  | Against                                                                                                                                                                      |
+  | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | **A. Client credentials with `private_key_jwt`** (RFC 7523) — **recommended** | The service holds its own private key and registers its public key. It proves identity to the platform's token endpoint with a short signed assertion and receives a short-lived service token. | **No shared secret anywhere.** A leaked database row or log reveals nothing usable. Rotation is adding a key. It matches the plan's "verifiable, cannot mint" model. | A key pair per service to manage.                                                                                                                                            |
+  | B. Client credentials with a client secret                                    | The service holds a random secret; the platform stores its hash.                                                                                                                                | Simplest; standard.                                                                                                                                                  | A shared secret between the service and the platform, leakable in transit or configuration.                                                                                  |
+  | C. Platform-issued long-lived API key (opaque)                                | A bearer key checked by lookup.                                                                                                                                                                 | Simplest client.                                                                                                                                                     | **Cannot be verified with the public key alone.** The gateway and IR would have to call the platform on every request, which contradicts §8.1 and §3.9. **Not recommended.** |
+
+- **Issuance:** a platform token endpoint (path: O7), public and
+  rate-limited. It verifies the credential, then the identity's status, then
+  that the requested scopes are a subset of those allowed, then the tenant
+  grant. It issues a short-lived `service_access` token and writes an audit
+  event.
+  - **The core's own identity** (used to call IR in Phase 14) is issued the
+    same way, in-process, through the same code path and the same audit event.
+    It is not a shortcut.
+- **Storage** — O9: two new platform-owned tables (`service_identities`,
+  `service_credentials`: public keys, or hashed secrets under option B), or a
+  static configuration registry. Recommendation: **tables**, one additive
+  migration, because two services today will be four modules tomorrow and
+  revocation needs a writable status. **This is a schema change and needs
+  explicit approval** — the owner excluded "database restructuring" from this
+  phase, and additive tables are listed here rather than assumed to be
+  allowed.
+- **Who gets one in Phase 9:** the core (for IR, used from Phase 14) and IR
+  (registered now, used from Phase 13). **The Celery workers and beat do not
+  get one** (rule 12). Confirm (O14).
+
+### 3.5 Tenant context and the authorisation boundary
+
+- **User tokens:** unchanged. `org_id` in the token is checked against the
+  database on every core request, and the module decides permissions (RBAC).
+- **Service tokens:**
+  - **Bound to one tenant:** the `tenant` claim is the tenant. The token cannot
+    name another.
+  - **Platform-wide** (a future national Rank, §8.2): no `tenant` claim. The
+    payload must name the tenant, and the platform checks it against the
+    identity's grants.
+  - **In every case:** a caller-supplied `X-Tenant-ID` is ignored and stripped
+    at the gateway. Message bodies carry `tenant_id` for self-description, and
+    it is **checked against the token, never trusted** (contracts §4.3).
+- **Authorisation boundary:**
+  - The platform authenticates and states scopes. **Each module decides**
+    whether a scope permits an action (§3.2: the gateway answers _who_, the
+    module answers _whether_).
+  - A new dependency, `require_service_scope("audit:…")`, arrives with its
+    **first consumer** (Phase 14's integration endpoints). Adding it to
+    `ccure_platform.api` in Phase 9 with no caller would widen the API for
+    nothing. It is exercised in Phase 9 by a test-only route.
+- **Humans and services never cross:**
+  - `current_user` / `require_permission` refuse a `ptype=service` token;
+  - `require_service_scope` refuses a `ptype=user` token;
+  - `sub` namespaces cannot collide.
+
+### 3.6 Revocation and rotation
+
+| What               | Mechanism                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User access tokens | Unchanged: 30 minutes, with account and organisation status checked on every core request. (The gateway in Phase 10 checks the signature only; the core still checks status.)                                                                                                                                                         |
+| Refresh tokens     | Unchanged: stateful sessions, rotation, revocation. Reuse detection (revoke the family on replay) is O13, not assumed.                                                                                                                                                                                                                |
+| Service tokens     | Short-lived (≤ 15 minutes, O11). Disabling an identity or a credential stops new tokens at once. Outstanding tokens: the core re-checks the identity's status on every request (it has the database); IR and the gateway accept until `exp`, unless a denylist is chosen (O11).                                                       |
+| Signing keys       | Rotation by `next` → `active` → `retired`, retiring only after `retired + max token lifetime (7 days) + margin`. Cadence and escrow: O6. Emergency revocation of a key means removing it from the keyset, so every token it signed fails, including live refresh sessions. That is a documented trade-off: those users sign in again. |
+| The HS256 secret   | Accepted for verification only during the transition, then disabled by configuration, then removed from code. Its MFA use is decoupled first (F9-1).                                                                                                                                                                                  |
+
+### 3.7 Failure behaviour
+
+- **Every verification failure answers exactly as today.** A route answers
+  401 `"Invalid or expired token"` with `WWW-Authenticate: Bearer`, uniform
+  whatever is wrong (`test_bad_token_answers_uniformly_…` stays green). A
+  ticket answers `"Invalid or expired download ticket."`. The response body
+  never says _why_ a token failed.
+- **The reason is logged server-side** (`bad_signature`, `unknown_kid`,
+  `wrong_audience`, `wrong_type`, `expired`, `legacy_disabled`) with the
+  `kid`, `jti` and `ptype` — **never the token**.
+- **An unreachable or failing key store at start-up refuses to start.** A
+  core that cannot sign must not come up half-working. A verifier with a
+  cached keyset keeps verifying while the JWKS endpoint is briefly
+  unreachable, and refuses unknown `kid`s.
+
+---
+
+## 4. Security model
+
+| Requirement                           | How it is met                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No shared secret between services** | The platform signs with a private key that only the core holds. Verifiers hold public keys only. Services authenticate to the platform with their own key pairs (D4 option A). The HS256 secret exists only for the transition, and only verifies.                                                                                                                                                                                                                                           |
+| **Algorithm confusion**               | The key is chosen by `kid` only. Each key is pinned to its algorithm, and the verifier passes `algorithms=[key.alg]`. `none` is refused. `jku`, `x5u`, `jwk` and `x5c` headers are ignored, so no key is ever fetched from a token. The legacy HS256 path is taken only when `alg == "HS256"` **and** there is no `kid` **and** legacy acceptance is on. It uses the HMAC secret, never a public key, so a token forged by signing HS256 with the public key fails. A test proves each case. |
+| **Issuer validation**                 | `iss` is required and must match the configured issuer. Tokens without it are accepted only as legacy HS256 during the transition.                                                                                                                                                                                                                                                                                                                                                           |
+| **Audience validation**               | `aud` is required and must contain the verifier's audience. The core refuses a token minted for IR, and IR one minted for the core.                                                                                                                                                                                                                                                                                                                                                          |
+| **Expiry**                            | `exp` is required. `nbf` and `iat` are checked, with a small leeway (O15).                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Key IDs**                           | `kid` is required on every asymmetric token, and an unknown `kid` is refused after one rate-limited keyset refresh.                                                                                                                                                                                                                                                                                                                                                                          |
+| **Key rotation**                      | The `next`/`active`/`retired` states (§3.6), with a runbook and a test that a retired key still verifies and a removed key does not.                                                                                                                                                                                                                                                                                                                                                         |
+| **Replay**                            | Access tokens are bearer tokens, bounded by 30 minutes and TLS. Refresh rotation limits replay to one use, with optional family revocation (O13). Tickets are replayable for 60 seconds today (optional single-use `jti`, O10). Service tokens are short, `jti` goes to the audit log, and integration writes are idempotent on `message_id` (contracts §4.1).                                                                                                                               |
+| **Services separate from humans**     | `ptype` is required, the `sub` namespace is `svc:`, and there is no `users` row, password, role or SPA path. The dependencies refuse the other kind, and the `scanner` human role is untouched.                                                                                                                                                                                                                                                                                              |
+| **Tenant isolation**                  | The tenant comes from the verified token only. Single-tenant service tokens cannot name another tenant, and platform-wide ones need explicit grants. `X-Tenant-ID` is ignored.                                                                                                                                                                                                                                                                                                               |
+| **Least privilege**                   | Service scopes are a subset of the identity's allowed scopes, requested per token. Worker, web-worker and beat hold no signing key. IR holds no key that can mint.                                                                                                                                                                                                                                                                                                                           |
+| **Logging and audit**                 | Service-token issuance and every refused issuance go to the tamper-evident audit log (identity, scopes, tenant, `jti`, `kid`, outcome). Verification failures are logged with a reason code. Tokens, assertions, secrets and private keys are never logged, and tickets-in-URLs are flagged for Phase 10's access-log configuration.                                                                                                                                                         |
+| **Secret and key protection**         | Private keys live in files outside the repository, readable only by the API process user, and mounted read-only into the API container alone. Their paths are in configuration; key material never goes in `.env`, images or git. A CI guard rejects committed private keys. Backup and escrow: O6. MFA gets its own key (F9-1) before the HS256 secret can be retired.                                                                                                                      |
+
+---
+
+## 5. Migration plan — small commits, each with a review stop
+
+**One property holds throughout: verifiers learn a new key before any
+issuer uses it.** Every step is reversible by `git revert` or by a
+configuration flag. Nothing signs anyone out until the owner chooses the
+legacy cut-off.
+
+### 9.1 — Characterise and consolidate (no behaviour change) ← **first step**
+
+- **Files:**
+  - `ccure_platform/identity/tokens.py` (new): `TokenVerifier` and
+    `TokenIssuer` wrappers around today's HS256. The token kind is a required
+    argument, so `decode` without an expected kind does not exist;
+  - `ccure_platform/identity/jwt_handler.py`: its functions delegate, with
+    identical signatures and results;
+  - `tests/auth/test_token_characterisation.py` (new);
+  - `tests/repo/test_token_guardrails.py` (new).
+- **Behaviour:** identical. Same HS256 tokens, same claims, same error
+  bodies. `decode_token` keeps its signature and returns the same payload or
+  `None`, so the two WebSocket paths and the rate-limit audit are untouched.
+- **Tests:**
+  - **Characterisation** (they pass before _and_ after the change): `alg:
+none` refused; wrong-key signature refused; each kind refused where another
+    is expected (refresh as access, ticket as access, access as ticket,
+    `mfa_challenge` as access); expired refused; missing `type` refused; the
+    exact claim sets of each kind; the uniform 401 body.
+  - **Guardrails:** only `ccure_platform.identity.tokens` imports `jose` / JWT
+    libraries (AST allowlist); no committed PEM private keys.
+- **Rollback:** `git revert`.
+- **Verify:**
+  - the full suite;
+  - OpenAPI byte-identical to `ef668dc`;
+  - the 91 limiter keys and 45 Celery task names unchanged;
+  - the live probe;
+  - a token issued before the deploy still works after it.
+- **Stop for review.**
+
+### 9.2 — Decouple MFA encryption from the JWT secret (prerequisite)
+
+- **Files:** `config.py` (a start-up warning when `MFA_ENCRYPTION_KEY` is
+  unset and would derive from `JWT_SECRET_KEY`); a runbook; a test.
+- **Operator action:** set `MFA_ENCRYPTION_KEY` to the **current**
+  `JWT_SECRET_KEY` value in both env files and the compose environment. The
+  derived Fernet key is then byte-identical, so no data changes.
+- **Behaviour:** identical. The three MFA users keep working.
+- **Tests:** the derived key is the same before and after for the same input;
+  the MFA suite passes.
+- **Verify:** an MFA user's secret decrypts in the running API (read-only
+  check); a login with MFA on a test account.
+- **Rollback:** unset the variable, and the default derivation returns.
+- **Stop.**
+
+### 9.3 — Keys, keyset and JWKS; verification accepts both (signing still HS256)
+
+- **Files:**
+  - `ccure_platform/identity/keys.py` (new): load from file paths; `kid`
+    thumbprint; `active`/`next`/`retired`;
+  - `tokens.py`: dual verification, per §4's algorithm-confusion rules;
+  - `ccure_platform/identity/router.py`: the JWKS route — public, a rate
+    limit, and a placement in the endpoint-limit inventory;
+  - `config.py` (key paths, issuer, audiences);
+  - `scripts/security/generate_signing_key.py` (new);
+  - compose: a read-only key mount on **api only**;
+  - tests.
+- **Behaviour:** tokens are still issued with HS256. The core now also
+  _accepts_ asymmetric tokens signed by its keyset, which nothing issues yet.
+  JWKS is published.
+- **OpenAPI:** changes by one route, unless O7 chooses `include_in_schema=False`.
+- **Tests:**
+  - an asymmetric token verifies with the public key alone (a test holding
+    only the JWKS JSON);
+  - wrong `kid`, wrong `aud`, wrong `iss`, HS256 signed with the public key,
+    `jku`/`jwk` headers — all refused;
+  - rotation: a retired key verifies, a removed one does not;
+  - no private key is reachable from worker, web-worker or beat;
+  - JWKS contains no private parameters.
+- **Rollback:** revert. HS256 issuance was never changed.
+- **Stop.**
+
+### 9.4 — Issue asymmetric user tokens; accept legacy HS256 until the cut-off
+
+- **Files:** `tokens.py` (the issuer switches on a flag, default on after
+  review); `jwt_handler.py` (adds the `iss`, `aud`, `jti`, `nbf`, `ptype`
+  claims); tests.
+- **Behaviour:**
+  - New access, refresh, ticket and MFA-challenge tokens are ES256/RS256 with
+    the full claim set.
+  - A legacy HS256 refresh token still refreshes, and its replacement is
+    asymmetric. A legacy access token works until its 30 minutes run out.
+  - The SPA, API clients, tickets, the WebSockets (through the unchanged
+    `decode_token`), downloads and the rate-limit audit all keep working.
+- **Tests:**
+  - a legacy refresh token issues asymmetric tokens;
+  - a mixed-age session;
+  - logout of a legacy session;
+  - claim consistency for new tokens;
+  - the whole security suite.
+- **Verify, live:**
+  - log in and see the new header;
+  - an old session refreshes;
+  - WebSocket progress and a report download work;
+  - the rate-limit audit names the caller.
+- **Rollback:** flip the issuer flag back to HS256. Tokens issued
+  asymmetrically in the meantime stay valid, because verification still
+  accepts them.
+- **Stop.**
+
+### 9.5 — Service identities and service tokens
+
+- **Files:**
+  - the storage per O9 (a migration if tables are chosen: backup, rehearse on
+    a restored copy, `table_ownership.yaml` entries);
+  - `ccure_platform/service_identity/` (new, as the plan names it): the model,
+    registration and issuance;
+  - the token endpoint;
+  - `require_service_scope` (in `ccure_platform.api` only if the owner accepts
+    a test-only consumer until Phase 14; otherwise internal until then);
+  - audit events;
+  - `scripts/security/register_service_identity.py` (new);
+  - tests.
+- **Behaviour:** no existing route changes. A service can obtain a token.
+  Human routes refuse it.
+- **Tests:**
+  - a service obtains a token with its credential (`private_key_jwt`
+    assertion replay refused, wrong key refused, disabled identity refused);
+  - scopes limited to those allowed;
+  - tenant binding and cross-tenant refusal;
+  - `current_user` refuses a service token, and a service-scope dependency
+    refuses a user token;
+  - issuance audited;
+  - the endpoint rate-limited.
+- **Rollback:** revert. With tables, the migration's downgrade drops two new,
+  unused tables.
+- **Stop.**
+
+### 9.6 — Legacy cut-off (a separate, dated decision)
+
+- **When:** ≥ 7 days + margin after 9.4, **measured**. No
+  `refresh_token_sessions` row issued before the 9.4 deploy remains unexpired
+  and unrevoked (a read-only query).
+- **Change:** set legacy HS256 acceptance to off (configuration). A later
+  commit removes the HS256 code and `JWT_SECRET_KEY`, once F9-1 is decoupled
+  (9.2).
+- **Rollback:** turn the flag back on.
+- **Stop.** Phase 9 is done:
+  - a token verifies with the public key alone;
+  - a service obtains its own token;
+  - an old HS256 token refreshed until it expired.
+
+---
+
+## 6. CI and test guardrails
+
+| Prevents                                             | Guard                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Modules implementing their own token verification    | An AST allowlist: only `ccure_platform.identity.tokens` (and O12's leaf package, if chosen) may import `jose`, `jwt` or `joserfc`, or call `.decode(` on them. The identity ratchet already refuses new module imports of `auth.jwt_handler` or platform internals. The two WebSocket files are the recorded exception until Phase 10. |
+| Hardcoded signing keys                               | A repo scan fails on any tracked file containing `BEGIN … PRIVATE KEY`, a JWK with a `d` member, or a literal assigned to a key setting. `.gitignore` covers the key directory. The known-weak-key list refuses defaults in production.                                                                                                |
+| Tokens accepted without issuer or audience           | `TokenVerifier.verify` has no default for `audience`, `issuer` or `expected_type`, so a call without them is a `TypeError`. A test calls it every wrong way. A static check ensures no route dependency uses a verification helper other than the platform's.                                                                          |
+| Human tokens treated as services, and the reverse    | Tests: a service token against `current_user` / `require_permission` gives 401, and a user token against `require_service_scope` is refused. `ptype` and the `svc:` namespace are required by the verifier.                                                                                                                            |
+| Direct access to another module's identity internals | Phase 8's identity ratchet, plan-feature containment and layer rules, extended so the new `service_identity` package is platform-internal, like `identity`.                                                                                                                                                                            |
+| Tenant-context bypass                                | Tests: a single-tenant service token naming another tenant is refused, and an `X-Tenant-ID` header changes nothing. A static check: no module reads an `X-Tenant-ID` header.                                                                                                                                                           |
+| Algorithm confusion                                  | The §4 tests: `none`; HS256 signed with the public key; a `jwk`/`jku` header; an unknown `kid`; a `kid` naming a key of another algorithm.                                                                                                                                                                                             |
+| An unnoticed behaviour change                        | Per-step OpenAPI byte comparison (or an approved diff), limiter keys, Celery task names, the live probe — as in Phase 8.                                                                                                                                                                                                               |
+
+---
+
+## 7. Decisions needed before implementation (§H)
+
+| #           | Decision                                                                   | Options                                                                                             | Recommendation                                                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **O1 = D4** | Service credential mechanism                                               | A `private_key_jwt` client credentials · B client secret · C opaque API key                         | **A** — no shared secret, verifiable with public keys                                                                                                                                       |
+| **O2 = D9** | How IR learns a caller's `ir:` permissions                                 | carried in the user token · looked up through the gateway                                           | **Carried in the token**, as module-prefixed atoms for the target audience. Rule 5 says IR's work must not depend on the core being reachable. Staleness is bounded by the 30-minute token. |
+| **O3**      | Signing algorithm                                                          | RS256 · ES256                                                                                       | **ES256**                                                                                                                                                                                   |
+| **O4**      | JWT library                                                                | upgrade python-jose · PyJWT · joserfc                                                               | **PyJWT** (maintained; ES256/RS256 via `cryptography`), added to both runtimes. Re-verify python-jose advisories either way.                                                                |
+| **O5**      | `iss` and `aud` values                                                     | a URL-form or name-form issuer; one user-API audience or per service                                | Issuer: the public base URL of the platform. User audience: one platform-wide API audience, with the module deciding permissions. Service audience: per target service.                     |
+| **O6**      | Key storage, rotation cadence, escrow                                      | a file mount · Docker secret · KMS/HSM; 90/180 days; who holds the backup                           | A read-only file mount on api only, rotated every 180 days, with an offline escrow copy held by the project owner. A KMS/HSM is out of scope for this VM.                                   |
+| **O7**      | Paths for the JWKS and token endpoints, and whether they appear in OpenAPI | `/.well-known/jwks.json` and `/api/auth/service-token`, or under `/auth/…`; in or out of the schema | JWKS under the auth prefix, so the gateway's public-route list stays one prefix (§3.2). **In** the schema — they are real API surface — with the OpenAPI diff approved at that step.        |
+| **O8**      | Transition cut-off                                                         | a fixed date · measured "no live legacy sessions" · force re-login                                  | **Measured**, ≥ 7 days + 1 day after 9.4                                                                                                                                                    |
+| **O9**      | Service-identity storage                                                   | new platform tables (a migration) · a static configuration registry                                 | **Tables** (additive). Needs explicit approval, since Phase 9 excludes database restructuring.                                                                                              |
+| **O10**     | Ticket replay                                                              | keep reusable for 60 s · single-use via `jti` in Redis                                              | Keep as today in Phase 9 (behaviour change otherwise); revisit in Phase 10 with the WebSocket move                                                                                          |
+| **O11**     | Service-token lifetime and revocation                                      | 5–15 min; a denylist or short `exp` only                                                            | 10 min, with no denylist; the core re-checks identity status                                                                                                                                |
+| **O12**     | One verification library for the gateway and IR                            | a leaf package in this repo · each uses a standard library against JWKS                             | A small leaf package (stdlib + library only, like `ccure_contracts`), so there is exactly one verification implementation                                                                   |
+| **O13**     | Refresh-token reuse detection                                              | add family revocation · leave as is                                                                 | Leave for Phase 9 (behaviour change); record as a follow-up                                                                                                                                 |
+| **O14**     | Service identities for the Celery workers and beat                         | none (rule 12) · yes                                                                                | **None**                                                                                                                                                                                    |
+| **O15**     | Clock-skew leeway                                                          | 0 · 30 s · 60 s                                                                                     | 30 s                                                                                                                                                                                        |
+
+---
+
+## 8. The exact first implementation step
+
+**9.1 — characterise and consolidate the token code, HS256 unchanged.**
+
+1. Write `tests/auth/test_token_characterisation.py` against the current
+   code, and see it pass. It pins:
+   - the refusals: `alg: none`, a wrong-key signature, each token kind
+     presented where another is expected, expiry, a missing `type`;
+   - the claims of each kind;
+   - the uniform 401 response.
+2. Add `ccure_platform/identity/tokens.py`, holding HS256 issuing and
+   verifying with a **required** expected kind. The `jwt_handler` functions
+   delegate to it, keeping their public names, signatures and return values:
+   `create_*`, `decode_token`, `refresh_access_token`, `revoke_refresh_token`.
+3. Add `tests/repo/test_token_guardrails.py`. It checks two things: only
+   `ccure_platform.identity.tokens` imports a JWT library, and no tracked file
+   holds a private key.
+4. Run the characterisation tests again (unchanged, green), the full suite,
+   the OpenAPI comparison, the limiter and Celery comparisons, and the live
+   probe. Show that a token minted before the deploy still verifies after it.
+
+**Expected files:**
+
+- **New:**
+  - `Backend/ccure_platform/identity/tokens.py`
+  - `Backend/tests/auth/test_token_characterisation.py`
+  - `Backend/tests/repo/test_token_guardrails.py`
+- **Changed:**
+  - `Backend/ccure_platform/identity/jwt_handler.py`
+  - possibly `Backend/scripts/architecture/identity_boundary.py`, if a new
+    platform-internal module needs listing
+  - `docs/architecture/PHASE9_TOKENS_AND_SERVICE_IDENTITIES.md`, with an "as
+    built" section
+- **Not touched:**
+  - the WebSocket routers
+  - `main.py`
+  - `core.rate_limit_audit`
+  - `config.py`
+  - compose, the frontend and the database
+
+---
+
+## 9. Risks and rollback
+
+| Risk                                                | Where      | Containment                                                                                                                    | Rollback                                                   |
+| --------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| MFA users locked out by a secret change (F9-1)      | 9.2 onward | 9.2 decouples before anything touches the secret, with an identical derived key                                                | Unset `MFA_ENCRYPTION_KEY`                                 |
+| Everyone signed out at the switch                   | 9.4        | Dual verification from 9.3; legacy refresh still works; the cut-off is measured (O8)                                           | The issuer flag back to HS256                              |
+| Algorithm confusion or key-selection bug            | 9.3        | Key chosen by `kid` only, pinned algorithms, the §4 test set, and the legacy path fenced to HS256 without `kid`                | Revert 9.3; issuance was still HS256                       |
+| A WebSocket or download broken by the new tokens    | 9.4        | Those paths call the unchanged `decode_token`, which gains dual verification; a live WebSocket and download are checked at 9.4 | The issuer flag                                            |
+| Private key exposed                                 | 9.3 onward | Mounted into api only, read-only, never in `.env`, images or git; CI scan; worker, web-worker and beat hold nothing            | Emergency rotation: remove the `kid` (users sign in again) |
+| Token endpoint abused (service-credential stuffing) | 9.5        | Rate limits, audit of refusals, and no shared secret under option A                                                            | Disable the identity or credential                         |
+| Silent API change                                   | every step | OpenAPI, limiter-key and Celery-name comparisons each time; any intended OpenAPI change is listed and approved                 | Revert                                                     |
+| Migration on a live database (if O9 = tables)       | 9.5        | Additive only: full dump, rehearsal on a restored copy, a downgrade that drops only the new tables                             | Alembic downgrade                                          |
+| Scope creep into Phase 10                           | all        | The WebSocket paths, gateway, ticket model and `X-Request-ID` behaviour are explicitly out of scope                            | —                                                          |
+
+---
+
+## 10. Findings recorded by this investigation (not fixed by Phase 9 unless listed)
+
+| #     | Finding                                                                                                                                      | Phase 9 handling                                                                                  |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| F9-1  | The MFA encryption key derives from `JWT_SECRET_KEY` (unset separately; 3 users with TOTP secrets)                                           | **Fixed first** (9.2)                                                                             |
+| F9-2  | python-jose 3.3.0 has published advisories                                                                                                   | Library decision O4                                                                               |
+| F9-3  | `decode_token` does not bind the token kind; 10 call sites check `type` by hand (7 platform, the rate-limit audit, 2 WebSocket)              | Structural fix in 9.1: the kind is a required argument                                            |
+| F9-4  | Tickets are reusable for 60 s and travel in URLs, which reach access logs                                                                    | Recorded; O10; Phase 10's access-log configuration                                                |
+| F9-5  | Refresh tokens are also accepted from the request body and returned in it                                                                    | Preserved for API-client compatibility; recorded                                                  |
+| F9-6  | The Celery broker (Redis) has no authentication, and task messages carry no sender identity; anything that can reach Redis can enqueue tasks | Out of Phase 9 scope (rule 12); recorded for a separate decision                                  |
+| F9-7  | The `scanner` role is a human login role with `scans:execute`; its one account has no MFA                                                    | Untouched; not a service identity; MFA for it is the owner's call                                 |
+| F9-8  | The HMAC signing secret is injected into worker, web-worker and beat, which never mint tokens                                                | Fixed by design: the private key is mounted on api only (9.3), and the HMAC secret retires at 9.6 |
+| F9-9  | No refresh-token reuse detection (family revocation)                                                                                         | O13, follow-up                                                                                    |
+| F9-10 | No test exercises the JWT layer directly                                                                                                     | Fixed first (9.1)                                                                                 |

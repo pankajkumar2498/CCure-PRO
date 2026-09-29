@@ -369,8 +369,6 @@ def counts_by_module(sites: list[Site], kind: str) -> dict[str, dict[str, int]]:
 #: 28 Sep 2026; 31 after core.email_security_tasks moved into the platform (8.3).
 KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
     "core.audit": frozenset({"db.models.User"}),
-    "core.remediation.reporting": frozenset({"db.models.rbac.Organization"}),
-    "core.remediation.workflow": frozenset({"db.models.rbac.Organization"}),
     "core.tasks": frozenset(
         {
             "auth.mail_tasks.send_account_approved_email_task",
@@ -380,7 +378,6 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
             "auth.mail_tasks.send_verification_email_task",
             "db.models.RefreshTokenSession",
             "db.models.User",
-            "db.models.rbac.Organization",
         }
     ),
     "routers.admin_nvd": frozenset({"auth.rbac.require_role", "db.models.User"}),
@@ -402,7 +399,7 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
         {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.remediation": frozenset(
-        {"auth.rbac.require_permission", "db.models.Organization", "db.models.User"}
+        {"auth.rbac.require_permission", "db.models.User"}
     ),
     "routers.reports": frozenset(
         {"auth.dependencies.get_current_user_flexible", "db.models.User"}
@@ -437,10 +434,7 @@ KNOWN_IDENTITY_IMPORTS: dict[str, frozenset[str]] = {
 #: module -> {identity model: direct queries}. 53 queries in 23 modules on
 #: 28 Sep 2026; step 8.3 lowers it batch by batch.
 KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
-    "core.remediation.reporting": {"Organization": 1},
-    "core.remediation.workflow": {"Organization": 1},
-    "core.tasks": {"Organization": 1, "RefreshTokenSession": 1, "User": 1},
-    "routers.remediation": {"Organization": 1},
+    "core.tasks": {"RefreshTokenSession": 1, "User": 1},
     "routers.scan_history": {"User": 1},
     "routers.web_scans": {"User": 1},
 }
@@ -454,11 +448,9 @@ KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
 
 #: module -> {plan field: mentions} in module code. Measured 29 Sep 2026 when
 #: step 8.4 made the plan platform-owned: the four seams read the columns
-#: themselves. Step 8.4 moves every read behind ``ccure_platform.api``, and this
-#: reaches zero there.
-KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {
-    "core.remediation.sla": {"remediation_sla": 1},
-}
+#: themselves. Step 8.4 moved every read behind ``ccure_platform.api``, and it
+#: reached zero there: module code names no plan field, and must not start.
+KNOWN_MODULE_PLAN_FIELD_REFERENCES: dict[str, dict[str, int]] = {}
 
 
 def _print_baseline(sites: list[Site]) -> None:

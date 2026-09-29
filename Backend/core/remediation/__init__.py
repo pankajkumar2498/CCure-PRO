@@ -40,6 +40,7 @@ from core.remediation.sla import (  # noqa: F401
     due_at_for,
     sla_anchor,
     sla_policy_for_org,
+    sla_policy_for_org_id,
     sla_state,
 )
 from core.remediation.states import (  # noqa: F401
@@ -113,6 +114,7 @@ __all__ = [
     "remediation_report_payload",
     "sla_anchor",
     "sla_policy_for_org",
+    "sla_policy_for_org_id",
     "sla_state",
     "verify_from_comparison",
     "verify_scan",

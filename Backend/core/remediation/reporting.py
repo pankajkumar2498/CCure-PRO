@@ -148,13 +148,9 @@ def remediation_report_payload(
     # operator would work the list in, so the twenty-five rows that fit are the
     # twenty-five worth printing.
     try:
-        from core.remediation.sla import sla_state
-        from db.models.rbac import Organization
+        from core.remediation.sla import sla_policy_for_org_id, sla_state
 
-        org = db.query(Organization).filter(Organization.id == org_id).first()
-        from core.remediation.sla import sla_policy_for_org
-
-        policy = sla_policy_for_org(org)
+        policy = sla_policy_for_org_id(db, org_id)
 
         detail = (
             base.filter(

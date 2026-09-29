@@ -43,6 +43,7 @@ from core.remediation import (
     accept_risk,
     add_note,
     apply_sla,
+    sla_policy_for_org_id,
     assign_owner,
     change_state,
     claim_fixed,
@@ -904,13 +905,17 @@ def test_apply_sla_is_idempotent_and_records_only_real_changes(
     several thousand times a day.
     """
     finding = _finding(db_session, test_org, asset, scan, severity="high")
-    apply_sla(db_session, finding, org=test_org)
+    apply_sla(
+        db_session, finding, policy=sla_policy_for_org_id(db_session, test_org.id)
+    )
     db_session.commit()
     first_due = finding.sla_due_at
     assert first_due is not None
     assert len(_events(db_session, finding)) == 1
 
-    apply_sla(db_session, finding, org=test_org)
+    apply_sla(
+        db_session, finding, policy=sla_policy_for_org_id(db_session, test_org.id)
+    )
     db_session.commit()
     assert finding.sla_due_at == first_due
     assert (
@@ -922,12 +927,16 @@ def test_a_re_rated_finding_gets_a_new_deadline_and_an_event(
     db_session, test_org, test_user, asset, scan
 ):
     finding = _finding(db_session, test_org, asset, scan, severity="low")
-    apply_sla(db_session, finding, org=test_org)
+    apply_sla(
+        db_session, finding, policy=sla_policy_for_org_id(db_session, test_org.id)
+    )
     db_session.commit()
     low_due = finding.sla_due_at
 
     finding.severity = "critical"
-    apply_sla(db_session, finding, org=test_org)
+    apply_sla(
+        db_session, finding, policy=sla_policy_for_org_id(db_session, test_org.id)
+    )
     db_session.commit()
 
     assert finding.sla_due_at < low_due

@@ -42,6 +42,7 @@ report both say "calendar days" so nobody has to guess.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -62,8 +63,12 @@ __all__ = [
     "SlaPolicy",
     "due_at_for",
     "sla_anchor",
+    "org_sla_setting",
     "sla_policy_for_org",
+    "sla_policy_for_org_id",
     "sla_state",
+    "store_sla_setting",
+    "stored_sla_setting",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,10 +102,12 @@ DEFAULT_SLA_DAYS: Dict[str, int] = {
 #: afterwards.
 DUE_SOON_WINDOW_DAYS = 7
 
-#: Where an organisation's own SLA lives. ``Organization.settings`` is JSONB
-#: and already carries per-tenant configuration, so this needs no table and no
-#: migration.
-SETTINGS_KEY = "remediation_sla"
+# An organisation's own deadlines are its plan's, and platform-owned since
+# Phase 8.4: they are read and written through ccure_platform.api, by the seam
+# functions below and nowhere else in Audit
+# (tests/repo/test_plan_feature_containment.py). Where they are stored is the
+# platform's business. What they *mean* — the severity vocabulary, the
+# defaults above, the KEV rule and the lenient reading below — is Audit's.
 
 SLA_WITHIN = "within_sla"
 SLA_DUE_SOON = "due_soon"
@@ -158,24 +165,63 @@ class SlaPolicy:
 DEFAULT_POLICY = SlaPolicy(days_by_severity=DEFAULT_SLA_DAYS)
 
 
-def sla_policy_for_org(org: Any) -> SlaPolicy:
+def org_sla_setting(db, org_id: Optional[str]):
     """
-    The SLA policy in force for *org*, falling back to the shipped default.
+    The organisation's stored SLA setting, asked of the platform: a
+    ``RemediationSlaSettingView``, or None if the organisation does not exist.
 
-    Reads ``Organization.settings["remediation_sla"]``. A malformed or partial
-    setting **merges over** the default rather than replacing it, so an
-    organisation that configured only ``critical`` still has a deadline for
-    ``high`` — a partial override that silently removed the other five
-    deadlines would report thousands of findings as having no obligation.
+    **The Audit seam of the remediation-SLA plan feature (Phase 8.4).** This
+    module is the only Audit code that asks the platform for it, so removing
+    the feature means this seam and ``ccure_platform.plan.remediation_sla``.
     """
-    settings = (getattr(org, "settings", None) or {}) if org is not None else {}
-    raw = settings.get(SETTINGS_KEY) or {}
+    from ccure_platform import api as platform_api
+
+    return platform_api.remediation_sla_setting(db, org_id)
+
+
+def sla_policy_for_org_id(db, org_id: Optional[str]) -> SlaPolicy:
+    """The policy in force for the organisation — the default if it set none."""
+    return sla_policy_for_org(org_sla_setting(db, org_id))
+
+
+def stored_sla_setting(db, org_id: str) -> Optional[Dict[str, Any]]:
+    """
+    The organisation's stored setting as a dict to merge an update into, or
+    None if the organisation does not exist.
+    """
+    setting = org_sla_setting(db, org_id)
+    if setting is None:
+        return None
+    raw = json.loads(setting.stored) if setting.stored is not None else None
+    return dict(raw or {})
+
+
+def store_sla_setting(db, org_id: str, value: Mapping[str, Any]) -> None:
+    """Store the organisation's setting. The caller commits, with its audit event."""
+    from ccure_platform import api as platform_api
+
+    platform_api.store_remediation_sla_setting(db, org_id, value)
+
+
+def sla_policy_for_org(setting: Any) -> SlaPolicy:
+    """
+    The SLA policy in force for an organisation, from its stored setting (a
+    ``RemediationSlaSettingView``, or None), falling back to the shipped default.
+
+    A malformed or partial setting **merges over** the default rather than
+    replacing it, so an organisation that configured only ``critical`` still
+    has a deadline for ``high`` — a partial override that silently removed the
+    other five deadlines would report thousands of findings as having no
+    obligation.
+    """
+    org_id = getattr(setting, "org_id", "?")
+    stored = getattr(setting, "stored", None) if setting is not None else None
+    raw = (json.loads(stored) if stored is not None else None) or {}
     if not isinstance(raw, Mapping):
         log.warning(
-            "Organisation %s has a malformed %s setting (%s); using the "
-            "default SLA policy",
-            getattr(org, "id", "?"),
-            SETTINGS_KEY,
+            "Organisation %s has a malformed remediation_sla setting (%s); "
+            "using the default SLA policy",
+            org_id,
             type(raw).__name__,
         )
         return DEFAULT_POLICY
@@ -189,7 +235,7 @@ def sla_policy_for_org(org: Any) -> SlaPolicy:
                 log.warning(
                     "Organisation %s configures an SLA for unknown severity "
                     "%r; ignored",
-                    getattr(org, "id", "?"),
+                    org_id,
                     severity,
                 )
                 continue
@@ -199,7 +245,7 @@ def sla_policy_for_org(org: Any) -> SlaPolicy:
                 log.warning(
                     "Organisation %s configures a non-numeric SLA for %r; "
                     "keeping the default of %s days",
-                    getattr(org, "id", "?"),
+                    org_id,
                     severity,
                     days[key],
                 )
@@ -208,7 +254,7 @@ def sla_policy_for_org(org: Any) -> SlaPolicy:
                 log.warning(
                     "Organisation %s configures a negative SLA for %r; "
                     "keeping the default",
-                    getattr(org, "id", "?"),
+                    org_id,
                     severity,
                 )
                 continue

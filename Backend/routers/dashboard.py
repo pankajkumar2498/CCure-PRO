@@ -80,7 +80,7 @@ def get_dashboard_summary(
       scan counts      → Scan table with 24h rolling window
       kev count        → VulnerabilityDefinition.source = 'kev' proxy
                          (no in_kev column exists — use source field instead)
-      quota            → core/quota.displayed_scan_limits (the plan's figures)
+      quota            → core/quota._limits(plan)
     """
     org = _resolve_org(user, org_id)
     now = _now()
@@ -220,6 +220,9 @@ def get_dashboard_summary(
     )
 
     # ── Quota ─────────────────────────────────────────────────────────────────
+    # The plan's own figures (core.quota, the seam of the scan-limits plan
+    # feature). The docstring above is the OpenAPI description and still names
+    # the helper this replaced; it is left as it was.
     from core.quota import displayed_scan_limits
 
     plan, max_day, max_conc = displayed_scan_limits(db, org)

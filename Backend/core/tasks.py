@@ -4847,13 +4847,12 @@ def run_credentialed_scan_task(
         # `apply_sla` is idempotent and writes an event only when the deadline
         # actually moves, so a scan that changes nothing adds no history.
         try:
-            from core.remediation import apply_sla
-            from db.models.rbac import Organization as _Org
+            from core.remediation import apply_sla, sla_policy_for_org_id
 
-            _org_row = (
-                db.query(_Org).filter(_Org.id == scan.org_id).first()
-                if scan.org_id
-                else None
+            # One lookup for the scan's organisation; with no org on the scan,
+            # each finding's own organisation is looked up, as before.
+            _sla_policy = (
+                sla_policy_for_org_id(db, scan.org_id) if scan.org_id else None
             )
             _sla_rows = (
                 db.query(AssetVulnerability)
@@ -4864,7 +4863,7 @@ def run_credentialed_scan_task(
                 .all()
             )
             for _finding in _sla_rows:
-                apply_sla(db, _finding, org=_org_row)
+                apply_sla(db, _finding, policy=_sla_policy)
             if _sla_rows:
                 log.info(
                     "Scan %s: remediation SLA applied to %d finding(s)",

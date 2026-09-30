@@ -115,6 +115,63 @@ def _normalise(candidate: str | None, fallback: str | None) -> str:
     return "127.0.0.1"
 
 
+def is_trusted_peer(peer: str | None) -> bool:
+    """
+    Whether the socket peer may speak about the client (address and scheme).
+
+    The TestClient peer is "testclient" rather than an address; it is the
+    in-process test harness, and treating it as an untrusted direct client
+    would make every test exercise the untrusted branch instead of the deployed
+    one. Nothing on a real socket has that name.
+    """
+    return bool(peer) and (peer == "testclient" or _is_trusted_proxy(peer))
+
+
+def resolve_client(
+    peer: str | None, forwarded_for: str | None, real_ip: str | None
+) -> str:
+    """
+    The client address, from the socket peer and the two forwarding headers.
+
+    One rule, shared by :func:`get_client_ip` and the trusted-proxy middleware
+    (core/trusted_proxy.py), so the rate-limit key, the audit address and the
+    request's own ``client`` can never disagree.
+    """
+    # The peer that actually opened this connection. If it is not a proxy we
+    # trust, no forwarding header on this request means anything: the client
+    # wrote it. Answer with the socket address and stop.
+    if peer and not is_trusted_peer(peer):
+        return _normalise(peer, None)
+
+    if forwarded_for:
+        # Build the chain of hops: header entries, then the peer we heard from.
+        hops = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
+        if peer:
+            hops.append(peer)
+
+        # Walk right-to-left and stop at the first hop that is not a proxy we
+        # trust. That is the furthest address whose provenance we can vouch for.
+        for ip in reversed(hops):
+            if not _is_trusted_proxy(ip):
+                return _normalise(ip, peer)
+
+        # Every hop is a trusted proxy. Either the client genuinely sits inside
+        # one of those ranges, or a proxy is forwarding a header it should have
+        # overwritten. The leftmost entry is the conventional answer, and it is
+        # only safe because TRUSTED_PROXIES names proxies rather than user
+        # networks — which is why that setting is checked at import above.
+        return _normalise(hops[0], peer)
+
+    if real_ip:
+        # Reached only when the peer is a trusted proxy, per the guard above.
+        # Without that guard this branch was an unconditional override: any
+        # client could name its own address simply by sending X-Real-IP and no
+        # X-Forwarded-For, and nothing downstream could tell.
+        return _normalise(real_ip.strip(), peer)
+
+    return _normalise(peer, None)
+
+
 def get_client_ip(request: Request) -> str:
     """
     Resolve the client address, refusing to be told what it is by an untrusted
@@ -126,45 +183,8 @@ def get_client_ip(request: Request) -> str:
     """
     if not request:
         return None
-
-    socket_ip = request.client.host if request.client else None
-
-    # The peer that actually opened this connection. If it is not a proxy we
-    # trust, no forwarding header on this request means anything: the client
-    # wrote it. Answer with the socket address and stop.
-    #
-    # The TestClient peer is "testclient" rather than an address; it is the
-    # in-process test harness, and treating it as an untrusted direct client
-    # would make every test exercise this branch instead of the deployed one.
-    if socket_ip and socket_ip != "testclient" and not _is_trusted_proxy(socket_ip):
-        return _normalise(socket_ip, None)
-
-    x_forwarded_for = request.headers.get("x-forwarded-for")
-    if x_forwarded_for:
-        # Build the chain of hops: header entries, then the peer we heard from.
-        hops = [ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()]
-        if socket_ip:
-            hops.append(socket_ip)
-
-        # Walk right-to-left and stop at the first hop that is not a proxy we
-        # trust. That is the furthest address whose provenance we can vouch for.
-        for ip in reversed(hops):
-            if not _is_trusted_proxy(ip):
-                return _normalise(ip, socket_ip)
-
-        # Every hop is a trusted proxy. Either the client genuinely sits inside
-        # one of those ranges, or a proxy is forwarding a header it should have
-        # overwritten. The leftmost entry is the conventional answer, and it is
-        # only safe because TRUSTED_PROXIES names proxies rather than user
-        # networks — which is why that setting is checked at import above.
-        return _normalise(hops[0], socket_ip)
-
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        # Reached only when the peer is a trusted proxy, per the guard above.
-        # Without that guard this branch was an unconditional override: any
-        # client could name its own address simply by sending X-Real-IP and no
-        # X-Forwarded-For, and nothing downstream could tell.
-        return _normalise(real_ip.strip(), socket_ip)
-
-    return _normalise(socket_ip, None)
+    return resolve_client(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        request.headers.get("x-real-ip"),
+    )

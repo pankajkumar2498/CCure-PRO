@@ -749,15 +749,31 @@ dump": up to six hours of operational data.
   unconditional override — any direct caller could name its own bucket), and a
   value that does not parse as an address never becomes a key.
 
-  `Backend/.env` now sets it explicitly to `127.0.0.1,::1,172.18.0.0/16` —
-  the compose network host nginx reaches the published port through — so the
-  trust boundary is a recorded decision for this deployment rather than a
-  library default. **If Docker recreates the network on a different subnet the
-  peer stops being trusted, X-Forwarded-For is ignored, and every client
-  collapses into one bucket keyed on the gateway while the audit trail records
-  the gateway instead of the user.** That fails safe rather than open, but it
-  fails silently; `log_trust_boundary()` prints the ranges in force at startup
-  so it is visible.
+  **Since Phase 10.3 (finding F10-1) the default is exact peers:
+  `127.0.0.1,::1,172.18.0.1`.**
+  - **Why `172.18.0.1`:** it is the compose network's gateway, the one peer host
+    nginx arrives as through docker-proxy.
+  - **What was wrong:** the old default, the whole Docker pool `172.16.0.0/12`,
+    trusted every *container*. That included the frontend's `/api/` proxy on
+    `:3200`, which appends `X-Forwarded-For`.
+  - **The mechanism:** uvicorn now runs with `--no-proxy-headers` (`start.sh`).
+    `core/trusted_proxy.py`, the outermost middleware, resolves the client
+    address *and* scheme, and only for a peer in this list.
+  - **The old flag was the real hole:** with `--forwarded-allow-ips='*'`, any
+    caller of `:8000` chose its own rate-limit key and scheme, whatever this
+    list said. uvicorn had already rewritten the peer before
+    `get_client_ip` ran.
+  - **HSTS** follows the resolved scheme, never the raw header.
+  - **Residual:** every host process arrives as `172.18.0.1` too. Only
+    unpublishing `:8000` (the gateway cut-over) closes that.
+
+  **If Docker recreates the network on a different subnet, set
+  `TRUSTED_PROXIES` to its gateway.** Until then the peer is not trusted,
+  X-Forwarded-For is ignored, and every client collapses into one bucket keyed
+  on the gateway, while the audit trail records the gateway instead of the
+  user. That fails safe rather than open, but it fails silently;
+  `log_trust_boundary()` prints the ranges in force at startup so it is
+  visible.
 
   That function is called **from the lifespan, not at import**, and the reason
   generalises: `main.py` imports every router before it reaches

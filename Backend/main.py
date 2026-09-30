@@ -888,7 +888,10 @@ _SECURITY_HEADERS = {
 }
 
 # Strict-Transport-Security is sent only on requests that actually arrived over
-# TLS, decided from the X-Forwarded-Proto that host Nginx sets.
+# TLS, decided from the request's scheme. That scheme comes from the
+# X-Forwarded-Proto host Nginx sets — but only because host Nginx is a trusted
+# proxy (core/trusted_proxy.py). Reading the raw header here, as this used to,
+# let any caller that could reach :8000 claim HTTPS (finding F10-1).
 #
 # Two reasons not to send it unconditionally. A browser ignores the header on a
 # plain-HTTP response, so an unconditional one would be decoration that makes
@@ -910,9 +913,6 @@ _HSTS_VALUE = "max-age=300"
 
 
 def _is_secure_request(request: Request) -> bool:
-    forwarded = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip()
-    if forwarded:
-        return forwarded.lower() == "https"
     return request.url.scheme == "https"
 
 
@@ -972,6 +972,17 @@ async def _request_id_middleware(request: Request, call_next):
             "%s %s returned %s", request.method, request.url.path, response.status_code
         )
     return response
+
+
+# ── Proxy trust boundary (Phase 10.3, F10-1) ─────────────────────────────────────
+#
+# Registered last, so it runs FIRST: the client address and scheme every other
+# middleware, the rate limiters, the audit trail and the HSTS decision see are
+# the ones only a trusted proxy (AppConfig.TRUSTED_PROXIES) may assert. uvicorn
+# runs with --no-proxy-headers (start.sh); see core/trusted_proxy.py for why.
+from core.trusted_proxy import TrustedProxyHeadersMiddleware  # noqa: E402
+
+app.add_middleware(TrustedProxyHeadersMiddleware)
 
 
 # ── Global HTTP exception handler (unified error envelope) ───────────────────────

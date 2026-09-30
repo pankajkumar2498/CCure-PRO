@@ -8,10 +8,14 @@ address, so these are security tests, not formatting tests. The cases that
 matter are the ones where somebody is *lying* about the client address.
 
 Note on the fixtures: `AppConfig.TRUSTED_PROXIES` names reverse proxies only —
-loopback and the Docker bridge range (172.16.0.0/12). It deliberately no longer
-contains 10.0.0.0/8 or 192.168.0.0/16, because this deployment's own clients
-live at 10.180.6.0/24 and trusting that range made every real client
-indistinguishable from a proxy entitled to declare somebody else's address.
+loopback and 172.18.0.1, the compose network's gateway, which is the peer host
+nginx arrives as through docker-proxy. It deliberately no longer contains
+10.0.0.0/8 or 192.168.0.0/16, because this deployment's own clients live at
+10.180.6.0/24 and trusting that range made every real client indistinguishable
+from a proxy entitled to declare somebody else's address. Since Phase 10.3
+(finding F10-1) it no longer contains the Docker pool 172.16.0.0/12 either:
+that trusted every *container* on the network, including the frontend's
+``/api/`` proxy, which appends X-Forwarded-For.
 """
 
 from core.ip_resolver import _is_trusted_proxy, get_client_ip
@@ -40,9 +44,29 @@ def create_mock_request(client_ip=None, headers=None) -> Request:
 
 
 def test_is_trusted_proxy_accepts_the_real_proxy_hops():
-    """Loopback and the Docker bridge: the two peers this API is spoken to by."""
+    """Loopback and the bridge gateway host nginx arrives as."""
     assert _is_trusted_proxy("127.0.0.1") is True
-    assert _is_trusted_proxy("172.18.0.5") is True
+    assert _is_trusted_proxy("172.18.0.1") is True
+
+
+def test_containers_on_the_compose_network_are_not_trusted_proxies():
+    """
+    F10-1. A container is a caller, not a proxy: the frontend container
+    (172.18.0.8) proxies /api/ and appends X-Forwarded-For, and any other
+    container could send one. None of them may declare a client address.
+    """
+    for container in (
+        "172.18.0.2",
+        "172.18.0.5",
+        "172.18.0.8",
+        "172.17.0.2",
+        "172.31.255.254",
+    ):
+        assert _is_trusted_proxy(container) is False, container
+    request = create_mock_request(
+        client_ip="172.18.0.8", headers={"x-forwarded-for": "8.8.8.8"}
+    )
+    assert get_client_ip(request) == "172.18.0.8"
 
 
 def test_client_networks_are_not_trusted_proxies():
@@ -76,15 +100,15 @@ def test_get_client_ip_none():
 
 def test_get_client_ip_real_ip_header_from_a_trusted_proxy():
     request = create_mock_request(
-        client_ip="172.18.0.5", headers={"x-real-ip": "198.51.100.10"}
+        client_ip="172.18.0.1", headers={"x-real-ip": "198.51.100.10"}
     )
     assert get_client_ip(request) == "198.51.100.10"
 
 
 def test_get_client_ip_x_forwarded_for_from_a_trusted_proxy():
-    """The deployed shape: host nginx sets XFF to the client, container peer."""
+    """The deployed shape: host nginx sets XFF to the client, bridge-gateway peer."""
     request = create_mock_request(
-        client_ip="172.18.0.5", headers={"x-forwarded-for": "10.180.6.14"}
+        client_ip="172.18.0.1", headers={"x-forwarded-for": "10.180.6.14"}
     )
     assert get_client_ip(request) == "10.180.6.14"
 
@@ -99,7 +123,7 @@ def test_appended_hop_cannot_move_the_bucket():
     not a trusted proxy, so everything further left is discarded.
     """
     request = create_mock_request(
-        client_ip="172.18.0.5",
+        client_ip="172.18.0.1",
         headers={"x-forwarded-for": "8.8.8.8, 198.51.100.10"},
     )
     assert get_client_ip(request) == "198.51.100.10"
@@ -151,9 +175,9 @@ def test_all_hops_trusted_returns_the_leftmost():
     internal call, in practice. The leftmost entry is the conventional answer.
     """
     request = create_mock_request(
-        client_ip="127.0.0.1", headers={"x-forwarded-for": "172.18.0.2, 172.18.0.1"}
+        client_ip="127.0.0.1", headers={"x-forwarded-for": "::1, 172.18.0.1"}
     )
-    assert get_client_ip(request) == "172.18.0.2"
+    assert get_client_ip(request) == "::1"
 
 
 def test_garbage_header_falls_back_rather_than_keying_on_it():
@@ -162,6 +186,6 @@ def test_garbage_header_falls_back_rather_than_keying_on_it():
     same junk would share one bucket.
     """
     request = create_mock_request(
-        client_ip="172.18.0.5", headers={"x-forwarded-for": "not-an-ip"}
+        client_ip="172.18.0.1", headers={"x-forwarded-for": "not-an-ip"}
     )
-    assert get_client_ip(request) == "172.18.0.5"
+    assert get_client_ip(request) == "172.18.0.1"

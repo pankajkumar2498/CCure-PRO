@@ -173,9 +173,11 @@ def test_rate_limit_key_is_the_resolved_client_ip():
         "203.0.113.9"
     )
 
-    # Two clients behind the real proxy get two different buckets.
-    proxied_a = _rate_limit_key(make("172.18.0.5", {"x-forwarded-for": "10.180.6.11"}))
-    proxied_b = _rate_limit_key(make("172.18.0.5", {"x-forwarded-for": "10.180.6.12"}))
+    # Two clients behind the real proxy get two different buckets. Host nginx
+    # arrives as the compose network's gateway, 172.18.0.1 (Phase 10.3, F10-1:
+    # a container such as 172.18.0.5 is a caller, not a proxy).
+    proxied_a = _rate_limit_key(make("172.18.0.1", {"x-forwarded-for": "10.180.6.11"}))
+    proxied_b = _rate_limit_key(make("172.18.0.1", {"x-forwarded-for": "10.180.6.12"}))
     assert proxied_a != proxied_b
 
 

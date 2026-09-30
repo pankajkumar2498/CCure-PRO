@@ -762,9 +762,23 @@ class AppConfig:
     # nginx, which the API container sees as the Docker bridge gateway, plus
     # loopback for a direct local call. If you put a load balancer or WAF in
     # front, add *its* address — never the network your users sit on.
+    #
+    # Phase 10.3 (F10-1): the default was the whole Docker address pool,
+    # 172.16.0.0/12, which trusted EVERY container on the compose network —
+    # the frontend container's /api/ proxy (:3200) and any worker could then
+    # declare a client address. It is now the one peer host nginx arrives as:
+    # 172.18.0.1, the gateway of this deployment's compose network
+    # (ccure-audit-pro_default, 172.18.0.0/16), which docker-proxy uses for
+    # traffic to the loopback-published :8000. It is also the peer ANY process
+    # on the host arrives as; closing that needs :8000 unpublished (the
+    # gateway cut-over), not a narrower list. If the compose network is ever
+    # recreated on another subnet, set TRUSTED_PROXIES to its gateway — until
+    # then every client falls into one bucket (fail-safe, logged at start-up).
+    # The gateway container, once it fronts the API, is added here by its
+    # fixed address.
     TRUSTED_PROXIES: list = [
         ip.strip()
-        for ip in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12").split(",")
+        for ip in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1,172.18.0.1").split(",")
         if ip.strip()
     ]
 

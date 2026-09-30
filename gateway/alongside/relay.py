@@ -8,6 +8,9 @@ test names (the gateway, or either API directly). The tests then check that no
 application trusted what it claimed.
 
     POST /relay  {"target": ["api", 8000], "method": "GET", "path": "/", "headers": {...}}
+
+With ``"tls": true`` it connects over HTTPS, verifying the edge against the
+run's throwaway test CA (Phase 10.4).
 """
 
 from __future__ import annotations
@@ -15,13 +18,18 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import ssl
 
 
 class Relay(http.server.BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         spec = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
         host, port = spec["target"]
-        conn = http.client.HTTPConnection(host, int(port), timeout=10)
+        if spec.get("tls"):
+            context = ssl.create_default_context(cafile="/tls/ca.pem")
+            conn = http.client.HTTPSConnection(host, int(port), timeout=10, context=context)
+        else:
+            conn = http.client.HTTPConnection(host, int(port), timeout=10)
         conn.request(spec.get("method", "GET"), spec["path"], headers=spec.get("headers") or {})
         response = conn.getresponse()
         body = response.read().decode("utf-8", "replace")

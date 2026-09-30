@@ -51,6 +51,21 @@ def main() -> int:
         if hasattr(User, "email_canonical"):
             user.email_canonical = canonicalize_email(EMAIL)
         db.add(user)
+        db.flush()
+        # ISO/IEC 27001 enabled for the organisation, so evidence can be
+        # uploaded and downloaded: the real application's large-body round trip
+        # (Phase 10.4). Only if the catalogue was seeded at start-up.
+        from db.models import ComplianceFramework, ComplianceTenantFramework
+
+        if db.query(ComplianceFramework).filter_by(id="cfw_iso27001_2022").first() and not (
+            db.query(ComplianceTenantFramework)
+            .filter_by(tenant_id=org.id, framework_id="cfw_iso27001_2022")
+            .first()
+        ):
+            db.add(ComplianceTenantFramework(
+                id=f"ctf_{org.id}_iso27001_alongside"[:100], tenant_id=org.id,
+                framework_id="cfw_iso27001_2022", is_enabled=True, enabled_by=user.id,
+            ))
         db.commit()
         print(f"alongside user created in organisation {org.id}")
         return 0

@@ -765,7 +765,24 @@ dump": up to six hours of operational data.
     `get_client_ip` ran.
   - **HSTS** follows the resolved scheme, never the raw header.
   - **Residual:** every host process arrives as `172.18.0.1` too. Only
-    unpublishing `:8000` (the gateway cut-over) closes that.
+    unpublishing `:8000` (Phase 10.7) closes that.
+
+  **Since Phase 10.5 (live 30 Sep 2026) `:443` goes through the gateway:**
+  host nginx → `ccure-api-gateway` (`172.31.254.10`) → `ccure-gateway-auth`
+  (`.11`) → api (`.20`), on the `internal` compose network `gateway`, with no
+  published port. The compose file sets `TRUSTED_PROXIES` on the api to the
+  default above **plus `172.31.254.10`**.
+  - **`172.18.0.1` stays trusted** so that the rollback is one nginx file.
+  - **Switch with** `sudo scripts/linux/gateway_edge_switch.sh
+    {status|cutover|rollback|rehearse}`. It swaps between two SHA-pinned
+    files in `gateway/edge/host-nginx/` and proves the path over `:443`. Never
+    edit `/etc/nginx/conf.d/ccure.conf` by hand: the script refuses a file
+    matching neither pin.
+  - **`beat`, `worker` and `web-worker` already drift from the compose file**,
+    so recreate services with `--no-deps` and name them.
+  - **An HS256 rollback now needs `rollback` first**, because gateway-auth
+    verifies ES256 only.
+  - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md`.
 
   **If Docker recreates the network on a different subnet, set
   `TRUSTED_PROXIES` to its gateway.** Until then the peer is not trusted,

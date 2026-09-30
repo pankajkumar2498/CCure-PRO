@@ -169,6 +169,11 @@ RULES: tuple[Rule, ...] = (
             "core.web",
             "scan_helpers",
         ),
+        # The platform module registry (Phase 11) is a leaf — standard library
+        # only, pinned by tests/repo/test_module_registry.py — so reading it
+        # loads nothing. core.celery_app takes each enabled module's task
+        # modules and queues from it.
+        exempt_targets=("ccure_platform.modules",),
         reason=(
             "Shared infrastructure is imported by nearly everything. When it "
             "imports a feature, every importer loads that feature too — which is "

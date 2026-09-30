@@ -193,8 +193,18 @@ def _is_identity_package(module: str) -> bool:
     return any(_under(module, p) for p in IDENTITY_PACKAGES)
 
 
+#: The module registry (Phase 11) declares which modules the core hosts. It
+#: holds no identity code and imports only the standard library
+#: (tests/repo/test_module_registry.py), so reading it is not reaching identity.
+PLATFORM_MODULES = "ccure_platform.modules"
+
+
 def _is_platform_internal(module: str) -> bool:
-    return _under(module, PLATFORM_PACKAGE) and not _under(module, PLATFORM_API)
+    return (
+        _under(module, PLATFORM_PACKAGE)
+        and not _under(module, PLATFORM_API)
+        and not _under(module, PLATFORM_MODULES)
+    )
 
 
 def _root_name(node: ast.AST, dotted: frozenset[str] = frozenset()) -> str | None:
@@ -253,7 +263,7 @@ def scan_source(module: str, source: str, package: str | None = None) -> list[Si
                     bound[alias.asname or alias.name] = alias.name
                 elif base == PLATFORM_API and alias.name in API_MODEL_ALIASES:
                     bound[alias.asname or alias.name] = API_MODEL_ALIASES[alias.name]
-                elif base == PLATFORM_PACKAGE and alias.name != "api":
+                elif base == PLATFORM_PACKAGE and alias.name not in ("api", "modules"):
                     sites.append(Site(module, node.lineno, "import", symbol))
                 elif _is_platform_internal(base) and base != PLATFORM_PACKAGE:
                     sites.append(Site(module, node.lineno, "import", symbol))

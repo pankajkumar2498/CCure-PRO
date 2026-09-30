@@ -4,6 +4,11 @@ from celery import Celery
 from config import AppConfig
 from kombu import Queue
 
+# The platform module registry (Phase 11) is a leaf — standard library only —
+# which is why shared infrastructure may read it (layer_rules:
+# infrastructure-is-foundation, exempt_targets).
+from ccure_platform.modules import registry as module_registry
+
 # Initialize the Celery Application
 # We name it "ccure_tasks" and point it to our Redis container
 celery_app = Celery(
@@ -17,6 +22,10 @@ celery_app = Celery(
         "core.email_security_tasks",  # Email domain screening and account hygiene
         "auth.mail_tasks",  # Outgoing application email
         "ccure_platform.identity.account_maintenance",  # Account and session purges
+        # Each enabled module's task modules (Phase 11). Empty until a module
+        # declares one: Audit's are the list above until Phase 16, and Policy Pro
+        # and Rank are disabled.
+        *module_registry.task_modules(),
     ],
 )
 
@@ -37,6 +46,8 @@ celery_app.conf.update(
         Queue("web_dast"),  # Web scan: Nuclei templates, SQLMap injection
         Queue("web_audit"),  # Web scan: TLS audit, compliance mapping
         Queue("compliance"),  # Compliance scan baseline queue (new)
+        # Queues the enabled modules declare (Phase 11); none today.
+        *(Queue(name) for name in module_registry.queues()),
     ),
     task_track_started=True,
     worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY,  # Limits parallel heavy scans

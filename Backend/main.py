@@ -1097,6 +1097,14 @@ app.include_router(web_scans_router)
 app.include_router(topology_router)
 app.include_router(compliance_router)
 
+# Module routers from the platform registry (Phase 11), each under its module's
+# prefix. Audit's routers are the explicit list above until Phase 16 moves them
+# into ccure_audit; Policy Pro and Rank are registered but disabled and declare
+# nothing, so today this mounts no route.
+from ccure_platform.modules import mount_module_routers  # noqa: E402
+
+mount_module_routers(app)
+
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────
 

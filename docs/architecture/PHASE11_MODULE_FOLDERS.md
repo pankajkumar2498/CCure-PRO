@@ -317,18 +317,38 @@ schema digests of columns, constraints, indexes, triggers, functions and grants.
 Every public table's rows and content hash, and every digest of `public`,
 `audit_chain` and `audit_retention`, were unchanged across all steps.
 
-### 7.3 The live step (not yet taken — owner present, D11-6)
+### 7.3 The live step (taken 30 Sep 2026, 21:12–21:21 IST, owner present — D11-6)
 
 1. `scripts/backup_db.sh --remote pankaj@10.180.6.30:D:/ccure-backups --ssh-key ~/.ssh/ccure_backup_ed25519` (full).
 2. `docker exec -w /app ccure-api python -m scripts.db.alembic_module_branches --write`
    — the api container's user cannot write the bind mount on this VM, so in
    practice `--print` there and write the file on the host.
-3. `docker compose up -d --no-deps api`; the start-up migrator creates the two
-   schemas and the two rows.
+3. `docker compose restart api`; the start-up migrator creates the two
+   schemas and the two rows. **Not `docker compose up -d --no-deps api`**: the
+   activation changes a bind-mounted file, not the service definition, so
+   `up -d` finds nothing to recreate, answers `Running` and restarts nothing —
+   which is what happened first on the day. The start-up migrator only runs
+   when the process starts.
 4. Verify: `alembic_version` holds three rows; `policy_pro` and `rank` exist
    with no tables; the invariants (OpenAPI hash, 273 / 93 / 21 / 11) and the
    gateway path over `:443` are unchanged.
 
 **Rollback**: `alembic downgrade policy_pro@base` and `rank@base` (drops the
-two empty schemas, `RESTRICT`), then `git checkout -- Backend/alembic.ini` and
+two empty schemas, `RESTRICT`), then restore the inactive `alembic.ini` (the file as at `d95f0d2`) and
 restart the api. Both were rehearsed in steps 4 and 5.
+
+### 7.4 Live record
+
+| Check                                                                                                                           | Result                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Backup before                                                                                                                   | `ccure_db_20260930_211208_full.dump`, 90.8 MB, sha256 `cee54a6f142a7f13…`, 70 table-data entries, copied to the workstation           |
+| `alembic.ini` activation                                                                                                        | `--print` in the api, installed on the host; diff byte-identical to the rehearsed one                                                 |
+| Restart                                                                                                                         | `docker compose restart api` at 21:13:19; answering after ~12 s; migrator "upgrade heads" completed; no error in any container's log  |
+| `alembic_version`                                                                                                               | `f3b5d7e9a1c4`, `policy_pro_0001`, `rank_0001`                                                                                        |
+| Schemas                                                                                                                         | `policy_pro` and `rank`, owner `ccure_user`, **0 relations**; `public`, `audit_chain`, `audit_retention` structure digests unchanged  |
+| Data                                                                                                                            | changed only by the verification sign-ins and by the API's own start-up NVD incremental sync (+208 CVEs, pre-existing behaviour)      |
+| Invariants                                                                                                                      | OpenAPI `2fc271bb…`, 273 routes, 93 rate-limited, 21 tasks at import, 11 beat entries, registry 36 / `7777255d`, 7 queues — identical |
+| `:443`, no credential (`live_checks capture`/`compare`)                                                                         | 1140 / 1140 identical                                                                                                                 |
+| `:443`, signed in (`live_checks valid`)                                                                                         | 21 / 21, as before                                                                                                                    |
+| Representative workflow (dashboard, scans, scan detail, policy snapshot, comparison, assets, findings, remediation, compliance) | every status 200 as before; every body identical except the scan list's `emitted_at`                                                  |
+| Guardrail and migration tests, activated tree                                                                                   | 508 passed, 13 skipped; the test database upgraded to the same three heads                                                            |

@@ -1,0 +1,19 @@
+# Ccure Rank — what this module contributes to the core service.
+#
+# The platform owns the module's identity (key, package, database schema
+# "rank", route prefix "/rank", task prefix "ccure.rank", and
+# whether it is enabled) in ccure_platform/modules/registry.py. This file is the
+# module's own half, read as data — nothing here is imported to read it.
+#
+#   routers       "package.module:attribute" of each APIRouter, mounted under /rank
+#   task_modules  dotted modules whose Celery tasks are named ccure.rank.<name>
+#   models        "package.module:attribute" of each SQLAlchemy MetaData(schema="rank")
+#
+# Every entry must be inside ccure_rank; the registry refuses anything else.
+# Nothing is declared yet: the Ccure Rank team builds the module.
+
+[module]
+key = "rank"
+routers = []
+task_modules = []
+models = []

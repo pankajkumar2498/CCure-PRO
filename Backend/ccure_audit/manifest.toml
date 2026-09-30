@@ -1,0 +1,16 @@
+# Ccure Audit — what this module contributes to the core service (Phase 11).
+#
+# The platform owns Audit's identity (key "audit", schema "public", no route
+# prefix — Audit's URLs predate the registry and never change) in
+# ccure_platform/modules/registry.py. This file is Audit's own half.
+#
+# Deliberately empty: main.py still mounts Audit's 28 routers itself and
+# core/celery_app.py still lists Audit's task modules, until Phase 16 moves
+# Audit's code into ccure_audit one capability at a time. Declaring them here as
+# well would mount every Audit router twice.
+
+[module]
+key = "audit"
+routers = []
+task_modules = []
+models = []

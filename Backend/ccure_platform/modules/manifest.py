@@ -59,6 +59,10 @@ class ModuleManifest:
     task_modules: tuple[str, ...] = ()
     #: Celery queues this module declares (none until a module needs isolation).
     queues: tuple[str, ...] = ()
+    #: ``"package.module:attribute"`` of each SQLAlchemy ``MetaData`` holding the
+    #: module's tables. Every table in it must live in ``db_schema`` and be
+    #: registered to the module in ``table_ownership.yaml`` (Phase 11.2).
+    models: tuple[str, ...] = ()
     #: Homepage tile state (Phase 12). A module that is not ready says so and is
     #: never a link to an empty page (CLAUDE.md, UI semantic integrity).
     tile_state: str = "not_yet_available"
@@ -87,14 +91,15 @@ class ModuleManifest:
             )
         if self.tile_state not in TILE_STATES:
             refuse(f"tile_state {self.tile_state!r} is not one of {TILE_STATES}")
-        for target in self.routers:
-            module, sep, attr = target.partition(":")
-            if not sep or not _DOTTED.match(module) or not attr.isidentifier():
-                refuse(f"router {target!r} must be 'package.module:attribute'")
-            if not self._inside(module):
-                refuse(
-                    f"router {target!r} is outside the module's package {self.package!r}"
-                )
+        for kind, targets in (("router", self.routers), ("models", self.models)):
+            for target in targets:
+                module, sep, attr = target.partition(":")
+                if not sep or not _DOTTED.match(module) or not attr.isidentifier():
+                    refuse(f"{kind} {target!r} must be 'package.module:attribute'")
+                if not self._inside(module):
+                    refuse(
+                        f"{kind} {target!r} is outside the module's package {self.package!r}"
+                    )
         for module in self.task_modules:
             if not _DOTTED.match(module):
                 refuse(f"task module {module!r} is not a dotted module name")

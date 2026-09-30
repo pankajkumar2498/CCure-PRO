@@ -33,7 +33,108 @@ from scripts.architecture.layer_rules import RULES
 from testpaths import BACKEND_ROOT, MAIN_PY
 
 REGISTRY_DIR = BACKEND_ROOT / "ccure_platform" / "modules"
-STDLIB_ALLOWED = {"__future__", "dataclasses", "importlib", "re", "typing"}
+STDLIB_ALLOWED = {
+    "__future__",
+    "dataclasses",
+    "importlib",
+    "pathlib",
+    "re",
+    "tomllib",
+    "typing",
+}
+
+
+# ── Phase 11.2: each module declares its contributions in its own manifest.toml ─
+@pytest.mark.parametrize(
+    "package,key",
+    [
+        ("ccure_policy", "policy_pro"),
+        ("ccure_audit", "audit"),
+        ("ccure_rank", "rank"),
+    ],
+)
+def test_each_module_declares_its_contributions_in_its_own_manifest(package, key):
+    assert (BACKEND_ROOT / package / "manifest.toml").is_file()
+    assert registry.load_contributions(package, key) == {
+        "routers": (),
+        "task_modules": (),
+        "models": (),
+    }
+
+
+def _manifest(tmp_path, text, package="ccure_demo"):
+    (tmp_path / package).mkdir()
+    (tmp_path / package / "manifest.toml").write_text(text)
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "text,fragment",
+    [
+        ("", "one [module] table"),
+        ('[module]\nkey = "other"\n', "declares key 'other'"),
+        ('[module]\nkey = "demo"\nenabled = true\n', "identity is the platform's"),
+        ('[module]\nkey = "demo"\nroute_prefix = "/x"\n', "identity is the platform's"),
+        (
+            '[module]\nkey = "demo"\nrouters = "ccure_demo.api:router"\n',
+            "list of strings",
+        ),
+        ('[module]\nkey = "demo"\n[other]\nx = 1\n', "one [module] table"),
+        ("[module\n", "manifest.toml"),
+    ],
+)
+def test_a_bad_manifest_file_is_refused(tmp_path, text, fragment):
+    root = _manifest(tmp_path, text)
+    with pytest.raises(ManifestError) as err:
+        registry.load_contributions("ccure_demo", "demo", root)
+    assert fragment in str(err.value)
+    assert "'demo'" in str(err.value)
+
+
+def test_a_registered_module_without_a_manifest_is_refused(tmp_path):
+    with pytest.raises(ManifestError, match="manifest.toml is missing"):
+        registry.load_contributions("ccure_demo", "demo", tmp_path)
+
+
+def test_build_joins_the_platform_identity_and_the_module_contributions(tmp_path):
+    root = _manifest(
+        tmp_path,
+        '[module]\nkey = "demo"\nrouters = ["ccure_demo.api:router"]\n'
+        'task_modules = ["ccure_demo.workers.jobs"]\nmodels = ["ccure_demo.models:metadata"]\n',
+    )
+    m = registry.build(
+        dict(
+            key="demo",
+            title="Demo",
+            package="ccure_demo",
+            db_schema="demo",
+            route_prefix="/demo",
+            task_prefix="ccure.demo",
+        ),
+        root,
+    )
+    assert m.routers == ("ccure_demo.api:router",)
+    assert m.task_modules == ("ccure_demo.workers.jobs",)
+    assert m.models == ("ccure_demo.models:metadata",)
+    assert not m.enabled  # enabling stays the platform's decision
+
+
+def test_a_manifest_reaching_outside_its_package_is_refused(tmp_path):
+    root = _manifest(
+        tmp_path, '[module]\nkey = "demo"\nmodels = ["ccure_audit.models:metadata"]\n'
+    )
+    with pytest.raises(ManifestError, match="outside the module's package"):
+        registry.build(
+            dict(
+                key="demo",
+                title="Demo",
+                package="ccure_demo",
+                db_schema="demo",
+                route_prefix="/demo",
+                task_prefix="ccure.demo",
+            ),
+            root,
+        )
 
 
 # ── the three identities ─────────────────────────────────────────────────────

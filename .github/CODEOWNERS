@@ -1,0 +1,47 @@
+# CCure — who owns which part of the repository (Phase 11.2).
+#
+# STRUCTURE ONLY. Every owner below is a PLACEHOLDER (`@TODO-…`): no real GitHub
+# user or team has been supplied yet, and none has been invented. GitHub treats
+# an unknown owner as an error for that line and skips it, so until the project
+# owner replaces the placeholders this file assigns nobody and blocks nothing.
+#
+# "Require review from Code Owners" is deliberately NOT enabled in branch
+# protection. Turning it on is a repository setting for the project owner, and
+# only once real handles are in place — enabled with placeholders it would make
+# every change unmergeable.
+#
+# Later lines take precedence over earlier ones (GitHub's rule), so the
+# catch-all is first. tests/repo/test_module_boundaries.py checks that every
+# registered module package and its test folder has a line of its own.
+#
+# Placeholders to replace:
+#   @TODO-project-owner     the project owner (decision D6: owns the platform
+#                           and the gateway until teams are assigned)
+#   @TODO-audit-team        CCure Audit
+#   @TODO-policy-pro-team   CCure Policy (Policy Pro)
+#   @TODO-rank-team         CCure Rank
+
+# Everything not claimed below.
+*                                   @TODO-project-owner
+
+# Shared: the platform, the contracts every module may use, the gateway, CI.
+/Backend/ccure_platform/            @TODO-project-owner
+/Backend/ccure_contracts/           @TODO-project-owner
+/Backend/scripts/architecture/      @TODO-project-owner
+/gateway/                           @TODO-project-owner
+/.github/                           @TODO-project-owner
+
+# CCure Audit — the working module; its legacy code outside ccure_audit/ is
+# covered by the catch-all until Phase 16 moves it in.
+/Backend/ccure_audit/               @TODO-audit-team
+
+# CCure Policy (Policy Pro).
+/Backend/ccure_policy/              @TODO-policy-pro-team
+/Backend/tests/modules/policy_pro/  @TODO-policy-pro-team
+
+# CCure Rank.
+/Backend/ccure_rank/                @TODO-rank-team
+/Backend/tests/modules/rank/        @TODO-rank-team
+
+# The test-only proof module is platform test infrastructure.
+/Backend/tests/modules/example/     @TODO-project-owner

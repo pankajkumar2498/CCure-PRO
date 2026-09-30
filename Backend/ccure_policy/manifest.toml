@@ -1,0 +1,19 @@
+# Ccure Policy (Policy Pro) — what this module contributes to the core service.
+#
+# The platform owns the module's identity (key, package, database schema
+# "policy_pro", route prefix "/policy", task prefix "ccure.policy", and
+# whether it is enabled) in ccure_platform/modules/registry.py. This file is the
+# module's own half, read as data — nothing here is imported to read it.
+#
+#   routers       "package.module:attribute" of each APIRouter, mounted under /policy
+#   task_modules  dotted modules whose Celery tasks are named ccure.policy.<name>
+#   models        "package.module:attribute" of each SQLAlchemy MetaData(schema="policy_pro")
+#
+# Every entry must be inside ccure_policy; the registry refuses anything else.
+# Nothing is declared yet: the Ccure Policy (Policy Pro) team builds the module.
+
+[module]
+key = "policy_pro"
+routers = []
+task_modules = []
+models = []

@@ -16,24 +16,90 @@ dependency tree. Routers are resolved from dotted strings only by
 
 **A fixed list, not a filesystem scan.** Adding a fourth module is a platform
 decision and one entry here; a stray folder or a half-copied branch can never
-register itself. Adding a route, table, migration or task *inside* an existing
-module is the module's own business (Phase 11.2).
+register itself.
 
-Phase 11.1 state: the three identities exist. Audit is enabled and declares
-nothing to mount — ``main.py`` still mounts Audit's routers itself and
-``core/celery_app.py`` still lists Audit's task modules, until Phase 16 moves
-Audit's code into ``ccure_audit``. Policy Pro and Rank are disabled and empty:
-their teams build them later.
+**Two halves, two owners (Phase 11.2).** The platform owns a module's
+*identity* — key, package, schema, route and task prefixes, tile, and whether it
+is enabled — in ``_IDENTITIES`` below. The module owns what it *contributes* —
+its routers, task modules and model metadata — in its own
+``<package>/manifest.toml``, read here as data with ``tomllib``. So a team adds
+a route, a table or a task by editing files inside its own folder only; turning
+the module on for production stays a platform decision.
+
+Current state: Audit is enabled and its manifest declares nothing to mount —
+``main.py`` still mounts Audit's routers itself and ``core/celery_app.py`` still
+lists Audit's task modules, until Phase 16 moves Audit's code into
+``ccure_audit``. Policy Pro and Rank are disabled and declare nothing: their
+teams build them later.
 """
 
 from __future__ import annotations
 
 import importlib
+import tomllib
+from pathlib import Path
 
 from ccure_platform.modules.manifest import ManifestError, ModuleManifest
 
-MODULES: tuple[ModuleManifest, ...] = (
-    ModuleManifest(
+#: Backend/ — the import root every module package sits in.
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+#: What a module's manifest.toml may declare, under ``[module]``.
+CONTRIBUTIONS = ("routers", "task_modules", "models")
+
+
+def load_contributions(package: str, key: str, root: Path = BACKEND_ROOT) -> dict:
+    """
+    Read ``<root>/<package>/manifest.toml`` — the module's own declaration of
+    what it contributes. Data only: nothing in the module is imported.
+
+    A registered module without the file is refused: every module's
+    contributions are explicit, even when there are none.
+    """
+    path = root / package / "manifest.toml"
+    if not path.is_file():
+        raise ManifestError(f"module {key!r}: {package}/manifest.toml is missing")
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ManifestError(f"module {key!r}: {package}/manifest.toml: {exc}") from exc
+    section = data.get("module")
+    if not isinstance(section, dict) or set(data) != {"module"}:
+        raise ManifestError(
+            f"module {key!r}: manifest.toml must hold one [module] table"
+        )
+    if section.get("key") != key:
+        raise ManifestError(
+            f"module {key!r}: {package}/manifest.toml declares key {section.get('key')!r}"
+        )
+    unknown = sorted(set(section) - {"key", *CONTRIBUTIONS})
+    if unknown:
+        raise ManifestError(
+            f"module {key!r}: manifest.toml may declare only {CONTRIBUTIONS}; "
+            f"not {unknown} (identity is the platform's, in the registry)"
+        )
+    out = {}
+    for name in CONTRIBUTIONS:
+        value = section.get(name, [])
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise ManifestError(
+                f"module {key!r}: manifest.toml {name} must be a list of strings"
+            )
+        out[name] = tuple(value)
+    return out
+
+
+def build(identity: dict, root: Path = BACKEND_ROOT) -> ModuleManifest:
+    """A module's full manifest: the platform's identity plus the module's own
+    contributions."""
+    return ModuleManifest(
+        **identity, **load_contributions(identity["package"], identity["key"], root)
+    )
+
+
+#: The platform-owned half of each module: who it is, not what it contains.
+_IDENTITIES: tuple[dict, ...] = (
+    dict(
         key="policy_pro",
         title="Ccure Policy",
         package="ccure_policy",
@@ -44,7 +110,7 @@ MODULES: tuple[ModuleManifest, ...] = (
         tile_state="not_yet_available",
         enabled=False,
     ),
-    ModuleManifest(
+    dict(
         key="audit",
         title="Ccure Audit",
         package="ccure_audit",
@@ -58,7 +124,7 @@ MODULES: tuple[ModuleManifest, ...] = (
         tile_state="available",
         enabled=True,
     ),
-    ModuleManifest(
+    dict(
         key="rank",
         title="Ccure Rank",
         package="ccure_rank",
@@ -70,6 +136,8 @@ MODULES: tuple[ModuleManifest, ...] = (
         enabled=False,
     ),
 )
+
+MODULES: tuple[ModuleManifest, ...] = tuple(build(identity) for identity in _IDENTITIES)
 
 
 def _check(modules: tuple[ModuleManifest, ...]) -> None:
@@ -129,6 +197,18 @@ def queues() -> list[str]:
     return [q for m in enabled_modules() for q in m.queues]
 
 
+def resolve(target: str):
+    """The object a manifest's ``"package.module:attribute"`` names, imported
+    now — never at registry import time."""
+    module_name, _, attr = target.partition(":")
+    return getattr(importlib.import_module(module_name), attr)
+
+
+def module_metadatas(manifest: ModuleManifest) -> list:
+    """The SQLAlchemy ``MetaData`` objects a module declares in ``models``."""
+    return [resolve(target) for target in manifest.models]
+
+
 def mount_module_routers(app) -> list[tuple[str, str]]:
     """
     Mount every enabled module's routers on ``app`` under its route prefix, and
@@ -140,8 +220,6 @@ def mount_module_routers(app) -> list[tuple[str, str]]:
     mounted: list[tuple[str, str]] = []
     for m in enabled_modules():
         for target in m.routers:
-            module_name, _, attr = target.partition(":")
-            router = getattr(importlib.import_module(module_name), attr)
-            app.include_router(router, prefix=m.route_prefix)
+            app.include_router(resolve(target), prefix=m.route_prefix)
             mounted.append((m.route_prefix, target))
     return mounted

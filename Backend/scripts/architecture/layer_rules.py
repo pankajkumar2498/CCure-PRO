@@ -32,6 +32,8 @@ from scripts.architecture.import_graph import Edge
 #: Every application top-level package, for rules that forbid "anything else".
 _APP_PACKAGES = (
     "ccure_audit",
+    "ccure_policy",
+    "ccure_rank",
     "ccure_platform",
     "auth",
     "core",
@@ -57,6 +59,71 @@ class Rule:
 
 def _matches(module: str, prefixes: tuple[str, ...]) -> bool:
     return any(module == p or module.startswith(p + ".") for p in prefixes)
+
+
+#: The core modules other teams build (Phase 11): each is isolated from every
+#: other module and from Audit's implementation. Audit's own boundaries are the
+#: hand-written rules below. tests/repo/test_module_boundaries.py checks this
+#: equals the registry's non-Audit packages.
+MODULE_PACKAGES = ("ccure_policy", "ccure_rank")
+
+#: What a module package may import from the application, besides itself: the
+#: platform's one way in, and the session layer. ccure_contracts and third-party
+#: libraries are not application packages, so no rule mentions them.
+MODULE_ALLOWED_TARGETS = ("ccure_platform.api", "db.base")
+
+
+def module_isolation_rules(packages: tuple[str, ...]) -> tuple[Rule, ...]:
+    """
+    Two rules per module package (Phase 11.2):
+
+    * ``module-isolation:<pkg>`` — the module imports nothing of the application
+      but itself and ``MODULE_ALLOWED_TARGETS``: not another module, not Audit's
+      implementation (``ccure_audit``, ``core``, ``engines``, ``scans``,
+      ``routers``, ``reporting``, ``db.models``, …), not ``config``, not the
+      platform's internals;
+    * ``module-is-private:<pkg>`` — nothing outside the module imports it. The
+      registry reaches a module only through the dotted names in its
+      manifest.toml, resolved at mount time, never by an import.
+
+    A function rather than literal rules so the proof module in the test suite
+    (``tests/modules/example``) is checked by exactly the rules production
+    modules are.
+    """
+    rules: list[Rule] = []
+    for pkg in packages:
+        forbidden = tuple(
+            p for p in (*_APP_PACKAGES, *packages, "db", "config") if p != pkg
+        )
+        rules.append(
+            Rule(
+                name=f"module-isolation:{pkg}",
+                importer=(pkg,),
+                forbidden=tuple(dict.fromkeys(forbidden)),
+                exempt_targets=MODULE_ALLOWED_TARGETS,
+                reason=(
+                    "A module is built by its own team and depends only on what "
+                    "every module shares: ccure_platform.api, ccure_contracts and "
+                    "the session layer. Importing another module's code, or "
+                    "Audit's, couples two teams' releases and is how one module "
+                    "comes to read another's tables (plan §3.3, Phase 11)."
+                ),
+            )
+        )
+        rules.append(
+            Rule(
+                name=f"module-is-private:{pkg}",
+                importer=("",),
+                exempt_importers=(pkg,),
+                forbidden=(pkg,),
+                reason=(
+                    "Nothing outside a module imports it: other modules exchange "
+                    "data through ccure_contracts, and the platform mounts a module "
+                    "from the dotted names in its manifest.toml (Phase 11)."
+                ),
+            )
+        )
+    return tuple(rules)
 
 
 RULES: tuple[Rule, ...] = (
@@ -323,6 +390,7 @@ RULES: tuple[Rule, ...] = (
         forbidden=("routers", "orchestrator", "core.tasks", "main"),
         reason="Report renderers take a payload and return a document; they do not dispatch or serve.",
     ),
+    *module_isolation_rules(MODULE_PACKAGES),
 )
 
 

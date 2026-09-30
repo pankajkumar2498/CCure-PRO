@@ -299,9 +299,16 @@ def ownership():
 @pytest.fixture(scope="module")
 def model_tables():
     import db.models  # noqa: F401  (registers every model on the metadata)
+    from ccure_platform.modules import registry
     from db.base import Base
 
-    return set(Base.metadata.tables)
+    tables = set(Base.metadata.tables)
+    # Phase 11.2: each module's own MetaData, declared in its manifest.toml;
+    # its tables are keyed "<schema>.<table>", as table_ownership.yaml names them.
+    for m in registry.modules():
+        for md in registry.module_metadatas(m):
+            tables |= set(md.tables)
+    return tables
 
 
 def test_every_table_has_an_owner(ownership, model_tables):

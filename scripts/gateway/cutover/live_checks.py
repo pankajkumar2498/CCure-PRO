@@ -171,7 +171,7 @@ def request(case, target, method, p, headers=None, body=None, *, sse_seconds=Non
     return rec, parsed
 
 
-def ws(case, target, p, frames_wanted=1, edge_addr=None):
+def ws(case, target, p, frames_wanted=1, edge_addr=None, hold=10):
     key = base64.b64encode(os.urandom(16)).decode()
     host = EDGE_NAME if target == "edge" else f"127.0.0.1:{DIRECT_PORT}"
     req = (f"GET {_path(target, p)} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n"
@@ -207,15 +207,23 @@ def ws(case, target, p, frames_wanted=1, edge_addr=None):
                         raise ConnectionError("closed mid-frame")
                     data += chunk
 
-            while len(frames) < frames_wanted and time.monotonic() - t0 < 10:
-                need(2)
+            s.settimeout(hold + 5)
+            while len(frames) < frames_wanted and time.monotonic() - t0 < hold:
+                try:
+                    need(2)
+                except (socket.timeout, TimeoutError):
+                    rec["ended"] = f"open and silent until the {hold} s hold ended"
+                    break
+                except ConnectionError:
+                    rec["ended"] = f"server closed the TCP connection at {round(time.monotonic() - t0, 1)} s"
+                    break
                 opcode, ln, off = data[0] & 0x0F, data[1] & 0x7F, 2
                 if ln == 126:
                     need(4)
                     ln, off = int.from_bytes(data[2:4], "big"), 4
                 need(off + ln)
                 payload, data = data[off:off + ln], data[off + ln:]
-                entry = {"opcode": opcode, "bytes": ln}
+                entry = {"opcode": opcode, "bytes": ln, "at_s": round(time.monotonic() - t0, 1)}
                 if opcode == 1:
                     try:
                         obj = json.loads(payload)
@@ -225,8 +233,14 @@ def ws(case, target, p, frames_wanted=1, edge_addr=None):
                         pass
                 frames.append(entry)
                 if opcode == 8:
+                    rec["ended"] = f"server close frame at {entry['at_s']} s"
                     break
-            s.sendall(bytes([0x88, 0x82, 0, 0, 0, 0, 0x03, 0xE8]))
+            else:
+                rec.setdefault("ended", f"held {hold} s")
+            try:
+                s.sendall(bytes([0x88, 0x82, 0, 0, 0, 0, 0x03, 0xE8]))
+            except OSError:
+                pass
         else:
             rest = data
             s.settimeout(2)
@@ -643,6 +657,196 @@ def valid(args):
     print(f"wrote {args.out}" + ("  WARNING: token-shaped text present" if leaked else ""))
 
 
+# ── 10.6: the gateway's trust boundary, live ─────────────────────────────────
+GATEWAY_TCP = os.environ.get("CCURE_GATEWAY_TCP", "172.31.254.10:8080")
+EDGE_SOCK = os.environ.get("CCURE_EDGE_SOCK", "/var/lib/ccure-edge/gateway.sock")
+
+
+def trust(args):
+    """A host process — this one — trying to borrow host nginx's authority.
+
+    Over TCP to the gateway it forges X-Real-IP / X-Forwarded-For /
+    X-Forwarded-Proto; the gateway must forward its own address and http, so
+    the API's 429 names the bridge address and its redirect is http. On the
+    edge socket it must be refused by the filesystem."""
+    host, port = GATEWAY_TCP.split(":")
+    out = {}
+
+    def tcp(p, headers):
+        c = http.client.HTTPConnection(host, int(port), timeout=15)
+        c.request("GET", "/api" + p, headers={"Host": EDGE_NAME, **headers})
+        r = c.getresponse()
+        body = r.read()
+        c.close()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, body
+
+    forged = {"X-Real-IP": "203.0.113.77", "X-Forwarded-For": "203.0.113.77", "X-Forwarded-Proto": "https"}
+    q = "/auth/check-email?q=p106-" + uuid.uuid4().hex[:8] + "@example.com"
+    statuses = [tcp(q, forged)[0] for _ in range(11)]
+    st, h, _ = tcp("/scans/", forged)
+    out["tcp_forged"] = {
+        "statuses": statuses,
+        "redirect_status": st,
+        "redirect_location": h.get("location"),
+        "hsts_from_app": "strict-transport-security" in h,
+    }
+    time.sleep(1)
+    try:
+        import subprocess
+        log = subprocess.run(["docker", "logs", "--since", "2m", "ccure-api"], capture_output=True, text=True).stderr
+        ips = sorted({m.group(1) for m in re.finditer(r"RATE_LIMIT_REJECTED .*? ip=(\S+)", log)
+                      if "/auth/check-email" in m.group(0)})
+        out["tcp_forged"]["rate_limit_rejected_ips"] = ips
+    except Exception as exc:  # noqa: BLE001
+        out["tcp_forged"]["rate_limit_rejected_ips"] = f"unavailable: {exc!r}"
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(3)
+        s.connect(EDGE_SOCK)
+        s.close()
+        out["socket_as_this_user"] = "CONNECTED"
+    except Exception as exc:  # noqa: BLE001
+        out["socket_as_this_user"] = type(exc).__name__
+    t = out["tcp_forged"]
+    out["verdict"] = {
+        "tcp caller rate-limited on its own address": statuses[:10] == [200] * 10 and statuses[10] == 429
+        and t.get("rate_limit_rejected_ips") == ["172.31.254.1"],
+        "tcp caller cannot forge https": st == 307 and (t["redirect_location"] or "").startswith("http://")
+        and not t["hsts_from_app"],
+        "socket refuses a non-www-data host process": os.getuid() != 0 and out["socket_as_this_user"] == "PermissionError",
+    }
+    print(json.dumps(out["verdict"], indent=1))
+    json.dump(out, open(args.out, "w"), indent=1)
+    return 0 if all(out["verdict"].values()) else 1
+
+
+def _jwt_exp(token: str) -> float:
+    part = token.split(".")[1]
+    return float(json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))["exp"])
+
+
+def observe(args):
+    """The owner's long run: the full `valid` battery, then one session held
+    past its access token's expiry — a notification stream open throughout
+    (heartbeats), a WebSocket held open, the expired token refused through the
+    gateway, a silent refresh, the new token accepted, and logout. About 32
+    minutes. Nothing secret is printed or written."""
+    import threading
+
+    ident = os.environ.pop("CCURE_PROBE_IDENT", "") or input("Email or username: ").strip()
+    pw = os.environ.pop("CCURE_PROBE_PASSWORD", "") or getpass.getpass("Password (not echoed): ")
+    mfa_hint = ""
+    # 1. the one-minute battery, with its own sign-in and sign-out
+    os.environ["CCURE_PROBE_IDENT"], os.environ["CCURE_PROBE_PASSWORD"] = ident, pw
+    battery = argparse.Namespace(out=args.out.replace(".json", "_battery.json"), n=args.n)
+    print("== 1. the valid-credential battery")
+    valid(battery)
+    # 2. the long session
+    print("== 2. one session held past its access token's lifetime")
+    J = {"Content-Type": "application/json"}
+    checks, notes = {}, {}
+    rec, body = request("login", "edge", "POST", "/auth/login", J,
+                        json.dumps({"email_or_username": ident, "password": pw}).encode())
+    pw = None
+    if isinstance(body, dict) and body.get("status") == "mfa_required":
+        code = input("MFA required for the long session. TOTP code: ").strip()
+        rec, body = request("login verify-mfa", "edge", "POST", "/auth/login/verify-mfa", J,
+                            json.dumps({"mfa_token": body["mfa_token"], "code": code}).encode())
+    access = body.get("access_token") if isinstance(body, dict) else None
+    cookie = _RAW_COOKIE[0]
+    if not access or not cookie:
+        sys.exit("sign-in for the long session failed")
+    B = {"Authorization": f"Bearer {access}"}
+    exp = _jwt_exp(access)
+    wait = max(0.0, exp - time.time()) + 20
+    # Dry runs only (a throwaway stack): cap the wait so the code path can be
+    # exercised in minutes; the expiry check then fails, as it should.
+    if os.environ.get("CCURE_OBSERVE_MAX_WAIT"):
+        wait = min(wait, float(os.environ["CCURE_OBSERVE_MAX_WAIT"]))
+    notes["access_token_lifetime_remaining_s"] = round(exp - time.time())
+    print(f"   access token expires in {notes['access_token_lifetime_remaining_s']} s; holding the session until then + 20 s")
+
+    events, stream_end = [], {}
+
+    def sse():
+        c = _conn("edge", timeout=90)
+        t0 = time.monotonic()
+        try:
+            c.request("GET", "/api/notifications/stream",
+                      headers={"Host": EDGE_NAME, "Accept": "text/event-stream", **B})
+            r = c.getresponse()
+            stream_end["status"] = r.status
+            buf = b""
+            while time.monotonic() - t0 < wait + 30:
+                chunk = r.fp.read1(4096)
+                if not chunk:
+                    stream_end["why"] = "server closed"
+                    break
+                buf += chunk
+                while b"\n\n" in buf:
+                    msg, buf = buf.split(b"\n\n", 1)
+                    name = next((ln[6:].strip().decode() for ln in msg.split(b"\n") if ln.startswith(b"event:")),
+                                 "comment" if msg.startswith(b":") else "message")
+                    events.append((round(time.monotonic() - t0, 1), name))
+            else:
+                stream_end["why"] = "observation ended"
+        except Exception as exc:  # noqa: BLE001
+            stream_end["why"] = repr(exc)
+        finally:
+            c.close()
+
+    th = threading.Thread(target=sse, daemon=True)
+    th.start()
+    _, tb = request("ticket (ws)", "edge", "POST", "/auth/ticket", B)
+    wt = tb.get("ticket") if isinstance(tb, dict) else None
+    wrec = ws("ws held 120 s", "edge", f"/scans/{SCAN_ID}/progress?ticket={wt}", 1000, hold=120) if wt else {}
+    checks["WebSocket upgraded through the gateway and delivered its first frame"] = (
+        wrec.get("status") == 101 and bool(wrec.get("frames")) and "error" not in wrec)
+    notes["websocket"] = {"status": wrec.get("status"), "frames": len(wrec.get("frames", [])),
+                          "ended": wrec.get("ended"), "error": wrec.get("error")}
+    # An absolute deadline: the WebSocket above may close well before its
+    # hold, so time is measured from the token's own expiry, never from here.
+    end = time.time() + wait if os.environ.get("CCURE_OBSERVE_MAX_WAIT") else exp + 20
+    while time.time() < end:
+        time.sleep(min(300, max(0, end - time.time())))
+        print(f"   {time.strftime('%H:%M:%S')}  stream events so far: {len(events)}")
+    # 3. the expired token, the refresh, the new token
+    notes["checked_after_expiry_s"] = round(time.time() - exp, 1)
+    e, _ = request("expired access token", "edge", "GET", "/auth/me", B)
+    d, _ = request("expired access token", "direct", "GET", "/auth/me", B)
+    notes["expired_token_status"] = {"edge": e.get("status"), "direct": d.get("status"),
+                                     "edge_body": e.get("body")}
+    checks["expired access token refused through the gateway (401, same as direct)"] = \
+        e.get("status") == d.get("status") == 401
+    rr, rb = request("refresh after expiry", "edge", "POST", "/auth/refresh",
+                     {**J, "Cookie": f"{COOKIE}={cookie}", "Origin": ALLOWED_ORIGIN}, b"{}")
+    new = rb.get("access_token") if isinstance(rb, dict) else None
+    checks["refresh after the access token expired: 200 and a new token"] = rr.get("status") == 200 and bool(new)
+    if new:
+        m, _ = request("new token /auth/me", "edge", "GET", "/auth/me", {"Authorization": f"Bearer {new}"})
+        checks["the refreshed token is accepted through the gateway"] = m.get("status") == 200
+    th.join(timeout=60)
+    gaps = [b - a for (a, _), (b, _) in zip(events, events[1:])]
+    beats = [t for t, n in events if n != "connected"]
+    notes["sse"] = {"status": stream_end.get("status"), "events": len(events), "first": events[:1],
+                    "held_s": events[-1][0] if events else 0, "max_gap_s": max(gaps) if gaps else None,
+                    "ended": stream_end.get("why")}
+    checks["SSE held > 10 min with heartbeats, no gap > 60 s"] = (
+        stream_end.get("status") == 200 and bool(beats) and events[-1][0] > 600 and (max(gaps) if gaps else 999) <= 60)
+    lo, _ = request("logout", "edge", "POST", "/auth/logout", {**J, "Cookie": f"{COOKIE}={_RAW_COOKIE[0]}"}, b"{}")
+    ra, _ = request("refresh after logout", "edge", "POST", "/auth/refresh",
+                    {**J, "Cookie": f"{COOKIE}={_RAW_COOKIE[0]}"}, b"{}")
+    checks["logout, then refresh refused"] = lo.get("status") == 200 and ra.get("status") == 401
+    _RAW_COOKIE[0] = cookie = access = new = B = None
+    json.dump({"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "checks": checks, "notes": notes},
+              open(args.out, "w"), indent=1)
+    for k, v in checks.items():
+        print(("PASS " if v else "FAIL ") + k)
+    print("notes:", json.dumps(notes))
+    leaked = "eyJ" in open(args.out).read()
+    print(f"wrote {args.out}" + ("  WARNING: token-shaped text present" if leaked else "") + mfa_hint)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -651,8 +855,11 @@ def main():
     lt = sub.add_parser("latency"); lt.add_argument("--out", required=True); lt.add_argument("--n", type=int, default=200)
     rl = sub.add_parser("ratelimit"); rl.add_argument("--out", required=True); rl.add_argument("--lan", default="10.180.22.127")
     v = sub.add_parser("valid"); v.add_argument("--out", required=True); v.add_argument("--n", type=int, default=20)
+    tr = sub.add_parser("trust"); tr.add_argument("--out", required=True)
+    ob = sub.add_parser("observe"); ob.add_argument("--out", required=True); ob.add_argument("--n", type=int, default=20)
     args = ap.parse_args()
-    rc = {"capture": capture, "compare": compare, "latency": latency, "ratelimit": ratelimit, "valid": valid}[args.cmd](args)
+    rc = {"capture": capture, "compare": compare, "latency": latency, "ratelimit": ratelimit, "valid": valid,
+          "trust": trust, "observe": observe}[args.cmd](args)
     sys.exit(rc or 0)
 
 

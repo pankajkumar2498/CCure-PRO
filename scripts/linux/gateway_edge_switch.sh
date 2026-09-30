@@ -1,23 +1,29 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────────────────────
-# Phase 10.5 — switch host nginx :443 between the direct path and the gateway.
+# Switch host nginx :443 between the direct path and the gateway (Phase 10.5),
+# and move the gateway hop onto its unix socket (Phase 10.6).
 #
-#   direct   443 → host nginx → 127.0.0.1:8000 (api)                  pre-10.5
-#   gateway  443 → host nginx → 172.31.254.10:8080 (api-gateway)
-#                                   → gateway-auth → api              10.5
+#   direct       443 → host nginx → 127.0.0.1:8000 (api)                pre-10.5
+#   gateway-tcp  443 → host nginx → 172.31.254.10:8080 → …              10.5 (superseded)
+#   gateway      443 → host nginx → unix:/var/lib/ccure-edge/gateway.sock
+#                                   (api-gateway) → gateway-auth → api  10.6
 #
 #   sudo scripts/linux/gateway_edge_switch.sh status
-#   sudo scripts/linux/gateway_edge_switch.sh cutover     # direct  → gateway
-#   sudo scripts/linux/gateway_edge_switch.sh rollback    # gateway → direct
+#   sudo scripts/linux/gateway_edge_switch.sh harden      # gateway-tcp → gateway (10.6, once)
+#   sudo scripts/linux/gateway_edge_switch.sh cutover     # direct → gateway
+#   sudo scripts/linux/gateway_edge_switch.sh rollback    # gateway(-tcp) → direct
 #   sudo scripts/linux/gateway_edge_switch.sh rehearse    # rollback, verify, cutover, verify
+#   sudo scripts/linux/gateway_edge_switch.sh logcount    # F10-3: ticket/token counts in host nginx logs
 #
 # What it touches: /etc/nginx/conf.d/ccure.conf, the directory
-# /etc/nginx/ccure-rollback/ (a copy of the file it replaced, and a log), and an
-# nginx reload. Nothing else — no container, database, key or certificate.
+# /etc/nginx/ccure-rollback/ (a copy of the file it replaced, and a log), an
+# nginx reload, and — `harden` only — the socket directory /var/lib/ccure-edge
+# and one `docker compose up -d --no-deps api-gateway`. Nothing else: no other
+# container, no database, key or certificate.
 #
 # Safety properties:
-#   * Both files are pinned by SHA-256. A repository copy that does not match
-#     its pin is never installed, and a live file matching neither pin is never
+#   * Every file is pinned by SHA-256. A repository copy that does not match its
+#     pin is never installed, and a live file matching no known pin is never
 #     overwritten (someone changed it by hand; a human decides).
 #   * `nginx -t` runs before every reload; a failing test restores the previous
 #     file and does not reload.
@@ -26,8 +32,12 @@
 #     either path, but only the application stamps X-Request-ID on it; the
 #     gateway's own refusals carry none (frozen decision, Phase 10.1). So the
 #     header's presence identifies which hop answered.
-#   * A cut-over whose proof fails is rolled back to the direct file at once, so
-#     production is never left half switched.
+#   * A switch whose proof fails is rolled back to the direct file at once, so
+#     production is never left half switched. The direct path does not depend on
+#     the gateway at all, so it is always the safe place to land.
+#   * The 10.5 TCP file is recognised, never installed: from 10.6 the gateway
+#     no longer believes a TCP peer, so that file would work but collapse every
+#     client to one address. Rolling back 10.6 means `rollback` (to direct).
 #
 # Graceful: `systemctl reload` lets old workers finish their connections, so a
 # WebSocket or SSE stream open at the moment of the switch keeps its old path
@@ -40,12 +50,14 @@ REPO=$(cd "$HERE/../.." && pwd)
 SRC_DIRECT="$REPO/gateway/edge/host-nginx/ccure.direct.conf"
 SRC_GATEWAY="$REPO/gateway/edge/host-nginx/ccure.gateway.conf"
 SHA_DIRECT=638fd33f797229b6791a8ba69531d02e2faee2887d8121e8df16c7229019a52a
-SHA_GATEWAY=79d4513217a4fb42e53a73ef97faafb9c526c1aa0c7beddecd2d4e868e027428
+SHA_GATEWAY=5682c968fcac0d8f6f878dd7262a0727b132724b4823d9a44888ae7ab2d63a2b
+SHA_GATEWAY_TCP=79d4513217a4fb42e53a73ef97faafb9c526c1aa0c7beddecd2d4e868e027428  # 10.5, recognised only
 
 LIVE=/etc/nginx/conf.d/ccure.conf
 KEEP=/etc/nginx/ccure-rollback          # not under conf.d: nginx never loads it
 LOG="$KEEP/switch.log"
-GATEWAY_ADDR=172.31.254.10:8080
+EDGE_DIR=/var/lib/ccure-edge            # root:www-data 0770 — the trust boundary
+SOCK="$EDGE_DIR/gateway.sock"
 EDGE_NAME=ccurepro.cdac.in
 
 say() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG"; }
@@ -54,9 +66,10 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 state() {
     case "$(sha "$LIVE")" in
-        "$SHA_DIRECT")  echo direct ;;
-        "$SHA_GATEWAY") echo gateway ;;
-        *)              echo unknown ;;
+        "$SHA_DIRECT")      echo direct ;;
+        "$SHA_GATEWAY")     echo gateway ;;
+        "$SHA_GATEWAY_TCP") echo gateway-tcp ;;
+        *)                  echo unknown ;;
     esac
 }
 
@@ -87,14 +100,20 @@ install_conf() {  # <source> <pin>
     sleep 2
 }
 
+edge_dir_ok() {
+    [ -d "$EDGE_DIR" ] && [ "$(stat -c '%u:%g:%a' "$EDGE_DIR")" = "0:$(getent group www-data | cut -d: -f3):770" ]
+}
+
 preflight_gateway() {
-    # The gateway itself, before anything points at it: its health route
-    # (public class, answered by the application through it) and a refusal
-    # that needs gateway-auth to have its key set.
+    # The gateway on its socket, before anything points at it: its health route
+    # (public class, answered by the application through it) and a refusal that
+    # needs gateway-auth to have its key set.
     local h r
-    h=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "http://$GATEWAY_ADDR/api/") || true
-    [ "$h" = 200 ] || die "preflight: http://$GATEWAY_ADDR/api/ answered '${h}', not 200; nothing changed"
-    r=$(curl -s --max-time 5 -o /dev/null -D - "http://$GATEWAY_ADDR/api/scans?limit=1" | tr -d '\r') || true
+    edge_dir_ok || die "preflight: $EDGE_DIR is not root:www-data 0770; nothing changed"
+    [ -S "$SOCK" ] || die "preflight: no socket at $SOCK (is api-gateway running?); nothing changed"
+    h=$(curl -s --max-time 5 --unix-socket "$SOCK" -o /dev/null -w '%{http_code}' "http://gateway/api/") || true
+    [ "$h" = 200 ] || die "preflight: the gateway socket answered '${h}' on /api/, not 200; nothing changed"
+    r=$(curl -s --max-time 5 --unix-socket "$SOCK" -o /dev/null -D - "http://gateway/api/scans?limit=1" | tr -d '\r') || true
     printf '%s\n' "$r" | head -1 | grep -q ' 403' \
         || die "preflight: gateway refusal was not 403 (gateway-auth not ready?); nothing changed"
     ! printf '%s\n' "$r" | grep -qi '^x-request-id:' \
@@ -108,12 +127,12 @@ to_gateway() {
     local p h
     p=$(path_over_443); h=$(health_over_443)
     if [ "$p" != gateway ] || [ "$h" != 200 ]; then
-        say "cut-over proof FAILED (path=$p, health=$h) — rolling back to direct"
+        say "switch proof FAILED (path=$p, health=$h) — rolling back to direct"
         install_conf "$SRC_DIRECT" "$SHA_DIRECT"
         say "after automatic rollback: path=$(path_over_443) health=$(health_over_443)"
         exit 1
     fi
-    say "OK: :443 → gateway (path=$p, health=$h)"
+    say "OK: :443 → gateway over $SOCK (path=$p, health=$h)"
 }
 
 to_direct() {
@@ -123,6 +142,47 @@ to_direct() {
     p=$(path_over_443); h=$(health_over_443)
     [ "$p" = direct ] && [ "$h" = 200 ] || die "rollback proof FAILED (path=$p, health=$h) — investigate now"
     say "OK: :443 → direct :8000 (path=$p, health=$h)"
+}
+
+# 10.6: gateway-tcp → gateway. The gateway is recreated with its socket and the
+# socket-only trust; for the few seconds until host nginx is reloaded onto the
+# socket, host nginx still dials TCP and the gateway treats those requests as
+# coming from 172.31.254.1 (fails safe: never a forged address). Any failure
+# after the recreate lands on direct, which does not involve the gateway.
+harden() {
+    local project gid
+    gid=$(getent group www-data | cut -d: -f3)
+    [ "$gid" = 33 ] || die "www-data is gid '$gid', not 33 as docker-compose.yml's group_add assumes; nothing changed"
+    if [ ! -e "$EDGE_DIR" ]; then
+        install -d -m 0770 -o root -g www-data "$EDGE_DIR"
+        say "created $EDGE_DIR root:www-data 0770"
+    fi
+    edge_dir_ok || die "$EDGE_DIR exists but is not root:www-data 0770; a human decides; nothing changed"
+    project=$(docker inspect ccure-api-gateway --format '{{index .Config.Labels "com.docker.compose.project"}}') \
+        || die "ccure-api-gateway not found; nothing changed"
+    say "recreating api-gateway (compose project $project) with the edge socket"
+    if ! docker compose --project-directory "$REPO" -p "$project" up -d --no-deps api-gateway >>"$LOG" 2>&1; then
+        say "recreate FAILED — landing on direct"; to_direct; exit 1
+    fi
+    for _ in $(seq 1 30); do [ -S "$SOCK" ] && break; sleep 1; done
+    if ! [ -S "$SOCK" ]; then
+        say "no socket after 30 s — landing on direct"; to_direct; exit 1
+    fi
+    if ! (preflight_gateway); then
+        say "gateway preflight FAILED after recreate — landing on direct"; to_direct; exit 1
+    fi
+    to_gateway
+}
+
+# F10-3 measurement: counts only, never a line. Read-only.
+logcount() {
+    local f
+    for f in /var/log/nginx/access.log*; do
+        [ -e "$f" ] || continue
+        printf '%s ticket=%s token=%s ws-ticket=%s\n' "$(basename "$f")" \
+            "$(zgrep -c 'ticket=' "$f" || true)" "$(zgrep -c 'token=' "$f" || true)" \
+            "$(zgrep -c '/progress?ticket=' "$f" || true)"
+    done
 }
 
 [ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
@@ -137,23 +197,32 @@ say "== $cmd (live=$(state), sha=$(sha "$LIVE" | cut -c1-16))"
 case "$cmd" in
     status)
         say "path over :443 = $(path_over_443), health = $(health_over_443)" ;;
+    harden)
+        case "$(state)" in
+            gateway)     say "already on the gateway socket; path=$(path_over_443)" ;;
+            gateway-tcp) harden ;;
+            *)           die "harden starts from the 10.5 gateway (gateway-tcp) state" ;;
+        esac ;;
     cutover)
         case "$(state)" in
-            gateway) say "already on the gateway; path=$(path_over_443)" ;;
-            direct)  to_gateway ;;
-            *)       die "live ccure.conf matches neither pinned file; not touching it" ;;
+            gateway)     say "already on the gateway; path=$(path_over_443)" ;;
+            direct)      to_gateway ;;
+            gateway-tcp) die "on the 10.5 TCP gateway; use 'harden'" ;;
+            *)           die "live ccure.conf matches no pinned file; not touching it" ;;
         esac ;;
     rollback)
         case "$(state)" in
-            direct)  say "already direct; path=$(path_over_443)" ;;
-            gateway) to_direct ;;
-            *)       die "live ccure.conf matches neither pinned file; not touching it" ;;
+            direct)              say "already direct; path=$(path_over_443)" ;;
+            gateway|gateway-tcp) to_direct ;;
+            *)                   die "live ccure.conf matches no pinned file; not touching it" ;;
         esac ;;
     rehearse)
         [ "$(state)" = gateway ] || die "rehearse starts from the gateway state"
         to_direct
         to_gateway
         say "rehearsal complete: rollback and re-cut-over both proven" ;;
+    logcount)
+        logcount ;;
     *)
-        echo "usage: $0 {status|cutover|rollback|rehearse}" >&2; exit 2 ;;
+        echo "usage: $0 {status|harden|cutover|rollback|rehearse|logcount}" >&2; exit 2 ;;
 esac

@@ -772,9 +772,22 @@ dump": up to six hours of operational data.
   (`.11`) → api (`.20`), on the `internal` compose network `gateway`, with no
   published port. The compose file sets `TRUSTED_PROXIES` on the api to the
   default above **plus `172.31.254.10`**.
+  - **Since 10.6, host nginx reaches the gateway over a unix socket**,
+    `/var/lib/ccure-edge/gateway.sock`, and the gateway believes
+    `X-Real-IP`/`X-Forwarded-Proto` **only from that socket**.
+    - **The directory is the authenticator.** It is `root:www-data 0770`
+      (nginx makes the socket 0666), so only host nginx and root can connect.
+    - **TCP callers are ordinary clients.** Over TCP every host process shares
+      the bridge address `172.31.254.1`, which is how any local process could
+      forge a client address in 10.5. The gateway's `:8080` still listens, and
+      treats every TCP caller as the client.
+    - **Do not add an IP to `gateway/nginx/trust/unix_edge.conf`.**
+    - **Do not `mkdir` the directory by hand.** The bind is
+      `create_host_path: false`, so a missing directory stops the gateway
+      rather than letting Docker create it `root:root 0755`. `harden` creates it.
   - **`172.18.0.1` stays trusted** so that the rollback is one nginx file.
   - **Switch with** `sudo scripts/linux/gateway_edge_switch.sh
-    {status|cutover|rollback|rehearse}`. It swaps between two SHA-pinned
+    {status|harden|cutover|rollback|rehearse|logcount}`. It swaps between two SHA-pinned
     files in `gateway/edge/host-nginx/` and proves the path over `:443`. Never
     edit `/etc/nginx/conf.d/ccure.conf` by hand: the script refuses a file
     matching neither pin.
@@ -782,7 +795,8 @@ dump": up to six hours of operational data.
     so recreate services with `--no-deps` and name them.
   - **An HS256 rollback now needs `rollback` first**, because gateway-auth
     verifies ES256 only.
-  - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md`.
+  - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md` and
+    `PHASE10_6_HARDENING.md`.
 
   **If Docker recreates the network on a different subnet, set
   `TRUSTED_PROXIES` to its gateway.** Until then the peer is not trusted,

@@ -561,8 +561,10 @@ services:
   # the generated route map and gateway/token_check — with the production site
   # file (gateway/nginx/site/production.conf) as the only live-specific input.
   #
-  # Neither publishes a port. Host nginx reaches api-gateway at its address on
-  # the `gateway` network, which is `internal` (no route off the host), and
+  # Neither publishes a port. Host nginx reaches api-gateway over a unix socket
+  # (Phase 10.6; the 10.5 path was the gateway's address on the `gateway`
+  # network, which any host process could dial and be trusted as host nginx).
+  # The `gateway` network is `internal` (no route off the host), and
   # gateway-auth is reachable from that network alone. The api keeps its
   # published 127.0.0.1:8000 until Phase 10.7.
   #
@@ -613,12 +615,29 @@ services:
       # start (gateway/nginx/entrypoint), so a refusal carries exactly the
       # Access-Control-Allow-Origin the application's own would.
       - CCURE_CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+    # Phase 10.6: host nginx reaches the gateway over a unix socket in
+    # /var/lib/ccure-edge (root:www-data 0770 on the host, created by
+    # `sudo scripts/linux/gateway_edge_switch.sh harden`). Membership of the
+    # host's www-data group (gid 33) lets this container create the socket
+    # there; it grants nothing else, since the group owns nothing else here.
+    group_add: ["33"]
     volumes:
       - ./gateway/nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
       - ./gateway/nginx/proxy_api.conf:/etc/nginx/ccure/proxy_api.conf:ro
       - ./gateway/policy/route_policy.map:/etc/nginx/ccure/route_policy.map:ro
       - ./gateway/nginx/site/production.conf:/etc/nginx/ccure/site.conf:ro
+      - ./gateway/nginx/trust/unix_edge.conf:/etc/nginx/ccure/edge_trust.conf:ro
+      - ./gateway/nginx/listen/unix_edge.conf:/etc/nginx/ccure/listen.d/unix_edge.conf:ro
+      - ./gateway/nginx/entrypoint/30-ccure-edge-socket.sh:/docker-entrypoint.d/30-ccure-edge-socket.sh:ro
       - ./gateway/nginx/entrypoint/40-ccure-cors-origins.sh:/docker-entrypoint.d/40-ccure-cors-origins.sh:ro
+      # Never created by Docker: a directory Docker made would be root:root
+      # 0755, the gateway could not create its socket, and host nginx would
+      # answer 502 — refusing to start says so instead.
+      - type: bind
+        source: /var/lib/ccure-edge
+        target: /run/ccure-edge
+        bind:
+          create_host_path: false
     depends_on:
       - gateway-auth
     networks:

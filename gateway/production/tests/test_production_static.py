@@ -37,6 +37,12 @@ SITE = REPO / "gateway/nginx/site/production.conf"
 DIRECT = REPO / "gateway/edge/host-nginx/ccure.direct.conf"
 GATEWAY = REPO / "gateway/edge/host-nginx/ccure.gateway.conf"
 SWITCH = REPO / "scripts/linux/gateway_edge_switch.sh"
+TRUST = REPO / "gateway/nginx/trust/unix_edge.conf"
+LISTEN = REPO / "gateway/nginx/listen/unix_edge.conf"
+SOCK_CLEANUP = REPO / "gateway/nginx/entrypoint/30-ccure-edge-socket.sh"
+GATEWAY_CONF = REPO / "gateway/nginx/gateway.conf"
+EDGE_DIR, SOCK_IN_CONTAINER = "/var/lib/ccure-edge", "/run/ccure-edge/gateway.sock"
+TCP_10_5_SHA = "79d4513217a4fb42e53a73ef97faafb9c526c1aa0c7beddecd2d4e868e027428"
 
 NET = ipaddress.ip_network("172.31.254.0/24")
 BRIDGE, GW, AUTH, API = "172.31.254.1", "172.31.254.10", "172.31.254.11", "172.31.254.20"
@@ -73,15 +79,56 @@ def test_static_addresses(compose, name, addr):
 
 
 def test_site_names_the_same_addresses():
-    lines = _strip_comments(SITE.read_text())
-    text = "\n".join(lines)
+    text = "\n".join(_strip_comments(SITE.read_text()))
     assert re.search(r"upstream ccure_api \{\s*server %s:8000;\s*\}" % re.escape(API), text)
     assert re.search(r"upstream ccure_gateway_auth \{\s*server %s:8080;\s*\}" % re.escape(AUTH), text)
-    # exactly one trusted edge: the bridge, i.e. host nginx
-    assert re.findall(r"set_real_ip_from\s+(\S+);", text) == [BRIDGE]
-    geo = re.search(r"geo \$realip_remote_addr \$ccure_from_edge \{(.*?)\}", text, re.S).group(1)
-    entries = [l.split() for l in geo.strip().splitlines()]
-    assert entries == [["default", "0;"], [BRIDGE, "1;"]]
+    # the trust boundary is not in the site file any more: it is the shared
+    # trust file, which the trust harness mounts too
+    assert "set_real_ip_from" not in text and "ccure_from_edge" not in text
+    assert "include /etc/nginx/ccure/edge_trust.conf;" in text
+
+
+# ── 10.6: the edge is a unix socket, and nothing else is trusted ─────────────
+def test_only_the_unix_socket_is_trusted():
+    text = "\n".join(_strip_comments(TRUST.read_text()))
+    assert re.findall(r"set_real_ip_from\s+(\S+);", text) == ["unix:"]
+    m = re.search(r"map \$realip_remote_addr \$ccure_from_edge \{(.*?)\}", text, re.S).group(1)
+    assert [l.split() for l in m.strip().splitlines()] == [["default", "0;"], ['"unix:"', "1;"]]
+    assert "geo " not in text  # a geo block cannot match "unix:"
+    # no IP address, and in particular not the 10.5 bridge, is trusted anywhere
+    for f in (TRUST, SITE, GATEWAY_CONF):
+        body = "\n".join(_strip_comments(f.read_text()))
+        assert not re.search(re.escape(BRIDGE) + r"(?![0-9])", body), f
+        assert not re.search(r"set_real_ip_from\s+\d", body), f
+
+
+def test_the_socket_listener_is_per_deployment():
+    assert _strip_comments(LISTEN.read_text()) == [f"listen unix:{SOCK_IN_CONTAINER};"]
+    conf = "\n".join(_strip_comments(GATEWAY_CONF.read_text()))
+    # the shared config includes per-deployment listeners by a glob, which
+    # matches nothing in the harness and the alongside stack
+    assert "include /etc/nginx/ccure/listen.d/*.conf;" in conf
+    assert "listen 8080;" in conf
+
+
+def test_compose_mounts_the_socket_directory_and_the_trust_files(compose):
+    svc = compose["services"]["api-gateway"]
+    assert svc["group_add"] == ["33"]  # host www-data; the switch script checks the gid
+    binds = [v for v in svc["volumes"] if isinstance(v, dict)]
+    assert binds == [{"type": "bind", "source": EDGE_DIR, "target": "/run/ccure-edge",
+                      "bind": {"create_host_path": False}}]
+    strs = {v.split(":")[1]: v.split(":")[0] for v in svc["volumes"] if isinstance(v, str)}
+    assert strs["/etc/nginx/ccure/edge_trust.conf"] == "./gateway/nginx/trust/unix_edge.conf"
+    assert strs["/etc/nginx/ccure/listen.d/unix_edge.conf"] == "./gateway/nginx/listen/unix_edge.conf"
+    assert strs["/docker-entrypoint.d/30-ccure-edge-socket.sh"] == "./gateway/nginx/entrypoint/30-ccure-edge-socket.sh"
+
+
+def test_stale_socket_cleanup_runs_before_nginx():
+    script = SOCK_CLEANUP.read_text()
+    assert f"sock={SOCK_IN_CONTAINER}" in script
+    assert 'rm -f "$sock"' in script and "set -eu" in script
+    # the nginx image runs /docker-entrypoint.d/* in name order before nginx
+    assert SOCK_CLEANUP.name < "40-ccure-cors-origins.sh"
 
 
 def test_gateway_auth_reads_the_core_jwks_and_issuer(compose):
@@ -103,9 +150,10 @@ def test_trusted_proxies_is_exact_and_adds_only_the_gateway(compose):
     assert '"TRUSTED_PROXIES", "127.0.0.1,::1,172.18.0.1"' in config
 
 
-def test_host_nginx_targets_the_gateway_address():
+def test_host_nginx_targets_the_gateway_socket():
     targets = re.findall(r"proxy_pass\s+(\S+);", "\n".join(_strip_comments(GATEWAY.read_text())))
-    assert targets == [f"http://{GW}:8080", f"http://{GW}:8080", "http://127.0.0.1:3200"]
+    sock = f"http://unix:{EDGE_DIR}/gateway.sock"
+    assert targets == [sock, sock, "http://127.0.0.1:3200"]
 
 
 # ── exposure ─────────────────────────────────────────────────────────────────
@@ -136,11 +184,14 @@ def test_api_keeps_its_published_port_until_10_7(compose):
 
 def test_gateway_mounts_only_committed_files_read_only(compose):
     vols = compose["services"]["api-gateway"]["volumes"]
-    assert all(v.endswith(":ro") for v in vols)
+    assert all(v.endswith(":ro") for v in vols if isinstance(v, str))
+    vols = [v for v in vols if isinstance(v, str)]
     sources = sorted(v.split(":")[0] for v in vols)
     assert sources == sorted([
         "./gateway/nginx/gateway.conf", "./gateway/nginx/proxy_api.conf",
         "./gateway/policy/route_policy.map", "./gateway/nginx/site/production.conf",
+        "./gateway/nginx/trust/unix_edge.conf", "./gateway/nginx/listen/unix_edge.conf",
+        "./gateway/nginx/entrypoint/30-ccure-edge-socket.sh",
         "./gateway/nginx/entrypoint/40-ccure-cors-origins.sh"])
     for s in sources:
         assert (REPO / s).is_file()
@@ -169,8 +220,8 @@ def test_gateway_file_differs_from_direct_only_in_proxy_pass():
     assert len(direct) == len(gateway)
     changed = [(a.strip(), b.strip()) for a, b in zip(direct, gateway) if a != b]
     assert changed == [
-        ("proxy_pass http://127.0.0.1:8000/auth/;", f"proxy_pass http://{GW}:8080;"),
-        ("proxy_pass http://127.0.0.1:8000/;", f"proxy_pass http://{GW}:8080;"),
+        ("proxy_pass http://127.0.0.1:8000/auth/;", f"proxy_pass http://unix:{EDGE_DIR}/gateway.sock;"),
+        ("proxy_pass http://127.0.0.1:8000/;", f"proxy_pass http://unix:{EDGE_DIR}/gateway.sock;"),
     ]
 
 
@@ -186,6 +237,9 @@ def test_switch_script_pins_match_the_files():
     script = SWITCH.read_text()
     assert f"SHA_DIRECT={hashlib.sha256(DIRECT.read_bytes()).hexdigest()}" in script
     assert f"SHA_GATEWAY={hashlib.sha256(GATEWAY.read_bytes()).hexdigest()}" in script
+    # the 10.5 TCP file is recognised as a state, and never installed
+    assert f"SHA_GATEWAY_TCP={TCP_10_5_SHA}" in script
+    assert "install_conf" not in "".join(l for l in script.splitlines() if "SHA_GATEWAY_TCP" in l and "state" not in l)
     # the pre-10.5 live file as fingerprinted in 10.4 (PHASE10_4_TLS.md §5)
     assert hashlib.sha256(DIRECT.read_bytes()).hexdigest().startswith("638fd33f797229b6")
 
@@ -195,11 +249,20 @@ def test_switch_script_proves_and_rolls_back():
     assert "nginx -t" in script and "systemctl reload nginx" in script
     assert "rolling back to direct" in script
     assert "x-request-id" in script.lower()
-    assert f"GATEWAY_ADDR={GW}:8080" in script
-    # it writes one nginx file and its own rollback directory, nothing else
+    assert f"EDGE_DIR={EDGE_DIR}" in script and "--unix-socket" in script
+    # it writes one nginx file, its own rollback directory and the socket
+    # directory (root:www-data 0770), nothing else
     writes = re.findall(r"install -m 0644 -o root -g root \S+ (\S+)", script)
     assert set(writes) == {'"$LIVE"'}
+    assert 'install -d -m 0770 -o root -g www-data "$EDGE_DIR"' in script
     assert 'LIVE=/etc/nginx/conf.d/ccure.conf' in script
     assert 'KEEP=/etc/nginx/ccure-rollback' in script
-    for forbidden in ("docker ", "psql", "ccure-keys", "rm -", "systemctl restart"):
+    # its one docker action: recreate api-gateway alone, in `harden`
+    docker_lines = [l.strip() for l in script.splitlines()
+                    if not l.lstrip().startswith("#") and re.search(r"\bdocker (compose|run|exec|rm|stop|kill)", l)]
+    assert docker_lines == ['if ! docker compose --project-directory "$REPO" -p "$project" up -d --no-deps api-gateway >>"$LOG" 2>&1; then']
+    for forbidden in ("psql", "ccure-keys", "rm -", "systemctl restart", "--force-recreate api "):
         assert forbidden not in script, forbidden
+    # every failure after the recreate lands on direct
+    harden = script.split("harden() {", 1)[1].split("\n}\n", 1)[0]
+    assert harden.count("to_direct; exit 1") == 3

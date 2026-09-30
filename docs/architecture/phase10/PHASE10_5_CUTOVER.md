@@ -1,11 +1,11 @@
 # Phase 10.5 — Production cut-over through the gateway
 
-|                      |                                                                                                                                                                                                                                                        |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Status**           | **Live since 30 Sep 2026, 11:26:44 IST.** `:443` → host nginx → `api-gateway` → `gateway-auth` → api. Rollback rehearsed live at 11:43:48–11:43:52 (both directions proven). Committed with this document.                                             |
-| **Baseline**         | `a4c29f5` (Phase 10.4). The 10.2 design, the 10.1 characterisation and the 10.3/10.4 records remain the source of truth for behaviour.                                                                                                                 |
-| **Frozen decisions** | X2-a, X6-a (`/api/ir/*` stays 404), route classes 17 / 251 / 3 / 2, `OPTIONS` unauthenticated, `DELETE /reports/{id}` ticket-or-bearer, no `X-Request-ID` on gateway refusals, identity headers stripped, token policy and signing keys. None changed. |
-| **Not done here**    | 10.6/10.7: `127.0.0.1:8000` stays published and `172.18.0.1` stays trusted. F10-3 (uvicorn WebSocket ticket log line), the stale `Backend/openapi.json`, O14 (host nginx log format) and DNS are untouched.                                            |
+|                      |                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Status**           | **Superseded in part by [10.6](PHASE10_6_HARDENING.md)** (host nginx → gateway now over a unix socket; the bridge address `172.31.254.1` is no longer trusted — §§2, 10 below describe the 10.5 state). **Live since 30 Sep 2026, 11:26:44 IST.** `:443` → host nginx → `api-gateway` → `gateway-auth` → api. Rollback rehearsed live at 11:43:48–11:43:52 (both directions proven). Committed with this document. |
+| **Baseline**         | `a4c29f5` (Phase 10.4). The 10.2 design, the 10.1 characterisation and the 10.3/10.4 records remain the source of truth for behaviour.                                                                                                                                                                                                                                                                             |
+| **Frozen decisions** | X2-a, X6-a (`/api/ir/*` stays 404), route classes 17 / 251 / 3 / 2, `OPTIONS` unauthenticated, `DELETE /reports/{id}` ticket-or-bearer, no `X-Request-ID` on gateway refusals, identity headers stripped, token policy and signing keys. None changed.                                                                                                                                                             |
+| **Not done here**    | 10.6/10.7: `127.0.0.1:8000` stays published and `172.18.0.1` stays trusted. F10-3 (uvicorn WebSocket ticket log line), the stale `Backend/openapi.json`, O14 (host nginx log format) and DNS are untouched.                                                                                                                                                                                                        |
 
 ## 1. What changed in production
 
@@ -304,7 +304,7 @@ Static tests run on a full checkout, since the api container mounts only `Backen
 
 ## 8. M3
 
-The read-only sampler has run from 29 Sep 20:51 IST, recording ESTABLISHED sockets every 10 s. At
+The read-only sampler has run from 29 Sep 18:51 IST (corrected in 10.6; this line first said 20:51), recording ESTABLISHED sockets every 10 s. At
 the time of the cut-over it had 5,798 samples, about 16 h.
 
 - **Host-side dialers of `127.0.0.1:8000`:** `www-data` (host nginx) 6 times and the operator

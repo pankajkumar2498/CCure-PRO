@@ -31,12 +31,12 @@
  },
  "counts": {
   "public": 17,
-  "bearer": 251,
+  "bearer": 252,
   "ticket_or_bearer": 3,
   "websocket": 2,
-  "total": 273
+  "total": 274
  },
- "inventory_sha256": "e64706ffbea7e222fb3f742f0eb9f7722e4b1059c5ed8a73d699a945e7948cf3",
+ "inventory_sha256": "90e199d37287d92a5894302fff0321b9f1557bb36678724ef9a7f45977c1a6a4",
  "routes": [
   {
    "order": 0,
@@ -3040,6 +3040,17 @@
    "class": "bearer",
    "checker_policy": "bearer",
    "endpoint": "routers.compliance.download_nis2_report"
+  },
+  {
+   "order": 273,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/modules",
+   "match": "exact",
+   "map_key": "http:GET:/platform/modules",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.hub.router.list_platform_modules"
   }
  ],
  "shadowed": []

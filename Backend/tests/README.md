@@ -13,7 +13,7 @@ answer to "what breaks if this fails".
 
 | Group           | Covers |
 |-----------------|--------|
-| `auth/`         | Login, MFA, password reset, mailbox verification, email-domain screening |
+| `auth/`         | Login, MFA, password reset, mailbox verification, email-domain screening, the platform's own endpoints (`/platform/modules`) |
 | `security/`     | RBAC route coverage, tenant isolation, organization lifecycle, CORS and security headers, file upload validation |
 | `compliance/`   | The policy compliance engine, framework activation and parking, and the per-catalogue suites |
 | `scans/`        | Discovery and port phases, scope, progress, Celery tasks, OT probe safety, NVD sync |

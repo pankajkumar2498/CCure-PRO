@@ -87,11 +87,17 @@ def _entries(policy, route_class):
 def test_counts_are_the_characterised_ones(policy):
     assert policy["counts"] == {
         "public": 17,
-        "bearer": 251,
+        # 252 since Phase 12.1: GET /platform/modules, CCure Home's product list.
+        "bearer": 252,
         "ticket_or_bearer": 3,
         "websocket": 2,
-        "total": 273,
+        "total": 274,
     }
+
+
+def test_the_product_list_is_a_bearer_route(policy):
+    # Phase 12.1: signed-in users only; the gateway checks the token first.
+    assert ("GET", "/platform/modules") in _entries(policy, "bearer")
 
 
 def test_the_public_allowlist_is_exactly_the_characterised_17(policy):
@@ -100,7 +106,7 @@ def test_the_public_allowlist_is_exactly_the_characterised_17(policy):
 
 def test_bearer_routes(policy):
     bearer = _entries(policy, "bearer")
-    assert len(bearer) == 251
+    assert len(bearer) == 252  # 251 until Phase 12.1 added GET /platform/modules
     assert ("GET", "/scans") in bearer and ("POST", "/auth/ticket") in bearer
     assert all(
         e["checker_policy"] == "bearer"

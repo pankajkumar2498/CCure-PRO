@@ -39,7 +39,12 @@ import importlib
 import tomllib
 from pathlib import Path
 
-from ccure_platform.modules.manifest import ManifestError, ModuleManifest
+from ccure_platform.modules.manifest import (
+    ManifestError,
+    ModuleManifest,
+    Product,
+    ServiceProduct,
+)
 
 #: Backend/ — the import root every module package sits in.
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -101,7 +106,13 @@ def build(identity: dict, root: Path = BACKEND_ROOT) -> ModuleManifest:
 _IDENTITIES: tuple[dict, ...] = (
     dict(
         key="policy_pro",
-        title="Ccure Policy",
+        title="CCure Policy Pro",
+        description=(
+            "Responsible for your organisation's security policies and controls, "
+            "and for the baseline — which controls apply, with what parameters — "
+            "that the other products assess against."
+        ),
+        entry_path="/policy-dashboard",
         package="ccure_policy",
         db_schema="policy_pro",
         route_prefix="/policy",
@@ -112,7 +123,14 @@ _IDENTITIES: tuple[dict, ...] = (
     ),
     dict(
         key="audit",
-        title="Ccure Audit",
+        title="CCure Audit",
+        description=(
+            "Responsible for finding and assessing your assets: network and web "
+            "scanning, vulnerability and configuration audits, compliance against "
+            "frameworks, remediation tracking and reports."
+        ),
+        # Audit's dashboard; /dashboard stays a compatibility redirect (12.2).
+        entry_path="/audit-dashboard",
         package="ccure_audit",
         db_schema="public",
         # Audit's URLs predate the registry and are never renamed (plan §10).
@@ -126,7 +144,12 @@ _IDENTITIES: tuple[dict, ...] = (
     ),
     dict(
         key="rank",
-        title="Ccure Rank",
+        title="CCure Rank",
+        description=(
+            "Responsible for scoring and ranking your organisation's security "
+            "posture from the results the other products produce."
+        ),
+        entry_path="/rank-dashboard",
         package="ccure_rank",
         db_schema="rank",
         route_prefix="/rank",
@@ -138,6 +161,24 @@ _IDENTITIES: tuple[dict, ...] = (
 )
 
 MODULES: tuple[ModuleManifest, ...] = tuple(build(identity) for identity in _IDENTITIES)
+
+#: Products CCure Home lists that the core service does not host (Phase 12).
+#: CCure IR is a separate service with its own database (Stage 4): it is never a
+#: module here, so nothing is mounted, loaded or migrated for it.
+_SERVICES: tuple[dict, ...] = (
+    dict(
+        key="ir",
+        title="CCure IR",
+        description=(
+            "Responsible for incident response: recording and managing security "
+            "incidents, and feeding what is learned back to the other products."
+        ),
+        entry_path="/ir-dashboard",
+        tile_state="not_yet_available",
+    ),
+)
+
+SERVICES: tuple[ServiceProduct, ...] = tuple(ServiceProduct(**s) for s in _SERVICES)
 
 
 def _check(modules: tuple[ModuleManifest, ...]) -> None:
@@ -171,9 +212,65 @@ def _check(modules: tuple[ModuleManifest, ...]) -> None:
 _check(MODULES)
 
 
+def _check_products(
+    modules: tuple[ModuleManifest, ...], services: tuple[ServiceProduct, ...]
+) -> None:
+    """Refuse two products — module or service — sharing a key, a title or an
+    entry address: each is one card and one page on CCure Home."""
+    for field in ("key", "title", "entry_path"):
+        seen: dict[str, str] = {}
+        for product in (*modules, *services):
+            value = getattr(product, field)
+            if value in seen:
+                raise ManifestError(
+                    f"products {seen[value]!r} and {product.key!r} both declare "
+                    f"{field} {value!r}"
+                )
+            seen[value] = product.key
+
+
+_check_products(MODULES, SERVICES)
+
+
 def modules() -> tuple[ModuleManifest, ...]:
     """Every registered module, enabled or not, in registry order."""
     return MODULES
+
+
+def services() -> tuple[ServiceProduct, ...]:
+    """Products outside the core service, in registry order."""
+    return SERVICES
+
+
+def products() -> tuple[Product, ...]:
+    """
+    Every product CCure Home shows (Phase 12), in order: the core modules in
+    registry order, then the separate services — Policy Pro, Audit, Rank, IR.
+
+    Every product is listed whatever its state; a product is never left out
+    because it is not built yet (owner decision D12-4).
+    """
+    return tuple(
+        Product(
+            key=m.key,
+            title=m.title,
+            kind="core_module",
+            description=m.description,
+            entry_path=m.entry_path,
+            tile_state=m.tile_state,
+        )
+        for m in MODULES
+    ) + tuple(
+        Product(
+            key=s.key,
+            title=s.title,
+            kind="service",
+            description=s.description,
+            entry_path=s.entry_path,
+            tile_state=s.tile_state,
+        )
+        for s in SERVICES
+    )
 
 
 def enabled_modules() -> tuple[ModuleManifest, ...]:

@@ -372,9 +372,18 @@ each module's `README.md` is the guide its team works from.
   manifest is deliberately empty**: `main.py` still mounts its routers, and
   declaring them there too would mount each twice.
 - **Policy Pro and Rank ship no routes, tables or tasks.** Nothing may be added
-  to them outside their teams' own work; the OpenAPI document, 273 routes, 93
-  rate-limited routes, 21 tasks at import and 11 beat entries are unchanged by
-  Phase 11 and are the regression gate for any change here.
+  to them outside their teams' own work; 93 rate-limited routes, 21 tasks at
+  import and 11 beat entries are the regression gate for any change here. The
+  route count is **274** since Phase 12.1 added the platform's own
+  `GET /platform/modules` — 273 through Phase 11.
+- **CCure Home's product list comes from the registry** (Phase 12,
+  [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md)).
+  Each module's identity carries a `description` and an `entry_path`; CCure IR
+  is a `ServiceProduct` — listed, never a module. `GET /platform/modules`
+  (`ccure_platform/hub/`) returns all four products to any signed-in user,
+  filtered by nothing. A new route means regenerating the gateway policy
+  (`--emit` in the api container, written on the host) and re-dumping
+  `docs/architecture/phase10/route_table.json` in the same commit.
 - **Boundaries, all enforced in CI:** `module-isolation:<pkg>` (a module
   imports only itself, `ccure_platform.api`, `ccure_contracts` and `db.base`)
   and `module-is-private:<pkg>` (nothing imports a module; it is mounted from

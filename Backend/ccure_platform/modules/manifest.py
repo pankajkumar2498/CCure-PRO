@@ -22,24 +22,59 @@ from dataclasses import dataclass
 
 TILE_STATES = ("available", "not_yet_available")
 
+#: What a product on CCure Home is (Phase 12): a module inside the core service,
+#: or a separate service the platform lists but does not host (IR).
+PRODUCT_KINDS = ("core_module", "service")
+
+#: A product's description states what it is responsible for, in a sentence or
+#: two — never what it can do today (docs/architecture/PHASE12_FRONTEND_SHELL.md §3.1).
+DESCRIPTION_MAX = 300
+
 _KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 _PACKAGE = re.compile(r"^ccure_[a-z][a-z0-9_]*$")
 _SCHEMA = re.compile(r"^[a-z][a-z0-9_]*$")
 _PREFIX = re.compile(r"^(/[a-z][a-z0-9-]*)?$")  # "" (Audit's legacy URLs) or "/name"
 _DOTTED = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _QUEUE = re.compile(r"^[a-z][a-z0-9_.-]*$")
+#: A product's entry address on the frontend: one absolute path segment.
+_ENTRY_PATH = re.compile(r"^/[a-z][a-z0-9-]*$")
 
 
 class ManifestError(ValueError):
     """A module manifest that cannot be registered as written."""
 
 
+def _product_problems(
+    title: str, description: str, entry_path: str, tile_state: str
+) -> list[str]:
+    """What CCure Home shows for a product, checked the same way for a core
+    module and for a separate service."""
+    problems = []
+    if not title.strip():
+        problems.append("title is empty")
+    if not description.strip():
+        problems.append("description is empty")
+    elif len(description) > DESCRIPTION_MAX:
+        problems.append(f"description is longer than {DESCRIPTION_MAX} characters")
+    if not _ENTRY_PATH.match(entry_path):
+        problems.append(
+            f"entry_path {entry_path!r} must be one absolute path segment, '/<name>'"
+        )
+    if tile_state not in TILE_STATES:
+        problems.append(f"tile_state {tile_state!r} is not one of {TILE_STATES}")
+    return problems
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ModuleManifest:
     #: Stable identifier: ``policy_pro``, ``audit``, ``rank``.
     key: str
-    #: The name a person sees (the homepage tile, Phase 12).
+    #: The name a person sees on CCure Home (Phase 12).
     title: str
+    #: What the product is responsible for, shown on its CCure Home card.
+    description: str
+    #: The frontend address its CCure Home card opens (Phase 12).
+    entry_path: str
     #: The top-level Python package holding the module: ``ccure_<name>``.
     package: str
     #: The PostgreSQL schema the module's tables live in.
@@ -63,8 +98,9 @@ class ModuleManifest:
     #: module's tables. Every table in it must live in ``db_schema`` and be
     #: registered to the module in ``table_ownership.yaml`` (Phase 11.2).
     models: tuple[str, ...] = ()
-    #: Homepage tile state (Phase 12). A module that is not ready says so and is
-    #: never a link to an empty page (CLAUDE.md, UI semantic integrity).
+    #: Availability on CCure Home (Phase 12). A product that is not available
+    #: still has a card and an entry page, and the page says it is not
+    #: available yet — never an empty page (CLAUDE.md, UI semantic integrity).
     tile_state: str = "not_yet_available"
     #: Whether the application mounts the routers and workers load the tasks.
     enabled: bool = False
@@ -75,8 +111,10 @@ class ModuleManifest:
 
         if not _KEY.match(self.key):
             refuse("key must be lower-case letters, digits and underscores")
-        if not self.title.strip():
-            refuse("title is empty")
+        for problem in _product_problems(
+            self.title, self.description, self.entry_path, self.tile_state
+        ):
+            refuse(problem)
         if not _PACKAGE.match(self.package):
             refuse(f"package {self.package!r} must be a top-level ccure_<name> package")
         if not _SCHEMA.match(self.db_schema):
@@ -89,8 +127,6 @@ class ModuleManifest:
             refuse(
                 f"task_prefix {self.task_prefix!r} must be a dotted name starting 'ccure.'"
             )
-        if self.tile_state not in TILE_STATES:
-            refuse(f"tile_state {self.tile_state!r} is not one of {TILE_STATES}")
         for kind, targets in (("router", self.routers), ("models", self.models)):
             for target in targets:
                 module, sep, attr = target.partition(":")
@@ -117,3 +153,42 @@ class ModuleManifest:
 
     def _inside(self, dotted: str) -> bool:
         return dotted == self.package or dotted.startswith(self.package + ".")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ServiceProduct:
+    """
+    A product CCure Home lists that the core service does not host (Phase 12):
+    CCure IR, a separate service (Stage 4). No package, schema, routes or tasks —
+    nothing is mounted from it; the platform only says what it is and where its
+    card goes.
+    """
+
+    key: str
+    title: str
+    description: str
+    entry_path: str
+    tile_state: str = "not_yet_available"
+
+    def __post_init__(self) -> None:
+        if not _KEY.match(self.key):
+            raise ManifestError(
+                f"service {self.key!r}: key must be lower-case letters, digits and underscores"
+            )
+        for problem in _product_problems(
+            self.title, self.description, self.entry_path, self.tile_state
+        ):
+            raise ManifestError(f"service {self.key!r}: {problem}")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Product:
+    """One card on CCure Home: a core module or a separate service, as the
+    platform describes it. Plain values only."""
+
+    key: str
+    title: str
+    kind: str
+    description: str
+    entry_path: str
+    tile_state: str

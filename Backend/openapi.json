@@ -340,6 +340,45 @@
         "title": "Body_import_amt_inventory_assets_import_amt_post",
         "type": "object"
       },
+      "Body_service_token_auth_service_token_post": {
+        "properties": {
+          "client_assertion": {
+            "title": "Client Assertion",
+            "type": "string"
+          },
+          "client_assertion_type": {
+            "title": "Client Assertion Type",
+            "type": "string"
+          },
+          "grant_type": {
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "scope": {
+            "default": "",
+            "title": "Scope",
+            "type": "string"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          }
+        },
+        "required": [
+          "grant_type",
+          "client_assertion_type",
+          "client_assertion"
+        ],
+        "title": "Body_service_token_auth_service_token_post",
+        "type": "object"
+      },
       "Body_upload_control_evidence_compliance_controls__control_id__evidence_post": {
         "properties": {
           "file": {
@@ -1816,6 +1855,68 @@
           "targets"
         ],
         "title": "PhasesRequest",
+        "type": "object"
+      },
+      "PlatformProduct": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entry_path": {
+            "title": "Entry Path",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "tile_state": {
+            "title": "Tile State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "kind",
+          "description",
+          "entry_path",
+          "tile_state"
+        ],
+        "title": "PlatformProduct",
+        "type": "object"
+      },
+      "PlatformProductList": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformProduct"
+            },
+            "title": "Modules",
+            "type": "array"
+          },
+          "tile_states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tile States",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tile_states",
+          "modules"
+        ],
+        "title": "PlatformProductList",
         "type": "object"
       },
       "PolicyCreate": {
@@ -3442,6 +3543,39 @@
           }
         },
         "title": "ScheduleUpdate",
+        "type": "object"
+      },
+      "ServiceTokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "token_type": {
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "tenant"
+        ],
+        "title": "ServiceTokenResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -10904,6 +11038,26 @@
         ]
       }
     },
+    "/auth/jwks.json": {
+      "get": {
+        "description": "The platform's token-verification keys, as a JSON Web Key Set.\n\nPublic key material only. Every key a token may currently be signed or\nverified with is listed, identified by its kid. Answers 503 when no signing\nkeyset is configured.",
+        "operationId": "jwks_auth_jwks_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Jwks",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Authenticate with email + password.\nReturns access + refresh tokens on success.\n\nOrganization Status Validation:\n- Users from deactivated organizations cannot log in.\n- This prevents new sessions from being created for inactive orgs.\n- Existing sessions are checked on every request in middleware.",
@@ -11391,6 +11545,48 @@
         "summary": "Reset Password Endpoint",
         "tags": [
           "Authentication"
+        ]
+      }
+    },
+    "/auth/service-token": {
+      "post": {
+        "description": "Exchange a service's signed client assertion for a 10-minute service token.\n\nForm-encoded, as RFC 6749 §4.4 and RFC 7523 §2.2 specify:\n`grant_type=client_credentials`,\n`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`,\n`client_assertion=<JWT signed ES256 by the service's own key>`,\n`scope=<space-separated scopes>` and, for a service granted more than one\ntenant, `tenant=<organisation id>`.\n\nAnswers 401 `invalid_client` for any authentication failure, 400\n`invalid_scope` or `invalid_request`, 403 for a tenant the service is not\ngranted, and 503 when the service registry or the replay store is\nunavailable.",
+        "operationId": "service_token_auth_service_token_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_service_token_auth_service_token_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Token",
+        "tags": [
+          "Service identity"
         ]
       }
     },
@@ -17486,6 +17682,33 @@
         "summary": "Mark As Read",
         "tags": [
           "Notifications"
+        ]
+      }
+    },
+    "/platform/modules": {
+      "get": {
+        "description": "List the CCure products for the signed-in user's home page.\n\nReturns every product — CCure Policy Pro, CCure Audit, CCure Rank and\nCCure IR — in display order, each with its name, a description of what it is\nresponsible for, the frontend address its card opens, and its availability\n(`tile_state`). `tile_states` lists every availability state. The list is the\nsame for every signed-in user.",
+        "operationId": "list_platform_modules_platform_modules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformProductList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Platform Modules",
+        "tags": [
+          "Platform"
         ]
       }
     },

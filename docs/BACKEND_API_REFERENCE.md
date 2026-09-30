@@ -2259,6 +2259,76 @@ count in `vuln_intel`.
 
 ---
 
+## Platform — `/platform` (CCure Home)
+
+### `GET /platform/modules`
+
+The products CCure Home shows (Phase 12.1), read from the platform's module
+registry (`ccure_platform/modules`), which is the only source of this list —
+the frontend holds no product list or availability vocabulary of its own.
+Router: `ccure_platform/hub/router.py`.
+
+- **Auth:** any signed-in user; no permission. A request without credentials
+  gets the shared dependency's `403 Not authenticated`, and an invalid token
+  `401`, exactly as `/auth/me` does. Not rate-limited beyond the 600/minute
+  baseline: authenticated, and a constant in-memory list.
+- **Filtered by nothing.** Every signed-in user receives the same four products,
+  whatever their role or organisation, and a product is listed whatever its
+  state (owner decision D12-4).
+- **Response** (`PlatformProductList`):
+
+```json
+{
+  "tile_states": ["available", "not_yet_available"],
+  "modules": [
+    {
+      "key": "policy_pro",
+      "title": "CCure Policy Pro",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/policy-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "audit",
+      "title": "CCure Audit",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/audit-dashboard",
+      "tile_state": "available"
+    },
+    {
+      "key": "rank",
+      "title": "CCure Rank",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/rank-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "ir",
+      "title": "CCure IR",
+      "kind": "service",
+      "description": "Responsible for …",
+      "entry_path": "/ir-dashboard",
+      "tile_state": "not_yet_available"
+    }
+  ]
+}
+```
+
+| Field         | Meaning                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `tile_states` | every availability state a product can be in; a client renders any other value as unknown, never as available |
+| `key`         | stable product identifier                                                                                     |
+| `title`       | the product's name                                                                                            |
+| `kind`        | `core_module` (hosted by the core service) or `service` (a separate service the platform lists — CCure IR)    |
+| `description` | what the product is responsible for — never a statement that its functionality exists                         |
+| `entry_path`  | the frontend address the product's card opens                                                                 |
+| `tile_state`  | `available`, or `not_yet_available`: the product's entry page then says it is not available yet               |
+
+---
+
 ## 18. WebSocket endpoints
 
 | Path                            | Source                              | Auth       | Channel                         |

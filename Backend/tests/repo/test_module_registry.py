@@ -106,6 +106,8 @@ def test_build_joins_the_platform_identity_and_the_module_contributions(tmp_path
         dict(
             key="demo",
             title="Demo",
+            description="A test-only module.",
+            entry_path="/demo-dashboard",
             package="ccure_demo",
             db_schema="demo",
             route_prefix="/demo",
@@ -128,6 +130,8 @@ def test_a_manifest_reaching_outside_its_package_is_refused(tmp_path):
             dict(
                 key="demo",
                 title="Demo",
+                description="A test-only module.",
+                entry_path="/demo-dashboard",
                 package="ccure_demo",
                 db_schema="demo",
                 route_prefix="/demo",
@@ -216,6 +220,8 @@ def _m(**kw):
     base = dict(
         key="demo",
         title="Demo",
+        description="A test-only module.",
+        entry_path="/demo-dashboard",
         package="ccure_demo",
         db_schema="demo",
         route_prefix="/demo",

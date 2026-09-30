@@ -22,6 +22,7 @@ from orchestrator.host_discovery_api import HostDiscoveryAPI
 
 # ── Router imports ────────────────────────────────────────────────────────────
 from auth.router import router as auth_router
+from ccure_platform.hub.router import router as platform_hub_router
 from ccure_platform.service_identity.router import (
     router as service_identity_router,
 )
@@ -1096,6 +1097,10 @@ app.include_router(findings_router)
 app.include_router(web_scans_router)
 app.include_router(topology_router)
 app.include_router(compliance_router)
+# CCure Home's product list (Phase 12.1). Mounted after every existing router so
+# the route table — and the gateway route policy generated from it — only grows
+# at the end.
+app.include_router(platform_hub_router)
 
 # Module routers from the platform registry (Phase 11), each under its module's
 # prefix. Audit's routers are the explicit list above until Phase 16 moves them

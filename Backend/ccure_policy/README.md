@@ -48,7 +48,10 @@ All inside this folder; `Backend/tests/modules/example/` shows each one end to e
    (`policy_pro`, base revision `policy_pro_0001`, which creates the empty `policy_pro`
    schema). `alembic revision --head policy_pro@head -m "…"` adds the next one.
    Every table operation passes `schema="policy_pro"`, and no SQL names another
-   schema — `tests/repo/test_alembic_module_branches.py` checks both.
+   schema. No migration creates a role, grants, revokes or changes an owner:
+   module roles are Phase 18's (decision D11-1), and `ccure_user` could not
+   run one anyway, so the API would fail to start.
+   `tests/repo/test_alembic_module_branches.py` checks all three.
 4. **Task** — `celery.shared_task(name="ccure.policy.<name>")` in a module listed
    under `task_modules`. It runs on the `default` queue; a dedicated queue is a
    platform change made with the team.

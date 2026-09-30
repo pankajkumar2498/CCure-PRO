@@ -156,6 +156,43 @@ _SCHEMA_DDL = re.compile(
 )
 
 
+#: Role, privilege and ownership statements (Phase 11.4, decision D11-1).
+#: Module roles are deferred to Phase 18: until then every module schema is
+#: owned by the application's role and a migration grants, revokes and
+#: reassigns nothing. It could not anyway — `ccure_user` has no CREATEROLE — so
+#: such a migration would stop the start-up migrator, and with it the API.
+_ROLE_DDL = re.compile(
+    r"\b(?:create|alter|drop)\s+(?:role|user|group)\b"
+    r"|\bgrant\s+[a-z_,() ]+?\s+(?:on|to)\b"
+    r"|\brevoke\s+[a-z_,() ]+?\s+(?:on|from)\b"
+    r"|\bowner\s+to\b"
+    r"|\breassign\s+owned\b"
+    r"|\bdrop\s+owned\b"
+    r"|\balter\s+default\s+privileges\b"
+    r"|\bset\s+(?:session\s+|local\s+)?role\b"
+    r"|\bset\s+session\s+authorization\b",
+    re.IGNORECASE,
+)
+
+
+def _docstrings(tree: ast.AST) -> set[int]:
+    """ids of the docstring nodes — prose, which may say "grant" in passing."""
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                found.add(id(body[0].value))
+    return found
+
+
 def migration_problems(migrations_dir: Path, own_schema: str) -> list[str]:
     """
     A module's migrations act on its own schema only (Phase 11.3):
@@ -163,7 +200,9 @@ def migration_problems(migrations_dir: Path, own_schema: str) -> list[str]:
     * every table operation (``op.create_table``, ``op.add_column``, …) names
       ``schema=<own>`` explicitly — without it PostgreSQL puts the table in
       ``public``, which is Audit's and the platform's;
-    * any ``CREATE``/``DROP``/``ALTER SCHEMA`` in SQL names the module's own schema.
+    * any ``CREATE``/``DROP``/``ALTER SCHEMA`` in SQL names the module's own schema;
+    * no SQL creates, alters or drops a role, grants or revokes a privilege, or
+      changes an owner (Phase 11.4, D11-1: module roles are Phase 18's).
 
     Tables named in raw SQL are covered by ``foreign_table_references``, which
     scans the whole package, migrations included.
@@ -196,6 +235,20 @@ def migration_problems(migrations_dir: Path, own_schema: str) -> list[str]:
                     problems.append(
                         f"{path.name}:{lineno}: schema DDL names {m['schema']!r}; "
                         f"this module's migrations touch only {own_schema!r}"
+                    )
+        prose = _docstrings(tree)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and id(node) not in prose
+            ):
+                m = _ROLE_DDL.search(node.value)
+                if m:
+                    problems.append(
+                        f"{path.name}:{node.lineno}: {m.group(0)!r} — module roles, "
+                        f"grants and ownership are deferred to Phase 18 (D11-1); "
+                        f"{own_schema!r} stays owned by the application's role"
                     )
     return problems
 

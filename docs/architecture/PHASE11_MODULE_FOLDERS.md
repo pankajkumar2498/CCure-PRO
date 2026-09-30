@@ -131,6 +131,9 @@ Before it, per the plan and CLAUDE.md:
 
 ### 3.4 Database roles (decision D11-1)
 
+**Decided 30 Sep 2026: option A.** No module roles until Phase 18; step 11.4
+holds that decision in CI (§8).
+
 The plan lists "roles" under Phase 11 and "per-module database roles and grants
 for the existing tables" under Phase 18. The measured constraint: the
 application's role cannot create roles, and giving it `CREATEROLE` would let it
@@ -222,13 +225,13 @@ workers' `-Q` lists are in `docker-compose.yml`, outside any module folder.
 
 ## 4. Steps (one commit each, review stop after each)
 
-| Step     | What                                                                                                                                                                                                  | Live change                                                                           | Gate                                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **11.1** | `ccure_platform/modules/` registry and manifests (Audit's describing today; Policy/Rank empty); `main.py` and `celery_app.py` read it                                                                 | none (code only; API restart picks up identical routes)                               | OpenAPI hash, 273 / 93 / 21 / 11 identical; full suite                                                                              |
-| **11.2** | `ccure_policy/` and `ccure_rank/` skeletons, READMEs; the four layer rules; the table-registry schema check; the `ccure_example` done-test fixture                                                    | none                                                                                  | guardrail suite; done-test green; full suite                                                                                        |
-| **11.3** | Alembic branches: `alembic.ini`, `env.py`, two base migrations, **every `head` → `heads`** (start-up migrator, conftest, 21 docs/scripts, fingerprint, alongside). Rehearsed on a restored copy first | **yes**: one API restart creates the two empty schemas and two `alembic_version` rows | backup; rehearsal record (row counts and digests identical, downgrade proven); after: `public` unchanged, schemas empty; full suite |
-| **11.4** | D11-1 option B only: the DBA bootstrap for module roles                                                                                                                                               | only if B                                                                             | —                                                                                                                                   |
-| **11.5** | `.github/CODEOWNERS`, CLAUDE.md, plan status                                                                                                                                                          | none                                                                                  | —                                                                                                                                   |
+| Step     | What                                                                                                                                                                                                                                                                                 | Live change                                                                           | Gate                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **11.1** | `ccure_platform/modules/` registry and manifests (Audit's describing today; Policy/Rank empty); `main.py` and `celery_app.py` read it                                                                                                                                                | none (code only; API restart picks up identical routes)                               | OpenAPI hash, 273 / 93 / 21 / 11 identical; full suite                                                                              |
+| **11.2** | `ccure_policy/` and `ccure_rank/` skeletons, READMEs; the four layer rules; the table-registry schema check; the `ccure_example` done-test fixture                                                                                                                                   | none                                                                                  | guardrail suite; done-test green; full suite                                                                                        |
+| **11.3** | Alembic branches: `alembic.ini`, `env.py`, two base migrations, **every `head` → `heads`** (start-up migrator, conftest, 21 docs/scripts, fingerprint, alongside). Rehearsed on a restored copy first                                                                                | **yes**: one API restart creates the two empty schemas and two `alembic_version` rows | backup; rehearsal record (row counts and digests identical, downgrade proven); after: `public` unchanged, schemas empty; full suite |
+| **11.4** | D11-1 decided **option A**: no module roles in Phase 11 (Phase 18). The step holds the decision: `migration_problems` refuses role, grant, revoke and ownership SQL in a module migration; a DB test pins the schemas to the application's role and the option-B roles' absence (§8) | none                                                                                  | guardrail tests; full suite; invariants                                                                                             |
+| **11.5** | `.github/CODEOWNERS`, CLAUDE.md, plan status                                                                                                                                                                                                                                         | none                                                                                  | —                                                                                                                                   |
 
 ## 5. Risks
 
@@ -352,3 +355,30 @@ restart the api. Both were rehearsed in steps 4 and 5.
 | `:443`, signed in (`live_checks valid`)                                                                                         | 21 / 21, as before                                                                                                                    |
 | Representative workflow (dashboard, scans, scan detail, policy snapshot, comparison, assets, findings, remediation, compliance) | every status 200 as before; every body identical except the scan list's `emitted_at`                                                  |
 | Guardrail and migration tests, activated tree                                                                                   | 508 passed, 13 skipped; the test database upgraded to the same three heads                                                            |
+
+## 8. Step 11.4 as built: decision D11-1 held, no roles (30 Sep 2026)
+
+§4 defined 11.4 as "D11-1 option B only: the DBA bootstrap for module roles".
+The owner chose **option A** — schemas now, roles in Phase 18 — so there is no
+bootstrap, no role, no grant, no database change and no live change. What the
+step does instead is make the decision hold until Phase 18.
+
+**Why a guard is needed, not only a decision.** Measured on `ccure_db`, read
+only: `ccure_user` has no `CREATEROLE`; `policy_pro` and `rank` are owned by
+`ccure_user` with default privileges; no `policy`/`rank` role exists. A module
+migration that ran `CREATE ROLE`, `GRANT … TO` or `ALTER SCHEMA … OWNER TO`
+would therefore not merely break D11-1 — it would fail inside the start-up
+migrator, which exits, so the API would not start. A team writing its first
+migration is exactly who would reach for a grant.
+
+| Change                                           | What it does                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module_boundaries.migration_problems`           | a third rule beside 11.3's two: no SQL string in a module migration creates, alters or drops a role/user/group, grants or revokes, changes an owner (`OWNER TO`, `REASSIGN OWNED`, `DROP OWNED`), alters default privileges or switches role. Docstrings are prose and are not read |
+| `tests/repo/test_alembic_module_branches.py`     | 13 statement shapes refused; prose about grants in a docstring accepted; the real modules and the proof module pass; on the test database, each module schema is owned by the connecting role with no ACL, and option B's `ccure_policy_owner` / `ccure_rank_owner` do not exist    |
+| `ccure_policy/README.md`, `ccure_rank/README.md` | the migration step says so, where a team reads it                                                                                                                                                                                                                                   |
+
+**Phase 18 lifts it.** When connections are split per module, Phase 18 adds the
+roles through a DBA bootstrap (the `bootstrap_chain.sql` pattern, never a
+migration run as `ccure_user`) and changes the schema-ownership test to the new
+owners. Until then the rule is: a module's schema belongs to the application's
+role, like `public`.

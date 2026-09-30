@@ -15,6 +15,9 @@ What is pinned:
 * a module's migrations act only on its own schema
   (``module_boundaries.migration_problems``), proven against the real modules,
   the test-only proof module, and synthetic violations;
+* Phase 11.4 (decision D11-1): no module roles before Phase 18 — no migration
+  creates a role, grants, revokes or changes an owner, and the module schemas
+  stay owned by the application's role;
 * the activation helper changes exactly two settings and keeps the file's line
   endings;
 * nothing that runs a migration still says ``head`` where it must say
@@ -181,6 +184,71 @@ def test_a_migration_reaching_outside_its_schema_is_caught(tmp_path, source, fra
     (tmp_path / "bad_0002.py").write_text(source + "\n")
     problems = mb.migration_problems(tmp_path, "policy_pro")
     assert any(fragment in p for p in problems), problems
+
+
+# ── Phase 11.4, decision D11-1: no module roles before Phase 18 ──────────────
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE ROLE ccure_policy_owner NOLOGIN",
+        "create user policy_app with password 'x'",
+        "ALTER ROLE ccure_user CREATEROLE",
+        "DROP ROLE IF EXISTS ccure_rank_owner",
+        "GRANT USAGE, CREATE ON SCHEMA policy_pro TO ccure_policy_owner",
+        "GRANT ccure_policy_owner TO ccure_user",
+        "REVOKE ALL ON SCHEMA policy_pro FROM PUBLIC",
+        "ALTER SCHEMA policy_pro OWNER TO ccure_policy_owner",
+        "ALTER TABLE policy_pro.t OWNER TO someone",
+        "REASSIGN OWNED BY ccure_user TO ccure_policy_owner",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA policy_pro GRANT SELECT ON TABLES TO x",
+        "SET ROLE ccure_policy_owner",
+        "SET SESSION AUTHORIZATION ccure_policy_owner",
+    ],
+)
+def test_a_module_migration_cannot_touch_roles_grants_or_owners(tmp_path, sql):
+    (tmp_path / "bad_0002.py").write_text(
+        f'from alembic import op\n\n\ndef upgrade():\n    op.execute("{sql}")\n'
+    )
+    problems = mb.migration_problems(tmp_path, "policy_pro")
+    assert any("deferred to Phase 18 (D11-1)" in p for p in problems), problems
+
+
+def test_prose_about_grants_in_a_docstring_is_not_a_statement(tmp_path):
+    (tmp_path / "ok_0002.py").write_text(
+        '"""Grant nothing here: roles, and who owns the schema, are Phase 18\'s."""\n'
+        "from alembic import op\n\n\n"
+        "def upgrade():\n"
+        '    """The owner to whom grants go is decided later."""\n'
+        '    op.execute("CREATE SCHEMA IF NOT EXISTS policy_pro")\n'
+    )
+    assert mb.migration_problems(tmp_path, "policy_pro") == []
+
+
+def test_module_schemas_belong_to_the_application_role_and_no_module_role_exists(
+    db_session,
+):
+    from sqlalchemy import text
+
+    for m in MODULES:
+        owner, acl = db_session.execute(
+            text(
+                "SELECT pg_get_userbyid(nspowner), nspacl::text "
+                "FROM pg_namespace WHERE nspname = :s"
+            ),
+            {"s": m.db_schema},
+        ).one()
+        me = db_session.execute(text("SELECT current_user")).scalar()
+        assert (owner, acl) == (me, None), m.db_schema
+    # The role names option B would have created (PHASE11_MODULE_FOLDERS.md §3.4).
+    assert (
+        db_session.execute(
+            text(
+                "SELECT count(*) FROM pg_roles "
+                "WHERE rolname IN ('ccure_policy_owner', 'ccure_rank_owner')"
+            )
+        ).scalar()
+        == 0
+    )
 
 
 # ── the activation helper ────────────────────────────────────────────────────

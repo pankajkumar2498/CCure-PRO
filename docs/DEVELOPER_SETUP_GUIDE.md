@@ -379,8 +379,8 @@ Branches on whether the `public` schema has tables:
 
 - **Empty** → `Base.metadata.create_all()`, `create_partitions()` (8 hash
   partitions each for `audit_logs` and `asset_vulnerabilities`), then
-  `alembic stamp head`.
-- **Existing** → `alembic upgrade head`.
+  `alembic stamp heads`.
+- **Existing** → `alembic upgrade heads`.
 
 It then runs the four additive helpers (`ensure_user_schema`,
 `ensure_mac_vendor_schema`, `ensure_scan_schema`, `ensure_topology_schema`),
@@ -392,8 +392,9 @@ seeds RBAC and the default organization, and prints a table summary.
 cd Backend
 alembic current
 alembic history --verbose
-alembic upgrade head
-alembic downgrade -1
+alembic heads                       # one per branch: Audit's, then each core module's
+alembic upgrade heads
+alembic downgrade <head revision>@-1  # a bare -1 is ambiguous with several heads
 alembic revision --autogenerate -m "describe the change"
 ```
 
@@ -609,8 +610,8 @@ Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
    roles the feed scripts expect.
 5. `python db/migrate_production_schema.py`, `python -m scripts.seed_compliance`,
    `python -m scripts.seed_real_rules`.
-6. **Alembic integrity** — `alembic downgrade -1` then `alembic upgrade head`, so
-   the newest migration must be reversible.
+6. **Alembic integrity** — `alembic downgrade <rev>@-1` for every head, then
+   `alembic upgrade heads`, so the newest migration on each branch must be reversible.
 7. **OpenAPI schema diff** — dumps `app.openapi()` deterministically and `diff`s
    against the committed `Backend/openapi.json`. A mismatch **fails the build**.
 8. `pytest --cov=. --cov-report=xml -v --reruns 1` with `MOCK_SCANNERS=true`.

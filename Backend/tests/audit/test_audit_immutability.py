@@ -47,7 +47,7 @@ def require_hardening(db_session):
     if not _hardening_installed(db_session):
         pytest.skip(
             "audit_logs append-only enforcement is not installed in this "
-            "database (migration f5a6b7c8d9e0). Run `alembic upgrade head`."
+            "database (migration f5a6b7c8d9e0). Run `alembic upgrade heads`."
         )
 
 

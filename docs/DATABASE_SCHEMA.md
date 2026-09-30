@@ -1438,11 +1438,13 @@ holds plaintext.
 the `public` schema has any tables:
 
 - **Empty database** → `Base.metadata.create_all()`, then `create_partitions()`,
-  then `alembic stamp head`.
-- **Existing database** → `alembic upgrade head`.
+  then `alembic stamp heads`.
+- **Existing database** → `alembic upgrade heads`.
 
-CI additionally proves reversibility: `alembic downgrade -1` followed by
-`alembic upgrade head`.
+CI additionally proves reversibility: `alembic downgrade <rev>@-1` for every head
+followed by `alembic upgrade heads`. The history has several heads since Phase
+11.3 — Audit's, and one per core module (`policy_pro`, `rank`), each module's
+branch in `<package>/migrations/` and creating only its own schema.
 
 > **IMPORTANT — the failure mode this branch creates.** A migration's `upgrade()`
 > never runs on a fresh install; the schema comes from `Base.metadata` and Alembic

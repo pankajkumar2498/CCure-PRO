@@ -470,15 +470,15 @@ def _build_test_schema():
     that read like application bugs. A renamed column cost a debugging session
     exactly that way.
 
-    Why this does not simply run ``alembic upgrade head`` on an empty database:
+    Why this does not simply run ``alembic upgrade heads`` on an empty database:
     revision ``7f96fc2fa41a_initial_schema`` is an intentional no-op baseline
     adopted over an already-existing schema, and no migration creates the core
-    tables. From empty, ``upgrade head`` therefore creates nothing and the first
+    tables. From empty, ``upgrade heads`` therefore creates nothing and the first
     incremental revision fails on ``ALTER TABLE organizations``. The models are
     the only complete description of the schema, so a bootstrap builds from
     them and stamps Alembic to match.
 
-    Once bootstrapped, a database stamped *behind* head is upgraded normally —
+    Once bootstrapped, a database stamped *behind* the heads is upgraded normally —
     which does exercise newly added migrations, against a populated schema,
     which is the same path a real deployment takes.
     """
@@ -490,19 +490,27 @@ def _build_test_schema():
     from alembic.script import ScriptDirectory
     from sqlalchemy import inspect
 
+    from ccure_platform.modules import registry as module_registry
+
     backend_dir = Path(__file__).absolute().parents[1]
     cfg = Config(str(backend_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     cfg.set_main_option("sqlalchemy.url", database_url)
-    head = ScriptDirectory.from_config(cfg).get_current_head()
+    # Phase 11.3: a history with a branch per core module has several heads.
+    # get_current_head() and get_current_revision() raise once there is more
+    # than one, so both sides are compared as sets.
+    heads = set(ScriptDirectory.from_config(cfg).get_heads())
+    module_schemas = [
+        m.db_schema for m in module_registry.modules() if m.db_schema != "public"
+    ]
 
     with engine.connect() as conn:
         inspector = inspect(conn)
         table_count = len(inspector.get_table_names())
-        current = MigrationContext.configure(conn).get_current_revision()
+        current = set(MigrationContext.configure(conn).get_current_heads())
 
     forced = os.getenv("PYTEST_REBUILD_SCHEMA") == "1"
-    bootstrap = forced or current is None
+    bootstrap = forced or not current
 
     if bootstrap:
         logger.info(
@@ -512,6 +520,12 @@ def _build_test_schema():
         with engine.begin() as conn:
             conn.execute(text("DROP SCHEMA public CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
+            # The core modules' schemas (Phase 11.3) are rebuilt with public:
+            # `stamp heads` below records their branches as applied, so the
+            # schemas those branches create must exist, and must be empty.
+            for schema in module_schemas:
+                conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                conn.execute(text(f'CREATE SCHEMA "{schema}"'))
 
         # Dropping the schema also drops pg_trgm, pgcrypto and uuid-ossp, which
         # live in it — without them create_all fails on the trigram index over
@@ -525,13 +539,23 @@ def _build_test_schema():
 
         with engine.begin() as conn:
             Base.metadata.create_all(bind=conn)
-        command.stamp(cfg, "head")
+            for md in (
+                md
+                for m in module_registry.modules()
+                for md in module_registry.module_metadatas(m)
+            ):
+                md.create_all(bind=conn)
+        command.stamp(cfg, "heads")
         SCHEMA_WAS_BOOTSTRAPPED = True
         return
 
-    if current != head:
-        logger.info("Applying migrations %s -> %s to test schema", current, head)
-        command.upgrade(cfg, "head")
+    if current != heads:
+        logger.info(
+            "Applying migrations %s -> %s to test schema",
+            sorted(current),
+            sorted(heads),
+        )
+        command.upgrade(cfg, "heads")
 
     # Gap-fill: models added without a migration still need their tables. Any
     # table created here is a missing migration and is reported as such.
@@ -611,7 +635,7 @@ def seed_system_roles():
 
         # audit_logs' append-only enforcement is triggers and grants, which
         # SQLAlchemy metadata cannot express — so the create_all bootstrap
-        # above does not produce it, and `alembic stamp head` means the
+        # above does not produce it, and `alembic stamp heads` means the
         # migration that would never runs. Applying it here is what lets
         # tests/audit/test_audit_immutability.py actually exercise the
         # controls instead of skipping. It must come *after* create_partitions:

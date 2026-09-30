@@ -25,7 +25,7 @@ COMPLIANCE_QUEUE_CONCURRENCY=2
 2. Run database migrations and seed static frameworks:
    ```bash
    cd Backend
-   poetry run alembic upgrade head
+   poetry run alembic upgrade heads
    python -m scripts.seed_compliance --seed-file scripts/iso27001_2022_controls_seed.json
    ```
 3. Start the Celery workers explicitly monitoring the compliance queue:

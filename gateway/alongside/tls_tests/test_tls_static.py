@@ -69,7 +69,7 @@ def test_production_is_only_ever_read_by_the_live_state_fingerprint():
     for line in _LIVE.group(0).strip().splitlines()[1:-1]:
         assert line.strip().startswith(("#", "sha256sum ", "docker inspect ", "docker exec ccure-api printenv ",
                                         "docker exec ccure-db psql ")), line
-    assert "select version_num from alembic_version" in _LIVE.group(0)
+    assert "string_agg(version_num, ',' order by version_num) from alembic_version" in _LIVE.group(0)
 
 
 def test_production_host_nginx_is_never_mounted_or_written():

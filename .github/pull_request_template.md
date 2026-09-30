@@ -18,7 +18,7 @@ Please verify that you have completed the following checks before requesting rev
 
 ### Automated Validation
 - [ ] **Unit & Integration Tests:** Pytest suite passes locally (`pytest`).
-- [ ] **Alembic Reversibility:** Database migrations have been tested forward and backward (`alembic upgrade head && alembic downgrade -1`).
+- [ ] **Alembic Reversibility:** Database migrations have been tested forward and backward (`alembic upgrade heads && alembic downgrade <head revision>@-1` for each head the change touches).
 - [ ] **Static Code Analysis:** Pre-commit hooks run cleanly with no linter/formatter or Bandit security warnings.
 - [ ] **OpenAPI Diff Check:** OpenAPI schema generates successfully and has no undocumented breaking changes.
 

@@ -7,7 +7,7 @@ Why this lives here rather than only in the migration
 ────────────────────────────────────────────────────
 This project builds its schema two ways (see ``tests/repo/test_schema_drift.py``):
 a fresh install runs ``Base.metadata.create_all()`` and stamps Alembic head, an
-existing install runs ``alembic upgrade head``. Triggers and grants cannot be
+existing install runs ``alembic upgrade heads``. Triggers and grants cannot be
 expressed in SQLAlchemy metadata, so DDL written only inside a migration would
 never execute on a fresh install — the exact fresh-vs-migrated divergence that
 test exists to catch, except invisible, because the missing thing is a security

@@ -464,7 +464,7 @@ def run_alembic_migrations():
 
         # Triggers and grants cannot be expressed in SQLAlchemy metadata, so
         # `create_all` does not produce them and the migration that would has
-        # just been skipped by the `stamp head` below. Without this call a
+        # just been skipped by the stamp below. Without this call a
         # fresh install would come up with `audit_logs` fully mutable while an
         # upgraded install was append-only — the fresh-vs-migrated divergence
         # `tests/repo/test_schema_drift.py` exists to catch, except that test
@@ -505,18 +505,57 @@ def run_alembic_migrations():
             "    cannot be cryptographically verified."
         )
 
-        print("  ✓ Schema bootstrap complete; stamping Alembic head.")
-        command = [sys.executable, "-m", "alembic", "stamp", "head"]
+        # Phase 11.3: each core module has its own branch, so the history has
+        # several heads. `create_all` built Audit's and the platform's tables
+        # only (Base.metadata), so only Audit's history is stamped; the module
+        # branches then run as real migrations and create their own schemas.
+        # Stamping `heads` instead would record a CREATE SCHEMA that never ran.
+        audit_heads = _audit_heads()
+        print(
+            f"  ✓ Schema bootstrap complete; stamping Audit's head {', '.join(audit_heads)}."
+        )
+        commands = [
+            [sys.executable, "-m", "alembic", "stamp", *audit_heads],
+            [sys.executable, "-m", "alembic", "upgrade", "heads"],
+        ]
     else:
-        command = [sys.executable, "-m", "alembic", "upgrade", "head"]
+        # `heads`, not `head`: with several heads `head` fails with "Multiple
+        # head revisions", which here would stop the API starting.
+        commands = [[sys.executable, "-m", "alembic", "upgrade", "heads"]]
 
+    for command in commands:
+        _run_alembic(command)
+
+
+def _audit_heads() -> list[str]:
+    """The heads of Audit's own history, ``alembic/versions`` — not the core
+    modules' branches, which live in their packages' ``migrations`` folders."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory.from_config(Config(os.path.join(_BACKEND, "alembic.ini")))
+    versions = os.path.realpath(os.path.join(_BACKEND, "alembic", "versions"))
+    heads = sorted(
+        h
+        for h in script.get_heads()
+        if os.path.dirname(os.path.realpath(script.get_revision(h).path)) == versions
+    )
+    if not heads:
+        print("  ✗ Audit's history has no head in alembic/versions")
+        sys.exit(1)
+    return heads
+
+
+def _run_alembic(command: list[str]) -> None:
     try:
         result = subprocess.run(
             command, cwd=_BACKEND, capture_output=True, text=True, timeout=120
         )
 
         if result.returncode == 0:
-            print("  ✓ Alembic command completed successfully")
+            print(
+                f"  ✓ Alembic command completed successfully: {' '.join(command[3:])}"
+            )
             if result.stdout:
                 for line in result.stdout.strip().split("\n"):
                     if line.strip():

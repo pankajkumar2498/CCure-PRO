@@ -251,3 +251,84 @@ workers' `-Q` lists are in `docker-compose.yml`, outside any module folder.
 | **D11-4** | Per-module Celery queues                                                                                                                                   | **`default` until needed** (option A)                                  |
 | **D11-5** | Route prefixes `/policy` and `/rank` (gateway: `/api/policy`, `/api/rank`), schemas `policy_pro` and `rank`, task prefixes `ccure.policy.` / `ccure.rank.` | As the plan names them                                                 |
 | **D11-6** | Whether 11.3's live restart is scheduled with the owner present, as 10.5–10.7 were                                                                         | Yes                                                                    |
+
+## 7. Step 11.3 as built: preparation and rehearsal (30 Sep 2026)
+
+### 7.1 One deviation from §4: activation is its own step
+
+§4 had `alembic.ini` gain `version_locations` in the same commit as the branches.
+It does not, and the reason is a property of this deployment: `./Backend` is
+bind-mounted into the live API, and every API start runs
+`db/migrate_production_schema.py` → `alembic upgrade heads`. A committed
+`version_locations` would therefore apply the module migrations to `ccure_db` on
+the next restart for **any** reason — a crash or a reboot — not at a time anyone
+chose.
+
+So the 11.3 commit ships everything except the switch:
+
+| In the commit                                                                                          | Effect on the live system                             |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `ccure_policy/migrations/policy_pro_0001`, `ccure_rank/migrations/rank_0001` (new bases, own labels)   | none — Alembic does not see the folders yet           |
+| `env.py`: every module metadata, `include_schemas`, `include_name` (public + module schemas only)      | none — no module declares a table                     |
+| Start-up migrator: `upgrade heads`; a fresh install stamps **Audit's** head only, then `upgrade heads` | a restart runs `upgrade heads` over one head: a no-op |
+| conftest compares heads as sets; `alembic_version` readers aggregate every row                         | none                                                  |
+| `module_boundaries.migration_problems`, `tests/repo/test_alembic_module_branches.py`                   | none                                                  |
+| `scripts/db/alembic_module_branches.py` — the activation, `--status` / `--print` / `--write`           | none until `--write`                                  |
+| Runbooks, CI and the PR template say `heads`; `downgrade -1` becomes `<rev>@-1` per head               | none                                                  |
+
+The activation changes exactly `alembic.ini`: one comment and the
+`version_locations` line added, `path_separator = os` → `space`. The rehearsal
+applies the same `activate()` to the same committed file, so what was rehearsed
+is what goes live.
+
+**A fresh install stamps only Audit's history.** `create_all` builds
+`Base.metadata` — Audit's and the platform's tables — and nothing of the
+modules. Stamping `heads` would record the modules' `CREATE SCHEMA` as applied
+when it never ran. So the migrator stamps Audit's head (found as the heads whose
+file lives in `alembic/versions`) and then runs `upgrade heads`, and the module
+branches build their schemas as real migrations. The first version created the
+schemas by importing the module registry into `db/`, which the
+`models-are-leaves` layer rule refused; this form needs no registry at all.
+
+### 7.2 Rehearsal record
+
+`scripts/db/rehearse_module_branches.sh <full dump> <out>` on
+`ccure_db_20260930_201214_full.dump` (sha256 `a829000f…`), taken at 20:12 IST
+and copied to the workstation. Every database it touches is `ccure_rehearsal_*`
+(`scripts/db/rehearsal_env.py` refuses any other name); the code runs from a
+copy of `Backend` inside `ccure-api`. Each step is fingerprinted by
+`scripts/db/rehearsal_snapshot.sql`: `alembic_version`, every schema with owner
+and table count, every table's row count **and an md5 over its rows**, and per
+schema digests of columns, constraints, indexes, triggers, functions and grants.
+
+| Step                                               | Result                                                                                                      |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 0 restore                                          | 146 facts; `alembic_version` = `f3b5d7e9a1c4`                                                               |
+| 1 start-up migrator, branches **inactive**         | **identical** to 0 — what a restart after this commit does                                                  |
+| 2 start-up migrator, branches **active**           | vs 1: exactly `alembic_version` +2 rows, schemas `policy_pro` and `rank` (owner `ccure_user`, **0 tables**) |
+| 3 migrator again                                   | identical to 2 (idempotent)                                                                                 |
+| 4 `downgrade policy_pro@base`, `rank@base`         | identical to 1                                                                                              |
+| 5 `upgrade heads`                                  | identical to 2                                                                                              |
+| 6 fresh empty database, migrator, active           | three heads; `policy_pro`, `rank` with 0 tables                                                             |
+| 7 CI's loop (`<rev>@-1` per head, `upgrade heads`) | identical to 6; Audit's newest migration and both bases reversed and re-applied                             |
+| 8 migration/schema tests, active                   | 143 passed, 13 skipped, on a scratch `…_pytest_db`, which ended at three heads                              |
+| 9 cleanup                                          | every rehearsal database dropped                                                                            |
+
+Every public table's rows and content hash, and every digest of `public`,
+`audit_chain` and `audit_retention`, were unchanged across all steps.
+
+### 7.3 The live step (not yet taken — owner present, D11-6)
+
+1. `scripts/backup_db.sh --remote pankaj@10.180.6.30:D:/ccure-backups --ssh-key ~/.ssh/ccure_backup_ed25519` (full).
+2. `docker exec -w /app ccure-api python -m scripts.db.alembic_module_branches --write`
+   — the api container's user cannot write the bind mount on this VM, so in
+   practice `--print` there and write the file on the host.
+3. `docker compose up -d --no-deps api`; the start-up migrator creates the two
+   schemas and the two rows.
+4. Verify: `alembic_version` holds three rows; `policy_pro` and `rank` exist
+   with no tables; the invariants (OpenAPI hash, 273 / 93 / 21 / 11) and the
+   gateway path over `:443` are unchanged.
+
+**Rollback**: `alembic downgrade policy_pro@base` and `rank@base` (drops the
+two empty schemas, `RESTRICT`), then `git checkout -- Backend/alembic.ini` and
+restart the api. Both were rehearsed in steps 4 and 5.

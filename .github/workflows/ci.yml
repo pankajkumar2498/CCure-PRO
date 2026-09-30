@@ -140,10 +140,14 @@ jobs:
       - name: Run Alembic Migration Integrity Check
         run: |
           cd Backend
-          # Run rollback check on the latest migration
-          alembic downgrade -1
-          # Re-apply the migration to return to head
-          alembic upgrade head
+          # Roll back the newest migration on every branch, then re-apply them.
+          # Each core module has its own branch (Phase 11.3), so the history has
+          # several heads and a bare `downgrade -1` is ambiguous: step back from
+          # each head by name instead.
+          for rev in $(alembic heads | awk '{print $1}'); do
+            alembic downgrade "${rev}@-1"
+          done
+          alembic upgrade heads
 
       - name: OpenAPI Schema Diff Check
         run: |

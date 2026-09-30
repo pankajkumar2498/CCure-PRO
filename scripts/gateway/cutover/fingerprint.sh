@@ -45,7 +45,8 @@ docker exec ccure-api printenv TRUSTED_PROXIES 2>/dev/null || echo "TRUSTED_PROX
 docker exec ccure-api sh -c 'tr "\0" " " < /proc/1/cmdline; echo; for p in /proc/[0-9]*; do c=$(tr "\0" " " < $p/cmdline 2>/dev/null); case "$c" in *uvicorn*) echo "$c";; esac; done' 2>&1 | grep -av "^sh -c tr" | sort -u
 
 echo "## database"
-docker exec ccure-db psql -U postgres -d ccure_db -Atc "select 'alembic_version=' || version_num from alembic_version"
+# every head, ordered: one row per Alembic branch since Phase 11.3
+docker exec ccure-db psql -U postgres -d ccure_db -Atc "select 'alembic_version=' || string_agg(version_num, ',' order by version_num) from alembic_version"
 docker exec ccure-db psql -U postgres -d ccure_db -Atc "select 'tables=' || count(*) from information_schema.tables where table_schema='public'"
 docker exec ccure-db psql -U postgres -d ccure_db -Atc "select 'schema_digest=' || md5(string_agg(table_name||'.'||column_name||':'||data_type||':'||is_nullable, ',' order by table_name, column_name)) from information_schema.columns where table_schema='public'"
 docker exec ccure-db psql -U postgres -d ccure_db -Atc "select 'constraint_digest=' || md5(string_agg(conname||':'||pg_get_constraintdef(oid), ',' order by conname)) from pg_constraint where connamespace='public'::regnamespace"

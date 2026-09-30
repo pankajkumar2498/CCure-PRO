@@ -10,7 +10,7 @@ Deploy the compliance module to production in this strict sequence:
 
 1. **Step 1: DB Schema Migration**: Run Alembic migrations to create the 18 compliance tables.
    ```bash
-   alembic upgrade head
+   alembic upgrade heads
    ```
 2. **Step 2: Seed Static Data**: Execute the seeding script to populate `compliance_frameworks` and the 93 `compliance_controls` for ISO 27001:2022.
    ```bash
@@ -59,7 +59,7 @@ Roll back the deployment if any of the following occur:
 1. Set the feature flag to `false` (`COMPLIANCE_ENGINE_ENABLED=false`) and restart the API pods. This instantly hides the workspace and blocks requests.
 2. In case of schema issues, perform an Alembic downgrade:
    ```bash
-   alembic downgrade -1
+   alembic downgrade <revision to roll back>@-1
    ```
 
 ---

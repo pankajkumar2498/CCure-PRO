@@ -146,7 +146,7 @@ If you are using PowerShell:
 powershell
 cd Backend
 $env:DATABASE_URL="postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_db"
-.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic upgrade heads
 Remove-Item Env:DATABASE_URL
 
 
@@ -154,7 +154,7 @@ If you are using Command Prompt (CMD):
 cmd
 cd Backend
 set DATABASE_URL=postgresql://ccure_user:ccure_admin_2026@127.0.0.1:5432/ccure_db
-.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic upgrade heads
 set DATABASE_URL=
 
 
@@ -166,13 +166,13 @@ If you are using PowerShell:
 powershell
 cd Backend
 $env:APP_ENV="production"
-.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic upgrade heads
 Remove-Item Env:APP_ENV
 If you are using Command Prompt (CMD):
 cmd
 cd Backend
 set APP_ENV=production
-.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic upgrade heads
 set APP_ENV=
 
 

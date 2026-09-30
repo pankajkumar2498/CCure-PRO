@@ -44,8 +44,11 @@ All inside this folder; `Backend/tests/modules/example/` shows each one end to e
    `"ccure_policy.models.<file>:metadata"` to `models`, and register the table as
    `policy_pro.<table>: {owner: policy_pro, capability: …}` in
    `scripts/architecture/table_ownership.yaml`.
-3. **Migration** — this module's own Alembic branch (Phase 11.3 adds the
-   `migrations/` folder and wires it in).
+3. **Migration** — in `migrations/`, this module's own Alembic branch
+   (`policy_pro`, base revision `policy_pro_0001`, which creates the empty `policy_pro`
+   schema). `alembic revision --head policy_pro@head -m "…"` adds the next one.
+   Every table operation passes `schema="policy_pro"`, and no SQL names another
+   schema — `tests/repo/test_alembic_module_branches.py` checks both.
 4. **Task** — `celery.shared_task(name="ccure.policy.<name>")` in a module listed
    under `task_modules`. It runs on the `default` queue; a dedicated queue is a
    platform change made with the team.

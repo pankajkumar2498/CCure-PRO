@@ -38,7 +38,7 @@ live_state() {
     docker inspect ccure-api ccure-db --format '{{.Name}} {{.State.StartedAt}}'
     sha256sum /home/cdac/ccure-keys/keyset.json 2>/dev/null | cut -c1-16 || echo "keyset not readable"
     docker exec ccure-api printenv CCURE_TOKEN_SIGNING_ALG CCURE_ACCEPT_LEGACY_HS256 2>/dev/null | tr '\n' ' '; echo
-    docker exec ccure-db psql -U postgres -d ccure_db -Atc 'select version_num from alembic_version'
+    docker exec ccure-db psql -U postgres -d ccure_db -Atc "select string_agg(version_num, ',' order by version_num) from alembic_version"
 }
 live_before=$(live_state)
 

@@ -129,6 +129,77 @@ def module_table_problems(manifest, metadatas: list, ownership: dict) -> list[st
     return problems
 
 
+#: Alembic operations that act on a table and take a ``schema=`` argument.
+_TABLE_OPS = frozenset(
+    {
+        "create_table",
+        "drop_table",
+        "rename_table",
+        "add_column",
+        "drop_column",
+        "alter_column",
+        "create_index",
+        "drop_index",
+        "create_unique_constraint",
+        "create_foreign_key",
+        "create_check_constraint",
+        "create_primary_key",
+        "drop_constraint",
+        "bulk_insert",
+        "create_table_comment",
+        "drop_table_comment",
+    }
+)
+_SCHEMA_DDL = re.compile(
+    r"\b(?:create|drop|alter)\s+schema\s+(?:if\s+(?:not\s+)?exists\s+)?\"?(?P<schema>[a-z_][a-z0-9_]*)\"?",
+    re.IGNORECASE,
+)
+
+
+def migration_problems(migrations_dir: Path, own_schema: str) -> list[str]:
+    """
+    A module's migrations act on its own schema only (Phase 11.3):
+
+    * every table operation (``op.create_table``, ``op.add_column``, …) names
+      ``schema=<own>`` explicitly — without it PostgreSQL puts the table in
+      ``public``, which is Audit's and the platform's;
+    * any ``CREATE``/``DROP``/``ALTER SCHEMA`` in SQL names the module's own schema.
+
+    Tables named in raw SQL are covered by ``foreign_table_references``, which
+    scans the whole package, migrations included.
+    """
+    problems: list[str] = []
+    for path in sorted(migrations_dir.glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError as exc:  # pragma: no cover
+            problems.append(f"{path.name}: cannot parse: {exc}")
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _TABLE_OPS
+            ):
+                schema = next(
+                    (k.value for k in node.keywords if k.arg == "schema"), None
+                )
+                value = schema.value if isinstance(schema, ast.Constant) else None
+                if value != own_schema:
+                    problems.append(
+                        f"{path.name}:{node.lineno}: op.{node.func.attr} must pass "
+                        f"schema={own_schema!r} (got {value!r})"
+                    )
+        for lineno, text in _string_constants(tree):
+            for m in _SCHEMA_DDL.finditer(text):
+                if m["schema"].lower() != own_schema:
+                    problems.append(
+                        f"{path.name}:{lineno}: schema DDL names {m['schema']!r}; "
+                        f"this module's migrations touch only {own_schema!r}"
+                    )
+    return problems
+
+
 def _imports(tree: ast.AST):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

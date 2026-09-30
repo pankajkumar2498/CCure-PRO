@@ -237,7 +237,8 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `max_concurrent_scans`, `scan_scope_cidrs`) are Audit's. They leave
     `organizations` in step 8.4, and the 11 mentions in identity's own code
     are a baseline that reaches zero there.
-- **Owner (D6):** the Project Owner, until Phase 11's `CODEOWNERS`.
+- **Owner (D6):** the Project Owner. `.github/CODEOWNERS` (Phase 11) records it,
+  with placeholder handles until real ones are supplied — see "Core modules".
 - **Tokens are signed and verified only in `ccure_platform.identity.tokens`**
   (Phase 9.1). No other module imports a JWT library.
   - Verify with `tokens.verify(token, expected_kind=…)`; the kind is required,
@@ -350,6 +351,67 @@ existing `core/`, `engines/`, `scans/` and `reporting/` code is used, not moved.
 - **Nothing in production imports the adapter** until the integration phase;
   `test_nothing_in_production_imports_the_integration_adapter_yet` enforces it.
   Only the adapter may import `ccure_contracts`.
+
+## Core modules: Policy Pro, Audit, Rank (Phase 11)
+
+The core service holds three modules. Record and decisions:
+[`docs/architecture/PHASE11_MODULE_FOLDERS.md`](docs/architecture/PHASE11_MODULE_FOLDERS.md);
+each module's `README.md` is the guide its team works from.
+
+| Module | Package | Key / schema | Routes | State |
+| --- | --- | --- | --- | --- |
+| Ccure Policy (Policy Pro) | `Backend/ccure_policy/` | `policy_pro` | `/policy` | empty, disabled |
+| Ccure Audit | `Backend/ccure_audit/` | `audit` / `public` | unprefixed (predate the registry) | the product; most code still in `core/`, `engines/`, … until Phase 16 |
+| Ccure Rank | `Backend/ccure_rank/` | `rank` | `/rank` | empty, disabled |
+
+- **The registry is `ccure_platform/modules/`**, a stdlib-only leaf read by
+  `main.py` and `core/celery_app.py`. The platform owns each module's identity
+  (key, package, schema, route and task prefix, enabled) in `_IDENTITIES`; the
+  module owns what it contributes — `routers`, `task_modules`, `models` — in its
+  own `manifest.toml`. Turning a module on is a platform change. **Audit's
+  manifest is deliberately empty**: `main.py` still mounts its routers, and
+  declaring them there too would mount each twice.
+- **Policy Pro and Rank ship no routes, tables or tasks.** Nothing may be added
+  to them outside their teams' own work; the OpenAPI document, 273 routes, 93
+  rate-limited routes, 21 tasks at import and 11 beat entries are unchanged by
+  Phase 11 and are the regression gate for any change here.
+- **Boundaries, all enforced in CI:** `module-isolation:<pkg>` (a module
+  imports only itself, `ccure_platform.api`, `ccure_contracts` and `db.base`)
+  and `module-is-private:<pkg>` (nothing imports a module; it is mounted from
+  its manifest's dotted names); `scripts/architecture/module_boundaries.py`
+  checks that a module's tables are in its schema and registered to it, that no
+  module's SQL names another's table, that module tests live in
+  `tests/modules/<key>/`, and that `CODEOWNERS` has a line per module. The
+  test-only `tests/modules/example/fixture/ccure_example` proves a route, table,
+  migration and task end to end and is never on the production list.
+- **The Alembic history has three heads**: Audit's (unlabelled, in
+  `alembic/versions/`), `policy_pro` and `rank` (each in
+  `<package>/migrations/`, base revision `<key>_0001`, which creates only the
+  empty schema). Live since 30 Sep 2026; `alembic_version` holds three rows.
+  - Always `upgrade heads` / `stamp heads`; `head` fails with several heads.
+    Roll back by name: `alembic downgrade <revision-or-branch>@-1`.
+  - A fresh install stamps **Audit's** head only, then runs `upgrade heads`, so
+    the module branches create their schemas as real migrations.
+  - A module migration names `schema=<own>` on every table operation, and no
+    SQL in it names another schema or touches roles, grants or owners
+    (`migration_problems`).
+  - `version_locations` in `alembic.ini` is what makes a branch visible, and is
+    written only by `python -m scripts.db.alembic_module_branches --write`.
+    **A change to `alembic.ini` needs `docker compose restart api`** — `up -d`
+    sees an unchanged service definition, answers `Running` and runs nothing.
+  - Every API start runs `alembic upgrade heads`, so a merged migration is
+    live at the next restart. `scripts/db/rehearse_module_branches.sh` is the
+    restore-and-fingerprint rehearsal to copy for anything non-trivial.
+- **No module database roles before Phase 18** (decision D11-1). The `policy_pro`
+  and `rank` schemas are owned by `ccure_user`, like `public`. `ccure_user` has
+  no `CREATEROLE`, so a migration creating a role or granting to one would stop
+  the start-up migrator and with it the API; `migration_problems` refuses them
+  and a test pins the ownership. Phase 18 adds roles through a DBA bootstrap,
+  never a migration.
+- **`.github/CODEOWNERS` owners are placeholders** (`@TODO-project-owner`,
+  `@TODO-audit-team`, `@TODO-policy-pro-team`, `@TODO-rank-team`); never invent
+  a real handle. "Require review from Code Owners" stays off until they are
+  replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 
@@ -1832,7 +1894,7 @@ Format and authoring guide: [`Backend/data/benchmarks/README.md`](Backend/data/b
   `BENCHMARK` theme; minting one per benchmark section would add ~80 values for
   four platforms alone. The section travels in `tags`.
 
-- **`_build_test_schema` bootstraps from the models and stamps head**, so a
+- **`_build_test_schema` bootstraps from the models and stamps heads**, so a
   migration written *after* a database was bootstrapped never runs against it.
   Column changes are gap-filled; **CHECK constraint changes are not**. If a
   constraint change seems not to have applied, check

@@ -1,4 +1,4 @@
-# CCure — who owns which part of the repository (Phase 11.2).
+# CCure — who owns which part of the repository (Phase 11.2, finalised 11.5).
 #
 # STRUCTURE ONLY. Every owner below is a PLACEHOLDER (`@TODO-…`): no real GitHub
 # user or team has been supplied yet, and none has been invented. GitHub treats
@@ -7,8 +7,9 @@
 #
 # "Require review from Code Owners" is deliberately NOT enabled in branch
 # protection. Turning it on is a repository setting for the project owner, and
-# only once real handles are in place — enabled with placeholders it would make
-# every change unmergeable.
+# only once real handles are in place: enabled with placeholders it would show
+# as on and require nobody, because the placeholder lines assign no one.
+# docs/ci/BRANCH_PROTECTION.md, "Code owners", has the order to do it in.
 #
 # Later lines take precedence over earlier ones (GitHub's rule), so the
 # catch-all is first. tests/repo/test_module_boundaries.py checks that every
@@ -30,6 +31,16 @@
 /Backend/scripts/architecture/      @TODO-project-owner
 /gateway/                           @TODO-project-owner
 /.github/                           @TODO-project-owner
+
+# Shared: what every module's migrations run through (Phase 11.3) — the one
+# place outside the module folders that names them — and the guardrails that
+# hold the module boundaries (a team loosening its own check is what review of
+# these lines is for).
+/Backend/alembic.ini                @TODO-project-owner
+/Backend/alembic/env.py             @TODO-project-owner
+/Backend/scripts/db/                @TODO-project-owner
+/scripts/db/                        @TODO-project-owner
+/Backend/tests/repo/                @TODO-project-owner
 
 # CCure Audit — the working module; its legacy code outside ccure_audit/ is
 # covered by the catch-all until Phase 16 moves it in.

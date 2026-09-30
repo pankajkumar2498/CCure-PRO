@@ -16,6 +16,9 @@ and `docs/architecture/PHASE11_MODULE_FOLDERS.md`.
 | Celery task names | `ccure.policy.<name>` |
 | Permission resource | `policy` |
 | Enabled | **no** — turning the module on is a platform change in `ccure_platform/modules/registry.py` |
+| Code owner | `@TODO-policy-pro-team` in `.github/CODEOWNERS` — a placeholder until the project owner supplies the real team (decision D11-3) |
+| Schema owner | `ccure_user`, the application's role, like `public` — module roles are Phase 18's (decision D11-1) |
+| Migration branch | `policy_pro` in `migrations/`, base revision `policy_pro_0001` (live since 30 Sep 2026) |
 
 ## What goes where
 
@@ -55,6 +58,21 @@ All inside this folder; `Backend/tests/modules/example/` shows each one end to e
 4. **Task** — `celery.shared_task(name="ccure.policy.<name>")` in a module listed
    under `task_modules`. It runs on the `default` queue; a dedicated queue is a
    platform change made with the team.
+
+## How this module's migrations run
+
+Alembic's history has **several heads** — Audit's, and one branch per core
+module — and `alembic_version` holds one row per head.
+
+- `alembic heads` lists them; this module's is `policy_pro@head`.
+- Always `alembic upgrade heads`. `head` (singular) fails with several heads.
+- Roll back one step on this branch only: `alembic downgrade policy_pro@-1`. A bare
+  `alembic downgrade -1` does not say which branch to step back on.
+- **A merged migration reaches production at the next API start.** Every API
+  start runs `db/migrate_production_schema.py`, which runs `alembic upgrade
+  heads`, so a migration that fails stops the API. Rehearse anything beyond an
+  empty table on a restored copy first — `scripts/db/rehearse_module_branches.sh`
+  is the pattern — and take a backup before it goes live (CLAUDE.md).
 
 ## Rules CI enforces
 

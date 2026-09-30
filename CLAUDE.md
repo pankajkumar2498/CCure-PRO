@@ -568,8 +568,11 @@ dump": up to six hours of operational data.
 
 ## Architecture
 
-- **API** — `ccure-api` container, `127.0.0.1:8000`, mounts `./Backend` (restart
-  picks up Python changes; no rebuild needed).
+- **API** — `ccure-api` container, mounts `./Backend` (restart picks up Python
+  changes; no rebuild needed). On the VM since Phase 10.7 it publishes no port
+  and listens on `172.31.254.20:8000` only; reach it through
+  `https://10.180.22.127/api/` (the gateway), or at that address from the host
+  for tooling.
 - **Frontend** — `ccure-frontend`, `localhost:3200`. Assets are **baked at build
   time**; JSX changes need `docker compose build frontend && docker compose up -d
   --no-deps frontend`.
@@ -764,8 +767,8 @@ dump": up to six hours of operational data.
     list said. uvicorn had already rewritten the peer before
     `get_client_ip` ran.
   - **HSTS** follows the resolved scheme, never the raw header.
-  - **Residual:** every host process arrives as `172.18.0.1` too. Only
-    unpublishing `:8000` (Phase 10.7) closes that.
+  - **Residual:** every host process arrived as `172.18.0.1` too. Phase 10.7
+    unpublished `:8000` and removed `172.18.0.1` from the api's list (below).
 
   **Since Phase 10.5 (live 30 Sep 2026) `:443` goes through the gateway:**
   host nginx → `ccure-api-gateway` (`172.31.254.10`) → `ccure-gateway-auth`
@@ -785,9 +788,30 @@ dump": up to six hours of operational data.
     - **Do not `mkdir` the directory by hand.** The bind is
       `create_host_path: false`, so a missing directory stops the gateway
       rather than letting Docker create it `root:root 0755`. `harden` creates it.
-  - **`172.18.0.1` stays trusted** so that the rollback is one nginx file.
+  - **Since 10.7 the gateway is the only production ingress.**
+    - **The api publishes no port.** There is no `127.0.0.1:8000`.
+    - **It listens only on `172.31.254.20:8000`** (`API_BIND_HOST`, read by
+      `start.sh`; unset means `0.0.0.0`).
+    - **It trusts `127.0.0.1, ::1, 172.31.254.10` only.**
+    - **The frontend's own `/api/` goes through the gateway** at
+      `172.31.254.10:8080` (`Frontend/nginx.conf`), as an untrusted client.
+    - **Residual (optional 10.8):** a host process can still dial
+      `172.31.254.20:8000`. It arrives untrusted, so it cannot forge an
+      address, and it still needs a valid token.
+    - **Do not describe this as absolute gateway-only reachability.**
+  - **Emergency direct path (10.7).**
+    - First: `docker compose -f docker-compose.yml -f
+      docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
+      `172.18.0.1` trusted).
+    - Then: `sudo … rollback`.
+    - Return **in this order**: `sudo … cutover` first, then
+      `docker compose up -d --no-deps api`. The other order leaves `:443` with
+      no working path.
+    - Rehearsed live 30 Sep 2026.
+    - A plain `docker compose up -d` never applies the override.
   - **Switch with** `sudo scripts/linux/gateway_edge_switch.sh
-    {status|harden|cutover|rollback|rehearse|logcount}`. It swaps between two SHA-pinned
+    {status|harden|cutover|rollback|rehearse|logcount|emergency-status}`.
+    `rollback` refuses while `:8000` is closed. It swaps between two SHA-pinned
     files in `gateway/edge/host-nginx/` and proves the path over `:443`. Never
     edit `/etc/nginx/conf.d/ccure.conf` by hand: the script refuses a file
     matching neither pin.
@@ -795,8 +819,8 @@ dump": up to six hours of operational data.
     so recreate services with `--no-deps` and name them.
   - **An HS256 rollback now needs `rollback` first**, because gateway-auth
     verifies ES256 only.
-  - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md` and
-    `PHASE10_6_HARDENING.md`.
+  - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md`,
+    `PHASE10_6_HARDENING.md` and `PHASE10_7_GATEWAY_ONLY.md`.
 
   **If Docker recreates the network on a different subnet, set
   `TRUSTED_PROXIES` to its gateway.** Until then the peer is not trusted,

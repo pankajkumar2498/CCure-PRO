@@ -36,7 +36,9 @@ echo "## token keyset and settings (no secret values)"
 sha256sum /home/cdac/ccure-keys/keyset.json 2>&1
 ls -ln --time-style=full-iso /home/cdac/ccure-keys/ | awk 'NR>1{print $1,$3,$4,$5,$6,$7,$9}'
 docker exec ccure-api printenv CCURE_TOKEN_SIGNING_ALG CCURE_ACCEPT_LEGACY_HS256 CCURE_TOKEN_KEYS_DIR 2>&1 | tr '\n' ' '; echo
-echo "jwks sha256: $(curl -s --max-time 5 http://127.0.0.1:8000/auth/jwks.json | sha256sum | cut -c1-64)"
+# the api's internal address (it publishes no port since Phase 10.7)
+echo "jwks sha256: $(curl -s --max-time 5 http://172.31.254.20:8000/auth/jwks.json | sha256sum | cut -c1-64)"
+echo "127.0.0.1:8000 listening: $(ss -Hltn | awk '{print $4}' | grep -qx 127.0.0.1:8000 && echo YES || echo no)"
 
 echo "## trust settings seen by the api process"
 docker exec ccure-api printenv TRUSTED_PROXIES 2>/dev/null || echo "TRUSTED_PROXIES unset (config.py default)"

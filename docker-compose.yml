@@ -155,12 +155,19 @@ services:
       - CCURE_ACCEPT_LEGACY_HS256=${CCURE_ACCEPT_LEGACY_HS256:-true}
       # Which peers may assert the client address and scheme (core/trusted_proxy.py,
       # Phase 10.3). Exact addresses, never a range:
-      #   172.31.254.10  api-gateway — the production path since Phase 10.5;
-      #   172.18.0.1     host nginx through the published :8000 — the path the
-      #                  10.5 rollback restores, and the direct port 10.7 closes;
+      #   172.31.254.10  api-gateway — the only production ingress (Phase 10.7);
       #   127.0.0.1, ::1 in-container callers.
-      # config.py's default is the same list without the gateway.
-      - TRUSTED_PROXIES=127.0.0.1,::1,172.18.0.1,172.31.254.10
+      # 172.18.0.1 (host nginx through the published :8000) was removed with
+      # that port in 10.7. The emergency override puts both back:
+      # docker-compose.emergency-direct.yml, docs/architecture/phase10/
+      # PHASE10_7_GATEWAY_ONLY.md.
+      - TRUSTED_PROXIES=127.0.0.1,::1,172.31.254.10
+      # The one address uvicorn listens on (Backend/start.sh): the api's address
+      # on the internal `gateway` network, so nothing on the default network
+      # (host processes via 172.18.0.7, other containers via api:8000) reaches
+      # it. A host process can still dial 172.31.254.20 over the bridge, as an
+      # untrusted client — the residual recorded for optional Phase 10.8.
+      - API_BIND_HOST=172.31.254.20
     depends_on:
       redis:
         condition: service_healthy
@@ -169,15 +176,16 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      # The default network carries the default route and the published :8000
-      # (whose peer therefore stays 172.18.0.1 — measured with two networks);
-      # `gateway` is where api-gateway reaches the api, at a fixed address.
+      # The default network carries the default route (and the api's own
+      # egress to db, redis and SMTP); `gateway` is where api-gateway reaches
+      # the api, at a fixed address, and the only network it listens on.
       default:
         gw_priority: 1
       gateway:
         ipv4_address: 172.31.254.20
-    ports:
-      - "127.0.0.1:8000:8000"
+    # No published port since Phase 10.7: production ingress is
+    # :443 → host nginx → api-gateway. `127.0.0.1:8000:8000` returns only under
+    # docker-compose.emergency-direct.yml.
     volumes:
       - ./Backend:/app
       # Token signing keys: a host directory OUTSIDE the repository, read-only.
@@ -497,6 +505,13 @@ services:
     environment:
       - TZ=Asia/Kolkata
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}
+    # Phase 10.7: the frontend's own /api/ (local tools on 127.0.0.1:3200)
+    # goes to api-gateway over the internal network, as an untrusted TCP
+    # client (Frontend/nginx.conf). Browsers on the LAN never take this path.
+    networks:
+      default: {}
+      gateway:
+        ipv4_address: 172.31.254.30
     depends_on:
       - api
 

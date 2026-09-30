@@ -14,6 +14,13 @@
 #   sudo scripts/linux/gateway_edge_switch.sh rollback    # gateway(-tcp) → direct
 #   sudo scripts/linux/gateway_edge_switch.sh rehearse    # rollback, verify, cutover, verify
 #   sudo scripts/linux/gateway_edge_switch.sh logcount    # F10-3: ticket/token counts in host nginx logs
+#   sudo scripts/linux/gateway_edge_switch.sh emergency-status   # 10.7: which state each layer is in
+#
+# Since Phase 10.7 the api publishes no :8000, so `rollback` (to direct) is
+# possible only after the emergency override has put :8000 back:
+#   docker compose -f docker-compose.yml -f docker-compose.emergency-direct.yml up -d --no-deps api
+# `rollback` checks, and says so, rather than installing a file that can only
+# fail. docs/architecture/phase10/PHASE10_7_GATEWAY_ONLY.md §6.
 #
 # What it touches: /etc/nginx/conf.d/ccure.conf, the directory
 # /etc/nginx/ccure-rollback/ (a copy of the file it replaced, and a log), an
@@ -120,6 +127,16 @@ preflight_gateway() {
         || die "preflight: the refusal carried X-Request-ID, so gateway-auth did not answer; nothing changed"
 }
 
+direct_available() {
+    # The direct file proxies to 127.0.0.1:8000; since 10.7 that listener exists
+    # only while the emergency override is applied.
+    ss -Hltn 2>/dev/null | awk '{print $4}' | grep -qx '127.0.0.1:8000'
+}
+
+EMERGENCY_HINT="127.0.0.1:8000 is not listening (Phase 10.7: the api publishes no port). Restore it first:
+    docker compose -f docker-compose.yml -f docker-compose.emergency-direct.yml up -d --no-deps api
+then re-run this command. docs/architecture/phase10/PHASE10_7_GATEWAY_ONLY.md §6"
+
 to_gateway() {
     preflight_gateway
     say "installing ccure.gateway.conf"
@@ -127,15 +144,23 @@ to_gateway() {
     local p h
     p=$(path_over_443); h=$(health_over_443)
     if [ "$p" != gateway ] || [ "$h" != 200 ]; then
-        say "switch proof FAILED (path=$p, health=$h) — rolling back to direct"
-        install_conf "$SRC_DIRECT" "$SHA_DIRECT"
-        say "after automatic rollback: path=$(path_over_443) health=$(health_over_443)"
+        if direct_available; then
+            say "switch proof FAILED (path=$p, health=$h) — rolling back to direct"
+            install_conf "$SRC_DIRECT" "$SHA_DIRECT"
+        else
+            say "switch proof FAILED (path=$p, health=$h) and :8000 is closed — restoring the previous file"
+            # install_conf overwrites before-last-switch first, so restore from a copy
+            cp -p "$KEEP/ccure.conf.before-last-switch" "$KEEP/ccure.conf.restore"
+            install_conf "$KEEP/ccure.conf.restore" "$(sha "$KEEP/ccure.conf.restore")"
+        fi
+        say "after automatic recovery: path=$(path_over_443) health=$(health_over_443)"
         exit 1
     fi
     say "OK: :443 → gateway over $SOCK (path=$p, health=$h)"
 }
 
 to_direct() {
+    direct_available || die "$EMERGENCY_HINT"
     say "installing ccure.direct.conf"
     install_conf "$SRC_DIRECT" "$SHA_DIRECT"
     local p h
@@ -223,6 +248,11 @@ case "$cmd" in
         say "rehearsal complete: rollback and re-cut-over both proven" ;;
     logcount)
         logcount ;;
+    emergency-status)
+        if direct_available; then d="LISTENING (emergency override applied, or pre-10.7)"; else d="closed (normal since 10.7)"; fi
+        say "host nginx file: $(state); path over :443 = $(path_over_443), health = $(health_over_443)"
+        say "127.0.0.1:8000: $d"
+        say "edge socket: $( [ -S "$SOCK" ] && echo present || echo MISSING )" ;;
     *)
-        echo "usage: $0 {status|harden|cutover|rollback|rehearse|logcount}" >&2; exit 2 ;;
+        echo "usage: $0 {status|harden|cutover|rollback|rehearse|logcount|emergency-status}" >&2; exit 2 ;;
 esac

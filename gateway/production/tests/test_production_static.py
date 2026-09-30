@@ -138,10 +138,13 @@ def test_gateway_auth_reads_the_core_jwks_and_issuer(compose):
     assert env["CCURE_TOKEN_USER_AUDIENCE"] == "urn:ccure:api"
 
 
-def test_trusted_proxies_is_exact_and_adds_only_the_gateway(compose):
+def test_trusted_proxies_is_exact_and_names_only_the_gateway(compose):
+    # Phase 10.7: 172.18.0.1 (host nginx via the published :8000) is gone with
+    # that port; the gateway is the only proxy the api believes.
     env = _env(compose["services"]["api"])
     trusted = env["TRUSTED_PROXIES"].split(",")
-    assert trusted == ["127.0.0.1", "::1", "172.18.0.1", GW]
+    assert trusted == ["127.0.0.1", "::1", GW]
+    assert "172.18.0.1" not in env["TRUSTED_PROXIES"]
     for entry in trusted:  # addresses, never a range
         assert "/" not in entry
         ipaddress.ip_address(entry)
@@ -176,10 +179,65 @@ def test_gateway_services_are_locked_down(compose, name):
     assert svc["restart"] == "unless-stopped"
 
 
-def test_api_keeps_its_published_port_until_10_7(compose):
+# ── 10.7: no published or direct ingress to the api ──────────────────────────
+EMERGENCY = REPO / "docker-compose.emergency-direct.yml"
+FRONTEND_NGINX = REPO / "Frontend/nginx.conf"
+START_SH = REPO / "Backend/start.sh"
+FRONTEND = "172.31.254.30"
+
+
+def test_api_publishes_no_port(compose):
     api = compose["services"]["api"]
-    assert api["ports"] == ["127.0.0.1:8000:8000"]
+    assert "ports" not in api and "expose" not in api
     assert api["networks"]["default"]["gw_priority"] == 1  # default route stays on the default network
+
+
+def test_api_listens_on_its_gateway_network_address_only(compose):
+    env = _env(compose["services"]["api"])
+    assert env["API_BIND_HOST"] == API == compose["services"]["api"]["networks"]["gateway"]["ipv4_address"]
+    script = START_SH.read_text()
+    # both uvicorn lines take the address, and the default keeps every other
+    # user of start.sh (the alongside stack) on 0.0.0.0
+    assert script.count("--host ${API_BIND_HOST:-0.0.0.0}") == 2
+    assert "--host 0.0.0.0" not in script
+
+
+def test_frontend_reaches_the_api_only_through_the_gateway(compose):
+    fe = compose["services"]["frontend"]
+    assert fe["networks"]["gateway"]["ipv4_address"] == FRONTEND
+    assert ipaddress.ip_address(FRONTEND) in NET
+    assert fe["ports"] == ["127.0.0.1:3200:80"]  # host nginx serves the SPA from it
+    conf = "\n".join(_strip_comments(FRONTEND_NGINX.read_text()))
+    block = re.search(r"location /api/ \{(.*?)\n  \}", conf, re.S).group(1)
+    assert re.findall(r"proxy_pass\s+(\S+);", block) == [f"http://{GW}:8080"]  # no URI: /api kept
+    assert "api:8000" not in conf
+    # the gateway trusts no TCP peer, so nothing here pretends otherwise
+    for header in ("X-Real-IP", "X-Forwarded-For", "X-Forwarded-Proto"):
+        assert header not in block, header
+    for kept in ("proxy_set_header Upgrade $http_upgrade;", "client_max_body_size 50m;",
+                 "proxy_buffering off;", "proxy_read_timeout 3600s;"):
+        assert kept in block, kept
+
+
+def test_frontend_is_not_trusted_anywhere(compose):
+    assert FRONTEND not in _env(compose["services"]["api"])["TRUSTED_PROXIES"]
+    for f in (TRUST, SITE):
+        assert FRONTEND not in f.read_text()
+
+
+def test_emergency_override_restores_exactly_the_direct_path():
+    ov = yaml.safe_load(EMERGENCY.read_text())
+    assert list(ov) == ["services"] and list(ov["services"]) == ["api"]
+    api = ov["services"]["api"]
+    assert set(api) == {"ports", "environment"}
+    assert api["ports"] == ["127.0.0.1:8000:8000"]
+    assert _env(api) == {"TRUSTED_PROXIES": "127.0.0.1,::1,172.18.0.1," + GW, "API_BIND_HOST": "0.0.0.0"}
+
+
+def test_nothing_normal_reads_the_emergency_override():
+    for f in REPO.glob("docker-compose*.yml"):
+        if f != EMERGENCY:
+            assert "emergency-direct" not in yaml.safe_dump(yaml.safe_load(f.read_text())), f
 
 
 def test_gateway_mounts_only_committed_files_read_only(compose):
@@ -257,10 +315,21 @@ def test_switch_script_proves_and_rolls_back():
     assert 'install -d -m 0770 -o root -g www-data "$EDGE_DIR"' in script
     assert 'LIVE=/etc/nginx/conf.d/ccure.conf' in script
     assert 'KEEP=/etc/nginx/ccure-rollback' in script
-    # its one docker action: recreate api-gateway alone, in `harden`
+    # its one docker action: recreate api-gateway alone, in `harden` (the
+    # emergency command appears only inside the hint it prints)
     docker_lines = [l.strip() for l in script.splitlines()
                     if not l.lstrip().startswith("#") and re.search(r"\bdocker (compose|run|exec|rm|stop|kill)", l)]
-    assert docker_lines == ['if ! docker compose --project-directory "$REPO" -p "$project" up -d --no-deps api-gateway >>"$LOG" 2>&1; then']
+    assert docker_lines == [
+        "docker compose -f docker-compose.yml -f docker-compose.emergency-direct.yml up -d --no-deps api",
+        'if ! docker compose --project-directory "$REPO" -p "$project" up -d --no-deps api-gateway >>"$LOG" 2>&1; then']
+    hint = script.split('EMERGENCY_HINT="', 1)[1].split('"', 1)[0]
+    assert docker_lines[0] in hint
+    # 10.7: going direct needs :8000 listening, and the recovery never installs
+    # the direct file while it is closed
+    to_direct = script.split("to_direct() {", 1)[1].split("\n}\n", 1)[0]
+    assert to_direct.strip().startswith('direct_available || die "$EMERGENCY_HINT"')
+    to_gateway = script.split("to_gateway() {", 1)[1].split("\n}\n", 1)[0]
+    assert "if direct_available; then" in to_gateway and "ccure.conf.restore" in to_gateway
     for forbidden in ("psql", "ccure-keys", "rm -", "systemctl restart", "--force-recreate api "):
         assert forbidden not in script, forbidden
     # every failure after the recreate lands on direct

@@ -28,6 +28,12 @@ sed -e 's/^\(\s*listen\) 443 ssl http2;/\1 8443 ssl http2;/' \
 [ "$(diff "$src" "$TRUST_WORK/edge.conf" | grep -c '^>')" = 2 ] || { echo "unexpected rewrite" >&2; exit 1; }
 grep -q 'proxy_pass http://unix:/var/lib/ccure-edge/gateway.sock;' "$TRUST_WORK/edge.conf"
 
+echo "== 1b. the frontend: the committed Frontend/nginx.conf, the gateway address rewritten"
+fsrc="$REPO/Frontend/nginx.conf"
+[ "$(grep -c '172\.31\.254\.10' "$fsrc")" -ge 1 ] || { echo "Frontend/nginx.conf does not name the gateway" >&2; exit 1; }
+sed -e 's/172\.31\.254\.10:8080/10.254.40.10:8080/' "$fsrc" > "$TRUST_WORK/frontend.conf"
+[ "$(diff "$fsrc" "$TRUST_WORK/frontend.conf" | grep -c '^>')" = 1 ] || { echo "unexpected frontend rewrite" >&2; exit 1; }
+
 echo "== 2. throwaway TLS for the edge (the Phase 10.4 generator; never a live key)"
 mkdir -p "$TRUST_WORK/tls"
 docker run --rm --network none --user 0 -v "$REPO/gateway/alongside/make_test_tls.py:/g.py:ro" \
@@ -35,12 +41,12 @@ docker run --rm --network none --user 0 -v "$REPO/gateway/alongside/make_test_tl
     sh -c 'python /g.py /out >/dev/null && cp /out/edge/server.pem /out/edge/ccure-fullchain.crt && cp /out/edge/server.key /out/edge/ccure.key && chown -R 33:33 /out/edge && chmod 0600 /out/edge/*.key'
 
 echo "== 3. stack up"
-compose up -d --quiet-pull edge-init stub-api gateway edge-tls >/dev/null
+compose up -d --quiet-pull edge-init stub-api gateway edge-tls frontend >/dev/null
 for _ in $(seq 1 30); do
-    [ "$(compose ps --format '{{.Service}} {{.State}}' | grep -c running)" = 3 ] && break; sleep 1
+    [ "$(compose ps --format '{{.Service}} {{.State}}' | grep -c running)" = 4 ] && break; sleep 1
 done
 compose ps --format '{{.Service}} {{.State}}'
-if compose logs gateway edge-tls 2>&1 | grep -E '\[emerg\]'; then echo "nginx refused its configuration" >&2; exit 1; fi
+if compose logs gateway edge-tls frontend 2>&1 | grep -E '\[emerg\]'; then echo "nginx refused its configuration" >&2; exit 1; fi
 
 echo "== 4. tests"
 compose run --rm -T runner python -m pytest -q -p no:cacheprovider -rs .

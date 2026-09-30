@@ -1,0 +1,2017 @@
+{
+ "generated_at": "2026-09-30T16:15:12+0530",
+ "checks": {
+  "login through the gateway": true,
+  "bearer /auth/me edge == direct": true,
+  "identity headers change nothing": true,
+  "client X-Request-ID preserved once": true,
+  "CORS on an authenticated success": true,
+  "HSTS exactly once on a success": true,
+  "download (bearer) byte-identical edge == direct": true,
+  "download (ticket) byte-identical to bearer": true,
+  "ticket reusable within 60 s (as characterised)": true,
+  "ticket evaluated first (valid ticket + garbage bearer = 200)": true,
+  "ticket refused as a bearer, same status as direct": true,
+  "garbage ticket + valid bearer = 401 (ticket first)": true,
+  "access token refused as a ticket, same as direct": true,
+  "DELETE /reports (ticket-or-bearer) same as direct": true,
+  "WebSocket 101 + first frame, edge == direct": true,
+  "web-scan WebSocket 101": true,
+  "SSE first event 'connected' < 2 s": true,
+  "streamed PDF 200, complete": true,
+  "20 MiB upload reaches the application whole (same 400 as direct)": true,
+  "refresh through the gateway rotates the cookie": true,
+  "logout revokes the session (refresh after logout = 401)": true
+ },
+ "latency_bearer_auth_me": {
+  "edge": {
+   "n": 20,
+   "p50": 52.29,
+   "p95": 60.22
+  },
+  "direct": {
+   "n": 20,
+   "p50": 45.28,
+   "p95": 50.87
+  }
+ },
+ "cases": [
+  {
+   "id": "login",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/login",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "3407"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "set-cookie",
+     "<cookie>"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "10"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "9"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.5748067"
+    ],
+    [
+     "x-request-id",
+     "5e36eb40-a5b6-470c-8f44-1ff99202b7cd"
+    ]
+   ],
+   "bytes": 3407,
+   "sha256": "fe7b6136d4d9fdcffa5878c1f3ebffa351a3aeeb270ec433168abd53e91c7287",
+   "ms": 150.45
+  },
+  {
+   "id": "bearer /auth/me",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/auth/me",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "2847"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "2ccbc368-0da1-49f2-8ad2-23242fe53f97"
+    ]
+   ],
+   "bytes": 2847,
+   "sha256": "b2652be8dc62ff0b24c09f5b518baa77899f7562a09acfc3756258943402e1a8",
+   "ms": 51.55
+  },
+  {
+   "id": "bearer /auth/me",
+   "target": "direct",
+   "method": "GET",
+   "path": "/auth/me",
+   "status": 200,
+   "headers": [
+    [
+     "content-length",
+     "2847"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "2f744445-1c7b-4284-bed7-9678f4e59227"
+    ]
+   ],
+   "bytes": 2847,
+   "sha256": "b2652be8dc62ff0b24c09f5b518baa77899f7562a09acfc3756258943402e1a8",
+   "ms": 44.09
+  },
+  {
+   "id": "bearer /auth/me + spoofed identity headers",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/auth/me",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "2847"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "d510a83a-c943-4d2f-9b9d-ec6eb05bef8b"
+    ]
+   ],
+   "bytes": 2847,
+   "sha256": "b2652be8dc62ff0b24c09f5b518baa77899f7562a09acfc3756258943402e1a8",
+   "ms": 50.18
+  },
+  {
+   "id": "bearer /scans client X-Request-ID",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/scans?limit=1",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "1408"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "p105-rid-valid"
+    ]
+   ],
+   "bytes": 1408,
+   "sha256": "b41e7624551ae970588efeb876761789a6d28d781a3b80c3ca9acf6875f0fcce",
+   "ms": 18.09
+  },
+  {
+   "id": "bearer /scans allowed Origin",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/scans?limit=1",
+   "status": 200,
+   "headers": [
+    [
+     "access-control-allow-credentials",
+     "true"
+    ],
+    [
+     "access-control-allow-origin",
+     "https://ccurepro.cdac.in"
+    ],
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "1408"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "vary",
+     "Origin"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "72c97b25-ea50-4cd8-be13-f8ce4d78d338"
+    ]
+   ],
+   "bytes": 1408,
+   "sha256": "b5afc5799eab0c6c30a14039375a445372000339c51bc5c6ac8d72edd12b0fda",
+   "ms": 16.87
+  },
+  {
+   "id": "download bearer",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-disposition",
+     "attachment; filename=\"host_discovery_29-09-2026_15-13-58_executive.pdf\""
+    ],
+    [
+     "content-length",
+     "46191"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "etag",
+     "\"b9f0145348ddff8ef1148627cff16527\""
+    ],
+    [
+     "last-modified",
+     "Tue, 29 Sep 2026 09:43:58 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "20"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "19"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.7755635"
+    ],
+    [
+     "x-request-id",
+     "052a42e8-7208-46e5-8a7b-83c99554a184"
+    ]
+   ],
+   "bytes": 46191,
+   "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+   "ms": 18.77
+  },
+  {
+   "id": "download bearer",
+   "target": "direct",
+   "method": "GET",
+   "path": "/reports/download/scn_defa_c522b539_29sep26_fh9j",
+   "status": 200,
+   "headers": [
+    [
+     "content-disposition",
+     "attachment; filename=\"host_discovery_29-09-2026_15-13-58_executive.pdf\""
+    ],
+    [
+     "content-length",
+     "46191"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "etag",
+     "\"b9f0145348ddff8ef1148627cff16527\""
+    ],
+    [
+     "last-modified",
+     "Tue, 29 Sep 2026 09:43:58 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "20"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "19"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.7903821"
+    ],
+    [
+     "x-request-id",
+     "c79be35d-4a9e-4b56-bf52-1ae6142779ca"
+    ]
+   ],
+   "bytes": 46191,
+   "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+   "ms": 14.18
+  },
+  {
+   "id": "ticket issue",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/ticket",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "510"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "7c12b947-86ce-4125-ae33-4e2031dbf2ea"
+    ]
+   ],
+   "bytes": 510,
+   "sha256": "c1ae64d293f1f9aed7304f75292e7f4fe1588eb3c5d6a7f718995d296784130e",
+   "ms": 12.26
+  },
+  {
+   "id": "download ticket",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-disposition",
+     "attachment; filename=\"host_discovery_29-09-2026_15-13-58_executive.pdf\""
+    ],
+    [
+     "content-length",
+     "46191"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "etag",
+     "\"b9f0145348ddff8ef1148627cff16527\""
+    ],
+    [
+     "last-modified",
+     "Tue, 29 Sep 2026 09:43:58 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "20"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "18"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.8226838"
+    ],
+    [
+     "x-request-id",
+     "ed7a70ac-f2df-4a11-8349-725aef9ead8c"
+    ]
+   ],
+   "bytes": 46191,
+   "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+   "ms": 20.45
+  },
+  {
+   "id": "download ticket replay <60s",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-disposition",
+     "attachment; filename=\"host_discovery_29-09-2026_15-13-58_executive.pdf\""
+    ],
+    [
+     "content-length",
+     "46191"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "etag",
+     "\"b9f0145348ddff8ef1148627cff16527\""
+    ],
+    [
+     "last-modified",
+     "Tue, 29 Sep 2026 09:43:58 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "20"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "17"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.841685"
+    ],
+    [
+     "x-request-id",
+     "d81e0f99-15a1-4a23-bf81-ed4daf82f012"
+    ]
+   ],
+   "bytes": 46191,
+   "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+   "ms": 18.7
+  },
+  {
+   "id": "valid ticket + garbage bearer",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-disposition",
+     "attachment; filename=\"host_discovery_29-09-2026_15-13-58_executive.pdf\""
+    ],
+    [
+     "content-length",
+     "46191"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "etag",
+     "\"b9f0145348ddff8ef1148627cff16527\""
+    ],
+    [
+     "last-modified",
+     "Tue, 29 Sep 2026 09:43:58 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "20"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "16"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765114.8605046"
+    ],
+    [
+     "x-request-id",
+     "0c6387b0-6b3f-423e-bdb1-a78782385db9"
+    ]
+   ],
+   "bytes": 46191,
+   "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+   "ms": 18.6
+  },
+  {
+   "id": "ticket used as bearer on /scans",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/scans?limit=1",
+   "status": 401,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "132"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ]
+   ],
+   "bytes": 132,
+   "sha256": "5a0c4c3663f2c15b92dfa92672c63b7eb46f3dd0f0a6b78011cb6d9583f5a08e",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired token\",\"detail\":\"Invalid or expired token\",\"request_id\":null}",
+   "ms": 5.26
+  },
+  {
+   "id": "ticket used as bearer on /scans",
+   "target": "direct",
+   "method": "GET",
+   "path": "/scans?limit=1",
+   "status": 401,
+   "headers": [
+    [
+     "content-length",
+     "166"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "2c177051-d356-482e-91bc-cd9dbb234860"
+    ]
+   ],
+   "bytes": 166,
+   "sha256": "db05a214832d1e932991d31d59adc63d286040fc3213b313151792b79b6bc087",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired token\",\"detail\":\"Invalid or expired token\",\"request_id\":\"2c177051-d356-482e-91bc-cd9dbb234860\"}",
+   "ms": 3.3
+  },
+  {
+   "id": "garbage ticket + valid bearer",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 401,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "154"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ]
+   ],
+   "bytes": 154,
+   "sha256": "2837798628195b06ca9ecd5243bf6df5abb72568b22ae09df422e00cdbbf5f68",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired download ticket.\",\"detail\":\"Invalid or expired download ticket.\",\"request_id\":null}",
+   "ms": 4.68
+  },
+  {
+   "id": "access token as ?ticket=",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 401,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "154"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ]
+   ],
+   "bytes": 154,
+   "sha256": "2837798628195b06ca9ecd5243bf6df5abb72568b22ae09df422e00cdbbf5f68",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired download ticket.\",\"detail\":\"Invalid or expired download ticket.\",\"request_id\":null}",
+   "ms": 4.83
+  },
+  {
+   "id": "access token as ?ticket=",
+   "target": "direct",
+   "method": "GET",
+   "path": "/reports/download/scn_defa_c522b539_29sep26_fh9j?ticket=<X>",
+   "status": 401,
+   "headers": [
+    [
+     "content-length",
+     "188"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "7b4914f4-d11d-4639-9310-8c6924580373"
+    ]
+   ],
+   "bytes": 188,
+   "sha256": "3cf6bf96b9f7c0fb442ac50121637179a5feb740e58f3ed4dea4a3b457dc0636",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired download ticket.\",\"detail\":\"Invalid or expired download ticket.\",\"request_id\":\"7b4914f4-d11d-4639-9310-8c6924580373\"}",
+   "ms": 3.41
+  },
+  {
+   "id": "DELETE nonexistent report, bearer",
+   "target": "edge",
+   "method": "DELETE",
+   "path": "/api/reports/scn_p105_does_not_exist",
+   "status": 404,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "148"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "781dbba3-77e6-4276-be09-9003c223960b"
+    ]
+   ],
+   "bytes": 148,
+   "sha256": "bf5b28980490700767890abaaf7d1de88ea6c3fc3355bffb57b65c444d253c2b",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_404\",\"message\":\"Scan not found.\",\"detail\":\"Scan not found.\",\"request_id\":\"781dbba3-77e6-4276-be09-9003c223960b\"}",
+   "ms": 14.89
+  },
+  {
+   "id": "DELETE nonexistent report, bearer",
+   "target": "direct",
+   "method": "DELETE",
+   "path": "/reports/scn_p105_does_not_exist",
+   "status": 404,
+   "headers": [
+    [
+     "content-length",
+     "148"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "a2c8e20e-1a5d-4cd3-9023-9ca7b4e21513"
+    ]
+   ],
+   "bytes": 148,
+   "sha256": "e5bf7007caad101cf1393eeed05e7d884cbb368011e54347df5d9ac984e7d203",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_404\",\"message\":\"Scan not found.\",\"detail\":\"Scan not found.\",\"request_id\":\"a2c8e20e-1a5d-4cd3-9023-9ca7b4e21513\"}",
+   "ms": 9.38
+  },
+  {
+   "id": "ticket issue (ws)",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/ticket",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "510"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "b20e45eb-25bc-4733-a82b-a73558ff6ca5"
+    ]
+   ],
+   "bytes": 510,
+   "sha256": "21c3dcc17c138fa7a376e4007ab822f0a6a6f7d309d4ff5fee5ab6948f3ac692",
+   "ms": 10.98
+  },
+  {
+   "id": "ws valid ticket",
+   "target": "edge",
+   "method": "WS",
+   "path": "/api/scans/scn_defa_c522b539_29sep26_fh9j/progress?ticket=<X>",
+   "status": 101,
+   "headers": [
+    [
+     "connection",
+     "upgrade"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "sec-websocket-accept",
+     "T39ITTVIrGpiF26JvMyJ0zz8Mpo="
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "upgrade",
+     "websocket"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ]
+   ],
+   "ended": "held 10 s",
+   "frames": [
+    {
+     "opcode": 1,
+     "bytes": 561,
+     "at_s": 0.0,
+     "json_keys": [
+      "phase",
+      "progress",
+      "scan_id"
+     ],
+     "type": null
+    }
+   ]
+  },
+  {
+   "id": "ws valid ticket",
+   "target": "direct",
+   "method": "WS",
+   "path": "/scans/scn_defa_c522b539_29sep26_fh9j/progress?ticket=<X>",
+   "status": 101,
+   "headers": [
+    [
+     "connection",
+     "Upgrade"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "sec-websocket-accept",
+     "ZC69+V/+TSuluDL10KjSgHKMBmg="
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "upgrade",
+     "websocket"
+    ]
+   ],
+   "ended": "held 10 s",
+   "frames": [
+    {
+     "opcode": 1,
+     "bytes": 561,
+     "at_s": 0.0,
+     "json_keys": [
+      "phase",
+      "progress",
+      "scan_id"
+     ],
+     "type": null
+    }
+   ]
+  },
+  {
+   "id": "ws web-scan valid ticket",
+   "target": "edge",
+   "method": "WS",
+   "path": "/api/web-scans/wsc_defa_c522b539_29sep26_sy97/progress?ticket=<X>",
+   "status": 101,
+   "headers": [
+    [
+     "connection",
+     "upgrade"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "sec-websocket-accept",
+     "sJ3GgY/kSeSVX5aG408QxvfIEng="
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "upgrade",
+     "websocket"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ]
+   ],
+   "ended": "held 10 s",
+   "frames": [
+    {
+     "opcode": 1,
+     "bytes": 792,
+     "at_s": 0.0,
+     "json_keys": [
+      "phase",
+      "progress",
+      "scan",
+      "scan_id",
+      "scan_type"
+     ],
+     "type": null
+    }
+   ]
+  },
+  {
+   "id": "sse notifications",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/notifications/stream",
+   "status": 200,
+   "headers": [
+    [
+     "cache-control",
+     "no-cache"
+    ],
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "text/event-stream; charset=utf-8"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:13 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "transfer-encoding",
+     "chunked"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "bccc66af-c416-4790-b80e-d33d7bd22483"
+    ]
+   ],
+   "sse_events": [
+    {
+     "event": "connected",
+     "at_ms": 19
+    },
+    {
+     "event": "heartbeat",
+     "at_ms": 20
+    }
+   ],
+   "ms": 11030.22
+  },
+  {
+   "id": "SoA pdf",
+   "target": "edge",
+   "method": "GET",
+   "path": "/api/compliance/reports/soa?framework_id=cfw_iso27001_2022&fmt=pdf",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-disposition",
+     "attachment; filename=soa_iso27001_2022_org_default.pdf"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/pdf"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:25 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "transfer-encoding",
+     "chunked"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "10"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "9"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765126.190387"
+    ],
+    [
+     "x-request-id",
+     "c24295a4-1a45-453d-9bdb-c67400416ec7"
+    ]
+   ],
+   "bytes": 21477,
+   "sha256": "dced1bad30a07644cb13d0c9a007ef649f7338d666d8ef5a03e024db2b7ae74f",
+   "ms": 250.81
+  },
+  {
+   "id": "upload 20 MiB refused by content",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/compliance/controls/cct_iso27001_2022_5_1/evidence",
+   "status": 400,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "318"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:25 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "14673cfd-25f2-40a4-9b86-f83c64c84af3"
+    ]
+   ],
+   "bytes": 318,
+   "sha256": "fdbabe827d239838b07265a4291651d663a63d66b3bc88c64a8c6a66a08c7067",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_400\",\"message\":\"The file content is not a valid 'text/plain'. It appears to be binary data of an unsupported format.\",\"detail\":\"The file content is not a valid 'text/plain'. It appears to be binary data of an unsupported format.\",\"request_id\":\"14673cfd-25f2-40a4-9b86-f83c64c84af3\"}",
+   "ms": 230.47
+  },
+  {
+   "id": "upload 20 MiB refused by content",
+   "target": "direct",
+   "method": "POST",
+   "path": "/compliance/controls/cct_iso27001_2022_5_1/evidence",
+   "status": 400,
+   "headers": [
+    [
+     "content-length",
+     "318"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:44:25 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "uvicorn"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "0bb411db-0c79-4a15-90d5-9e11aaef1395"
+    ]
+   ],
+   "bytes": 318,
+   "sha256": "3e265a7475be2b532eb32dd4bf2d748f27cc3e7f76fdf2a5af5b3117ee962bc0",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_400\",\"message\":\"The file content is not a valid 'text/plain'. It appears to be binary data of an unsupported format.\",\"detail\":\"The file content is not a valid 'text/plain'. It appears to be binary data of an unsupported format.\",\"request_id\":\"0bb411db-0c79-4a15-90d5-9e11aaef1395\"}",
+   "ms": 243.4
+  },
+  {
+   "id": "refresh",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/refresh",
+   "status": 200,
+   "headers": [
+    [
+     "access-control-allow-credentials",
+     "true"
+    ],
+    [
+     "access-control-allow-origin",
+     "https://ccurepro.cdac.in"
+    ],
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "615"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:45:12 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "set-cookie",
+     "<cookie>"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "vary",
+     "Origin"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "30"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "29"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765173.7862687"
+    ],
+    [
+     "x-request-id",
+     "4909531d-6f8b-46f1-ad97-a71686d3f0cb"
+    ]
+   ],
+   "bytes": 615,
+   "sha256": "3216274c218f5f314f35b16b2461323933b05d639aa9f36359b41b919adc1831",
+   "ms": 17.92
+  },
+  {
+   "id": "logout",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/logout",
+   "status": 200,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "37"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:45:12 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "retry-after",
+     "60"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "set-cookie",
+     "<cookie>"
+    ],
+    [
+     "set-cookie",
+     "<cookie>"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-ratelimit-limit",
+     "30"
+    ],
+    [
+     "x-ratelimit-remaining",
+     "29"
+    ],
+    [
+     "x-ratelimit-reset",
+     "1790765173.8045602"
+    ],
+    [
+     "x-request-id",
+     "c7fe0b91-bd47-4be7-b6d5-03dd154307a2"
+    ]
+   ],
+   "bytes": 37,
+   "sha256": "a159cabb6adc11766a057059e99532a40742d40797d83f01f94cfc510949e1d3",
+   "ms": 17.77
+  },
+  {
+   "id": "refresh after logout",
+   "target": "edge",
+   "method": "POST",
+   "path": "/api/auth/refresh",
+   "status": 401,
+   "headers": [
+    [
+     "connection",
+     "keep-alive"
+    ],
+    [
+     "content-length",
+     "182"
+    ],
+    [
+     "content-security-policy",
+     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    ],
+    [
+     "content-type",
+     "application/json"
+    ],
+    [
+     "cross-origin-resource-policy",
+     "same-site"
+    ],
+    [
+     "date",
+     "Wed, 30 Sep 2026 10:45:12 GMT"
+    ],
+    [
+     "referrer-policy",
+     "no-referrer"
+    ],
+    [
+     "server",
+     "nginx"
+    ],
+    [
+     "strict-transport-security",
+     "max-age=300"
+    ],
+    [
+     "x-content-type-options",
+     "nosniff"
+    ],
+    [
+     "x-frame-options",
+     "DENY"
+    ],
+    [
+     "x-request-id",
+     "2dbe746a-4c47-4638-b31a-8158f5561581"
+    ]
+   ],
+   "bytes": 182,
+   "sha256": "7d1f772763b4215baae7e3cbe2458723c27afb7148fabe2582de5e7cb55ef971",
+   "body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired refresh token\",\"detail\":\"Invalid or expired refresh token\",\"request_id\":\"2dbe746a-4c47-4638-b31a-8158f5561581\"}",
+   "ms": 9.44
+  }
+ ]
+}

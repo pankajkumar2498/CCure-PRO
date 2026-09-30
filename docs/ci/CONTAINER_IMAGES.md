@@ -185,8 +185,11 @@ URL names anything else.
 
 **Frontend:** the SPA shell with its Content-Security-Policy and `nosniff`
 headers (the CSP was once silently lost to nginx's `add_header` inheritance),
-client-side route fallback, an immutable-cached bundle, `/api/` reaching an
-upstream named `api:8000`, and no `[emerg]` or `[crit]` from nginx.
+client-side route fallback, an immutable-cached bundle, `/api/` reaching the
+API gateway at `172.31.254.10:8080` with its `/api` prefix kept (Phase 10.7;
+the stand-in owns that address on its own loopback and the frontend shares its
+network namespace, so the test needs `NET_ADMIN` and no host network on the
+live subnet), and no `[emerg]` or `[crit]` from nginx.
 
 **Both scripts were tested against broken images:** missing `sqlmap` fails;
 a `start.sh` that prints the JWT key fails; a frontend without its CSP

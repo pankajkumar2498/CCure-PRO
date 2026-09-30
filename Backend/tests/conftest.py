@@ -776,6 +776,42 @@ def relax_registration_volume_limits():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def pin_trusted_proxies_to_the_code_default():
+    """
+    Resolve client addresses against config.py's own TRUSTED_PROXIES default,
+    whatever the process environment says.
+
+    core/ip_resolver.py builds its trust list from the environment once, at
+    import, and the suite runs inside the live api container, which inherits
+    the deployment's value. Since Phase 10.7 that value is
+    `127.0.0.1,::1,172.31.254.10` — the gateway only — and every test written
+    against the code default (host nginx as 172.18.0.1) failed: sixteen of
+    them, all correct. A test must not depend on how the machine it runs on is
+    configured (the eager-mode test in CLAUDE.md is the same lesson).
+
+    The default is read from config.py's source rather than restated here, so
+    there is one list; tests that need a different trust list patch
+    `core.ip_resolver._TRUSTED_NETWORKS` for their own duration.
+    """
+    import ipaddress
+    import re
+
+    from config import AppConfig
+    from core import ip_resolver
+    from testpaths import BACKEND_ROOT
+
+    source = (BACKEND_ROOT / "config.py").read_text()
+    default = re.search(r'os\.getenv\("TRUSTED_PROXIES", "([^"]+)"\)', source).group(1)
+    entries = [e.strip() for e in default.split(",") if e.strip()]
+
+    previous = (AppConfig.TRUSTED_PROXIES, ip_resolver._TRUSTED_NETWORKS)
+    AppConfig.TRUSTED_PROXIES = entries
+    ip_resolver._TRUSTED_NETWORKS = [ipaddress.ip_network(e) for e in entries]
+    yield
+    AppConfig.TRUSTED_PROXIES, ip_resolver._TRUSTED_NETWORKS = previous
+
+
+@pytest.fixture(scope="session", autouse=True)
 def session_client(seed_email_domain_rules) -> Generator[TestClient, None, None]:
     """
     One TestClient — and therefore one application startup — per session.

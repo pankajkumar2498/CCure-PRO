@@ -1,0 +1,39 @@
+{
+ "generated_at": "2026-09-30T16:46:03+0530",
+ "checks": {
+  "WebSocket upgraded through the gateway and delivered its first frame": true,
+  "expired access token refused through the gateway (401, same as direct)": true,
+  "refresh after the access token expired: 200 and a new token": true,
+  "the refreshed token is accepted through the gateway": true,
+  "SSE held > 10 min with heartbeats, no gap > 60 s": true,
+  "logout, then refresh refused": true
+ },
+ "notes": {
+  "access_token_lifetime_remaining_s": 1799,
+  "websocket": {
+   "status": 101,
+   "frames": 3,
+   "ended": "server close frame at 40.0 s",
+   "error": null
+  },
+  "checked_after_expiry_s": 20.0,
+  "expired_token_status": {
+   "edge": 401,
+   "direct": 401,
+   "edge_body": "{\"success\":false,\"error_code\":\"HTTP_401\",\"message\":\"Invalid or expired token\",\"detail\":\"Invalid or expired token\",\"request_id\":null}"
+  },
+  "sse": {
+   "status": 200,
+   "events": 76,
+   "first": [
+    [
+     0.0,
+     "connected"
+    ]
+   ],
+   "held_s": 1850.0,
+   "max_gap_s": 25.0,
+   "ended": "observation ended"
+  }
+ }
+}

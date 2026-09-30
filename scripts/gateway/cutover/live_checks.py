@@ -52,6 +52,11 @@ EDGE_HOST = os.environ.get("CCURE_EDGE_HOST", "127.0.0.1")
 EDGE_NAME = os.environ.get("CCURE_EDGE_NAME", "ccurepro.cdac.in")
 EDGE_PORT = int(os.environ.get("CCURE_EDGE_PORT", "443"))
 DIRECT_PORT = int(os.environ.get("CCURE_DIRECT_PORT", "8000"))
+# The application directly, bypassing host nginx and the gateway. Since Phase
+# 10.7 the api publishes no port, so the reference is its address on the
+# internal `gateway` network, which the host reaches over the bridge as an
+# UNTRUSTED client (172.31.254.1): same answers, never a trusted identity.
+DIRECT_HOST = os.environ.get("CCURE_DIRECT_HOST", "172.31.254.20")
 SCAN_ID = os.environ.get("CCURE_PROBE_SCAN", "scn_defa_c522b539_29sep26_fh9j")
 WEB_SCAN_ID = os.environ.get("CCURE_PROBE_WEB_SCAN", "wsc_defa_c522b539_29sep26_sy97")
 CONTROL_ID = os.environ.get("CCURE_PROBE_CONTROL", "cct_iso27001_2022_5_1")
@@ -100,7 +105,7 @@ def _conn(target, timeout=30, source=None):
     if target == "edge":
         host = source or EDGE_HOST
         return http.client.HTTPSConnection(host, EDGE_PORT, context=_CTX, timeout=timeout)
-    return http.client.HTTPConnection("127.0.0.1", DIRECT_PORT, timeout=timeout)
+    return http.client.HTTPConnection(DIRECT_HOST, DIRECT_PORT, timeout=timeout)
 
 
 def _path(target, p):
@@ -173,14 +178,14 @@ def request(case, target, method, p, headers=None, body=None, *, sse_seconds=Non
 
 def ws(case, target, p, frames_wanted=1, edge_addr=None, hold=10):
     key = base64.b64encode(os.urandom(16)).decode()
-    host = EDGE_NAME if target == "edge" else f"127.0.0.1:{DIRECT_PORT}"
+    host = EDGE_NAME if target == "edge" else f"{DIRECT_HOST}:{DIRECT_PORT}"
     req = (f"GET {_path(target, p)} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n"
            f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
            f"Origin: {ALLOWED_ORIGIN}\r\n\r\n").encode()
     rec = {"id": case, "target": target, "method": "WS", "path": red(_path(target, p))}
     s = None
     try:
-        s = socket.create_connection(((edge_addr or EDGE_HOST) if target == "edge" else "127.0.0.1",
+        s = socket.create_connection(((edge_addr or EDGE_HOST) if target == "edge" else DIRECT_HOST,
                                       EDGE_PORT if target == "edge" else DIRECT_PORT), timeout=10)
         if target == "edge":
             s = _CTX.wrap_socket(s, server_hostname=EDGE_NAME)

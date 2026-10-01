@@ -31,8 +31,9 @@ email-domain and audit-log administration, the account menu, notifications,
 organisation switching and the platform preferences live in `src/shell/`.
 Audit's layout composes them and supplies itself as the frame the shared
 administration screens render in (`App.jsx`, `ProductFrameProvider`); it does
-not own them. `DesignSystemShowcase` (development builds only) is here because
-it reads the preferences theme through Audit's pages. **Compliance stays here**
+not own them. `DesignSystemShowcase` (development builds only, mounted by
+`App.jsx` at `/design-system`) imports nothing but the design system; it sits
+here only because no home for platform development tooling has been chosen. **Compliance stays here**
 until the Policy Pro work reassesses which of it belongs to Policy Pro.
 
 Routes: `/audit-dashboard` is the canonical dashboard address and `/dashboard`

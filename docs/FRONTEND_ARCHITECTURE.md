@@ -684,7 +684,7 @@ shell's organization switcher, which writes `localStorage.activeOrgId`.
 
 | Directory                                                                        | Components                                                                                                                                        |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `modules/audit/components/common/`                                               | `Button`, `CVELink`, `ConfirmDialog`, `EmptyState`, `ErrorBoundary`, `FormField`, `Loader`, `RoleSelector`, `Skeleton`, `Toast`                   |
+| `modules/audit/components/common/`                                               | `CVELink`, `PanelErrorBoundary`, `RootErrorBoundary`                                                                                              |
 | `modules/audit/components/layout/`                                               | `AppLayout`, `HelpPanel`, `ScanStepper`, `auditSettings` (Scan Defaults section)                                                                  |
 | `shell/admin/components/`                                                        | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                                               |
 | `shell/account/`, `shell/notifications/`, `shell/navigation/`, `shell/feedback/` | `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`; `NotificationsPanel`; `CcureHomeLink`, `AccountMenu`, `OrgSwitcher`, `UserCard`; `Toast` |

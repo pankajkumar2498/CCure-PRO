@@ -120,6 +120,29 @@ that react to _Audit's_ collapsed sidebar (hiding the user card's text) stay in
 - **AMT permission mismatch** (sidebar `settings:update`, route
   `assets:update`, backend `settings:update`) is pre-existing and unchanged.
 - **The sign-in screens** remain `PENDING` the platform's sign-in branding.
+- **The frame is chosen once, at the root.** `App.jsx` supplies Audit's
+  `AppLayout` to every shared screen, which is right while Audit is the only
+  product with a layout. When a second product ships its own layout, which
+  frame a shared screen uses (for example, the product the person came from)
+  is a decision to take then; `ProductFrameProvider` is where it is made, and
+  no shared screen needs to change. Until then a user reaching `/admin/*`
+  sees Audit's sidebar, filtered by their permissions as before.
+- **Each product layout composes the shared header itself** — `AccountMenu`,
+  `OrgSwitcher`, `UserCard`, the notification bell, and rendering the account
+  dialog and settings drawer they open. That is a handful of pieces per
+  layout; a shared header kit is an option if a second layout shows the
+  duplication is real.
+- **The Audit Logs screen hard-codes its vocabulary.** The action and resource
+  filters and the event labels name only `user.*`, `organization.*` and
+  `scan.*` events. Other products' events will list with generic labels and
+  cannot be picked in those filters. The backend already holds a taxonomy
+  (`core/audit_taxonomy.py`); serving it and reading it in the screen is the
+  fix — "a vocabulary is fetched, not copied" — and is a backend-plus-frontend
+  change for when a second product writes audit events.
+- **Some shared-screen copy names Audit's features** — the deleted-users note
+  ("works like the scan Recycle Bin") and the organisation-deletion warning
+  (scans) — and the shared `SettingsDrawer`'s header comment still lists "Scan
+  Defaults", which is now Audit's section. Wording only; unchanged here.
 
 ## 6. Verification
 

@@ -667,6 +667,9 @@ were written and are unchanged.
 - **Platform administration.** User, organisation and role management stay in
   `modules/audit/pages/admin/` because they render inside Audit's layout.
   Extracting a platform administration area is its own architectural decision.
+  _Decided 1 Oct 2026, after Phase 12: there is no platform-admin product or
+  area; these screens are shared capabilities and now live in `src/shell/` —
+  [`PLATFORM_SHARED_NAVIGATION.md`](PLATFORM_SHARED_NAVIGATION.md)._
 - **The deploy of 12.3–12.5**, with the owner present.
 
 **Verification** is recorded in the commit and the step report: the full
@@ -751,5 +754,7 @@ ccure-audit-pro-frontend:latest`, then `docker compose up -d --no-deps
 frontend`.
 
 **Phase 12 is fully deployed and complete.** Recorded and still open, for the
-owner: the platform's sign-in branding (D12-9), a platform administration area,
-and real `CODEOWNERS` handles. Phase 13 has not started.
+owner: the platform's sign-in branding (D12-9), a platform administration area
+(since decided — shared capabilities in the shell, no platform-admin area:
+[`PLATFORM_SHARED_NAVIGATION.md`](PLATFORM_SHARED_NAVIGATION.md)), and real
+`CODEOWNERS` handles. Phase 13 has not started.

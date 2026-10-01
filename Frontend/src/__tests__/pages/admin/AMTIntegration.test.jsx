@@ -1029,7 +1029,10 @@ describe("AMTIntegration — contract", () => {
               >
                 <Route path="/admin/amt" element={<AMTIntegration />} />
               </Route>
-              <Route path="/dashboard" element={<div>Fallback page</div>} />
+              <Route
+                path="/audit-dashboard"
+                element={<div>Fallback page</div>}
+              />
               <Route path="/login" element={<div>Login page</div>} />
             </Routes>
           </MemoryRouter>

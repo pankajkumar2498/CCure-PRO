@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { canAny, canPermission, isSuperAdmin } from "../../auth/permissions";
 import {
@@ -95,6 +95,7 @@ const IcoHelp = () => (
 const IcoUser = () => (
   <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
 );
+const IcoHome = () => <Icon d="M3 10.5 12 3l9 7.5M5 9v11h5v-6h4v6h5V9" />;
 const IcoPlus = () => (
   <svg
     width={14}
@@ -122,7 +123,7 @@ const SIDEBAR_SECTIONS = [
         id: "security-dashboard",
         label: "Security Dashboard",
         Icon: IcoDashboard,
-        route: "/",
+        route: "/audit-dashboard",
         permission: { resource: "dashboard", action: "read" },
       },
       {
@@ -800,7 +801,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
 
   // Determine active nav item
   const activeId = (() => {
-    if (pathname === "/" || pathname === "/dashboard")
+    if (pathname === "/audit-dashboard" || pathname === "/dashboard")
       return "security-dashboard";
     if (pathname.startsWith("/reports") && search.includes("tab=executive"))
       return "executive-report";
@@ -988,6 +989,19 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
         {saveStatus === "saved" && "Saved"}
         {saveStatus === "error" && "Save failed"}
       </span>
+      {/* The way back to the platform's Product Hub (Phase 12, D12-8). A link,
+          not a button: it navigates, and can be opened in a new tab. */}
+      <CcureButton
+        as={Link}
+        to="/"
+        variant="ghost"
+        size="sm"
+        className="sh-home"
+        aria-label="CCure Home"
+      >
+        <IcoHome />
+        <span className="hide-on-mobile">CCure Home</span>
+      </CcureButton>
       {canStartScans && (
         <CcureButton
           variant="primary"

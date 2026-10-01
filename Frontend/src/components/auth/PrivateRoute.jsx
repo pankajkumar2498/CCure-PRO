@@ -15,7 +15,7 @@ import {
 const fallbackPathFor = (user, currentPath) => {
   const candidates = [
     {
-      path: "/dashboard",
+      path: "/audit-dashboard",
       permission: { resource: "scans", action: "execute" },
     },
     { path: "/history", permission: { resource: "scans", action: "read" } },

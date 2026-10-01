@@ -222,7 +222,7 @@ export default function CredentialedScan() {
           <CcureButton
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/audit-dashboard")}
           >
             ← Back
           </CcureButton>

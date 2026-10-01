@@ -1091,7 +1091,7 @@ describe("Phase1Results — contract", () => {
     it("leads to a new scan", async () => {
       seed(context());
       renderPage();
-      await expectLeadsTo(control(/New Scan$/), "/dashboard");
+      await expectLeadsTo(control(/New Scan$/), "/audit-dashboard");
     });
   });
 
@@ -1365,7 +1365,7 @@ describe("Phase1Results — batch 19", () => {
     renderPage();
     expect(screen.getByRole("link", { name: /New Scan$/ })).toHaveAttribute(
       "href",
-      "/dashboard",
+      "/audit-dashboard",
     );
     expect(
       screen.getByRole("link", { name: /View Port Scan Results/ }),

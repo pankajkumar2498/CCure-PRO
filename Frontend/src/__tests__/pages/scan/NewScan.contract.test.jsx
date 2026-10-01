@@ -477,7 +477,7 @@ describe("NewScan — contract", () => {
       await mount();
       fireEvent.click(screen.getByRole("button", { name: /Back/ }));
       await flush();
-      expect(here().path).toBe("/dashboard");
+      expect(here().path).toBe("/audit-dashboard");
     });
 
     it("quick targets fill the target field", async () => {

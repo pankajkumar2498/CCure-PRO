@@ -1,5 +1,5 @@
 /**
- * SecurityDashboard (`/`, `/dashboard`) — Checkpoint 3C batch 17 baseline.
+ * SecurityDashboard (`/audit-dashboard`; `/dashboard` redirects there) — Checkpoint 3C batch 17 baseline.
  *
  * Written against the page BEFORE migration. The regression block is the
  * gate every later change must keep passing; the batch 17 block is the
@@ -47,7 +47,7 @@ vi.mock("../../components/layout/AppLayout", () => ({
 }));
 
 const navigate = vi.fn();
-let location = { pathname: "/dashboard", search: "", state: null };
+let location = { pathname: "/audit-dashboard", search: "", state: null };
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
   return {
@@ -311,7 +311,7 @@ const expectLeadsTo = async (user, element, destination) => {
 beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
-  location = { pathname: "/dashboard", search: "", state: null };
+  location = { pathname: "/audit-dashboard", search: "", state: null };
   permissions = new Set(ANALYST);
   routes = BASE_ROUTES;
   axiosInstance.get.mockImplementation(routeGet);
@@ -486,7 +486,7 @@ describe("SecurityDashboard — contract", () => {
     await renderPage();
     expect(screen.getByText("Welcome to CCure Audit PRO!")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Explore Dashboard/ }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard", {
+    expect(navigate).toHaveBeenCalledWith("/audit-dashboard", {
       replace: true,
       state: {},
     });
@@ -638,7 +638,7 @@ describe("SecurityDashboard — batch 17", () => {
     });
     expect(dialog).toHaveAttribute("aria-modal", "true");
     await user.keyboard("{Escape}");
-    expect(navigate).toHaveBeenCalledWith("/dashboard", {
+    expect(navigate).toHaveBeenCalledWith("/audit-dashboard", {
       replace: true,
       state: {},
     });

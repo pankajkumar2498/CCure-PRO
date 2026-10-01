@@ -5,8 +5,10 @@
  * This file only defines Routes.
  *
  * Route changes from original:
- *   /           → SecurityDashboard (new SOC overview)
- *   /dashboard  → SecurityDashboard
+ *   /           → CCure Home, the platform's Product Hub (Phase 12.2)
+ *   /audit-dashboard → SecurityDashboard, Audit's canonical dashboard address
+ *   /dashboard  → redirect to /audit-dashboard (old links and bookmarks)
+ *   /:entry     → a product's entry page from the registry (Policy Pro, Rank, IR)
  *   /scan       → Dashboard.jsx (scan template picker, moved from /)
  *   /assets     → AssetRegistry
  *   /assets/:id → AssetDetail
@@ -18,7 +20,7 @@
  */
 
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import PrivateRoute from "./components/auth/PrivateRoute";
 import { ScanProvider } from "./context/ScanContext";
 
@@ -59,6 +61,10 @@ import NetworkMap from "./pages/scan/NetworkMap";
 
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 
+// ── Platform shell (Phase 12): CCure Home and the product entry pages ────────
+import CcureHome from "./shell/pages/CcureHome";
+import ModuleEntryPage from "./shell/pages/ModuleEntryPage";
+
 // ── Design-system showcase, development builds only ─────────────────────────
 // `import.meta.env.DEV` is a literal `false` in a production build, so Rollup
 // drops both the route and — because this is the only reference — the module
@@ -80,6 +86,19 @@ import OrganizationManagement from "./pages/admin/OrganizationManagement";
 import RoleManagement from "./pages/admin/RoleManagement";
 import DeletedUsers from "./pages/admin/DeletedUsers";
 import AMTIntegration from "./pages/admin/AMTIntegration";
+
+// /dashboard → /audit-dashboard, keeping the query string, fragment and router
+// state, so a link carrying any of them lands exactly where it pointed.
+function AuditDashboardRedirect() {
+  const { search, hash, state } = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: "/audit-dashboard", search, hash }}
+      state={state}
+      replace
+    />
+  );
+}
 
 export default function App() {
   return (
@@ -109,9 +128,20 @@ export default function App() {
 
         {/* ── Protected ── */}
         <Route element={<PrivateRoute />}>
-          {/* SOC Security Dashboard — new home */}
-          <Route path="/" element={<SecurityDashboard />} />
-          <Route path="/dashboard" element={<SecurityDashboard />} />
+          {/* CCure Home — the Product Hub, read from the platform registry */}
+          <Route path="/" element={<CcureHome />} />
+
+          {/* Audit's Security Dashboard. /dashboard was its address until
+              Phase 12 and stays a redirect, so bookmarks, report links and
+              anything outside the repository still land (D12-7). */}
+          <Route path="/audit-dashboard" element={<SecurityDashboard />} />
+          <Route path="/dashboard" element={<AuditDashboardRedirect />} />
+
+          {/* A product's entry page — /policy-dashboard, /rank-dashboard,
+              /ir-dashboard — looked up in the registry. Every static route
+              outranks it; an address that is no product's entry falls through
+              to / exactly as the catch-all below does. */}
+          <Route path="/:entry" element={<ModuleEntryPage />} />
 
           {/* Original scan launcher (moved from / to /scan) */}
           <Route path="/scan" element={<Dashboard />} />

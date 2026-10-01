@@ -407,7 +407,8 @@ const SHARED_TRACKED = [
 
 /* ── SecurityDashboard (batch 17) ─────────────────────────────────────────── */
 const SD_BASE = {
-  route: "/dashboard",
+  // Audit's dashboard address since Phase 12.2; /dashboard redirects here.
+  route: "/audit-dashboard",
   persona: ANALYST,
   stubs: SD_STUBS,
   tracked: [...PAGE_TRACKED, "h2"],
@@ -1984,7 +1985,7 @@ const AMT_STATES = [
     themes: LIGHT,
     persona: ASSETS_READONLY,
     stubs: SD_STUBS,
-    ready: `location.pathname === "/dashboard" && ${sdReady}`,
+    ready: `location.pathname === "/audit-dashboard" && ${sdReady}`,
   },
 ];
 

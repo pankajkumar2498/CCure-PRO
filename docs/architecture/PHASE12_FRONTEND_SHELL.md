@@ -1,11 +1,11 @@
 # Phase 12 — Frontend shell and CCure Home
 
-|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). 12.2 not started. Written at HEAD `1f9a32f` from measurements of the live tree. |
-| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                |
-| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                         |
-| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                            |
+|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). **12.2 committed (§8)**; its frontend redeploy (D12-6) is not done and waits for the owner. Written at HEAD `1f9a32f` from measurements of the live tree. |
+| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                                                                                          |
+| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                                                                                                   |
+| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                                                                                                      |
 
 ## 0. The owner's requirement (30 Sep 2026)
 
@@ -323,3 +323,78 @@ Verified through the production `:443` path:
 The authenticated check was run by the owner with a local script that prompts
 for credentials and prints neither the password nor any token. Step 12.1 is
 complete; 12.2 waits for the owner's go-ahead.
+
+## 8. Step 12.2 as built (1 Oct 2026)
+
+Frontend only, plus one repository test. Committed, **not deployed**: the
+production frontend is baked at build time, so nothing here is visible until
+`ccure-frontend` is rebuilt and redeployed with the owner present (D12-6). No
+backend route, schema, migration, Celery or configuration change.
+
+**`Frontend/src/shell/`** (new; the shared-plumbing move is 12.3):
+
+- `products/productList.js` — reads `GET /platform/modules`; validates the
+  body (an unreadable body is an error, never an empty list); maps each
+  `tile_state` to _available_, _not yet available_ or _unknown_. A state
+  outside the fetched `tile_states`, or inside it but unknown to this build, is
+  **unknown**. The file holds no product name, description or address.
+- `products/useProductList.js` — `loading` / `ready` / `error` plus `retry()`;
+  on error there is no list at all, so nothing can fall back to a guess.
+- `pages/CcureHome.jsx` — `/`. Every product the response lists, in its order,
+  as a card: title, description, availability badge, and an entry action —
+  **Open dashboard** (available), **About this product** (not yet available or
+  unknown). Loading is a loader, not placeholder cards; a failure is "The CCure
+  product list could not be loaded" with the HTTP status and **Retry**.
+- `pages/ModuleEntryPage.jsx` — the single-segment route `/:entry`, outranked
+  by every static route. It looks the address up in the fetched list:
+  not yet available → the module page ("CCure Rank is not available yet" /
+  "There are no CCure Rank features, data or settings in this installation",
+  description, back to CCure Home); unknown → says so; available with no page
+  in this build → says so; no product → `/`, as the catch-all did; list failed →
+  error and retry, the address kept. No chart, count, table or disabled control.
+- `layout/PlatformLayout.jsx` — CCure branding, the signed-in user, Sign out.
+  Not Audit's sidebar.
+
+**Routes** (`App.jsx`): `/` → CCure Home; `/audit-dashboard` →
+`SecurityDashboard` (same guard as before: signed in only); `/dashboard` →
+redirect to `/audit-dashboard` keeping query, fragment and router state;
+`/:entry` → module entry page. Every other address is unchanged.
+
+**Audit**: the sidebar's Security Dashboard item → `/audit-dashboard` and is
+active there and on `/dashboard`; the header carries a **CCure Home** link;
+`PrivateRoute`'s first refused-permission fallback, the welcome modal, and the
+NewScan / CredentialedScan / Phase 1 back actions → `/audit-dashboard`. Sign-in
+lands on `/` by default; `location.state.from` and the post-expiry
+`postLoginRedirect` still win. A refusal is never turned into a trip to CCure
+Home (D12-8).
+
+**Copy, for the owner (D12-9)**: the module page names the product by its
+registry title in both sentences ("There are no CCure Rank features…" rather
+than §3.5's "no Rank features…"), because a shortened name would be product
+metadata held in the frontend.
+
+**Tests**: Vitest 91 files / 2,784 tests before → 94 / 2,883 after, all
+passing; `npm run lint` clean; `npm run build` succeeds. New:
+`__tests__/shell/{productList,CcureHome,AppRoutes}.test.*`, with
+`fixtures/platformModules.real.json` (the live `:443` body from the 12.1
+activation). `AppRoutes` renders the real `App` with Audit's pages stubbed and
+pins the address map, the redirect, every module page, the catch-all, 20
+unchanged Audit addresses, the three existing redirects, and D12-8 (sign-in
+carries the address; refusals keep their fallback; a 403 from the list is
+shown, not navigated away from). Seven deliberate mutations — unknown read as
+known, vocabulary unchecked, sidebar back to `/`, sign-in default, redirect
+dropping the query, no catch-all, refusal to `/` — each fail a test.
+`Backend/tests/repo/test_platform_entry_routes.py`: an `available` product has a
+route at its `entry_path` in `App.jsx`; a product not yet available has none
+(it would outrank its module page). It skips in the API container, which does
+not mount `Frontend/`, and passes on a full checkout.
+
+**Harness** (`Frontend/scripts/ux4g-harness`; its SecurityDashboard states now
+open `/audit-dashboard`): pre (HEAD `775aba6`) against post, 253 states each,
+all ready, no exception, write, blocked navigation or off-origin request. Every
+delta is the header's new link — one link named "CCure Home" in names and Tab
+order, one design-system element, +10–11 characters of text, one contrast pair,
+screenshot pixels only inside the header band (y 17–32), the header status
+region moved by the link's width — plus `/dashboard` → `/audit-dashboard` in the
+21 states that open the dashboard. No Audit page body changed. The
+determinism and sensitivity gates were not re-run for this step.

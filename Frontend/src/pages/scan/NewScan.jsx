@@ -1993,7 +1993,7 @@ export default function NewScan() {
             variant="ghost"
             size="sm"
             className="ns-back"
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/audit-dashboard")}
           >
             <Glyph>←</Glyph> Back
           </CcureButton>

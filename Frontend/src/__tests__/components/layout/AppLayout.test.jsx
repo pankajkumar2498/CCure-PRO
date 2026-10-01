@@ -25,6 +25,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 import AppLayout from "../../../components/layout/AppLayout";
 import axiosInstance from "../../../api/axiosInstance";
@@ -181,6 +182,9 @@ const renderShell = async (props = {}) => {
     <AppLayout {...props}>
       <div data-testid="page">page content</div>
     </AppLayout>,
+    // The header's CCure Home control is a real router link (Phase 12), so
+    // the shell needs a router; navigation itself stays the mocked hooks.
+    { wrapper: MemoryRouter },
   );
   await waitFor(() =>
     expect(axiosInstance.get).toHaveBeenCalledWith("/scan/quota"),
@@ -387,6 +391,45 @@ describe("AppLayout — navigation gating (real permissions)", () => {
       registry.className.includes("--active") ||
         registry.getAttribute("aria-current") === "page",
     ).toBe(false);
+  });
+
+  /* ── Phase 12.2: Audit's dashboard moved to /audit-dashboard, and / is
+     CCure Home. Audit's own navigation must stay inside Audit. ── */
+  const isActive = (el) =>
+    el.className.includes("--active") ||
+    el.getAttribute("aria-current") === "page";
+
+  it("Security Dashboard opens /audit-dashboard, not CCure Home", async () => {
+    const u = userEvent.setup();
+    await renderShell();
+    await u.click(navButton(/^Security Dashboard/));
+    expect(navigate).toHaveBeenCalledWith("/audit-dashboard");
+    expect(navigate).not.toHaveBeenCalledWith("/");
+  });
+
+  it.each(["/audit-dashboard", "/dashboard"])(
+    "Security Dashboard is the active item on %s",
+    async (pathname) => {
+      location = { pathname, search: "" };
+      await renderShell();
+      expect(isActive(navButton(/^Security Dashboard/))).toBe(true);
+    },
+  );
+
+  it("no Audit item is active on CCure Home's address", async () => {
+    location = { pathname: "/", search: "" };
+    await renderShell();
+    expect(isActive(navButton(/^Security Dashboard/))).toBe(false);
+  });
+
+  it("the header carries a CCure Home link to /", async () => {
+    for (const persona of [SUPERADMIN, ORG_ADMIN, VIEWER]) {
+      user = persona;
+      const { unmount } = await renderShell();
+      const home = screen.getByRole("link", { name: "CCure Home" });
+      expect(home).toHaveAttribute("href", "/");
+      unmount();
+    }
   });
 });
 

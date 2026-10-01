@@ -70,9 +70,11 @@ export default function Login() {
     location.state?.reason === "expired"
       ? sessionStorage.getItem("postLoginRedirect")
       : "";
+  // With no page to return to, sign-in lands on CCure Home (Phase 12); a deep
+  // link through sign-in, or the page a session expired on, still wins.
   const from = fromLocation
-    ? `${fromLocation.pathname || "/dashboard"}${fromLocation.search || ""}${fromLocation.hash || ""}`
-    : savedRedirect || "/dashboard";
+    ? `${fromLocation.pathname || "/"}${fromLocation.search || ""}${fromLocation.hash || ""}`
+    : savedRedirect || "/";
 
   const [rememberMe, setRememberMe] = useState(() => {
     return localStorage.getItem("ccure_remember_me") === "true";

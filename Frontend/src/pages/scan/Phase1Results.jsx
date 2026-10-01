@@ -771,7 +771,12 @@ export default function Phase1Results() {
               )}
             </p>
           </div>
-          <CcureButton as={Link} to="/dashboard" variant="ghost" size="sm">
+          <CcureButton
+            as={Link}
+            to="/audit-dashboard"
+            variant="ghost"
+            size="sm"
+          >
             <span aria-hidden="true">←</span> New Scan
           </CcureButton>
         </header>

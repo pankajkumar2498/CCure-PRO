@@ -1,9 +1,11 @@
 /**
  * src/pages/SecurityDashboard.jsx
  * ─────────────────────────────────────────────────────────────────────────────
- * SOC-style Security Overview Dashboard — the primary landing page after login.
+ * SOC-style Security Overview Dashboard — CCure Audit's landing page. Sign-in
+ * itself lands on CCure Home (`/`), whose Audit card opens this page.
  *
- * Replaces the current /dashboard route (scan template picker moves to /scan).
+ * Audit's dashboard, at /audit-dashboard since Phase 12 (/dashboard redirects
+ * there); the scan template picker is at /scan.
  * All data comes from the real backend via /dashboard/* endpoints.
  * RBAC-aware: widgets gate on user permissions via canPermission().
  *
@@ -1751,7 +1753,7 @@ export default function SecurityDashboard() {
 
   const handleCloseWelcomeModal = useCallback(() => {
     setShowWelcomeModal(false);
-    navigate("/dashboard", { replace: true, state: {} });
+    navigate("/audit-dashboard", { replace: true, state: {} });
   }, [navigate]);
 
   useEffect(() => {

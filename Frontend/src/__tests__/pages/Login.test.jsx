@@ -194,7 +194,7 @@ describe("Login — MFA challenge", () => {
 
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
     expect(refreshUser).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith("/dashboard", { replace: true });
+    expect(navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 
   it("never renders or persists the mfa_token", async () => {
@@ -335,12 +335,12 @@ describe("Login — remember me", () => {
 /* ── Redirect handling ────────────────────────────────────────────────────── */
 
 describe("Login — post-login redirect", () => {
-  it("defaults to the dashboard", async () => {
+  it("defaults to CCure Home (Phase 12)", async () => {
     renderPage();
     await signIn();
 
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
-    expect(navigate).toHaveBeenCalledWith("/dashboard", { replace: true });
+    expect(navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 
   it("restores the attempted location including search and hash", async () => {
@@ -372,7 +372,7 @@ describe("Login — post-login redirect", () => {
     await signIn();
 
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
-    expect(navigate).toHaveBeenCalledWith("/dashboard", { replace: true });
+    expect(navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 
   it("clears the saved redirect on success so it cannot be replayed", async () => {

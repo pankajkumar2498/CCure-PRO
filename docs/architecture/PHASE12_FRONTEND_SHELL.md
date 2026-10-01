@@ -1,11 +1,11 @@
 # Phase 12 — Frontend shell and CCure Home
 
-|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7)**; 12.1's live step (API restart, gateway reload) waits for the owner's review of the report. Written at HEAD `1f9a32f` from measurements of the live tree. |
-| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                        |
-| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                 |
-| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                    |
+|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). 12.2 not started. Written at HEAD `1f9a32f` from measurements of the live tree. |
+| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                |
+| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                         |
+| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                            |
 
 ## 0. The owner's requirement (30 Sep 2026)
 
@@ -292,3 +292,34 @@ truth rather than a hand-merged partial file. No existing path or schema changed
 **Invariants, deliberately changed**: routes 273 → 274, OpenAPI paths 234 → 235
 and its hash. **Unchanged**: 93 rate-limited routes, 21 Celery tasks at import,
 11 beat entries, the task registry, queues and includes.
+
+### Live activation (1 Oct 2026)
+
+Approved by the owner, who was present (D12-6). Only the two approved actions
+were taken; no code, configuration, schema, migration or Celery change, and the
+frontend, workers, beat, gateway-auth and database were not touched.
+
+- **Backup first** — `backups/ccure_db_20261001_090912_ops.dump`.
+- **API restart** — `docker compose restart api` at 09:09:18 IST; `:443`
+  answered again 11 s later. `alembic upgrade heads` applied nothing (no
+  migration since 11.3). Trust boundary logged unchanged
+  (`127.0.0.1, ::1, 172.31.254.10`); no error or traceback.
+- **Gateway reload** — `nginx -t` passed, then `nginx -s reload` in
+  `ccure-api-gateway` at 09:09:47 IST, picking up the bind-mounted
+  `route_policy.map` committed in 12.1. No error; the only output is the
+  existing warning that `user` is ignored by a non-root master.
+
+Verified through the production `:443` path:
+
+| Check                                       | Result                                                                                                                                                                                                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/platform/modules`, no credentials | **403** "Not authenticated", refusal `missing_bearer` — identical to `/auth/me`                                                                                                                                                                      |
+| Same, invalid bearer                        | **401** "Invalid or expired token", refusal `invalid_bearer` — identical to `/auth/me`                                                                                                                                                               |
+| Gateway classification                      | `class: bearer`, `policy: bearer` in the gateway access log                                                                                                                                                                                          |
+| Same, the owner's own sign-in               | **200**, `X-Request-ID` present; four products in the order CCure Policy Pro, CCure Audit, CCure Rank, CCure IR; body **equal field for field** to the committed registry (titles, kinds, descriptions, `entry_path`s, `tile_state`s, `tile_states`) |
+| Existing Audit access, same session         | `POST /auth/login`, `GET /auth/me`, `/dashboard/summary`, `/scan-policies`, `/scan-schedules` all **200**; the session was signed out afterwards                                                                                                     |
+| Logs                                        | No error in `ccure-api`, `ccure-api-gateway` or `ccure-gateway-auth` after the restart and reload                                                                                                                                                    |
+
+The authenticated check was run by the owner with a local script that prompts
+for credentials and prints neither the password nor any token. Step 12.1 is
+complete; 12.2 waits for the owner's go-ahead.

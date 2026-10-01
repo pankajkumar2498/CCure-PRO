@@ -1,10 +1,10 @@
 # Shared platform capabilities and Audit's navigation
 
-|              |                                                                                                                                                            |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**   | **Implemented, committed, not deployed** (1 Oct 2026). Production runs the Phase 12 frontend `e684d88`.                                                    |
-| **Decided**  | By the owner, 1 Oct 2026, after an inventory of every item in Audit's sidebar, header and footer, traced to the page, API, permission and table behind it. |
-| **Baseline** | `335047b` (Phase 12 complete). Builds on [`PHASE12_FRONTEND_SHELL.md`](PHASE12_FRONTEND_SHELL.md).                                                         |
+|              |                                                                                                                                                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**   | **Implemented, committed, not deployed** (1 Oct 2026): the move of the shared capabilities (`4ba9bd4`) and the platform header that presents them after sign-in (§7). Production runs the Phase 12 frontend `e684d88`. |
+| **Decided**  | By the owner, 1 Oct 2026, after an inventory of every item in Audit's sidebar, header and footer, traced to the page, API, permission and table behind it.                                                             |
+| **Baseline** | `335047b` (Phase 12 complete). Builds on [`PHASE12_FRONTEND_SHELL.md`](PHASE12_FRONTEND_SHELL.md).                                                                                                                     |
 
 ## 1. The ownership model (owner decision)
 
@@ -160,3 +160,56 @@ that react to _Audit's_ collapsed sidebar (hiding the user card's text) stay in
   drawer, notifications and organisation switcher included — with 15
   screenshots inside the harness's anti-aliasing tolerance (maximum channel
   delta 1–2), and no exception, write or blocked navigation.
+
+## 7. The platform home carries the shared navigation
+
+**After a successful sign-in a person lands on CCure Home (`/`), and that page
+is the whole CCure Platform experience**: the Product Hub — all four products,
+CCure Policy Pro, CCure Audit, CCure Rank and CCure IR, with a product that is
+not yet available shown as such, never hidden — under a header carrying the
+shared platform navigation. Nobody has to enter a product to reach their
+account, settings, notifications or the administration screens.
+
+`PlatformLayout` (`shell/layout/`), the frame of CCure Home, the product entry
+pages and any shared screen rendered without a product's layout, composes:
+
+| Control                             | Shared component                                                                   | Shown to                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------- |
+| CCure Home                          | brand link to `/`                                                                  | everyone                                |
+| Administration                      | `navigation/AdminMenu` — links to the `/admin/*` screens                           | anyone who may see at least one of them |
+| Organisation switcher               | `navigation/OrgSwitcher` + `useOrganizationSwitcher`                               | superadmin                              |
+| Notifications                       | `notifications/NotificationsPanel`'s bell and panel + `useNotificationFeed`        | everyone                                |
+| Settings                            | `account/SettingsDrawer` with **no** `productSettings` — platform preferences only | everyone                                |
+| Account menu (My Account, Sign Out) | `navigation/AccountMenu` + `account/ProfileModal`                                  | everyone                                |
+| Sign out                            | a direct button, as before                                                         | everyone                                |
+
+There is one implementation of each: Audit's `AppLayout` composes the same
+components. **The Administration items have one source**,
+`shell/admin/adminNav.js` (`SHARED_ADMIN_NAV`), and one visibility rule,
+`shell/auth/navVisibility.js` (`canSeeNavItem`, moved from Audit unchanged):
+the platform menu and Audit's sidebar both read them, Audit adding its own AMT
+item in its usual place. Showing an item is a convenience; the route guard and
+the backend still decide access, unchanged.
+
+`PlatformLayout` names and imports no product — a boundary test walks its whole
+import closure and requires every file to be the shell's or the design
+system's. The header icon button style (`.sh-iconbtn`) moved from Audit's
+`app-shell.css` into `shell/navigation/navigation.css` with it, so the shared
+bell is styled by the shell wherever it appears.
+
+**Verified** (1 Oct 2026):
+
+- Focused tests for every control and gate (`__tests__/shell/PlatformLayout.test.jsx`);
+  the Product Hub suites unchanged in substance; a boundary test over
+  `PlatformLayout`'s import closure, mutation-checked.
+- **The UX4G harness now captures the page a person lands on.** Ten `ph-*`
+  states, twelve captures: CCure Home (light, dark, mobile), the Administration
+  menu (org admin), the organisation switcher (superadmin), the notifications
+  panel, the settings drawer (light, dark), the account menu, and the three
+  entry pages. They are deterministic (12/12 identical across two runs) and in
+  `REGRESSION_PREFIXES` from now on.
+- Against production `e684d88`: **Audit's 253 states are identical**; every
+  `ph-*` difference is the header — the added controls in names, tab order and
+  ARIA state, the notification summary and stream requests, and screenshot
+  change confined to the header band — with the Product Hub's headings and
+  card links unchanged.

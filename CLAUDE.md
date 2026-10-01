@@ -470,13 +470,22 @@ each folder's `README.md` says what belongs in it.
   drawer takes a product's own sections through `productSettings`. Routes
   (`/admin/*`) and APIs are unchanged. Record:
   `docs/architecture/PLATFORM_SHARED_NAVIGATION.md`.
+- **Sign-in lands on the whole platform, not on a product.** CCure Home's
+  frame, `PlatformLayout`, carries the shared navigation — Administration
+  (`AdminMenu`, by permission), organisation switcher (superadmin),
+  notifications, settings (platform preferences only), account menu, sign out
+  — above the Product Hub's four products. Administration items have one list
+  (`shell/admin/adminNav.js`) and one rule (`shell/auth/navVisibility.js`),
+  read by the platform header and Audit's sidebar alike. A boundary test
+  requires `PlatformLayout`'s whole import closure to be shell or design system.
 - **Still open:** the sign-in screens stay in `src/pages/`,
   `src/components/auth/` and `src/styles/` (`PENDING` in `modules.config.js`)
   because they carry Audit's branding; Compliance stays in Audit until the
   Policy Pro work reassesses it.
 - **Production** runs the Phase 12 frontend `e684d88`
   (`ccure-audit-pro-frontend:phase12-e684d88`, since 1 Oct 2026 14:53 IST);
-  the shared-navigation refactor is committed and not yet deployed.
+  the shared-navigation refactor and the platform header are committed and not
+  yet deployed.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 

@@ -461,3 +461,31 @@ describe("the platform's shared capabilities live in the shell", () => {
     }
   });
 });
+
+describe("the platform header reaches no product", () => {
+  // PlatformLayout is what a person sees right after sign-in. Everything it
+  // reaches, transitively, must be the shell's or the design system's — a
+  // product import anywhere below it would put that product in every
+  // product's way.
+  it("PlatformLayout's whole import closure is shell or design system", () => {
+    const start = "src/shell/layout/PlatformLayout.jsx";
+    const byFrom = new Map();
+    for (const e of edges) {
+      if (!byFrom.has(e.from)) byFrom.set(e.from, []);
+      byFrom.get(e.from).push(e.to);
+    }
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      for (const to of byFrom.get(queue.shift()) || []) {
+        if (!seen.has(to)) {
+          seen.add(to);
+          queue.push(to);
+        }
+      }
+    }
+    expect(seen.size).toBeGreaterThan(15);
+    const owners = new Set([...seen].map(ownerOf));
+    expect([...owners].sort()).toEqual(["design-system", "shell"]);
+  });
+});

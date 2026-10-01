@@ -27,6 +27,7 @@ import {
   deleteNotification,
 } from "../api/notifications";
 import { CcureTabs } from "../../design-system";
+import "../navigation/navigation.css";
 import "./notifications.css";
 
 /* ── Icons (decorative) ──────────────────────────────────────────────────── */

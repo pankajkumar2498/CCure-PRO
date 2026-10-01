@@ -14,6 +14,22 @@ import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import CcureHome from "../../shell/pages/CcureHome";
 
+// The platform header composes the shell's shared pieces (Phase 12 platform
+// navigation): preferences come from the provider main.jsx mounts, and the
+// notification feed opens a stream — both stubbed here, as in AppLayout's suite.
+vi.mock("@shell/preferences/PreferencesContext", () => ({
+  usePreferences: () => ({ preferences: {}, updateLocalPreferences: vi.fn() }),
+}));
+vi.mock("@shell/api/notifications", () => ({
+  getUnreadCount: vi.fn().mockResolvedValue({ total_unread: 0 }),
+  streamNotificationEvents: vi.fn(() => new Promise(() => {})),
+  getNotifications: vi.fn().mockResolvedValue([]),
+  markAsRead: vi.fn(),
+  markAllAsRead: vi.fn(),
+  deleteNotification: vi.fn(),
+  deleteAllNotifications: vi.fn(),
+}));
+
 vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 const logout = vi.fn();
@@ -236,8 +252,12 @@ describe("CCure Home — page states", () => {
     const { container } = renderHome();
     await cards();
     expect(
-      container.querySelector("table, canvas, svg, figure, progress"),
+      container.querySelector("table, canvas, figure, progress"),
     ).toBeNull();
+    // The header's icons (bell, settings, avatar) are decorative navigation
+    // since the platform header gained the shared navigation; the hub itself,
+    // the page's <main>, still draws nothing chart-like.
+    expect(container.querySelector("main svg")).toBeNull();
     expect(
       container.querySelector("[disabled], [aria-disabled='true']"),
     ).toBeNull();

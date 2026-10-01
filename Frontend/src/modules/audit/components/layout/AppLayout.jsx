@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
 import CcureHomeLink from "@shell/navigation/CcureHomeLink";
-import { canAny, canPermission, isSuperAdmin } from "@shell/auth/permissions";
+import { canPermission, isSuperAdmin } from "@shell/auth/permissions";
+import { canSeeNavItem } from "@shell/auth/navVisibility";
+import { SHARED_ADMIN_NAV } from "@shell/admin/adminNav";
 import {
   CcureAppShell,
   CcureButton,
@@ -116,6 +118,17 @@ const IcoTopology = () => (
 );
 
 // ── Sidebar Definition ───────────────────────────────────────────────────────
+// Audit's icons for the shared administration items.
+const ADMIN_ICONS = {
+  "user-management": IcoUsers,
+  "deleted-users": IcoTrash,
+  "email-domains": IcoMail,
+  organizations: IcoOrg,
+  "roles-perms": IcoShieldKey,
+  "audit-logs": IcoList,
+};
+const withAdminIcon = (item) => ({ ...item, Icon: ADMIN_ICONS[item.id] });
+
 const SIDEBAR_SECTIONS = [
   {
     label: "Overview",
@@ -305,44 +318,12 @@ const SIDEBAR_SECTIONS = [
   },
   {
     label: "Administration",
+    // The shared administration screens come from the shell's one list, with
+    // the same gates; Audit adds its own AMT Integration in its usual place.
     items: [
-      {
-        id: "user-management",
-        label: "User Management",
-        Icon: IcoUsers,
-        route: "/admin/users",
-        permission: { resource: "users", action: "read" },
-      },
-      {
-        id: "deleted-users",
-        label: "Deleted Users",
-        Icon: IcoTrash,
-        route: "/admin/users/deleted",
-        permission: { resource: "users", action: "read" },
-      },
-      {
-        id: "email-domains",
-        label: "Email Domain Rules",
-        Icon: IcoMail,
-        route: "/admin/email-domains",
-        // No `permission`: these rules are platform-wide, so the gate is the
-        // superadmin role rather than a permission an org_admin also holds.
-        superadminOnly: true,
-      },
-      {
-        id: "organizations",
-        label: "Organizations",
-        Icon: IcoOrg,
-        route: "/admin/organizations",
-        permission: { resource: "organizations", action: "read" },
-      },
-      {
-        id: "roles-perms",
-        label: "Roles & Permissions",
-        Icon: IcoShieldKey,
-        route: "/admin/roles",
-        permission: { resource: "roles", action: "read" },
-      },
+      ...SHARED_ADMIN_NAV.filter((item) => item.id !== "audit-logs").map(
+        withAdminIcon,
+      ),
       {
         id: "amt-integration",
         label: "AMT Integration",
@@ -350,28 +331,14 @@ const SIDEBAR_SECTIONS = [
         route: "/admin/amt",
         permission: { resource: "settings", action: "update" },
       },
-      {
-        id: "audit-logs",
-        label: "Audit Logs",
-        Icon: IcoList,
-        route: "/admin/audit-logs",
-        permission: { resource: "audit", action: "read" },
-      },
+      ...SHARED_ADMIN_NAV.filter((item) => item.id === "audit-logs").map(
+        withAdminIcon,
+      ),
     ],
   },
 ];
 
 const hasPermission = (user, permission) => canPermission(user, permission);
-const canSeeNavItem = (user, item) => {
-  // Role gate, not a permission gate. Superadmin holds every permission, so
-  // permission checks alone cannot express "superadmin only" — any permission
-  // an org_admin also has would let them through. Used for platform-wide
-  // settings whose blast radius crosses tenants.
-  if (item.superadminOnly && !isSuperAdmin(user)) return false;
-  if (item.permission && !hasPermission(user, item.permission)) return false;
-  if (item.requiredAny && !canAny(user, item.requiredAny)) return false;
-  return true;
-};
 
 // ── Header pieces ────────────────────────────────────────────────────────────
 const IcoSearch = () => (

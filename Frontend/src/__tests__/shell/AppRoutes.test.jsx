@@ -24,6 +24,22 @@ import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import App from "../../App";
 
+// The platform header composes the shell's shared pieces (Phase 12 platform
+// navigation): preferences come from the provider main.jsx mounts, and the
+// notification feed opens a stream — both stubbed here, as in AppLayout's suite.
+vi.mock("@shell/preferences/PreferencesContext", () => ({
+  usePreferences: () => ({ preferences: {}, updateLocalPreferences: vi.fn() }),
+}));
+vi.mock("@shell/api/notifications", () => ({
+  getUnreadCount: vi.fn().mockResolvedValue({ total_unread: 0 }),
+  streamNotificationEvents: vi.fn(() => new Promise(() => {})),
+  getNotifications: vi.fn().mockResolvedValue([]),
+  markAsRead: vi.fn(),
+  markAllAsRead: vi.fn(),
+  deleteNotification: vi.fn(),
+  deleteAllNotifications: vi.fn(),
+}));
+
 vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 let auth;

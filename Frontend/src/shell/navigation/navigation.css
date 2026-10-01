@@ -210,3 +210,20 @@
   color: var(--ccure-text-secondary);
   text-transform: capitalize;
 }
+
+/* Header icon button (the notification bell, settings and help buttons) —
+   moved from Audit's app-shell.css so the shared bell is styled by the shell. */
+.sh-iconbtn {
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: var(--ccure-radius-full);
+  justify-content: center;
+}
+
+.sh-iconbtn--active,
+.sh-iconbtn[aria-expanded="true"] {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+}

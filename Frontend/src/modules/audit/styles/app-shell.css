@@ -41,21 +41,6 @@
 }
 
 /* ── Header composition ──────────────────────────────────────────────────── */
-.sh-iconbtn {
-  position: relative;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
-  border-radius: var(--ccure-radius-full);
-  justify-content: center;
-}
-
-.sh-iconbtn--active,
-.sh-iconbtn[aria-expanded="true"] {
-  background: var(--ccure-primary-soft);
-  color: var(--ccure-primary-text);
-}
-
 .sh-savestatus {
   font-size: var(--ccure-text-sm);
   color: var(--ccure-text-secondary);

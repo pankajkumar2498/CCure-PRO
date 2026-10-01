@@ -52,15 +52,6 @@
   min-width: 0;
 }
 
-.pl-user {
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 24ch;
-}
-
 .pl-main {
   flex: 1;
   width: 100%;
@@ -142,4 +133,14 @@
     padding-left: var(--ccure-space-md);
     padding-right: var(--ccure-space-md);
   }
+}
+
+/* ── Shared navigation in the platform header ────────────────────────────── */
+/* The notification panel opens below the bell, aligned to its right edge —
+   the same placement a product's layout gives it. */
+.pl-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--ccure-space-xs));
+  z-index: var(--ccure-z-drawer);
 }

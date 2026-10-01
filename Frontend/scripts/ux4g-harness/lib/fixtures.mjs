@@ -3099,3 +3099,82 @@ export const nsSocketScript = (frames) => `(() => {
   HarnessSocket.CLOSED = 3;
   window.WebSocket = HarnessSocket;
 })();`;
+
+/* ── Platform Home (CCure Home, the product entry pages, the platform header) ─
+   The product list is the live :443 response recorded at the Phase 12.1
+   activation. Two personas exercise the header's gates: an org admin who sees
+   part of Administration, and a superadmin who also sees Email Domain Rules
+   and the organisation switcher. */
+export const PLATFORM_MODULES = {
+  tile_states: ["available", "not_yet_available"],
+  modules: [
+    {
+      key: "policy_pro",
+      title: "CCure Policy Pro",
+      kind: "core_module",
+      description:
+        "Responsible for your organisation's security policies and controls, and for the baseline — which controls apply, with what parameters — that the other products assess against.",
+      entry_path: "/policy-dashboard",
+      tile_state: "not_yet_available",
+    },
+    {
+      key: "audit",
+      title: "CCure Audit",
+      kind: "core_module",
+      description:
+        "Responsible for finding and assessing your assets: network and web scanning, vulnerability and configuration audits, compliance against frameworks, remediation tracking and reports.",
+      entry_path: "/audit-dashboard",
+      tile_state: "available",
+    },
+    {
+      key: "rank",
+      title: "CCure Rank",
+      kind: "core_module",
+      description:
+        "Responsible for scoring and ranking your organisation's security posture from the results the other products produce.",
+      entry_path: "/rank-dashboard",
+      tile_state: "not_yet_available",
+    },
+    {
+      key: "ir",
+      title: "CCure IR",
+      kind: "service",
+      description:
+        "Responsible for incident response: recording and managing security incidents, and feeding what is learned back to the other products.",
+      entry_path: "/ir-dashboard",
+      tile_state: "not_yet_available",
+    },
+  ],
+};
+
+export const PH_ORG_ADMIN = {
+  ...persona([
+    ...BASE_PERMISSIONS,
+    "users:read",
+    "audit:read",
+    "organizations:read",
+    "roles:read",
+  ]),
+  role: {
+    name: "org_admin",
+    permissions: [
+      ...BASE_PERMISSIONS,
+      "users:read",
+      "audit:read",
+      "organizations:read",
+      "roles:read",
+    ],
+  },
+};
+
+export const PH_SUPERADMIN = {
+  ...ANALYST,
+  role: { name: "superadmin", permissions: [] },
+};
+
+export const PH_ORGS = {
+  organizations: [
+    { id: "o-1", name: "Harness Org" },
+    { id: "o-2", name: "Second Org" },
+  ],
+};

@@ -50,13 +50,13 @@ Frontend/
     ├── shell/                 @shell — the platform, shared by every product
     │   ├── pages/             CcureHome (/), ModuleEntryPage (/:entry)
     │   ├── products/          GET /platform/modules: list, availability, load states
-    │   ├── admin/             /admin/*: users, deleted users, organisations, roles, email domains, audit logs
+    │   ├── admin/             /admin/*: users, deleted users, organisations, roles, email domains, audit logs; adminNav (the one list)
     │   ├── account/           account dialog, change password, settings drawer (platform preferences)
     │   ├── notifications/     bell, panel, useNotificationFeed
-    │   ├── navigation/        CcureHomeLink, AccountMenu, OrgSwitcher (+ hook), UserCard
+    │   ├── navigation/        CcureHomeLink, AdminMenu, AccountMenu, OrgSwitcher (+ hook), UserCard
     │   ├── preferences/       PreferencesContext
-    │   ├── layout/            PlatformLayout, ProductFrame
-    │   ├── auth/              AuthContext, PrivateRoute, permissions, accessFallback
+    │   ├── layout/            PlatformLayout (the platform header + frame), ProductFrame
+    │   ├── auth/              AuthContext, PrivateRoute, permissions, navVisibility, accessFallback
     │   ├── api/               axiosInstance, tokenStorage, auth, admin, user, notifications, emailDomains
     │   └── feedback/, hooks/, utils/   Toast, useDebounce, date
     ├── modules/
@@ -218,11 +218,11 @@ or `postLoginRedirect` after a session expiry), which wins.
 
 ### Protected — platform
 
-| Path      | Component                     | Notes                                                                                                                                                                  |
-| --------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`       | `shell/pages/CcureHome`       | The Product Hub: every product from `GET /platform/modules`, in registry order                                                                                         |
-| `/:entry` | `shell/pages/ModuleEntryPage` | A product's entry address (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) while it has no page of its own; an address that is no product's entry goes to `/` |
-| `*`       | → redirect to `/`             | Catch-all                                                                                                                                                              |
+| Path      | Component                     | Notes                                                                                                                                                                                                                                                                                                 |
+| --------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`       | `shell/pages/CcureHome`       | Where sign-in lands: the Product Hub — every product from `GET /platform/modules`, in registry order — in `PlatformLayout`, whose header carries the shared platform navigation (Administration by permission, organisation switcher for superadmin, notifications, settings, account menu, sign out) |
+| `/:entry` | `shell/pages/ModuleEntryPage` | A product's entry address (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) while it has no page of its own; an address that is no product's entry goes to `/`                                                                                                                                |
+| `*`       | → redirect to `/`             | Catch-all                                                                                                                                                                                                                                                                                             |
 
 ### Protected — Audit (`modules/audit/pages/`)
 

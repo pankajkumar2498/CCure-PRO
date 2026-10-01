@@ -356,3 +356,57 @@ describe("ESLint repeats the alias rules", () => {
     ).toBe(false);
   });
 });
+
+describe("every tool resolves the aliases the same way (Phase 12.5)", () => {
+  it("vite.config.js takes its aliases from modules.config.js and nowhere else", () => {
+    const source = readFileSync(path.join(FRONT, "vite.config.js"), "utf8");
+    expect(source).toMatch(
+      /import \{ ALIASES \} from "\.\/modules\.config\.js";/,
+    );
+    expect(source).toMatch(/resolve: \{ alias \}/);
+    // No alias is written out by hand beside the generated ones.
+    expect(source).not.toMatch(/["']@(shell|audit|policy|rank|ir)["']\s*:/);
+  });
+
+  it("the aliases resolve to the very modules their folders hold", async () => {
+    // Behavioural, not textual: the same module object through both routes.
+    expect(await import("@shell/products/productList")).toBe(
+      await import("../../shell/products/productList"),
+    );
+    expect(await import("@audit/config/scanConfig")).toBe(
+      await import("../../modules/audit/config/scanConfig"),
+    );
+  });
+
+  it("jsconfig.json gives the editor the same aliases", () => {
+    const { paths } = JSON.parse(
+      readFileSync(path.join(FRONT, "jsconfig.json"), "utf8"),
+    ).compilerOptions;
+    for (const [a, dir] of Object.entries(ALIASES))
+      expect(paths[`${a}/*`]).toEqual([`${dir}/*`]);
+  });
+});
+
+describe("every frontend part has an owner line (Phase 12.5)", () => {
+  // The frontend twin of Backend/scripts/architecture/module_boundaries.py's
+  // CODEOWNERS check. Skipped where the repository root is not present.
+  const codeowners = path.join(FRONT, "..", ".github", "CODEOWNERS");
+  const lines = existsSync(codeowners)
+    ? readFileSync(codeowners, "utf8")
+        .split("\n")
+        .filter((l) => l.trim() && !l.trim().startsWith("#"))
+    : null;
+  const ownerOfPath = (p) =>
+    lines
+      .map((l) => l.trim().split(/\s+/))
+      .filter(([pattern]) => pattern === `/Frontend/${p}/`)
+      .map(([, ...owners]) => owners)
+      .pop();
+
+  it.skipIf(!lines).each([SHELL, DESIGN_SYSTEM, ...Object.values(MODULES)])(
+    "%s has its own CODEOWNERS line naming an owner",
+    (dir) => {
+      expect(ownerOfPath(dir)?.length).toBeGreaterThan(0);
+    },
+  );
+});

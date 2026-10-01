@@ -49,7 +49,7 @@ def get_api() -> HostDiscoveryAPI:
     return _api_instance
 
 
-# ─── Pipeline configuration (mirrors src/config/scanConfig.js) ───────────────
+# ─── Pipeline configuration (mirrors Frontend/src/modules/audit/config/scanConfig.js)
 # Phase 4 (topology_mapping) is eligible to run at the end of any pipeline.
 # It is only executed if SNMP credentials are provided in scan.options.
 PIPELINE_PHASES: dict[str, list[int]] = {

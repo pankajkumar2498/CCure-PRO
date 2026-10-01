@@ -1,4 +1,5 @@
-# CCure — who owns which part of the repository (Phase 11.2, finalised 11.5).
+# CCure — who owns which part of the repository (Phase 11.2, finalised 11.5;
+# frontend lines Phase 12.5).
 #
 # STRUCTURE ONLY. Every owner below is a PLACEHOLDER (`@TODO-…`): no real GitHub
 # user or team has been supplied yet, and none has been invented. GitHub treats
@@ -53,6 +54,23 @@
 # CCure Rank.
 /Backend/ccure_rank/                @TODO-rank-team
 /Backend/tests/modules/rank/        @TODO-rank-team
+
+# Frontend (Phase 12.5). The shell, the design system and the files that
+# hold the module boundaries are shared; each product folder is its team's.
+# IR has no team yet: the project owner holds its folder until one is named.
+/Frontend/src/shell/                       @TODO-project-owner
+/Frontend/src/design-system/               @TODO-project-owner
+/Frontend/modules.config.js                @TODO-project-owner
+/Frontend/.eslintrc.json                   @TODO-project-owner
+/Frontend/src/__tests__/architecture/      @TODO-project-owner
+/Frontend/src/modules/audit/               @TODO-audit-team
+/Frontend/src/__tests__/modules/audit/     @TODO-audit-team
+/Frontend/src/modules/policy/              @TODO-policy-pro-team
+/Frontend/src/__tests__/modules/policy/    @TODO-policy-pro-team
+/Frontend/src/modules/rank/                @TODO-rank-team
+/Frontend/src/__tests__/modules/rank/      @TODO-rank-team
+/Frontend/src/modules/ir/                  @TODO-project-owner
+/Frontend/src/__tests__/modules/ir/        @TODO-project-owner
 
 # The test-only proof module is platform test infrastructure.
 /Backend/tests/modules/example/     @TODO-project-owner

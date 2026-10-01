@@ -419,8 +419,54 @@ each module's `README.md` is the guide its team works from.
   never a migration.
 - **`.github/CODEOWNERS` owners are placeholders** (`@TODO-project-owner`,
   `@TODO-audit-team`, `@TODO-policy-pro-team`, `@TODO-rank-team`); never invent
-  a real handle. "Require review from Code Owners" stays off until they are
+  a real handle. Since Phase 12.5 it has a line per frontend module folder too
+  (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
+
+## Frontend modules (Phase 12)
+
+One React application holds the four products. Record:
+[`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md);
+guide: [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) §2;
+each folder's `README.md` says what belongs in it.
+
+| Part | Folder | Alias |
+| --- | --- | --- |
+| Platform shell | `Frontend/src/shell/` | `@shell/…` |
+| Design system | `Frontend/src/design-system/` | — |
+| CCure Audit | `Frontend/src/modules/audit/` | `@audit/…` |
+| CCure Policy Pro | `Frontend/src/modules/policy/` (README only) | `@policy/…` |
+| CCure Rank | `Frontend/src/modules/rank/` (README only) | `@rank/…` |
+| CCure IR integration | `Frontend/src/modules/ir/` (README only) | `@ir/…` |
+| Composition root | `src/main.jsx`, `src/App.jsx`, global stylesheet `src/styles/` | — |
+
+- **`Frontend/modules.config.js` is the single statement of the layout** and
+  the source of the aliases (`vite.config.js` builds them from it).
+  `src/__tests__/architecture/moduleBoundaries.test.js` resolves every import
+  and fails on: a product importing another product; the shell importing a
+  product; the design system importing the application; anything but
+  `main.jsx` importing the root; a source file outside a named place; an import
+  or `vi.mock` path that does not resolve. ESLint repeats the alias rules.
+- **Product metadata has one source, the platform registry**
+  (`GET /platform/modules`). The shell names no product — a test fails if it
+  does. `/` is CCure Home; `/audit-dashboard` is Audit's dashboard and
+  `/dashboard` redirects there; the other three entry addresses are rendered
+  from the registry until a product ships a static route at its `entry_path`,
+  in the same change as its `tile_state` becomes `available`
+  (`Backend/tests/repo/test_platform_entry_routes.py`).
+- **The route guard holds the rule, the product names the pages**: a refused
+  route falls back to Audit's `modules/audit/config/accessFallbacks.js`, never
+  to CCure Home (D12-8).
+- **Tests that read source import anchors from `src/__tests__/testPaths.js`**;
+  never count `..` — the frontend twin of the backend's `testpaths` rule.
+- **Two recorded open decisions.** The sign-in screens stay in `src/pages/`,
+  `src/components/auth/` and `src/styles/` (`PENDING` in `modules.config.js`)
+  because they carry Audit's branding; they move to the shell once the
+  platform's sign-in branding is decided. The user, organisation and role
+  screens are in `modules/audit/pages/admin/` because they render inside
+  Audit's layout; a platform administration area is a separate decision.
+- **Production** runs the 12.2 frontend (`ccure-audit-pro-frontend:12.2-58a369d`);
+  12.3–12.5 are committed and not yet deployed.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 
@@ -1078,7 +1124,7 @@ dump": up to six hours of operational data.
   edits.
 
   Managed at **`/admin/email-domains`** (`routers/admin_email_domains.py`,
-  `Frontend/src/pages/admin/EmailDomainRules.jsx`) — list, add, flip, remove,
+  `Frontend/src/modules/audit/pages/admin/EmailDomainRules.jsx`) — list, add, flip, remove,
   plus a lookup that runs an address through the live guard and names the rule
   or list that matched. **Superadmin only, via `require_role`, not a
   permission.** The rules are platform-wide, so an org_admin reaching them could

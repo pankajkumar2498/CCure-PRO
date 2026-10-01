@@ -11,44 +11,46 @@ React + Vite frontend unified from the CAST Dashboard design system and CCure Au
 
 ## Project Structure
 
+Since Phase 12 the frontend is one application holding four products. Where a
+file lives decides what it may import, and `modules.config.js` is the single
+place that says so.
+
 ```
-src/
-├── api/                     # Axios wrappers for every backend endpoint
-│   ├── axiosInstance.js     # Base Axios with auth token + auto-refresh
-│   ├── auth.js              # POST /auth/login, /register, /logout, GET /auth/me
-│   ├── scans.js             # GET /scans, GET /scans/{id}, DELETE /scans/{id}
-│   └── credentialedScan.js  # POST /scan/credentialed
-│
-├── context/
-│   ├── AuthContext.jsx      # User session, login/register/logout
-│   └── ScanContext.jsx      # Wizard state (persisted in sessionStorage)
-│
-├── components/
-│   ├── PrivateRoute.jsx     # Redirects unauthenticated users to /login
-│   ├── layout/
-│   │   ├── AppLayout.jsx    # CAST sidebar + top header (all protected pages)
-│   │   ├── AppShell.jsx     # Re-exports AppLayout (backward compat)
-│   │   └── ScanStepper.jsx  # Phase 1 → 2 → 3 progress indicator
-│   └── scan/
-│       ├── RiskBadge.jsx    # Critical/High/Medium/Low/Info colored badge
-│       └── ExportPanel.jsx  # JSON/CSV/PDF/Copy export buttons
-│
-├── pages/
-│   ├── Login.jsx            # POST /auth/login
-│   ├── Register.jsx         # POST /auth/register
-│   ├── Dashboard.jsx        # Scan template grid (CAST design)
-│   ├── ScanHistory.jsx      # GET /scans + view/re-run/delete
-│   └── scan/
-│       ├── NewScan.jsx          # POST /scan/host-discovery
-│       ├── Phase1Results.jsx    # Discovery results + host selection
-│       ├── Phase2Results.jsx    # POST /scan/asset-discovery + port results
-│       ├── Phase3Results.jsx    # POST /scan/vulnerability-audit + CVE/TLS/SSH/HTTP
-│       ├── CredentialedScan.jsx # POST /scan/credentialed (form)
-│       └── CredentialedResults.jsx  # Full SSH scan report
-│
-└── styles/
-    └── global.css           # Unified design system (1,130 lines)
+Frontend/
+├── modules.config.js     where each part lives, and the path aliases
+└── src/
+    ├── main.jsx, App.jsx composition root: providers and every route
+    ├── styles/           the global stylesheet main.jsx loads (root-owned)
+    ├── design-system/    UI primitives and tokens; imports nothing of the app
+    ├── shell/            @shell/… — CCure Home, product entry pages, auth,
+    │                     route guard, HTTP client, shared navigation
+    ├── modules/
+    │   ├── audit/        @audit/… — CCure Audit: every Audit screen and client
+    │   ├── policy/       @policy/… — CCure Policy Pro (nothing built yet)
+    │   ├── rank/         @rank/… — CCure Rank (nothing built yet)
+    │   └── ir/           @ir/… — CCure IR frontend integration (nothing built yet)
+    ├── pages/, components/auth/   the sign-in screens, pending (see below)
+    └── __tests__/        Vitest; module tests under __tests__/modules/<key>/
 ```
+
+- **A product imports itself, `@shell/…` and the design system — never another
+  product.** The shell imports only itself and the design system.
+  `src/__tests__/architecture/moduleBoundaries.test.js` resolves every import
+  and fails on a crossing, on a source file outside a named place, and on a
+  test mock whose path no longer resolves; ESLint repeats the alias rules.
+- **Product names, descriptions, addresses and availability come from the
+  platform registry** (`GET /platform/modules`); the frontend holds no copy.
+- **Routes**: `/` is CCure Home; `/audit-dashboard` is Audit's dashboard
+  (`/dashboard` redirects there); `/policy-dashboard`, `/rank-dashboard` and
+  `/ir-dashboard` are entry pages rendered from the registry until each product
+  ships its own.
+- **Pending**: the sign-in screens carry Audit's branding, so they stay in
+  `src/pages/`, `src/components/auth/` and `src/styles/` until the platform's
+  sign-in branding is decided.
+
+Each folder's `README.md` says what belongs there. The full picture:
+`docs/FRONTEND_ARCHITECTURE.md` and
+`docs/architecture/PHASE12_FRONTEND_SHELL.md`.
 
 ## API Endpoints Used
 

@@ -1,0 +1,202 @@
+/* src/shell/account/settings-drawer.css — the settings drawer.
+   Moved from Audit's app-shell.css with the component (Phase 12
+   navigation refactor); rules unchanged, class names unchanged. */
+
+/* ── Settings drawer (modal) ─────────────────────────────────────────────── */
+.shs-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--ccure-overlay);
+  z-index: var(--ccure-z-overlay);
+}
+
+.shs-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 23.75rem;
+  max-width: 100vw;
+  background: var(--ccure-surface);
+  color: var(--ccure-text);
+  box-shadow: var(--ccure-shadow-xl);
+  z-index: var(--ccure-z-modal);
+  display: flex;
+  flex-direction: column;
+}
+
+.shs-title {
+  margin: 0;
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.shs-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--ccure-space-md);
+}
+
+.shs-error {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.shs-loading {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+}
+
+.shs-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.shs-section-icon {
+  display: inline-flex;
+  color: var(--ccure-primary-text);
+}
+
+.shs-section-title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ccure-text-secondary);
+}
+
+.shs-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.shs-divider {
+  border-top: 1px solid var(--ccure-border);
+  margin: var(--ccure-space-md) 0;
+}
+
+.shs-label {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  margin-bottom: var(--ccure-space-2xs);
+}
+
+.shs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+}
+
+.shs-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-2xs) var(--ccure-space-md);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  background: transparent;
+  color: var(--ccure-text-secondary);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  cursor: pointer;
+}
+
+.shs-option:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.shs-option--active,
+.shs-option[aria-checked="true"] {
+  background: var(--ccure-primary-soft);
+  border-color: var(--ccure-primary);
+  color: var(--ccure-primary-text);
+}
+
+.shs-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.shs-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.shs-toggle-label {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+}
+
+.shs-toggle-hint {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.shs-toggle {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  flex: none;
+}
+
+.shs-toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.shs-toggle-track {
+  display: inline-block;
+  width: 2.5rem;
+  height: 1.375rem;
+  background: var(--ccure-border-strong);
+  border-radius: var(--ccure-radius-full);
+  position: relative;
+  transition: background var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.shs-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-surface);
+  box-shadow: var(--ccure-shadow-sm);
+  transition: transform var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.shs-toggle-input:checked + .shs-toggle-track {
+  background: var(--ccure-primary);
+}
+
+.shs-toggle-input:checked + .shs-toggle-track .shs-toggle-thumb {
+  transform: translateX(1.125rem);
+}
+
+.shs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border-top: 1px solid var(--ccure-border);
+}
+
+.shs-saved {
+  margin-inline-end: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-success-text);
+  font-weight: var(--ccure-weight-semibold);
+}

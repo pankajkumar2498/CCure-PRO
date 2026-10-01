@@ -50,19 +50,23 @@ Frontend/
     ├── shell/                 @shell — the platform, shared by every product
     │   ├── pages/             CcureHome (/), ModuleEntryPage (/:entry)
     │   ├── products/          GET /platform/modules: list, availability, load states
-    │   ├── layout/            PlatformLayout
-    │   ├── navigation/        CcureHomeLink
+    │   ├── admin/             /admin/*: users, deleted users, organisations, roles, email domains, audit logs
+    │   ├── account/           account dialog, change password, settings drawer (platform preferences)
+    │   ├── notifications/     bell, panel, useNotificationFeed
+    │   ├── navigation/        CcureHomeLink, AccountMenu, OrgSwitcher (+ hook), UserCard
+    │   ├── preferences/       PreferencesContext
+    │   ├── layout/            PlatformLayout, ProductFrame
     │   ├── auth/              AuthContext, PrivateRoute, permissions, accessFallback
-    │   ├── api/               axiosInstance, tokenStorage, auth
-    │   └── hooks/             useDebounce
+    │   ├── api/               axiosInstance, tokenStorage, auth, admin, user, notifications, emailDomains
+    │   └── feedback/, hooks/, utils/   Toast, useDebounce, date
     ├── modules/
     │   ├── audit/             @audit — CCure Audit
     │   │   ├── api/           one client per backend area
-    │   │   ├── components/    layout/ (AppLayout) · scan/ · assets/ · compliance/ · remediation/ · admin/ · common/
+    │   │   ├── components/    layout/ (AppLayout, HelpPanel, auditSettings) · scan/ · assets/ · compliance/ · remediation/ · common/
     │   │   ├── config/        scanConfig.js, accessFallbacks.js
-    │   │   ├── context/       ScanContext, PreferencesContext
+    │   │   ├── context/       ScanContext
     │   │   ├── hooks/, utils/
-    │   │   ├── pages/         every Audit page; scan/ and admin/
+    │   │   ├── pages/         every Audit page; scan/, admin/ (AMT Integration)
     │   │   ├── styles/        page and component stylesheets
     │   │   └── web-scanning/  the /web-scans/* feature: own router, client, styles
     │   ├── policy/            @policy — CCure Policy Pro (README only)
@@ -120,9 +124,18 @@ test fails if shell source names a product.
   branding ("CCure Audit", "CCure Audit PRO"); the shell may name no product.
   They stay in `pages/`, `components/auth/` and `styles/` until the platform's
   sign-in branding is decided (`PENDING` in `modules.config.js`).
-- **Administration screens.** User, organisation and role management are in
-  `modules/audit/pages/admin/` because they render inside Audit's layout.
-  Extracting a platform administration area is a separate decision.
+- **Shared platform capabilities** (owner decision, 1 Oct 2026). There is no
+  platform-admin product or team. User, organisation, role, email-domain and
+  audit-log administration, the account menu, notifications, organisation
+  switching and the platform preferences are common capabilities in `shell/`;
+  any product team may contribute to them under the same boundaries and review.
+  A shared screen renders in `ProductFrame`, whose layout the composition root
+  supplies (Audit's `AppLayout` today), so it stays inside the navigation a
+  person reached it from; the settings drawer takes a product's own sections
+  through `productSettings`. Record:
+  [`architecture/PLATFORM_SHARED_NAVIGATION.md`](architecture/PLATFORM_SHARED_NAVIGATION.md).
+- **Compliance** stays in Audit until the Policy Pro work reassesses which of
+  it belongs to Policy Pro.
 
 ---
 
@@ -146,10 +159,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );
 ```
 
-`AuthProvider` is the shell's (`@shell/auth/AuthContext`); `PreferencesProvider`
-and `RootErrorBoundary` are Audit's (`@audit/context/PreferencesContext`,
-`@audit/components/common/RootErrorBoundary`). `App.jsx` wraps `<Routes>` in
-`AuditProviders`: Audit's `ScanProvider`, and the shell's
+`AuthProvider` and `PreferencesProvider` are the shell's
+(`@shell/auth/AuthContext`, `@shell/preferences/PreferencesContext`);
+`RootErrorBoundary` is Audit's (`@audit/components/common/RootErrorBoundary`).
+`App.jsx` wraps `<Routes>` in `AuditProviders`: Audit's `ScanProvider`, the
+shell's `ProductFrameProvider` supplying Audit's `AppLayout` as the frame of the
+shared administration screens, and the shell's
 `AccessFallbackProvider` carrying Audit's refused-route pages.
 
 ```mermaid
@@ -157,7 +172,7 @@ graph TD
     M["main.jsx"] --> SM["React.StrictMode"]
     SM --> BR["BrowserRouter"]
     BR --> AP["AuthProvider (shell)<br/>user · authState · login/logout"]
-    AP --> PP["PreferencesProvider (audit)<br/>theme · sidebar"]
+    AP --> PP["PreferencesProvider (shell)<br/>theme · sidebar"]
     PP --> EB["RootErrorBoundary (audit)"]
     EB --> APP["App.jsx"]
     APP --> AUP["AuditProviders"]
@@ -249,7 +264,7 @@ or `postLoginRedirect` after a session expiry), which wins.
 | `/scan/:scanId/credentialed` · `/credentialed-results` | `CredentialedScan` · `CredentialedResults`          |
 | `/scan/topology-map` · `/scan/:scanId/topology-map`    | `scan/NetworkMap`                                   |
 
-### Protected — permission-gated Audit administration
+### Protected — permission-gated administration (shared, `shell/admin/pages/`; AMT is Audit's)
 
 Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`
 (or `superadminOnly`):
@@ -257,7 +272,7 @@ Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`
 | Path                   | Component                      | Guard                |
 | ---------------------- | ------------------------------ | -------------------- |
 | `/admin/audit-logs`    | `admin/AuditLogs`              | `audit:read`         |
-| `/admin/amt`           | `admin/AMTIntegration`         | `assets:update`      |
+| `/admin/amt`           | Audit `admin/AMTIntegration`   | `assets:update`      |
 | `/admin/users`         | `admin/UserManagement`         | `users:read`         |
 | `/admin/users/deleted` | `admin/DeletedUsers`           | `users:read`         |
 | `/admin/email-domains` | `admin/EmailDomainRules`       | superadmin only      |
@@ -609,9 +624,10 @@ data. Consumer: `modules/audit/pages/ScanHistory.jsx`.
 
 ### SSE — notifications
 
-`modules/audit/api/notifications.js::streamNotificationEvents({ signal, onEvent })` — identical
+`shell/api/notifications.js::streamNotificationEvents({ signal, onEvent })` — identical
 mechanism against `/notifications/stream`. Consumer:
-`modules/audit/components/layout/AppLayout.jsx`, which drives the notification bell badge.
+`shell/notifications/useNotificationFeed.js`, which drives the notification bell badge in
+whichever layout composes it (Audit's `AppLayout` today).
 
 ### WebSocket — scan progress
 
@@ -636,8 +652,12 @@ the scan finishes.
 
 ### `AppLayout`
 
-`modules/audit/components/layout/AppLayout.jsx` is the authenticated shell: sidebar, header,
-notification stream, profile dropdown and modals.
+`modules/audit/components/layout/AppLayout.jsx` is Audit's layout: its sidebar, its header
+actions (global search, New Scan, help), its quota footer and badges, composing the shell's
+shared pieces — `CcureHomeLink`, `AccountMenu`, `OrgSwitcher` (with `useOrganizationSwitcher`),
+`UserCard`, the notification bell (`useNotificationFeed`), the account dialog and the settings
+drawer, to which it adds its "Scan Defaults" section. It is also the frame the shared
+administration screens render in.
 
 `SIDEBAR_SECTIONS` is a five-section declarative model filtered per user by
 `canSeeNavItem(user, item)` — `item.permission` must pass `canPermission`, and
@@ -658,19 +678,20 @@ notification stream, profile dropdown and modals.
 > without the other sees a link that 403s.
 
 `AppLayout` also special-cases superadmins (`isSuperAdmin(user)`) for the
-organization switcher that writes `localStorage.activeOrgId`.
+shell's organization switcher, which writes `localStorage.activeOrgId`.
 
 ### Component inventory
 
-| Directory                            | Components                                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `modules/audit/components/common/`   | `Button`, `CVELink`, `ConfirmDialog`, `EmptyState`, `ErrorBoundary`, `FormField`, `Loader`, `RoleSelector`, `Skeleton`, `Toast` |
-| `modules/audit/components/layout/`   | `AppLayout`, `ChangePasswordModal`, `HelpPanel`, `Modal`, `NotificationsPanel`, `ProfileModal`, `ScanStepper`, `SettingsDrawer` |
-| `modules/audit/components/admin/`    | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                             |
-| `modules/audit/components/scan/`     | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                      |
-| `modules/audit/components/assets/`   | `AuditTimeline`                                                                                                                 |
-| `components/auth/` (pending sign-in) | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                 |
-| `shell/auth/`, `shell/navigation/`   | `PrivateRoute`, `CcureHomeLink`                                                                                                 |
+| Directory                                                                        | Components                                                                                                                                        |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/audit/components/common/`                                               | `Button`, `CVELink`, `ConfirmDialog`, `EmptyState`, `ErrorBoundary`, `FormField`, `Loader`, `RoleSelector`, `Skeleton`, `Toast`                   |
+| `modules/audit/components/layout/`                                               | `AppLayout`, `HelpPanel`, `ScanStepper`, `auditSettings` (Scan Defaults section)                                                                  |
+| `shell/admin/components/`                                                        | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                                               |
+| `shell/account/`, `shell/notifications/`, `shell/navigation/`, `shell/feedback/` | `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`; `NotificationsPanel`; `CcureHomeLink`, `AccountMenu`, `OrgSwitcher`, `UserCard`; `Toast` |
+| `modules/audit/components/scan/`                                                 | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                                        |
+| `modules/audit/components/assets/`                                               | `AuditTimeline`                                                                                                                                   |
+| `components/auth/` (pending sign-in)                                             | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                                   |
+| `shell/auth/`, `shell/navigation/`                                               | `PrivateRoute`, `CcureHomeLink`                                                                                                                   |
 
 `Skeleton` and `Loader` are the two loading primitives; `EmptyState` covers the
 no-data case; `Toast` and `ConfirmDialog` cover feedback and destructive
@@ -688,7 +709,8 @@ confirmation.
 | Scan lifecycle                      | `ScanHistory`, `ArchivedScans`, `RecycleBin`                                                                          |
 | Reporting                           | `SecurityReports`, `ComplianceWorkspace`                                                                              |
 | `modules/audit/pages/scan/`         | `NewScan`, `Phase1Results`, `Phase2Results`, `Phase3Results`, `CredentialedScan`, `CredentialedResults`, `NetworkMap` |
-| `modules/audit/pages/admin/`        | `UserManagement`, `DeletedUsers`, `OrganizationManagement`, `RoleManagement`, `AuditLogs`, `AMTIntegration`           |
+| `shell/admin/pages/`                | `UserManagement`, `DeletedUsers`, `OrganizationManagement`, `RoleManagement`, `EmailDomainRules`, `AuditLogs`         |
+| `modules/audit/pages/admin/`        | `AMTIntegration`                                                                                                      |
 | `modules/audit/web-scanning/pages/` | `WebDashboard`, `ScanList`, `NewWebScan`, `ScanDetail`, `FindingsExplorer`, `AssetInventory`                          |
 
 `NetworkMap` renders the `/topology/map` graph with **vis-network**, consuming the

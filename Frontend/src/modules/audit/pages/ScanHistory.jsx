@@ -21,7 +21,7 @@ import AppLayout from "@audit/components/layout/AppLayout";
 import RiskBadge from "@audit/components/scan/RiskBadge";
 import { useAuth } from "@shell/auth/AuthContext";
 import { useScan } from "@audit/context/ScanContext";
-import { usePreferences } from "@audit/context/PreferencesContext";
+import { usePreferences } from "@shell/preferences/PreferencesContext";
 import {
   getScans,
   getScan,
@@ -32,10 +32,10 @@ import {
 } from "@audit/api/scans";
 import { buildPhasePayload, SCAN_PIPELINES } from "@audit/config/scanConfig";
 import api from "@shell/api/axiosInstance";
-import { dateTimeMs, formatDateTime } from "@audit/utils/date";
+import { dateTimeMs, formatDateTime } from "@shell/utils/date";
 import { can, denyMessage } from "@shell/auth/permissions";
 import CVELink from "@audit/components/common/CVELink";
-import { useToasts, ToastContainer } from "@audit/components/common/Toast";
+import { useToasts, ToastContainer } from "@shell/feedback/Toast";
 import {
   CcureAlert,
   CcureBadge,

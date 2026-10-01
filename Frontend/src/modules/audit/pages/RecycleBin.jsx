@@ -41,8 +41,8 @@ import { useNavigate } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import { useAuth } from "@shell/auth/AuthContext";
 import { getScans, purgeScan, restoreScan } from "@audit/api/scans";
-import { formatDateTime } from "@audit/utils/date";
-import { useToasts, ToastContainer } from "@audit/components/common/Toast";
+import { formatDateTime } from "@shell/utils/date";
+import { useToasts, ToastContainer } from "@shell/feedback/Toast";
 import { can, denyMessage } from "@shell/auth/permissions";
 import { SCAN_PIPELINES } from "@audit/config/scanConfig";
 import {

@@ -200,7 +200,7 @@ describe("every source file is in a classified place", () => {
     expect(legacy).toEqual([]);
     expect(
       sourceFiles.filter((f) => ownerOf(rel(f)) === "audit").length,
-    ).toBeGreaterThan(140);
+    ).toBeGreaterThan(110);
   });
 });
 
@@ -409,4 +409,55 @@ describe("every frontend part has an owner line (Phase 12.5)", () => {
       expect(ownerOfPath(dir)?.length).toBeGreaterThan(0);
     },
   );
+});
+
+describe("the platform's shared capabilities live in the shell", () => {
+  // Owner decision, 1 Oct 2026: identity, organisations, roles, email domain
+  // rules, the audit trail, the account menu, notifications, tenancy and the
+  // platform preferences are shared platform capabilities, not Audit's.
+  // Audit's layout composes them; it does not own them.
+  const SHARED = {
+    "src/modules/audit/api/admin.js": "src/shell/api/admin.js",
+    "src/modules/audit/api/user.js": "src/shell/api/user.js",
+    "src/modules/audit/api/notifications.js": "src/shell/api/notifications.js",
+    "src/modules/audit/api/emailDomains.js": "src/shell/api/emailDomains.js",
+    "src/modules/audit/pages/admin/UserManagement.jsx":
+      "src/shell/admin/pages/UserManagement.jsx",
+    "src/modules/audit/pages/admin/DeletedUsers.jsx":
+      "src/shell/admin/pages/DeletedUsers.jsx",
+    "src/modules/audit/pages/admin/OrganizationManagement.jsx":
+      "src/shell/admin/pages/OrganizationManagement.jsx",
+    "src/modules/audit/pages/admin/RoleManagement.jsx":
+      "src/shell/admin/pages/RoleManagement.jsx",
+    "src/modules/audit/pages/admin/EmailDomainRules.jsx":
+      "src/shell/admin/pages/EmailDomainRules.jsx",
+    "src/modules/audit/pages/admin/AuditLogs.jsx":
+      "src/shell/admin/pages/AuditLogs.jsx",
+    "src/modules/audit/components/layout/ProfileModal.jsx":
+      "src/shell/account/ProfileModal.jsx",
+    "src/modules/audit/components/layout/SettingsDrawer.jsx":
+      "src/shell/account/SettingsDrawer.jsx",
+    "src/modules/audit/components/layout/NotificationsPanel.jsx":
+      "src/shell/notifications/NotificationsPanel.jsx",
+    "src/modules/audit/context/PreferencesContext.jsx":
+      "src/shell/preferences/PreferencesContext.jsx",
+  };
+
+  it.each(Object.entries(SHARED))(
+    "%s is not back in Audit; it lives at %s",
+    (auditPath, shellPath) => {
+      expect(existsSync(path.join(FRONT, auditPath))).toBe(false);
+      expect(existsSync(path.join(FRONT, shellPath))).toBe(true);
+    },
+  );
+
+  it("the shared screens render in the frame the composition root supplies", () => {
+    for (const p of Object.values(SHARED).filter((f) =>
+      f.includes("/admin/pages/"),
+    )) {
+      const source = readFileSync(path.join(FRONT, p), "utf8");
+      expect(source, p).toMatch(/<ProductFrame\b/);
+      expect(source, p).not.toMatch(/AppLayout/);
+    }
+  });
 });

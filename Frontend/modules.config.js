@@ -11,9 +11,12 @@
  * half for fast feedback in an editor; the test checks they agree.
  *
  *   shell          the platform: CCure Home, product entry pages, the shared
- *                  HTTP client, auth state, route guard, permissions, shared
- *                  navigation and hooks. Imports itself and the design system
- *                  — never a product.
+ *                  HTTP client, auth state, route guard, permissions, and the
+ *                  shared capabilities every product uses — user, organisation,
+ *                  role, email-domain and audit-log administration, the account
+ *                  menu, notifications, organisation switching, platform
+ *                  preferences. Imports itself and the design system — never a
+ *                  product.
  *   design-system  the UI primitives. Imports nothing of the application.
  *   <module>       one product. Imports itself, the shell and the design
  *                  system — never another product.

@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "@shell/auth/AuthContext";
-import { PreferencesProvider } from "@audit/context/PreferencesContext";
+import { PreferencesProvider } from "@shell/preferences/PreferencesContext";
 import RootErrorBoundary from "@audit/components/common/RootErrorBoundary";
 
 // ── Stylesheet order is load-bearing ─────────────────────────────────────────

@@ -23,7 +23,9 @@ Frontend/
     ├── styles/           the global stylesheet main.jsx loads (root-owned)
     ├── design-system/    UI primitives and tokens; imports nothing of the app
     ├── shell/            @shell/… — CCure Home, product entry pages, auth,
-    │                     route guard, HTTP client, shared navigation
+    │                     route guard, HTTP client, shared navigation, and the
+    │                     shared users/orgs/roles/audit-log screens, account,
+    │                     notifications and preferences
     ├── modules/
     │   ├── audit/        @audit/… — CCure Audit: every Audit screen and client
     │   ├── policy/       @policy/… — CCure Policy Pro (nothing built yet)

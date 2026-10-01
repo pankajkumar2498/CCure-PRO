@@ -21,9 +21,9 @@ import userEvent from "@testing-library/user-event";
 
 import NotificationsPanel, {
   NotificationBell,
-} from "@audit/components/layout/NotificationsPanel";
+} from "@shell/notifications/NotificationsPanel";
 import HelpPanel from "@audit/components/layout/HelpPanel";
-import SettingsDrawer from "@audit/components/layout/SettingsDrawer";
+import SettingsDrawer from "@shell/account/SettingsDrawer";
 import axiosInstance from "@shell/api/axiosInstance";
 
 vi.mock("@shell/api/axiosInstance", () => ({

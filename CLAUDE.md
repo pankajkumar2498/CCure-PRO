@@ -459,14 +459,24 @@ each folder's `README.md` says what belongs in it.
   to CCure Home (D12-8).
 - **Tests that read source import anchors from `src/__tests__/testPaths.js`**;
   never count `..` — the frontend twin of the backend's `testpaths` rule.
-- **Two recorded open decisions.** The sign-in screens stay in `src/pages/`,
+- **Shared platform capabilities live in the shell, not in a product** (owner
+  decision, 1 Oct 2026; there is no platform-admin product or team, and none
+  may be introduced). User, organisation, role, email-domain and audit-log
+  administration (`shell/admin/`), the account menu and dialog, notifications,
+  organisation switching, the user card and the platform preferences are
+  common capabilities; any product team may contribute to them under the same
+  boundaries and review. A shared screen renders in `ProductFrame`, whose layout
+  the composition root supplies (Audit's `AppLayout` today); the settings
+  drawer takes a product's own sections through `productSettings`. Routes
+  (`/admin/*`) and APIs are unchanged. Record:
+  `docs/architecture/PLATFORM_SHARED_NAVIGATION.md`.
+- **Still open:** the sign-in screens stay in `src/pages/`,
   `src/components/auth/` and `src/styles/` (`PENDING` in `modules.config.js`)
-  because they carry Audit's branding; they move to the shell once the
-  platform's sign-in branding is decided. The user, organisation and role
-  screens are in `modules/audit/pages/admin/` because they render inside
-  Audit's layout; a platform administration area is a separate decision.
-- **Production** runs the 12.2 frontend (`ccure-audit-pro-frontend:12.2-58a369d`);
-  12.3–12.5 are committed and not yet deployed.
+  because they carry Audit's branding; Compliance stays in Audit until the
+  Policy Pro work reassesses it.
+- **Production** runs the Phase 12 frontend `e684d88`
+  (`ccure-audit-pro-frontend:phase12-e684d88`, since 1 Oct 2026 14:53 IST);
+  the shared-navigation refactor is committed and not yet deployed.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 
@@ -1124,7 +1134,7 @@ dump": up to six hours of operational data.
   edits.
 
   Managed at **`/admin/email-domains`** (`routers/admin_email_domains.py`,
-  `Frontend/src/modules/audit/pages/admin/EmailDomainRules.jsx`) — list, add, flip, remove,
+  `Frontend/src/shell/admin/pages/EmailDomainRules.jsx`) — list, add, flip, remove,
   plus a lookup that runs an address through the live guard and names the rule
   or list that matched. **Superadmin only, via `require_role`, not a
   permission.** The rules are platform-wide, so an org_admin reaching them could

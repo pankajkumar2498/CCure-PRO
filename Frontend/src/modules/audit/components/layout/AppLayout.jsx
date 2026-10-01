@@ -5,23 +5,27 @@ import CcureHomeLink from "@shell/navigation/CcureHomeLink";
 import { canAny, canPermission, isSuperAdmin } from "@shell/auth/permissions";
 import {
   CcureAppShell,
-  CcureBadge,
   CcureButton,
   CcureInput,
   CcureProgress,
 } from "../../../../design-system";
 import "../../styles/app-shell.css";
-import {
-  getUnreadCount,
-  streamNotificationEvents,
-} from "@audit/api/notifications";
-import { usePreferences } from "@audit/context/PreferencesContext";
+// The platform's shared header pieces (Phase 12 navigation refactor). Imported
+// after app-shell.css so their stylesheets keep their place after it.
+import AccountMenu from "@shell/navigation/AccountMenu";
+import OrgSwitcher from "@shell/navigation/OrgSwitcher";
+import UserCard from "@shell/navigation/UserCard";
+import useOrganizationSwitcher from "@shell/navigation/useOrganizationSwitcher";
+import useNotificationFeed from "@shell/notifications/useNotificationFeed";
+import { usePreferences } from "@shell/preferences/PreferencesContext";
 import api from "@shell/api/axiosInstance";
-import { listOrganizations } from "@audit/api/admin";
-import ProfileModal from "./ProfileModal";
-import SettingsDrawer from "./SettingsDrawer";
-import NotificationsPanel, { NotificationBell } from "./NotificationsPanel";
+import ProfileModal from "@shell/account/ProfileModal";
+import SettingsDrawer from "@shell/account/SettingsDrawer";
+import NotificationsPanel, {
+  NotificationBell,
+} from "@shell/notifications/NotificationsPanel";
 import HelpPanel from "./HelpPanel";
+import renderAuditSettings from "./auditSettings";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 // Every icon is decorative — the control's text or aria-label carries the
@@ -92,9 +96,6 @@ const IcoSettings = () => (
 );
 const IcoHelp = () => (
   <Icon d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.09 9a3 3 0 1 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
-);
-const IcoUser = () => (
-  <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
 );
 const IcoPlus = () => (
   <svg
@@ -373,177 +374,6 @@ const canSeeNavItem = (user, item) => {
 };
 
 // ── Header pieces ────────────────────────────────────────────────────────────
-/* Closes on a pointer-down outside `ref` (the legacy behaviour) AND on Escape,
-   restoring focus to `restoreTo` when Escape or an outside click closed it. */
-function useDismiss(ref, open, onClose, restoreTo) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onMouseDown = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
-        if (restoreTo?.current && restoreTo.current.contains(event.target))
-          return;
-        onClose();
-      }
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-        restoreTo?.current?.focus?.();
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [ref, open, onClose, restoreTo]);
-}
-
-function ProfileMenu({ user, onLogout, onOpenProfile }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
-  useDismiss(menuRef, open, close, btnRef);
-
-  return (
-    <div className="sh-menu-anchor">
-      <button
-        type="button"
-        ref={btnRef}
-        className="sh-user-btn"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls="sh-profile-menu"
-        aria-label={`Account menu for ${user?.username || "Profile"}`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="sh-avatar" aria-hidden="true">
-          <IcoUser />
-        </span>
-        <span className="sh-user-name hide-on-mobile">
-          {user?.username || "Profile"}
-        </span>
-        <span className="sh-chevron" aria-hidden="true">
-          ▼
-        </span>
-      </button>
-      {open && (
-        <div
-          className="sh-menu sh-menu--profile"
-          ref={menuRef}
-          id="sh-profile-menu"
-          role="menu"
-          aria-label="Account"
-        >
-          <div className="sh-menu-head">
-            <span className="sh-avatar sh-avatar--lg" aria-hidden="true">
-              <IcoUser />
-            </span>
-            <span className="sh-menu-head-text">
-              <span className="sh-menu-name">{user?.username || "User"}</span>
-              <span className="sh-menu-email">{user?.email || ""}</span>
-            </span>
-          </div>
-          <div className="sh-menu-body">
-            <button
-              type="button"
-              role="menuitem"
-              className="cc-btn cc-btn--primary cc-btn--sm cc-btn--block"
-              onClick={() => {
-                close();
-                onOpenProfile();
-              }}
-            >
-              My Account
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="cc-btn cc-btn--ghost cc-btn--sm cc-btn--block sh-signout"
-              onClick={onLogout}
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* Superadmin only. A real menu button now: the legacy control was a
-   `<div onClick>` with no name, no state and no keyboard path. Selection
-   semantics are unchanged — write activeOrgId, then reload the document. */
-function OrgSwitcher({
-  selectedOrg,
-  orgs,
-  loading,
-  open,
-  onToggle,
-  onClose,
-  onSwitch,
-}) {
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
-  useDismiss(menuRef, open, onClose, btnRef);
-  return (
-    <div className="sh-menu-anchor">
-      <button
-        type="button"
-        ref={btnRef}
-        className="sh-org-btn"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls="sh-org-menu"
-        aria-label={`Switch organization. Current: ${selectedOrg}`}
-        onClick={onToggle}
-      >
-        <span className="sh-org-name">{selectedOrg}</span>
-        <CcureBadge variant="primary" size="sm">
-          ENTERPRISE
-        </CcureBadge>
-        <span className="sh-chevron" aria-hidden="true">
-          ▼
-        </span>
-      </button>
-      {open && (
-        <div
-          className="sh-menu sh-menu--org"
-          ref={menuRef}
-          id="sh-org-menu"
-          role="menu"
-          aria-label="Switch Organization"
-        >
-          <div className="sh-menu-title">Switch Organization</div>
-          {loading ? (
-            <div className="sh-menu-note">Loading...</div>
-          ) : orgs.length === 0 ? (
-            <div className="sh-menu-note">No organizations found</div>
-          ) : (
-            orgs.map((org) => (
-              <button
-                key={org.id}
-                type="button"
-                role="menuitem"
-                className={`sh-menu-item${org.name === selectedOrg ? " sh-menu-item--current" : ""}`}
-                aria-current={org.name === selectedOrg ? "true" : undefined}
-                onClick={() => onSwitch(org)}
-              >
-                <span className="sh-menu-check" aria-hidden="true">
-                  {org.name === selectedOrg ? "✓" : ""}
-                </span>
-                {org.name}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const IcoSearch = () => (
   <Icon d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" size={14} />
 );
@@ -564,12 +394,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
-  const [selectedOrg, setSelectedOrg] = useState("CDAC RTSG Bangalore");
   const [searchQuery, setSearchQuery] = useState("");
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationEvent, setNotificationEvent] = useState(null);
-  const [orgs, setOrgs] = useState([]);
-  const [loadingOrgs, setLoadingOrgs] = useState(false);
 
   // Openers, so a panel closed by keyboard hands focus back where it came from.
   const helpBtnRef = useRef(null);
@@ -578,44 +403,13 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const notifsRef = useRef(null);
   const helpRef = useRef(null);
 
-  useEffect(() => {
-    if (user && isSuperAdmin(user)) {
-      setLoadingOrgs(true);
-      listOrganizations()
-        .then((data) => {
-          if (data && data.organizations) {
-            setOrgs(data.organizations);
-            const activeOrgId = localStorage.getItem("activeOrgId");
-            if (activeOrgId) {
-              const activeOrg = data.organizations.find(
-                (o) => o.id === activeOrgId,
-              );
-              if (activeOrg) {
-                setSelectedOrg(activeOrg.name);
-              }
-            } else if (user.org_id) {
-              const userOrg = data.organizations.find(
-                (o) => o.id === user.org_id,
-              );
-              if (userOrg) {
-                setSelectedOrg(userOrg.name);
-                localStorage.setItem("activeOrgId", user.org_id);
-              }
-            }
-          }
-        })
-        .catch(() => {
-          /* silent */
-        })
-        .finally(() => setLoadingOrgs(false));
-    }
-  }, [user]);
+  // Tenancy is the platform's: the shell lists organisations and switches.
+  const { orgs, loadingOrgs, selectedOrg, switchOrg } =
+    useOrganizationSwitcher(user);
 
   const handleOrgSwitch = (org) => {
-    localStorage.setItem("activeOrgId", org.id);
-    setSelectedOrg(org.name);
     setShowOrgDropdown(false);
-    window.location.reload();
+    switchOrg(org);
   };
 
   const handleSearchKeyDown = (e) => {
@@ -722,60 +516,9 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
     localStorage.setItem("sidebarCollapsed", next);
   };
 
-  useEffect(() => {
-    let stopped = false;
-    const controller = new AbortController();
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    const refreshSummary = async () => {
-      try {
-        const summary = await getUnreadCount();
-        if (!stopped) setUnreadCount(summary.total_unread || 0);
-      } catch {
-        // Deliberately swallowed: this polls on a timer, so a transient
-        // failure corrects itself on the next tick. Surfacing it would put a
-        // toast on screen every time the network blinked.
-      }
-    };
-
-    const connect = async () => {
-      let failures = 0;
-      while (!stopped) {
-        try {
-          await streamNotificationEvents({
-            signal: controller.signal,
-            onEvent: ({ event, data }) => {
-              if (stopped || !data) return;
-              if (event === "connected" && data.summary)
-                setUnreadCount(data.summary.total_unread || 0);
-              if (event === "notification.created" && data.notification) {
-                setNotificationEvent({
-                  type: "created",
-                  notification: data.notification,
-                  receivedAt: Date.now(),
-                });
-                if (!data.notification.is_read)
-                  setUnreadCount((count) => count + 1);
-              }
-              if (event === "notifications.summary" && data.summary)
-                setUnreadCount(data.summary.total_unread || 0);
-            },
-          });
-          if (!stopped) throw new Error("Stream closed.");
-        } catch {
-          if (stopped || controller.signal.aborted) return;
-          failures += 1;
-          if (failures === 1) await refreshSummary();
-          await wait(Math.min(30000, 1000 * 2 ** Math.min(failures, 5)));
-        }
-      }
-    };
-    connect();
-    return () => {
-      stopped = true;
-      controller.abort();
-    };
-  }, []);
+  // The platform's notification feed: unread count and live stream.
+  const { unreadCount, setUnreadCount, notificationEvent } =
+    useNotificationFeed();
 
   const closeAll = useCallback(() => {
     setShowNotifs(false);
@@ -911,18 +654,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           label="Concurrent scans running"
         />
       </div>
-      <div className="sh-user">
-        <span className="sh-avatar" aria-hidden="true">
-          <IcoUser />
-        </span>
-        <span className="sh-user-info">
-          <span className="sh-user-info-name" title={user?.username || "User"}>
-            {user?.username || "User"}
-          </span>
-          <span className="sh-user-info-role" title={user?.role?.name || ""}>
-            {user?.role?.name || "Member"}
-          </span>
-        </span>
+      <UserCard user={user}>
         <button
           type="button"
           ref={settingsBtnRef}
@@ -937,7 +669,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
         >
           <IcoSettings />
         </button>
-      </div>
+      </UserCard>
     </>
   );
 
@@ -1047,7 +779,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           <HelpPanel id="sh-help" onClose={closeHelp} />
         </div>
       )}
-      <ProfileMenu
+      <AccountMenu
         user={user}
         onLogout={() => logout()}
         onOpenProfile={() => setShowProfile(true)}
@@ -1079,6 +811,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           id="sh-settings"
           onClose={closeSettings}
           onPreferencesUpdated={updateLocalPreferences}
+          productSettings={renderAuditSettings}
         />
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}

@@ -35,7 +35,7 @@ import { getScans, deleteReport } from "@audit/api/scans";
 import { useAuth } from "@shell/auth/AuthContext";
 import { DOWNLOAD_FORMATS, downloadReport } from "@audit/api/reports";
 import { saveResponseAsFile } from "@audit/utils/download";
-import { dateTimeMs, formatDateTime } from "@audit/utils/date";
+import { dateTimeMs, formatDateTime } from "@shell/utils/date";
 import { can, denyMessage } from "@shell/auth/permissions";
 import {
   CcureAlert,

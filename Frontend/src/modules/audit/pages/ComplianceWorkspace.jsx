@@ -10,7 +10,7 @@ import ComplianceEvidence from "@audit/components/compliance/ComplianceEvidence"
 import ComplianceSchedules from "@audit/components/compliance/ComplianceSchedules";
 import { useAuth } from "@shell/auth/AuthContext";
 import { canPermission } from "@shell/auth/permissions";
-import { useToasts, ToastContainer } from "@audit/components/common/Toast";
+import { useToasts, ToastContainer } from "@shell/feedback/Toast";
 import {
   CcureAlert,
   CcureBadge,

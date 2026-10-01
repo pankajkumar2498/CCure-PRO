@@ -72,7 +72,7 @@ vi.mock("@audit/context/ScanContext", () => ({
 }));
 
 const prefs = vi.hoisted(() => ({ current: { default_rows_per_page: 10 } }));
-vi.mock("@audit/context/PreferencesContext", () => ({
+vi.mock("@shell/preferences/PreferencesContext", () => ({
   usePreferences: () => ({ preferences: prefs.current }),
 }));
 

@@ -126,22 +126,22 @@ vi.mock("@audit/pages/scan/NetworkMap", () => ({
 vi.mock("@audit/web-scanning/WebScanningRoutes", () => ({
   default: () => <div data-testid="page">WebScanningRoutes</div>,
 }));
-vi.mock("@audit/pages/admin/AuditLogs", () => ({
+vi.mock("@shell/admin/pages/AuditLogs", () => ({
   default: () => <div data-testid="page">AuditLogs</div>,
 }));
-vi.mock("@audit/pages/admin/EmailDomainRules", () => ({
+vi.mock("@shell/admin/pages/EmailDomainRules", () => ({
   default: () => <div data-testid="page">EmailDomainRules</div>,
 }));
-vi.mock("@audit/pages/admin/UserManagement", () => ({
+vi.mock("@shell/admin/pages/UserManagement", () => ({
   default: () => <div data-testid="page">UserManagement</div>,
 }));
-vi.mock("@audit/pages/admin/OrganizationManagement", () => ({
+vi.mock("@shell/admin/pages/OrganizationManagement", () => ({
   default: () => <div data-testid="page">OrganizationManagement</div>,
 }));
-vi.mock("@audit/pages/admin/RoleManagement", () => ({
+vi.mock("@shell/admin/pages/RoleManagement", () => ({
   default: () => <div data-testid="page">RoleManagement</div>,
 }));
-vi.mock("@audit/pages/admin/DeletedUsers", () => ({
+vi.mock("@shell/admin/pages/DeletedUsers", () => ({
   default: () => <div data-testid="page">DeletedUsers</div>,
 }));
 vi.mock("@audit/pages/admin/AMTIntegration", () => ({

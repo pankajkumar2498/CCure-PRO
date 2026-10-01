@@ -29,12 +29,12 @@ import { MemoryRouter } from "react-router-dom";
 
 import AppLayout from "@audit/components/layout/AppLayout";
 import axiosInstance from "@shell/api/axiosInstance";
-import { listOrganizations } from "@audit/api/admin";
+import { listOrganizations } from "@shell/api/admin";
 import {
   getUnreadCount,
   getNotifications,
   streamNotificationEvents,
-} from "@audit/api/notifications";
+} from "@shell/api/notifications";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -47,9 +47,9 @@ vi.mock("@shell/api/axiosInstance", () => ({
   },
 }));
 
-vi.mock("@audit/api/admin", () => ({ listOrganizations: vi.fn() }));
+vi.mock("@shell/api/admin", () => ({ listOrganizations: vi.fn() }));
 
-vi.mock("@audit/api/notifications", () => ({
+vi.mock("@shell/api/notifications", () => ({
   getUnreadCount: vi.fn(),
   getNotifications: vi.fn(),
   markAsRead: vi.fn(),
@@ -58,13 +58,13 @@ vi.mock("@audit/api/notifications", () => ({
   streamNotificationEvents: vi.fn(),
 }));
 
-vi.mock("@audit/api/user", () => ({
+vi.mock("@shell/api/user", () => ({
   getPreferences: vi.fn(),
   updatePreferences: vi.fn(),
 }));
 
 // Excluded from the batch: never rendered for real here.
-vi.mock("@audit/components/layout/ProfileModal", () => ({
+vi.mock("@shell/account/ProfileModal", () => ({
   default: () => <div data-testid="profile-modal" />,
 }));
 
@@ -87,7 +87,7 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 const updateLocalPreferences = vi.fn();
 let preferences = {};
-vi.mock("@audit/context/PreferencesContext", () => ({
+vi.mock("@shell/preferences/PreferencesContext", () => ({
   usePreferences: () => ({ preferences, updateLocalPreferences }),
 }));
 
@@ -628,7 +628,7 @@ describe("AppLayout — panels", () => {
 
   it("opens the settings drawer from the sidebar and it reads the preferences", async () => {
     const u = userEvent.setup();
-    const { getPreferences } = await import("@audit/api/user");
+    const { getPreferences } = await import("@shell/api/user");
     getPreferences.mockResolvedValue({
       theme: "dark",
       default_rows_per_page: 25,
@@ -644,6 +644,11 @@ describe("AppLayout — panels", () => {
         screen.getByRole("complementary", { name: "Settings" }),
     ).toBeInTheDocument();
     await waitFor(() => expect(getPreferences).toHaveBeenCalledTimes(1));
+    // The drawer is the shell's; Audit supplies its own "Scan Defaults"
+    // section, which must still render there.
+    expect(
+      await screen.findByRole("heading", { name: "Scan Defaults" }),
+    ).toBeInTheDocument();
   });
 
   it("never opens the profile modal until asked", async () => {

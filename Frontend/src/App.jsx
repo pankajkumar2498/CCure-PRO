@@ -81,13 +81,18 @@ const Ux4gShowcase = import.meta.env.DEV
   : null;
 
 // Admin pages
-import AuditLogs from "@audit/pages/admin/AuditLogs";
-import EmailDomainRules from "@audit/pages/admin/EmailDomainRules";
-import UserManagement from "@audit/pages/admin/UserManagement";
-import OrganizationManagement from "@audit/pages/admin/OrganizationManagement";
-import RoleManagement from "@audit/pages/admin/RoleManagement";
-import DeletedUsers from "@audit/pages/admin/DeletedUsers";
+import AuditLogs from "@shell/admin/pages/AuditLogs";
+import EmailDomainRules from "@shell/admin/pages/EmailDomainRules";
+import UserManagement from "@shell/admin/pages/UserManagement";
+import OrganizationManagement from "@shell/admin/pages/OrganizationManagement";
+import RoleManagement from "@shell/admin/pages/RoleManagement";
+import DeletedUsers from "@shell/admin/pages/DeletedUsers";
 import AMTIntegration from "@audit/pages/admin/AMTIntegration";
+
+// Imported after every page, where both modules are already loaded, so the
+// stylesheet order in the bundle is unchanged.
+import { ProductFrameProvider } from "@shell/layout/ProductFrame";
+import AppLayout from "@audit/components/layout/AppLayout";
 
 // /dashboard → /audit-dashboard, keeping the query string, fragment and router
 // state, so a link carrying any of them lands exactly where it pointed.
@@ -102,14 +107,18 @@ function AuditDashboardRedirect() {
   );
 }
 
-// Audit's providers around the routes: its scan state, and the pages a
-// refused route falls back to — the shell's guard holds the rule, Audit names
-// the pages (Phase 12.3).
+// Audit's providers around the routes: its scan state; the pages a refused
+// route falls back to — the shell's guard holds the rule, Audit names the
+// pages (Phase 12.3); and the frame the platform's shared screens (users,
+// organisations, roles, email domains, audit logs) render in — Audit's layout,
+// so they stay inside the navigation a person reached them from.
 function AuditProviders({ children }) {
   return (
     <ScanProvider>
       <AccessFallbackProvider candidates={AUDIT_ACCESS_FALLBACKS}>
-        {children}
+        <ProductFrameProvider frame={AppLayout}>
+          {children}
+        </ProductFrameProvider>
       </AccessFallbackProvider>
     </ScanProvider>
   );

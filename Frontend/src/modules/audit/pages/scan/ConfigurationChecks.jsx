@@ -47,7 +47,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
-import { ToastContainer, useToasts } from "@audit/components/common/Toast";
+import { ToastContainer, useToasts } from "@shell/feedback/Toast";
 import {
   CcureAlert,
   CcureBadge,

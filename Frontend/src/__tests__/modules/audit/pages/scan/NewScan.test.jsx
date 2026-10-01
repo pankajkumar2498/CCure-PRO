@@ -4,18 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 import NewScan from "@audit/pages/scan/NewScan";
 import { ScanProvider } from "@audit/context/ScanContext";
 import AuthContext from "@shell/auth/AuthContext";
-import { PreferencesProvider } from "@audit/context/PreferencesContext";
+import { PreferencesProvider } from "@shell/preferences/PreferencesContext";
 import api from "@shell/api/axiosInstance";
 
 // Mock the API and Toasts
 vi.mock("@shell/api/axiosInstance");
-vi.mock("@audit/components/common/Toast", () => ({
+vi.mock("@shell/feedback/Toast", () => ({
   useToasts: () => ({ pushes: vi.fn(), dismiss: vi.fn() }),
   ToastContainer: () => <div>ToastContainer</div>,
 }));
 
 // Mock user api for PreferencesContext
-vi.mock("@audit/api/user", () => ({
+vi.mock("@shell/api/user", () => ({
   getPreferences: vi.fn().mockResolvedValue({ theme: "light" }),
 }));
 

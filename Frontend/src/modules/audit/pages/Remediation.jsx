@@ -47,7 +47,7 @@ import {
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
 import { getAssets } from "@audit/api/assets";
-import { listUsers } from "@audit/api/admin";
+import { listUsers } from "@shell/api/admin";
 import {
   REMEDIATION_STATES,
   STATE_LABELS,

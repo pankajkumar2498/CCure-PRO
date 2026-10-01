@@ -17,9 +17,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 
 import real from "../../fixtures/scanPolicySnapshot.real.json";
 import ScanPolicySnapshot from "../../../components/scan/ScanPolicySnapshot";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn() },
 }));
 

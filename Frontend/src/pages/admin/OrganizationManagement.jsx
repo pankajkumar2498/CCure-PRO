@@ -40,7 +40,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   listOrganizations,
@@ -52,7 +52,7 @@ import {
 import { formatDateTime } from "../../utils/date";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import OrganizationForm from "../../components/admin/OrganizationForm";
-import { can, denyMessage, isSuperAdmin } from "../../auth/permissions";
+import { can, denyMessage, isSuperAdmin } from "@shell/auth/permissions";
 import {
   CcureAlert,
   CcureBadge,

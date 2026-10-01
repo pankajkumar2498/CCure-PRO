@@ -27,7 +27,7 @@ import {
   verifyMfa,
   sendEmailOtp,
   isSelfRegistrationEnabled,
-} from "../../api/auth";
+} from "@shell/api/auth";
 
 const navigate = vi.fn();
 let locationState = null;
@@ -46,7 +46,7 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   verifyMfa: vi.fn(),
   sendEmailOtp: vi.fn(),
   isSelfRegistrationEnabled: vi.fn(),
@@ -56,7 +56,7 @@ const login = vi.fn();
 const refreshUser = vi.fn();
 let authMessage = "";
 
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ login, refreshUser, authMessage }),
 }));
 

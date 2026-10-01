@@ -17,9 +17,9 @@ import withdrawn from "../../fixtures/remediationFindingWithdrawn.real.json";
 import accepted from "../../fixtures/remediationFindingAccepted.real.json";
 import history from "../../fixtures/remediationHistory.real.json";
 import FindingRemediationPanel from "../../../components/remediation/FindingRemediationPanel";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
 }));
 

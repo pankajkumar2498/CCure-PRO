@@ -26,7 +26,7 @@ import userEvent from "@testing-library/user-event";
 
 import ProfileModal from "../../../components/layout/ProfileModal";
 import * as userApi from "../../../api/user";
-import * as authApi from "../../../api/auth";
+import * as authApi from "@shell/api/auth";
 
 vi.mock("../../../api/user", () => ({
   getProfile: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock("../../../api/user", () => ({
   revokeOtherSessions: vi.fn(),
   changePassword: vi.fn(),
 }));
-vi.mock("../../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   enableMfa: vi.fn(),
   confirmMfa: vi.fn(),
   disableMfa: vi.fn(),
@@ -49,7 +49,7 @@ let currentUser = {
   role: { name: "analyst" },
 };
 const refreshUser = vi.fn().mockResolvedValue(undefined);
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser, refreshUser }),
 }));
 

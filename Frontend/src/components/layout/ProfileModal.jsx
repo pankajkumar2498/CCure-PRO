@@ -45,12 +45,12 @@ import {
   revokeSession,
 } from "../../api/user";
 import ChangePasswordModal from "./ChangePasswordModal";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import {
   enableMfa as enableMfaApi,
   confirmMfa as confirmMfaApi,
   disableMfa as disableMfaApi,
-} from "../../api/auth";
+} from "@shell/api/auth";
 import {
   CcureAlert,
   CcureBadge,

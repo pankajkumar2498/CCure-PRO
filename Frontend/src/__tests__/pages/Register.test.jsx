@@ -30,9 +30,9 @@ import {
   checkUsername,
   isSelfRegistrationEnabled,
   resendVerification,
-} from "../../api/auth";
+} from "@shell/api/auth";
 
-vi.mock("../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   checkEmail: vi.fn(),
   checkUsername: vi.fn(),
   isSelfRegistrationEnabled: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock("../../api/auth", () => ({
 
 const register = vi.fn();
 
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ register }),
 }));
 

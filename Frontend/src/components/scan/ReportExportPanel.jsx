@@ -35,8 +35,8 @@ import {
   CcureSelect,
   useCcureToast,
 } from "../../design-system";
-import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
 import {
   DOWNLOAD_FORMATS,
   EXPORT_DATASETS,

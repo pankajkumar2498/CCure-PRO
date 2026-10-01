@@ -1,4 +1,4 @@
-import axiosInstance from "./axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
 // The generic configuration audit engine's read surface (Phase 3).
 //

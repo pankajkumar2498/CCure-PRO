@@ -21,13 +21,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import real from "../fixtures/platformModules.real.json";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import App from "../../App";
 
-vi.mock("../../api/axiosInstance", () => ({ default: { get: vi.fn() } }));
+vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 let auth;
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   default: null,
   useAuth: () => auth,
 }));

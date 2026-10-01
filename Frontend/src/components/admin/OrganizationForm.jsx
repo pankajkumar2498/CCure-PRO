@@ -16,7 +16,7 @@
  * than coloured spans placed outside their field.
  */
 import { useEffect, useMemo, useState } from "react";
-import { checkUsername, checkEmail } from "../../api/auth";
+import { checkUsername, checkEmail } from "@shell/api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
 import {
   CcureButton,

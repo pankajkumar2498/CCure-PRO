@@ -44,8 +44,8 @@ import {
   CcureSelect,
   CcureTable,
 } from "../design-system";
-import { useAuth } from "../context/AuthContext";
-import { can, denyMessage } from "../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
 import { getAssets } from "../api/assets";
 import { listUsers } from "../api/admin";
 import {

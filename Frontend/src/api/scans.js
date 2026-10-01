@@ -2,7 +2,7 @@
  * src/api/scans.js
  * Wrappers for scan history and recycle-bin APIs.
  */
-import api, { authSession } from "./axiosInstance";
+import api, { authSession } from "@shell/api/axiosInstance";
 
 /**
  * GET /scans

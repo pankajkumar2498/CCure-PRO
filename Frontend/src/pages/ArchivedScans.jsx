@@ -25,11 +25,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import { getScans, restoreScan, deleteScan } from "../api/scans";
 import { formatDateTime } from "../utils/date";
 import { useToasts, ToastContainer } from "../components/common/Toast";
-import { can, denyMessage } from "../auth/permissions";
+import { can, denyMessage } from "@shell/auth/permissions";
 import { SCAN_PIPELINES } from "../config/scanConfig";
 import {
   CcureAlert,

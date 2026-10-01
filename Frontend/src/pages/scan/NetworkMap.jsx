@@ -35,7 +35,7 @@ import {
   CcureSelect,
   CcureTable,
 } from "../../design-system";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import "../../styles/NetworkMap.css";
 
 /* ── Canvas colours ──────────────────────────────────────────────────────────── */

@@ -23,10 +23,10 @@ import { useNavigate, useLocation, useParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { buildPhasePayload, getScanPipeline } from "../../config/scanConfig";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import { stopScan } from "../../api/scans";
-import { can } from "../../auth/permissions";
-import { useAuth } from "../../context/AuthContext";
+import { can } from "@shell/auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
 import ScanQuotaBar from "../../components/scan/ScanQuotaBar";
 import { detectTargetType, parseExcludeIpsJS } from "../../utils/ipValidation";
 import {

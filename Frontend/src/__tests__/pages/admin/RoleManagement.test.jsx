@@ -18,7 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import RoleManagement from "../../../pages/admin/RoleManagement";
-import AuthContext from "../../../context/AuthContext";
+import AuthContext from "@shell/auth/AuthContext";
 import { PreferencesProvider } from "../../../context/PreferencesContext";
 import { listRoles, listRolePermissions } from "../../../api/admin";
 

@@ -30,7 +30,7 @@
  *   the UI. It is documented rather than worked around.
  */
 
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 /** The backend's five classes, in the order an operator reads them. */
 export const CLASSIFICATIONS = [

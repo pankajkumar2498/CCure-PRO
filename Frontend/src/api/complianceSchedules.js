@@ -16,7 +16,7 @@
  *   compliance:manage_schedules  analyst, org_admin, superadmin
  */
 
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 const BASE = "/compliance/schedules";
 

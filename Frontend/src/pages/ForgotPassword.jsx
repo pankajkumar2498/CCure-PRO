@@ -26,7 +26,7 @@
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { forgotPassword } from "../api/auth";
+import { forgotPassword } from "@shell/api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";

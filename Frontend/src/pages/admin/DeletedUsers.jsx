@@ -41,8 +41,8 @@ import {
   purgeUser,
   restoreUser,
 } from "../../api/admin";
-import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
 import {
   CcureAlert,
   CcureButton,

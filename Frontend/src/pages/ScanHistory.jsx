@@ -19,7 +19,7 @@ import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import RiskBadge from "../components/scan/RiskBadge";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import { useScan } from "../context/ScanContext";
 import { usePreferences } from "../context/PreferencesContext";
 import {
@@ -31,9 +31,9 @@ import {
   streamScanEvents,
 } from "../api/scans";
 import { buildPhasePayload, SCAN_PIPELINES } from "../config/scanConfig";
-import api from "../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import { dateTimeMs, formatDateTime } from "../utils/date";
-import { can, denyMessage } from "../auth/permissions";
+import { can, denyMessage } from "@shell/auth/permissions";
 import CVELink from "../components/common/CVELink";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import {

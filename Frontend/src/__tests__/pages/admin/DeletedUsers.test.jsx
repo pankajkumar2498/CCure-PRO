@@ -56,12 +56,12 @@ vi.mock("../../../components/layout/AppLayout", () => ({
 }));
 
 let currentUser = { username: "admin", id: 1, role: { name: "org_admin" } };
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
 let permissions = new Set(["users:delete"]);
-vi.mock("../../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
   denyMessage: "You do not have permission to perform this action.",
 }));

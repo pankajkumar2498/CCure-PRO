@@ -15,9 +15,9 @@
  * __tests__/components/scan/ExportPanel.test.jsx.
  */
 import { useState } from "react";
-import api from "../../api/axiosInstance";
-import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import api from "@shell/api/axiosInstance";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
 import { CcureAlert, CcureButton, CcureCard } from "../../design-system";
 import "../../styles/export-panel.css";
 

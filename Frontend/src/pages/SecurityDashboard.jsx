@@ -26,8 +26,8 @@
 import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
-import { useAuth } from "../context/AuthContext";
-import { canPermission } from "../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { canPermission } from "@shell/auth/permissions";
 import {
   getDashboardSummary,
   getRiskBreakdown,
@@ -1419,7 +1419,7 @@ function AuditTimeline() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    import("../api/axiosInstance").then(({ default: api }) => {
+    import("@shell/api/axiosInstance").then(({ default: api }) => {
       api
         .get("/admin/audit-logs", { params: { limit: 6 } })
         .then((r) => setLogs(r.data?.logs || []))
@@ -1505,7 +1505,7 @@ function NotifCenter() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    import("../api/axiosInstance").then(({ default: api }) => {
+    import("@shell/api/axiosInstance").then(({ default: api }) => {
       api
         .get("/notifications", { params: { limit: 5, unread_only: true } })
         .then((r) => setNotifs(r.data?.notifications || []))

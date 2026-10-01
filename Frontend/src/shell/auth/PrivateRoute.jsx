@@ -1,40 +1,21 @@
 /**
- * src/components/auth/PrivateRoute.jsx
+ * src/shell/auth/PrivateRoute.jsx
  * Wraps protected routes. Shows spinner while auth state loads,
  * then redirects to /login if user is not authenticated.
  */
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import {
-  canPermission,
-  canAny,
-  canAll,
-  isSuperAdmin,
-} from "../../auth/permissions";
+import { useAuth } from "./AuthContext";
+import { canPermission, canAny, canAll, isSuperAdmin } from "./permissions";
+import { useAccessFallbacks } from "./accessFallback";
 
-const fallbackPathFor = (user, currentPath) => {
-  const candidates = [
-    {
-      path: "/audit-dashboard",
-      permission: { resource: "scans", action: "execute" },
-    },
-    { path: "/history", permission: { resource: "scans", action: "read" } },
-    { path: "/reports", permission: { resource: "reports", action: "read" } },
-    { path: "/admin/users", permission: { resource: "users", action: "read" } },
-    {
-      path: "/admin/audit-logs",
-      permission: { resource: "audit", action: "read" },
-    },
-  ];
-
-  return (
-    candidates.find(
-      (candidate) =>
-        candidate.path !== currentPath &&
-        canPermission(user, candidate.permission),
-    )?.path || "/login"
-  );
-};
+// The first candidate the user may open, other than the page just refused;
+// otherwise sign-in. Candidates come from the product (accessFallback.jsx).
+const fallbackPathFor = (user, currentPath, candidates) =>
+  candidates.find(
+    (candidate) =>
+      candidate.path !== currentPath &&
+      canPermission(user, candidate.permission),
+  )?.path || "/login";
 
 export default function PrivateRoute({
   children,
@@ -45,6 +26,7 @@ export default function PrivateRoute({
 }) {
   const { user, loading, authState, authMessage } = useAuth();
   const location = useLocation();
+  const fallbacks = useAccessFallbacks();
 
   if (loading) {
     return (
@@ -79,7 +61,12 @@ export default function PrivateRoute({
     (!requiredAll || canAll(user, requiredAll));
 
   if (!authorized) {
-    return <Navigate to={fallbackPathFor(user, location.pathname)} replace />;
+    return (
+      <Navigate
+        to={fallbackPathFor(user, location.pathname, fallbacks)}
+        replace
+      />
+    );
   }
 
   return children || <Outlet />;

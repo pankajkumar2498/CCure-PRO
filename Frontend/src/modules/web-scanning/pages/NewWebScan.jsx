@@ -48,8 +48,8 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
-import { useAuth } from "../../../context/AuthContext";
-import { can } from "../../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can } from "@shell/auth/permissions";
 import { webScansApi } from "../api/webScansApi";
 import {
   CcureAlert,

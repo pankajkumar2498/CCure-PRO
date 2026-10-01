@@ -32,7 +32,7 @@ import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
 import { CcureAlert, CcureButton, CcureInput } from "../design-system";
-import { verifyEmail, resendVerification } from "../api/auth";
+import { verifyEmail, resendVerification } from "@shell/api/auth";
 import "../styles/auth.css";
 
 export default function VerifyEmail() {

@@ -95,7 +95,7 @@ let currentUser = {
   org_id: 7,
   role: { name: "superadmin" },
 };
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
@@ -105,7 +105,7 @@ let permissions = new Set([
   "organizations:delete",
 ]);
 let superadmin = true;
-vi.mock("../../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
   isSuperAdmin: () => superadmin,
   denyMessage: "You do not have permission to perform this action.",

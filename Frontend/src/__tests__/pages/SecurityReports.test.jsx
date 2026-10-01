@@ -31,9 +31,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import SecurityReports from "../../pages/SecurityReports";
-import axiosInstance from "../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -58,12 +58,12 @@ vi.mock("react-router-dom", async () => {
 });
 
 let currentUser = { username: "operator", id: 1 };
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
 let permissions = new Set(["reports:read", "reports:delete"]);
-vi.mock("../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: (_u, r, a) => permissions.has(`${r}:${a}`),
   denyMessage: "You do not have permission to perform this action.",
 }));

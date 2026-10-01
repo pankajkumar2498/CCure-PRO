@@ -18,15 +18,15 @@ import { MemoryRouter } from "react-router-dom";
 
 import real from "../../fixtures/scanComparison.real.json";
 import ScanComparison from "../../../pages/scan/ScanComparison";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("../../../components/layout/AppLayout", () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
 }));
 

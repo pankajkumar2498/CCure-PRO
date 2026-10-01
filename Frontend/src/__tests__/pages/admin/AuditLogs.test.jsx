@@ -28,9 +28,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AuditLogs from "../../../pages/admin/AuditLogs";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -45,12 +45,12 @@ vi.mock("../../../components/layout/AppLayout", () => ({
 }));
 
 let currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
 let superadmin = true;
-vi.mock("../../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: () => true,
   isSuperAdmin: () => superadmin,
   denyMessage: "You do not have permission to perform this action.",

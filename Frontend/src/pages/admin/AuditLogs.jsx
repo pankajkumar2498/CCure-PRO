@@ -14,8 +14,8 @@ import {
   exportAuditLogs,
   previewAuditRetention,
 } from "../../api/admin";
-import { useAuth } from "../../context/AuthContext";
-import { can, isSuperAdmin } from "../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, isSuperAdmin } from "@shell/auth/permissions";
 import { formatDateTime } from "../../utils/date";
 import { useToasts, ToastContainer } from "../../components/common/Toast";
 import AuditLogDetailsModal from "../../components/admin/AuditLogDetailsModal";

@@ -28,7 +28,7 @@ import userEvent from "@testing-library/user-event";
 
 import UserManagement from "../../../pages/admin/UserManagement";
 import * as adminApi from "../../../api/admin";
-import { checkUsername, checkEmail } from "../../../api/auth";
+import { checkUsername, checkEmail } from "@shell/api/auth";
 
 const navigate = vi.fn();
 let searchParams = new URLSearchParams();
@@ -58,7 +58,7 @@ vi.mock("../../../api/admin", () => ({
   approveUser: vi.fn(),
 }));
 
-vi.mock("../../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   checkUsername: vi.fn(),
   checkEmail: vi.fn(),
 }));
@@ -104,7 +104,7 @@ const VIEWER = {
 };
 
 let currentUser = SUPERADMIN;
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 

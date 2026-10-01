@@ -31,11 +31,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import NetworkMap from "../../../pages/scan/NetworkMap";
-import PrivateRoute from "../../../components/auth/PrivateRoute";
-import AuthContext from "../../../context/AuthContext";
-import api from "../../../api/axiosInstance";
+import PrivateRoute from "@shell/auth/PrivateRoute";
+import AuthContext from "@shell/auth/AuthContext";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),

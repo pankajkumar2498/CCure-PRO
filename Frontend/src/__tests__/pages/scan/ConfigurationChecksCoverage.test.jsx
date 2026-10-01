@@ -20,9 +20,9 @@ import { MemoryRouter } from "react-router-dom";
 import caps from "../../fixtures/configAuditCapabilities.real.json";
 import checks from "../../fixtures/configAuditChecks.real.json";
 import ConfigurationChecks from "../../../pages/scan/ConfigurationChecks";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 

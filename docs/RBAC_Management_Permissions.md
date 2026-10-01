@@ -3,7 +3,7 @@
 **CCure-Audit-PRO** — the complete authorization model, derived from
 `Backend/db/migrate_production_schema.py` (definitions and grants),
 `Backend/auth/rbac.py` (enforcement), every `require_permission(...)` call site,
-and `Frontend/src/auth/permissions.js` (client-side mirror).
+and `Frontend/src/shell/auth/permissions.js` (client-side mirror).
 
 ---
 
@@ -516,7 +516,7 @@ though both hold identical atoms.
 
 ## 8. Client-side mirror
 
-`Frontend/src/auth/permissions.js` re-implements the same evaluation against the
+`Frontend/src/shell/auth/permissions.js` re-implements the same evaluation against the
 `role.permissions` array returned by `GET /auth/me`:
 
 ```javascript

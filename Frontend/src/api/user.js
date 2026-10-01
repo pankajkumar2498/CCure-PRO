@@ -4,7 +4,7 @@
  * API functions for user profile, preferences, password, and session management.
  */
 
-import axiosInstance from "./axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 

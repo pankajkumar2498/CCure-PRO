@@ -36,9 +36,9 @@ import { fileURLToPath } from "node:url";
 
 import Phase2Results from "../../../pages/scan/Phase2Results";
 import { ScanProvider } from "../../../context/ScanContext";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -86,7 +86,7 @@ vi.mock("react-router-dom", async () => {
 });
 
 let user;
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user }),
 }));
 

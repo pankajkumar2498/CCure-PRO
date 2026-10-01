@@ -24,7 +24,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import NewWebScan from "../../../modules/web-scanning/pages/NewWebScan";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
 const navigate = vi.fn();
 
@@ -33,7 +33,7 @@ vi.mock("react-router-dom", async () => {
   return { ...actual, useNavigate: () => navigate };
 });
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     post: vi.fn(),
     get: vi.fn(),
@@ -65,7 +65,7 @@ const VIEWER_USER = {
   role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
 };
 const authState = vi.hoisted(() => ({ user: null }));
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 authState.user = FULL_PERMISSION_USER;

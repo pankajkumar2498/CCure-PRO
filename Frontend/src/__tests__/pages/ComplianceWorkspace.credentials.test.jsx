@@ -40,9 +40,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ComplianceWorkspace from "../../pages/ComplianceWorkspace";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -62,7 +62,7 @@ vi.mock("../../components/layout/AppLayout", () => ({
 }));
 
 let user;
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user }),
 }));
 

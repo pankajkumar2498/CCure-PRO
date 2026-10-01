@@ -2,7 +2,7 @@
  * src/api/assets.js
  * Wrappers for the Asset Registry REST API.
  */
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 export const getAssets = ({
   search,

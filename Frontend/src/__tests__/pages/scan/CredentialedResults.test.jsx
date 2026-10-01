@@ -39,7 +39,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import CredentialedResults from "../../../pages/scan/CredentialedResults";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 /*
  * The page gained an auth dependency when the Reports & Export panel was added
@@ -52,11 +52,11 @@ import api from "../../../api/axiosInstance";
  * contracts need to see -- gated behind a denial it would render one alert and
  * assert nothing about the controls.
  */
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
 }));
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),

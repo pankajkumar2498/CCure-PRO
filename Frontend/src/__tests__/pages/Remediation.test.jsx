@@ -17,9 +17,9 @@ import { MemoryRouter } from "react-router-dom";
 import summary from "../fixtures/remediationSummary.real.json";
 import overdue from "../fixtures/remediationOverdue.real.json";
 import Remediation from "../../pages/Remediation";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn() },
 }));
 
@@ -46,7 +46,7 @@ const ROLE_PERMS = {
 };
 
 let currentUser = null;
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 

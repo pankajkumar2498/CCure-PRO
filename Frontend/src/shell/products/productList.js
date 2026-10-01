@@ -12,7 +12,7 @@
  * vocabulary, or inside it but unknown to this build, is UNKNOWN — never
  * available, never "not yet available".
  */
-import api from "../../api/axiosInstance";
+import api from "../api/axiosInstance";
 
 export const AVAILABILITY = Object.freeze({
   AVAILABLE: "available",

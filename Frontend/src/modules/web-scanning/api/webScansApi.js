@@ -1,4 +1,4 @@
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
 const apiBase = () => {
   const baseURL = axiosInstance.defaults.baseURL || "";

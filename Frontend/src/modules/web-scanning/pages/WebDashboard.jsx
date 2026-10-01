@@ -30,8 +30,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import AppLayout from "../../../components/layout/AppLayout";
-import { useAuth } from "../../../context/AuthContext";
-import { can } from "../../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can } from "@shell/auth/permissions";
 import { webDashboardApi } from "../api/webScansApi";
 import {
   CcureAlert,

@@ -50,12 +50,12 @@ vi.mock("../../components/layout/AppLayout", () => ({
 }));
 
 let currentUser = { username: "operator", id: 1 };
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
 let permissions = new Set(["scans:restore", "scans:purge"]);
-vi.mock("../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
   denyMessage: "You do not have permission to perform this action.",
 }));

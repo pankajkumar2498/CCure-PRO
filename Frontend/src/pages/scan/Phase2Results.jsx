@@ -29,7 +29,7 @@ import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import {
   HostMeasurements,
   PortLabel,
@@ -37,8 +37,8 @@ import {
   ScanContext,
   TcpFingerprint,
 } from "../../components/scan/AssessmentContext";
-import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
 import {
   CcureAlert,
   CcureBadge,

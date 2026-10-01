@@ -1,4 +1,4 @@
-import axiosInstance from "./axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
 const normalizeEmail = (email) =>
   String(email || "")

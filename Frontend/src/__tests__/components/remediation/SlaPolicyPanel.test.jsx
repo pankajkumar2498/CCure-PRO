@@ -11,9 +11,9 @@ import userEvent from "@testing-library/user-event";
 
 import policy from "../../fixtures/remediationSlaPolicy.real.json";
 import SlaPolicyPanel from "../../../components/remediation/SlaPolicyPanel";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), put: vi.fn() },
 }));
 

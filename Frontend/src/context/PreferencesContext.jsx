@@ -6,7 +6,7 @@ import {
   useCallback,
 } from "react";
 import { getPreferences } from "../api/user";
-import { useAuth } from "./AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 
 const PreferencesContext = createContext(null);
 

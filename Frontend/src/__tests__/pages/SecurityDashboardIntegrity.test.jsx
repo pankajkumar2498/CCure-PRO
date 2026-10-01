@@ -26,9 +26,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import SecurityDashboard from "../../pages/SecurityDashboard";
-import axiosInstance from "../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -54,11 +54,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { username: "operator", id: 1, org_id: "o-1" } }),
 }));
 
-vi.mock("../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   canPermission: () => true,
   can: () => true,
   denyMessage: "You do not have permission to perform this action.",

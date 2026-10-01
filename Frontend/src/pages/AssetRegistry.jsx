@@ -17,8 +17,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
-import { useAuth } from "../context/AuthContext";
-import { canPermission } from "../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { canPermission } from "@shell/auth/permissions";
 import {
   CcureAlert,
   CcureButton,

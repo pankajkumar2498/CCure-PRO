@@ -2,7 +2,7 @@
  * src/api/findings.js
  * Wrappers for the Findings / Vulnerability Browser REST API.
  */
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 export const getFindings = ({
   severity,

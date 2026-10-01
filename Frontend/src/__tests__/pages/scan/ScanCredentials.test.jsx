@@ -28,9 +28,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ScanCredentials from "../../../pages/scan/ScanCredentials";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),

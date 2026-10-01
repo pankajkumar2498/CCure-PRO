@@ -25,7 +25,7 @@
  */
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { resetPassword } from "../api/auth";
+import { resetPassword } from "@shell/api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";

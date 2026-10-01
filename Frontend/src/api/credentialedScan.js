@@ -3,7 +3,7 @@
  * Wrapper for POST /scan/credentialed
  * Credentials are never stored — used once and discarded.
  */
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 /**
  * Split a target field into individual expressions.

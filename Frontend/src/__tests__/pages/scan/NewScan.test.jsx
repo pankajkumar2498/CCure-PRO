@@ -3,12 +3,12 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import NewScan from "../../../pages/scan/NewScan";
 import { ScanProvider } from "../../../context/ScanContext";
-import AuthContext from "../../../context/AuthContext";
+import AuthContext from "@shell/auth/AuthContext";
 import { PreferencesProvider } from "../../../context/PreferencesContext";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 // Mock the API and Toasts
-vi.mock("../../../api/axiosInstance");
+vi.mock("@shell/api/axiosInstance");
 vi.mock("../../../components/common/Toast", () => ({
   useToasts: () => ({ pushes: vi.fn(), dismiss: vi.fn() }),
   ToastContainer: () => <div>ToastContainer</div>,

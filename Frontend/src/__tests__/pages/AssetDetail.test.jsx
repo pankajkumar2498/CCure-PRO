@@ -43,9 +43,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AssetDetail from "../../pages/AssetDetail";
-import axiosInstance from "../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -74,12 +74,12 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { username: "operator", id: 1, org_id: "o-1" } }),
 }));
 
 let permissions = new Set(["assets:update"]);
-vi.mock("../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   canPermission: (_u, { resource, action }) =>
     permissions.has(`${resource}:${action}`),
   can: (_u, r, a) => permissions.has(`${r}:${a}`),

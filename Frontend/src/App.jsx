@@ -21,7 +21,9 @@
 
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import PrivateRoute from "./components/auth/PrivateRoute";
+import PrivateRoute from "@shell/auth/PrivateRoute";
+import { AccessFallbackProvider } from "@shell/auth/accessFallback";
+import { AUDIT_ACCESS_FALLBACKS } from "./config/accessFallbacks";
 import { ScanProvider } from "./context/ScanContext";
 
 // ── New dashboard pages ───────────────────────────────────────────────────────
@@ -62,8 +64,8 @@ import NetworkMap from "./pages/scan/NetworkMap";
 import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 
 // ── Platform shell (Phase 12): CCure Home and the product entry pages ────────
-import CcureHome from "./shell/pages/CcureHome";
-import ModuleEntryPage from "./shell/pages/ModuleEntryPage";
+import CcureHome from "@shell/pages/CcureHome";
+import ModuleEntryPage from "@shell/pages/ModuleEntryPage";
 
 // ── Design-system showcase, development builds only ─────────────────────────
 // `import.meta.env.DEV` is a literal `false` in a production build, so Rollup
@@ -100,9 +102,22 @@ function AuditDashboardRedirect() {
   );
 }
 
-export default function App() {
+// Audit's providers around the routes: its scan state, and the pages a
+// refused route falls back to — the shell's guard holds the rule, Audit names
+// the pages (Phase 12.3).
+function AuditProviders({ children }) {
   return (
     <ScanProvider>
+      <AccessFallbackProvider candidates={AUDIT_ACCESS_FALLBACKS}>
+        {children}
+      </AccessFallbackProvider>
+    </ScanProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuditProviders>
       <Routes>
         {/* ── Public ── */}
         <Route path="/login" element={<Login />} />
@@ -288,6 +303,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    </ScanProvider>
+    </AuditProviders>
   );
 }

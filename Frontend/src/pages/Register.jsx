@@ -27,7 +27,7 @@
  */
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
@@ -44,7 +44,7 @@ import {
   checkUsername,
   isSelfRegistrationEnabled,
   resendVerification,
-} from "../api/auth";
+} from "@shell/api/auth";
 import { useDebounce } from "../hooks/useDebounce";
 import "../styles/auth.css";
 

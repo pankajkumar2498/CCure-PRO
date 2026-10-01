@@ -5,7 +5,7 @@
  * All endpoints are RBAC-gated on the backend; these are thin wrappers
  * around the authenticated axiosInstance (JWT + cookie refresh built-in).
  */
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 const params = (extra = {}) => ({ params: extra });
 

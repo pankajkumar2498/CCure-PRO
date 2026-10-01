@@ -23,9 +23,9 @@ import ok from "../../fixtures/configAuditValidateOk.real.json";
 import warned from "../../fixtures/configAuditValidateWarning.real.json";
 import bad from "../../fixtures/configAuditValidateInvalid.real.json";
 import ConfigurationRuleValidator from "../../../pages/scan/ConfigurationRuleValidator";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
 

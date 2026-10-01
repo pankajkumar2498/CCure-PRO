@@ -27,7 +27,7 @@ import { MemoryRouter } from "react-router-dom";
 import { StrictMode } from "react";
 
 import VerifyEmail from "../../pages/VerifyEmail";
-import { verifyEmail, resendVerification } from "../../api/auth";
+import { verifyEmail, resendVerification } from "@shell/api/auth";
 
 let search = "?token=VERIFY-TOKEN-1";
 
@@ -39,7 +39,7 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   verifyEmail: vi.fn(),
   resendVerification: vi.fn(),
 }));

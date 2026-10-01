@@ -20,9 +20,9 @@
  * it is a CcureSelect here and the file is retired in this batch.
  */
 import { useEffect, useMemo, useState } from "react";
-import { checkUsername, checkEmail } from "../../api/auth";
+import { checkUsername, checkEmail } from "@shell/api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
-import { isSuperAdmin } from "../../auth/permissions";
+import { isSuperAdmin } from "@shell/auth/permissions";
 import {
   CcureButton,
   CcureInput,

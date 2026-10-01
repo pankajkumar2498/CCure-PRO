@@ -36,7 +36,7 @@
  *   separately; folding them inflates every figure built on this.
  */
 
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 const BASE = "/remediation";
 

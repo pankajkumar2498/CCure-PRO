@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import AppLayout from "../../components/layout/AppLayout";
 import {
   listUsers,
@@ -37,7 +37,7 @@ import {
   denyMessage,
   isOrgAdmin,
   isSuperAdmin,
-} from "../../auth/permissions";
+} from "@shell/auth/permissions";
 
 const PAGE_SIZE = 10;
 

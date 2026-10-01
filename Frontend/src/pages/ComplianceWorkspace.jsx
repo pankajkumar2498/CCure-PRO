@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useId } from "react";
-import axiosInstance from "../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 import AppLayout from "../components/layout/AppLayout";
 import ComplianceEvidence from "../components/compliance/ComplianceEvidence";
 import ComplianceSchedules from "../components/compliance/ComplianceSchedules";
-import { useAuth } from "../context/AuthContext";
-import { canPermission } from "../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { canPermission } from "@shell/auth/permissions";
 import { useToasts, ToastContainer } from "../components/common/Toast";
 import {
   CcureAlert,

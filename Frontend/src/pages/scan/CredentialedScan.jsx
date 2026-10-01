@@ -23,9 +23,9 @@ import {
 } from "../../design-system";
 import "../../styles/credentialed-scan.css";
 import { parseTargets, runCredentialedScan } from "../../api/credentialedScan";
-import { useAuth } from "../../context/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
-import api from "../../api/axiosInstance";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can, denyMessage } from "@shell/auth/permissions";
+import api from "@shell/api/axiosInstance";
 
 const SECTIONS = [
   {

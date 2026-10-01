@@ -35,11 +35,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ScanHistory from "../../pages/ScanHistory";
-import AuthContext from "../../context/AuthContext";
-import api from "../../api/axiosInstance";
+import AuthContext from "@shell/auth/AuthContext";
+import api from "@shell/api/axiosInstance";
 import { buildPhasePayload } from "../../config/scanConfig";
 
-vi.mock("../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),

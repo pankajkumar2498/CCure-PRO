@@ -26,9 +26,9 @@ import userEvent from "@testing-library/user-event";
 
 import OrganizationForm from "../../../components/admin/OrganizationForm";
 import AuditLogDetailsModal from "../../../components/admin/AuditLogDetailsModal";
-import { checkUsername, checkEmail } from "../../../api/auth";
+import { checkUsername, checkEmail } from "@shell/api/auth";
 
-vi.mock("../../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   checkUsername: vi.fn(),
   checkEmail: vi.fn(),
 }));

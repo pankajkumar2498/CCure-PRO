@@ -32,11 +32,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import { getScans, deleteReport } from "../api/scans";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import { DOWNLOAD_FORMATS, downloadReport } from "../api/reports";
 import { saveResponseAsFile } from "../utils/download";
 import { dateTimeMs, formatDateTime } from "../utils/date";
-import { can, denyMessage } from "../auth/permissions";
+import { can, denyMessage } from "@shell/auth/permissions";
 import {
   CcureAlert,
   CcureBadge,

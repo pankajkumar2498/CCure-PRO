@@ -4,8 +4,8 @@
  * API functions for the notification center.
  */
 
-import axiosInstance from "./axiosInstance";
-import { authSession } from "./axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
+import { authSession } from "@shell/api/axiosInstance";
 
 /** Get notifications list (supports filtering & pagination) */
 export const getNotifications = ({

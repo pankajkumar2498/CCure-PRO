@@ -25,7 +25,7 @@
  */
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@shell/auth/AuthContext";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
@@ -39,7 +39,7 @@ import {
   verifyMfa as verifyMfaApi,
   sendEmailOtp as sendEmailOtpApi,
   isSelfRegistrationEnabled,
-} from "../api/auth";
+} from "@shell/api/auth";
 import "../styles/auth.css";
 
 export default function Login() {

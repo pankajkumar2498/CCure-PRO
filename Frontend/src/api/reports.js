@@ -21,7 +21,7 @@
  * it instead of letting the operator earn a 400.
  */
 
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 /** What `/reports/download` serves. Left of the arrow is what the API calls it. */
 export const DOWNLOAD_FORMATS = [

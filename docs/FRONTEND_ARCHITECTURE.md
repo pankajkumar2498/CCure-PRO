@@ -193,7 +193,7 @@ own nested router, its own `ErrorBoundary` and its own stylesheet:
 
 ## 5. Route guards
 
-`src/components/auth/PrivateRoute.jsx`:
+`src/shell/auth/PrivateRoute.jsx`:
 
 ```jsx
 export default function PrivateRoute({ children, requiredPermission,
@@ -233,7 +233,7 @@ redirect loop.
 
 ## 6. Permission evaluation
 
-`src/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
+`src/shell/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
 
 ```javascript
 const normalizeRoleName = (r = "") => String(r||"").trim().toLowerCase().replace(/\s+/g, "_");

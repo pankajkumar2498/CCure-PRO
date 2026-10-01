@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSuperAdmin, can, canAny, canAll } from "../../auth/permissions";
+import { isSuperAdmin, can, canAny, canAll } from "@shell/auth/permissions";
 
 describe("Permissions Logic", () => {
   const superadmin = { role: { name: "superadmin", permissions: [] } };

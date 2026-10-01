@@ -8,7 +8,7 @@
  */
 import { Link } from "react-router-dom";
 import { CcureButton } from "../../design-system";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import "./platform-layout.css";
 
 export default function PlatformLayout({ children }) {

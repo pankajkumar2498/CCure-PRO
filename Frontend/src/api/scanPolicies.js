@@ -29,7 +29,7 @@
  *   intact for the scans that already cite it.
  */
 
-import api from "./axiosInstance";
+import api from "@shell/api/axiosInstance";
 
 const BASE = "/scan-policies";
 

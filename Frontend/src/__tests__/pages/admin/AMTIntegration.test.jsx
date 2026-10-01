@@ -37,11 +37,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import AMTIntegration from "../../../pages/admin/AMTIntegration";
-import PrivateRoute from "../../../components/auth/PrivateRoute";
-import AuthContext from "../../../context/AuthContext";
-import api from "../../../api/axiosInstance";
+import PrivateRoute from "@shell/auth/PrivateRoute";
+import AuthContext from "@shell/auth/AuthContext";
+import { AccessFallbackProvider } from "@shell/auth/accessFallback";
+import { AUDIT_ACCESS_FALLBACKS } from "../../../config/accessFallbacks";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -1015,27 +1017,30 @@ describe("AMTIntegration — contract", () => {
             user: { role: { name: "analyst", permissions } },
           }}
         >
-          <MemoryRouter initialEntries={["/admin/amt"]}>
-            <Routes>
-              <Route
-                element={
-                  <PrivateRoute
-                    requiredPermission={{
-                      resource: "assets",
-                      action: "update",
-                    }}
-                  />
-                }
-              >
-                <Route path="/admin/amt" element={<AMTIntegration />} />
-              </Route>
-              <Route
-                path="/audit-dashboard"
-                element={<div>Fallback page</div>}
-              />
-              <Route path="/login" element={<div>Login page</div>} />
-            </Routes>
-          </MemoryRouter>
+          {/* As App.jsx composes it: Audit names the fallback pages. */}
+          <AccessFallbackProvider candidates={AUDIT_ACCESS_FALLBACKS}>
+            <MemoryRouter initialEntries={["/admin/amt"]}>
+              <Routes>
+                <Route
+                  element={
+                    <PrivateRoute
+                      requiredPermission={{
+                        resource: "assets",
+                        action: "update",
+                      }}
+                    />
+                  }
+                >
+                  <Route path="/admin/amt" element={<AMTIntegration />} />
+                </Route>
+                <Route
+                  path="/audit-dashboard"
+                  element={<div>Fallback page</div>}
+                />
+                <Route path="/login" element={<div>Login page</div>} />
+              </Routes>
+            </MemoryRouter>
+          </AccessFallbackProvider>
         </AuthContext.Provider>,
       );
 

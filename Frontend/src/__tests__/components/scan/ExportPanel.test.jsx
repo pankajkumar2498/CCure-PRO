@@ -31,12 +31,12 @@ import {
 } from "@testing-library/react";
 
 import ExportPanel from "../../../components/scan/ExportPanel";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({ default: { get: vi.fn() } }));
+vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 let currentUser;
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 

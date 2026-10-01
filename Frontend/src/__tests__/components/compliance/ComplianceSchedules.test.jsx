@@ -17,9 +17,9 @@ import userEvent from "@testing-library/user-event";
 
 import ComplianceSchedules from "../../../components/compliance/ComplianceSchedules";
 import { scheduleState } from "../../../api/complianceSchedules";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 

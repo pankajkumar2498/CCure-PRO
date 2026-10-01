@@ -74,7 +74,7 @@ const VIEWER_USER = {
   role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
 };
 const authState = vi.hoisted(() => ({ user: null }));
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 authState.user = FULL_PERMISSION_USER;

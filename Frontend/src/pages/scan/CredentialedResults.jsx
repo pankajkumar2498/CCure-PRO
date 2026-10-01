@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import RiskBadge from "../../components/scan/RiskBadge";
 import { getScan } from "../../api/scans";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import {
   collectCredentialedReports,
   collectFailedHosts,

@@ -28,7 +28,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import AppLayout from "../../../components/layout/AppLayout";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 import { listOrganizations } from "../../../api/admin";
 import {
   getUnreadCount,
@@ -36,7 +36,7 @@ import {
   streamNotificationEvents,
 } from "../../../api/notifications";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -81,7 +81,7 @@ vi.mock("react-router-dom", async () => {
 
 const logout = vi.fn();
 let user;
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user, logout }),
 }));
 

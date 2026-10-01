@@ -24,9 +24,9 @@ import NotificationsPanel, {
 } from "../../../components/layout/NotificationsPanel";
 import HelpPanel from "../../../components/layout/HelpPanel";
 import SettingsDrawer from "../../../components/layout/SettingsDrawer";
-import axiosInstance from "../../../api/axiosInstance";
+import axiosInstance from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),

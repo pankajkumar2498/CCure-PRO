@@ -11,13 +11,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import real from "../fixtures/platformModules.real.json";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import CcureHome from "../../shell/pages/CcureHome";
 
-vi.mock("../../api/axiosInstance", () => ({ default: { get: vi.fn() } }));
+vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 const logout = vi.fn();
-vi.mock("../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { username: "analyst" }, logout }),
 }));
 

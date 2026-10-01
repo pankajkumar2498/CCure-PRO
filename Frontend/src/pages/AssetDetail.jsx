@@ -33,8 +33,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import HostPosturePanel from "../components/assets/HostPosturePanel";
-import { useAuth } from "../context/AuthContext";
-import { canPermission } from "../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { canPermission } from "@shell/auth/permissions";
 import {
   getAsset,
   getAssetServices,

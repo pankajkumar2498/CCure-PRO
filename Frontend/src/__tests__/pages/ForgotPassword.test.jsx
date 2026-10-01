@@ -16,9 +16,9 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import ForgotPassword from "../../pages/ForgotPassword";
-import { forgotPassword } from "../../api/auth";
+import { forgotPassword } from "@shell/api/auth";
 
-vi.mock("../../api/auth", () => ({
+vi.mock("@shell/api/auth", () => ({
   forgotPassword: vi.fn(),
 }));
 

@@ -27,9 +27,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ReportExportPanel from "../../../components/scan/ReportExportPanel";
-import api from "../../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), delete: vi.fn() },
 }));
 
@@ -49,11 +49,11 @@ let currentUser = {
   role: { name: "analyst" },
   permissions: [{ resource: "reports", action: "read" }],
 };
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: currentUser }),
 }));
 
-vi.mock("../../../auth/permissions", () => ({
+vi.mock("@shell/auth/permissions", () => ({
   can: (user, resource, action) =>
     (user?.permissions || []).some(
       (p) => p.resource === resource && p.action === action,

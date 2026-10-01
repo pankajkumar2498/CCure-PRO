@@ -19,7 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import ResetPassword from "../../pages/ResetPassword";
-import { resetPassword } from "../../api/auth";
+import { resetPassword } from "@shell/api/auth";
 
 const navigate = vi.fn();
 let search = "?token=RESET-TOKEN-1";
@@ -33,7 +33,7 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../api/auth", () => ({ resetPassword: vi.fn() }));
+vi.mock("@shell/api/auth", () => ({ resetPassword: vi.fn() }));
 
 const renderPage = () =>
   render(

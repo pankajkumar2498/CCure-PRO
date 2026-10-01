@@ -34,7 +34,7 @@ import ScanStepper from "../../components/layout/ScanStepper";
 import ExportPanel from "../../components/scan/ExportPanel";
 import { useScan, PIPELINE_STATES } from "../../context/ScanContext";
 import { isPhaseEnabled, getNextPhase } from "../../config/scanConfig";
-import api from "../../api/axiosInstance";
+import api from "@shell/api/axiosInstance";
 import {
   HostMeasurements,
   OsIdentification,
@@ -42,8 +42,8 @@ import {
   ScanContext,
   TcpFingerprint,
 } from "../../components/scan/AssessmentContext";
-import { useAuth } from "../../context/AuthContext";
-import { can } from "../../auth/permissions";
+import { useAuth } from "@shell/auth/AuthContext";
+import { can } from "@shell/auth/permissions";
 import { parseExcludeIpsJS } from "../../utils/ipValidation";
 import {
   CcureAlert,

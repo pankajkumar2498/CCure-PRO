@@ -29,11 +29,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../../api/axiosInstance", () => ({
+vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), defaults: { baseURL: "/api" } },
 }));
 
-vi.mock("../../../context/AuthContext", () => ({
+vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({
     user: { id: 1, role: { name: "analyst", permissions: [] } },
   }),

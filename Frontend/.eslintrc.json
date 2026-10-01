@@ -138,16 +138,15 @@
       }
     },
     {
-      "files": ["src/**"],
-      "excludedFiles": [
-        "src/shell/**",
-        "src/design-system/**",
-        "src/modules/policy/**",
-        "src/modules/rank/**",
-        "src/modules/ir/**",
-        "src/__tests__/**",
-        "src/main.jsx",
-        "src/App.jsx"
+      "files": [
+        "src/pages/Login.jsx",
+        "src/pages/Register.jsx",
+        "src/pages/VerifyEmail.jsx",
+        "src/pages/ForgotPassword.jsx",
+        "src/pages/ResetPassword.jsx",
+        "src/components/auth/AuthHeroPanel.jsx",
+        "src/components/auth/AuthIcons.jsx",
+        "src/components/auth/AuthTrustFooter.jsx"
       ],
       "rules": {
         "no-restricted-imports": [
@@ -156,6 +155,8 @@
             "patterns": [
               {
                 "group": [
+                  "@audit",
+                  "@audit/*",
                   "@policy",
                   "@policy/*",
                   "@rank",
@@ -163,7 +164,7 @@
                   "@ir",
                   "@ir/*"
                 ],
-                "message": "Audit (its pre-12.4 locations) may not import another product; share through the shell (Frontend/modules.config.js)."
+                "message": "The sign-in screens are pending a move to the shell (modules.config.js PENDING) and may import no product."
               }
             ]
           }

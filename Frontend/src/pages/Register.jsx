@@ -45,7 +45,7 @@ import {
   isSelfRegistrationEnabled,
   resendVerification,
 } from "@shell/api/auth";
-import { useDebounce } from "../hooks/useDebounce";
+import { useDebounce } from "@shell/hooks/useDebounce";
 import "../styles/auth.css";
 
 function validate(fullName, username, email, password, confirm, agreeToTerms) {

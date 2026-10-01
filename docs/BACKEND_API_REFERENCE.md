@@ -2374,7 +2374,7 @@ Source: `Backend/scans/router.py::stream_scan_history`.
 **Authentication** — `Depends(require_permission("scans", "read"))`, i.e. a normal
 `Authorization: Bearer` header. The browser's native `EventSource` cannot set
 headers, so the frontend uses `fetch()` with a `ReadableStream` reader
-(`Frontend/src/api/scans.js::streamScanEvents`) and sends
+(`Frontend/src/modules/audit/api/scans.js::streamScanEvents`) and sends
 `Accept: text/event-stream` plus `credentials: "include"`.
 
 **Query parameters**
@@ -2429,7 +2429,7 @@ starts. Authentication and permission failures likewise fail the initial request
 with 401/403. There is no in-stream error event: an exception inside the
 generator terminates the response, and the client reconnects.
 
-**Frontend consumer** — `Frontend/src/pages/ScanHistory.jsx` (line ~955) calls
+**Frontend consumer** — `Frontend/src/modules/audit/pages/ScanHistory.jsx` (line ~955) calls
 `streamScanEvents({...})` with an `AbortSignal`, and re-renders on the `scans`
 event. `ArchivedScans.jsx` and `RecycleBin.jsx` reach the same data through
 `getScans` with a different `scope`.
@@ -2459,7 +2459,7 @@ receives no events until it reconnects.
 exception is logged; the `finally` block always unsubscribes and closes the
 pubsub and logs the disconnect.
 
-**Frontend consumer** — `Frontend/src/components/layout/AppLayout.jsx`
+**Frontend consumer** — `Frontend/src/modules/audit/components/layout/AppLayout.jsx`
 (line ~561) via `api/notifications.js::streamNotificationEvents`, which drives the
 notification bell badge.
 
@@ -2553,7 +2553,7 @@ values for their respective endpoints.
 ## 21. Frontend/backend contract gaps
 
 Verified by cross-referencing `Frontend/src/api/*.js` and
-`Frontend/src/modules/web-scanning/api/webScansApi.js` against the registered
+`Frontend/src/modules/audit/web-scanning/api/webScansApi.js` against the registered
 routes.
 
 | Frontend call                                                                                                                                                                                             | Backend status                                                                                        |

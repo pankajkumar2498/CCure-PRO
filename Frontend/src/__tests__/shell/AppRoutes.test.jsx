@@ -32,23 +32,23 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => auth,
 }));
 
-vi.mock("../../context/ScanContext", () => ({
+vi.mock("@audit/context/ScanContext", () => ({
   ScanProvider: ({ children }) => children,
 }));
 
-vi.mock("../../pages/SecurityDashboard", () => ({
+vi.mock("@audit/pages/SecurityDashboard", () => ({
   default: () => <div data-testid="page">SecurityDashboard</div>,
 }));
-vi.mock("../../pages/AssetRegistry", () => ({
+vi.mock("@audit/pages/AssetRegistry", () => ({
   default: () => <div data-testid="page">AssetRegistry</div>,
 }));
-vi.mock("../../pages/AssetDetail", () => ({
+vi.mock("@audit/pages/AssetDetail", () => ({
   default: () => <div data-testid="page">AssetDetail</div>,
 }));
-vi.mock("../../pages/VulnerabilityBrowser", () => ({
+vi.mock("@audit/pages/VulnerabilityBrowser", () => ({
   default: () => <div data-testid="page">VulnerabilityBrowser</div>,
 }));
-vi.mock("../../pages/ComplianceWorkspace", () => ({
+vi.mock("@audit/pages/ComplianceWorkspace", () => ({
   default: () => <div data-testid="page">ComplianceWorkspace</div>,
 }));
 vi.mock("../../pages/Login", () => ({
@@ -66,88 +66,88 @@ vi.mock("../../pages/ForgotPassword", () => ({
 vi.mock("../../pages/ResetPassword", () => ({
   default: () => <div data-testid="page">ResetPassword</div>,
 }));
-vi.mock("../../pages/Dashboard", () => ({
+vi.mock("@audit/pages/Dashboard", () => ({
   default: () => <div data-testid="page">Dashboard</div>,
 }));
-vi.mock("../../pages/ScanHistory", () => ({
+vi.mock("@audit/pages/ScanHistory", () => ({
   default: () => <div data-testid="page">ScanHistory</div>,
 }));
-vi.mock("../../pages/scan/ScanSchedules", () => ({
+vi.mock("@audit/pages/scan/ScanSchedules", () => ({
   default: () => <div data-testid="page">ScanSchedules</div>,
 }));
-vi.mock("../../pages/scan/ConfigurationChecks", () => ({
+vi.mock("@audit/pages/scan/ConfigurationChecks", () => ({
   default: () => <div data-testid="page">ConfigurationChecks</div>,
 }));
-vi.mock("../../pages/scan/ConfigurationRuleValidator", () => ({
+vi.mock("@audit/pages/scan/ConfigurationRuleValidator", () => ({
   default: () => <div data-testid="page">ConfigurationRuleValidator</div>,
 }));
-vi.mock("../../pages/scan/ScanCredentials", () => ({
+vi.mock("@audit/pages/scan/ScanCredentials", () => ({
   default: () => <div data-testid="page">ScanCredentials</div>,
 }));
-vi.mock("../../pages/ArchivedScans", () => ({
+vi.mock("@audit/pages/ArchivedScans", () => ({
   default: () => <div data-testid="page">ArchivedScans</div>,
 }));
-vi.mock("../../pages/RecycleBin", () => ({
+vi.mock("@audit/pages/RecycleBin", () => ({
   default: () => <div data-testid="page">RecycleBin</div>,
 }));
-vi.mock("../../pages/SecurityReports", () => ({
+vi.mock("@audit/pages/SecurityReports", () => ({
   default: () => <div data-testid="page">SecurityReports</div>,
 }));
-vi.mock("../../pages/scan/NewScan", () => ({
+vi.mock("@audit/pages/scan/NewScan", () => ({
   default: () => <div data-testid="page">NewScan</div>,
 }));
-vi.mock("../../pages/scan/Phase1Results", () => ({
+vi.mock("@audit/pages/scan/Phase1Results", () => ({
   default: () => <div data-testid="page">Phase1Results</div>,
 }));
-vi.mock("../../pages/scan/Phase2Results", () => ({
+vi.mock("@audit/pages/scan/Phase2Results", () => ({
   default: () => <div data-testid="page">Phase2Results</div>,
 }));
-vi.mock("../../pages/scan/Phase3Results", () => ({
+vi.mock("@audit/pages/scan/Phase3Results", () => ({
   default: () => <div data-testid="page">Phase3Results</div>,
 }));
-vi.mock("../../pages/scan/CredentialedScan", () => ({
+vi.mock("@audit/pages/scan/CredentialedScan", () => ({
   default: () => <div data-testid="page">CredentialedScan</div>,
 }));
-vi.mock("../../pages/scan/CredentialedResults", () => ({
+vi.mock("@audit/pages/scan/CredentialedResults", () => ({
   default: () => <div data-testid="page">CredentialedResults</div>,
 }));
-vi.mock("../../pages/scan/ScanComparison", () => ({
+vi.mock("@audit/pages/scan/ScanComparison", () => ({
   default: () => <div data-testid="page">ScanComparison</div>,
 }));
-vi.mock("../../pages/scan/ScanPolicies", () => ({
+vi.mock("@audit/pages/scan/ScanPolicies", () => ({
   default: () => <div data-testid="page">ScanPolicies</div>,
 }));
-vi.mock("../../pages/Remediation", () => ({
+vi.mock("@audit/pages/Remediation", () => ({
   default: () => <div data-testid="page">Remediation</div>,
 }));
-vi.mock("../../pages/scan/NetworkMap", () => ({
+vi.mock("@audit/pages/scan/NetworkMap", () => ({
   default: () => <div data-testid="page">NetworkMap</div>,
 }));
-vi.mock("../../modules/web-scanning/WebScanningRoutes", () => ({
+vi.mock("@audit/web-scanning/WebScanningRoutes", () => ({
   default: () => <div data-testid="page">WebScanningRoutes</div>,
 }));
-vi.mock("../../pages/admin/AuditLogs", () => ({
+vi.mock("@audit/pages/admin/AuditLogs", () => ({
   default: () => <div data-testid="page">AuditLogs</div>,
 }));
-vi.mock("../../pages/admin/EmailDomainRules", () => ({
+vi.mock("@audit/pages/admin/EmailDomainRules", () => ({
   default: () => <div data-testid="page">EmailDomainRules</div>,
 }));
-vi.mock("../../pages/admin/UserManagement", () => ({
+vi.mock("@audit/pages/admin/UserManagement", () => ({
   default: () => <div data-testid="page">UserManagement</div>,
 }));
-vi.mock("../../pages/admin/OrganizationManagement", () => ({
+vi.mock("@audit/pages/admin/OrganizationManagement", () => ({
   default: () => <div data-testid="page">OrganizationManagement</div>,
 }));
-vi.mock("../../pages/admin/RoleManagement", () => ({
+vi.mock("@audit/pages/admin/RoleManagement", () => ({
   default: () => <div data-testid="page">RoleManagement</div>,
 }));
-vi.mock("../../pages/admin/DeletedUsers", () => ({
+vi.mock("@audit/pages/admin/DeletedUsers", () => ({
   default: () => <div data-testid="page">DeletedUsers</div>,
 }));
-vi.mock("../../pages/admin/AMTIntegration", () => ({
+vi.mock("@audit/pages/admin/AMTIntegration", () => ({
   default: () => <div data-testid="page">AMTIntegration</div>,
 }));
-vi.mock("../../pages/DesignSystemShowcase", () => ({
+vi.mock("@audit/pages/DesignSystemShowcase", () => ({
   default: () => <div data-testid="page">DesignSystemShowcase</div>,
 }));
 

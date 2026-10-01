@@ -1,11 +1,11 @@
 # Phase 12 — Frontend shell and CCure Home
 
-|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). **12.2 committed (§8) and live since 1 Oct 2026, 10:26 IST**, approved and verified by the owner (§8, "Live deployment"). **12.3 committed (§9), not deployed**; production stays on the 12.2 frontend. Written at HEAD `1f9a32f` from measurements of the live tree. |
-| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                                                                                                                                                                                                      |
-| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                                                                                                                                                                                                               |
-| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). **12.2 committed (§8) and live since 1 Oct 2026, 10:26 IST**, approved and verified by the owner (§8, "Live deployment"). **12.3 (§9) and 12.4 (§10) committed, not deployed**; production stays on the 12.2 frontend. Written at HEAD `1f9a32f` from measurements of the live tree. |
+| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                                                                                                                                                                                                                              |
+| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## 0. The owner's requirement (30 Sep 2026)
 
@@ -535,3 +535,69 @@ Audit's fallback provider exactly as `App.jsx` does, with the same assertion.
 against a 12.3 build, 253 states each, all ready, no exception, write or
 blocked navigation — **253/253 identical**; 25 screenshots differ within the
 harness's own anti-aliasing tolerance (maximum channel delta 1–2).
+
+## 10. Step 12.4 as built (1 Oct 2026)
+
+Audit's frontend moved into `src/modules/audit/`. A move and nothing else: no
+route, screen, copy, API call, permission or behaviour changes, and nothing
+deployed — production stays on the 12.2 image. No backend file changed.
+
+**Inventory and classification.** Every file under `src/` outside the shell,
+the design system and the root was classified before anything moved:
+
+| Classification | Files                                                                                                                                                                                                                                                                               | Where                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Audit          | `api/` (17), `components/` except `auth/` (34), `config/` (2), `context/` (2), `hooks/usePagedRows`, `pages/` except sign-in (32, incl. the dev-only `DesignSystemShowcase`, which reads Audit's preferences), Audit's stylesheets (47), `utils/` (4), `modules/web-scanning/` (14) | `src/modules/audit/`  |
+| Shell          | `hooks/useDebounce` — generic, used by Audit and the sign-in screens                                                                                                                                                                                                                | `src/shell/hooks/`    |
+| Root           | `main.jsx`, `App.jsx`; the global stylesheet `main.jsx` loads and its seven `@import`s (`global`, `theme`, `layout`, `forms`, `scan`, `responsive`, `animations`, `dark-mode`) — every page renders under it, so it belongs to no product                                           | `src/`, `src/styles/` |
+| Pending        | the five sign-in screens, `components/auth/Auth*`, `styles/auth.css`, `styles/forgot-password.css` — Audit-branded, awaiting the platform sign-in branding decision (§9)                                                                                                            | unchanged             |
+
+**Structure** — `src/modules/audit/` keeps the shape a developer already
+knows: `api/`, `components/{admin,assets,common,compliance,layout,remediation,scan}/`,
+`config/`, `context/`, `hooks/`, `pages/` (with `scan/`, `admin/`),
+`styles/`, `utils/`, `web-scanning/`. Tests mirror it under
+`__tests__/modules/audit/`.
+
+**How** — four batches (data and plumbing; components; pages and styles;
+web scanning), each by `git mv` with its tests, each followed by the full
+suite. A script re-resolved every import and mock specifier against the file's
+old location: 557 specifiers across the four batches, none unresolved. Into
+Audit from outside it they read `@audit/…`, into the shell `@shell/…`; within
+an area they stay relative. A review of every renamed file's diff found only
+specifiers, header-comment paths and the test-path fixes below.
+
+**Tests that read source by path** counted `..` from their own location and
+broke on the move (22 files). They now import anchors from
+`__tests__/testPaths.js` (`SRC`, `AUDIT_SRC`, `SHELL_SRC`) — never a depth
+again. Six assertions that a page imports the design system had the import's
+depth in the regex (`../design-system`); the depth is incidental, so they now
+accept any (`(?:\.\.\/)+design-system`). No assertion was removed.
+
+**Boundaries** — `modules.config.js` drops the pre-12.4 "everything else is
+Audit's" rule for two explicit lists, `GLOBAL_STYLES` and `PENDING` (each
+pending group carries its reason). The boundary test now fails on any source
+file outside a named place, so Audit code cannot reappear outside its module;
+it also checks that no listed file is stale, that Audit reaches the shell only
+as `@shell/…` and is reached only as `@audit/…`, and that the ESLint overrides
+agree (the retired `src/**` override is replaced by one for the pending
+sign-in group). 23 tests.
+
+**Outside `Frontend/`** — tooling that reads frontend paths was updated
+(`scripts/audit/api_field_coverage.py`, `api_ui_coverage.py`,
+`manifests/field_coverage.json`; every manifest path exists), as were the two
+living references that name them (`docs/BACKEND_API_REFERENCE.md`,
+`docs/FILE_UPLOAD_AUDIT.md`). Historical records — `docs/ux4g/` batch notes,
+the API→UI coverage reports, the gap tracker — describe the tree when they were
+written and are unchanged. `CLAUDE.md` is 12.5's. One backend comment,
+`Backend/scan_helpers.py` ("mirrors src/config/scanConfig.js"), is left stale
+because 12.4 touches no backend file.
+
+**Verification**: Vitest 95 files / 2,908 tests, all passing; lint clean;
+build succeeds; design-system `dist/` guardrails pass. Harness, the production
+12.2 image against the 12.4 build, 253 states each, all ready, no exception,
+write or blocked navigation — **253/253 identical**, 24 screenshots within the
+harness's anti-aliasing tolerance (maximum channel delta 1–2). The states cover
+the dashboard, scan, history, assets, reports, compliance, scan policies and
+schedules, credentialed results, admin, refused access and their navigation;
+`AppRoutes.test.jsx` pins every address, the `/dashboard` redirect and the
+refused-route fallback.

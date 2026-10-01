@@ -1,25 +1,31 @@
 /**
- * Module boundaries (Phase 12.3, docs/architecture/PHASE12_FRONTEND_SHELL.md §3.6).
+ * Module boundaries (Phase 12.3–12.4, docs/architecture/PHASE12_FRONTEND_SHELL.md
+ * §3.6, §9, §10).
  *
- * Every import in src/ is resolved to a file — relative, `@shell/…` and
- * `@<module>/…` alike — and checked against modules.config.js:
+ * Every source file must sit in a place modules.config.js names: the shell,
+ * the design system, a product module, the composition root, the global
+ * stylesheet, or a named pending group with its reason. Since 12.4 that is how
+ * "Audit's code lives in src/modules/audit/" is enforced: a file anywhere else
+ * is unclassified and fails.
+ *
+ * Every import is resolved to a file — relative, `@shell/…` and `@<module>/…`
+ * alike — and checked:
  *
  *   design-system  imports only itself
- *   shell          imports itself and the design system — never a product
- *   <module>       imports itself, the shell and the design system — never
- *                  another product
+ *   shell          imports only itself and the design system
+ *   <module>       imports itself, the shell, the design system and the global
+ *                  styles — never another product
+ *   pending group  imports itself, the shell, the design system and the global
+ *                  styles
  *   root           (main.jsx, App.jsx) composes everything; nothing else
  *                  imports it
  *
- * Audit predates its module folder: until Phase 12.4 moves it, every other file
- * under src/ is Audit's, as is modules/web-scanning/.
- *
  * Tests are exempt from the layering — a test may render anything — but every
- * path a test mocks must resolve to a real module. That is the move's silent
- * failure: a `vi.mock` whose path no longer names the module stops mocking,
- * and neither the build nor the test runner says so.
+ * path a test imports or mocks must resolve to a real module. That is a move's
+ * silent failure: a `vi.mock` whose path no longer names the module stops
+ * mocking, and neither the build nor the test runner says so.
  *
- * The ESLint `no-restricted-imports` rules repeat the alias half for an
+ * The ESLint `no-restricted-imports` overrides repeat the alias half for an
  * editor; the last block checks they say what this file enforces.
  */
 import { describe, it, expect } from "vitest";
@@ -28,9 +34,9 @@ import path from "node:path";
 import {
   ALIASES,
   DESIGN_SYSTEM,
-  LEGACY_MODULE_FOLDERS,
-  LEGACY_OWNER,
+  GLOBAL_STYLES,
   MODULES,
+  PENDING,
   ROOT_FILES,
   SHELL,
 } from "../../../modules.config.js";
@@ -88,26 +94,36 @@ const MOCK_RE =
 
 const specsOf = (text, re) => [...text.matchAll(re)].map((m) => m[2]);
 
+const PENDING_OWNER = Object.fromEntries(
+  Object.entries(PENDING).flatMap(([group, { files }]) =>
+    files.map((f) => [f, `pending:${group}`]),
+  ),
+);
+
 /** Which part of the frontend a file belongs to. */
 function ownerOf(relPath) {
   if (ROOT_FILES.includes(relPath)) return "root";
+  if (GLOBAL_STYLES.includes(relPath)) return "global-styles";
+  if (PENDING_OWNER[relPath]) return PENDING_OWNER[relPath];
   if (under(relPath, DESIGN_SYSTEM)) return "design-system";
   if (under(relPath, SHELL)) return "shell";
   for (const [key, dir] of Object.entries(MODULES))
     if (under(relPath, dir)) return key;
-  for (const [dir, key] of Object.entries(LEGACY_MODULE_FOLDERS))
-    if (under(relPath, dir)) return key;
-  return LEGACY_OWNER;
+  return "unclassified";
 }
 
 const MODULE_KEYS = Object.keys(MODULES);
 function allowed(from, to) {
   if (from === "root") return true;
-  if (to === "root") return false;
+  if (to === "root" || to === "unclassified" || from === "unclassified")
+    return false;
   if (from === "design-system") return to === "design-system";
   if (from === "shell") return to === "shell" || to === "design-system";
-  if (MODULE_KEYS.includes(from))
-    return to === from || to === "shell" || to === "design-system";
+  if (from === "global-styles") return to === "global-styles";
+  const shared =
+    to === "shell" || to === "design-system" || to === "global-styles";
+  if (MODULE_KEYS.includes(from)) return to === from || shared;
+  if (from.startsWith("pending:")) return to === from || shared;
   return false;
 }
 
@@ -133,8 +149,6 @@ describe("the layout in modules.config.js", () => {
   it("names a shell and design system that exist", () => {
     expect(existsSync(path.join(FRONT, SHELL))).toBe(true);
     expect(existsSync(path.join(FRONT, DESIGN_SYSTEM))).toBe(true);
-    for (const f of ROOT_FILES)
-      expect(existsSync(path.join(FRONT, f))).toBe(true);
   });
 
   it("gives every product module an alias, and the shell one", () => {
@@ -146,10 +160,47 @@ describe("the layout in modules.config.js", () => {
   it("scanned a real import graph, not an empty one", () => {
     expect(sourceFiles.length).toBeGreaterThan(150);
     expect(edges.length).toBeGreaterThan(500);
-    // Audit reaches the shell through the alias: the graph includes it.
     expect(
       edges.filter((e) => e.spec.startsWith("@shell/")).length,
     ).toBeGreaterThan(40);
+  });
+});
+
+describe("every source file is in a classified place", () => {
+  it("no file sits outside the shell, the design system, a module, the root, the global styles or a pending group", () => {
+    const unclassified = sourceFiles
+      .map(rel)
+      .filter((f) => ownerOf(f) === "unclassified");
+    expect(unclassified).toEqual([]);
+  });
+
+  it("every listed root, global-style and pending file exists — no stale entries", () => {
+    const listed = [
+      ...ROOT_FILES,
+      ...GLOBAL_STYLES,
+      ...Object.values(PENDING).flatMap((g) => g.files),
+    ];
+    expect(listed.filter((f) => !existsSync(path.join(FRONT, f)))).toEqual([]);
+  });
+
+  it("every pending group says why", () => {
+    for (const g of Object.values(PENDING))
+      expect(g.reason?.length).toBeGreaterThan(20);
+  });
+
+  it("Audit's code is in src/modules/audit/: the pre-12.4 locations hold none of it", () => {
+    const legacy = sourceFiles
+      .map(rel)
+      .filter((f) =>
+        /^src\/(api|auth|components|config|context|hooks|utils|pages|styles|modules\/web-scanning)\//.test(
+          f,
+        ),
+      )
+      .filter((f) => !GLOBAL_STYLES.includes(f) && !PENDING_OWNER[f]);
+    expect(legacy).toEqual([]);
+    expect(
+      sourceFiles.filter((f) => ownerOf(rel(f)) === "audit").length,
+    ).toBeGreaterThan(140);
   });
 });
 
@@ -184,6 +235,17 @@ describe("imports respect the module boundaries", () => {
     expect([...deps]).toEqual(["design-system"]);
   });
 
+  it("Audit reaches the shell and itself through their aliases", () => {
+    const auditEdges = edges.filter((e) => ownerOf(e.from) === "audit");
+    const intoShell = auditEdges.filter((e) => ownerOf(e.to) === "shell");
+    expect(intoShell.length).toBeGreaterThan(40);
+    expect(intoShell.every((e) => e.spec.startsWith("@shell/"))).toBe(true);
+    const fromOutside = edges.filter(
+      (e) => ownerOf(e.to) === "audit" && ownerOf(e.from) !== "audit",
+    );
+    expect(fromOutside.every((e) => e.spec.startsWith("@audit/"))).toBe(true);
+  });
+
   it("the rule itself refuses what it should", () => {
     // Pinned so a loosened `allowed` cannot pass the checks above vacuously.
     expect(allowed("shell", "audit")).toBe(false);
@@ -192,17 +254,24 @@ describe("imports respect the module boundaries", () => {
     expect(allowed("audit", "rank")).toBe(false);
     expect(allowed("audit", "root")).toBe(false);
     expect(allowed("audit", "shell")).toBe(true);
+    expect(allowed("audit", "global-styles")).toBe(true);
+    expect(allowed("shell", "global-styles")).toBe(false);
     expect(allowed("rank", "design-system")).toBe(true);
-    expect(ownerOf("src/modules/web-scanning/WebScanningRoutes.jsx")).toBe(
-      "audit",
-    );
-    expect(ownerOf("src/pages/SecurityDashboard.jsx")).toBe("audit");
+    expect(allowed("pending:sign-in", "audit")).toBe(false);
+    expect(allowed("pending:sign-in", "shell")).toBe(true);
+    expect(allowed("shell", "pending:sign-in")).toBe(false);
+    expect(
+      ownerOf("src/modules/audit/web-scanning/WebScanningRoutes.jsx"),
+    ).toBe("audit");
+    expect(ownerOf("src/pages/SecurityDashboard.jsx")).toBe("unclassified");
+    expect(ownerOf("src/pages/Login.jsx")).toBe("pending:sign-in");
+    expect(ownerOf("src/styles/global.css")).toBe("global-styles");
     expect(ownerOf("src/modules/rank/x.js")).toBe("rank");
     expect(ownerOf("src/shell/auth/PrivateRoute.jsx")).toBe("shell");
   });
 });
 
-describe("every path a test mocks still names a module", () => {
+describe("every path a test uses still names a module", () => {
   it("vi.mock / importActual specifiers all resolve", () => {
     const stale = [];
     let count = 0;
@@ -240,23 +309,26 @@ describe("ESLint repeats the alias rules", () => {
       "",
     ),
   );
-  const forbiddenFor = (filesGlob) => {
-    const o = (eslint.overrides || []).find((x) =>
-      (x.files || []).includes(filesGlob),
+  const overrideFor = (files) =>
+    (eslint.overrides || []).find(
+      (x) =>
+        JSON.stringify([...(x.files || [])].sort()) ===
+        JSON.stringify([...files].sort()),
     );
-    const opt = o?.rules?.["no-restricted-imports"]?.[1];
-    return new Set((opt?.patterns || []).flatMap((p) => p.group || []));
+  const forbidden = (files) => {
+    const opt = overrideFor(files)?.rules?.["no-restricted-imports"]?.[1] || {};
+    return new Set((opt.patterns || []).flatMap((p) => p.group || []));
   };
   const aliasGroup = (keys) => keys.flatMap((k) => [`@${k}`, `@${k}/*`]);
 
   it("the shell may import no product alias", () => {
-    expect(forbiddenFor(`${SHELL}/**`)).toEqual(
+    expect(forbidden([`${SHELL}/**`])).toEqual(
       new Set(aliasGroup(MODULE_KEYS)),
     );
   });
 
   it("the design system may import neither the shell nor a product", () => {
-    expect(forbiddenFor(`${DESIGN_SYSTEM}/**`)).toEqual(
+    expect(forbidden([`${DESIGN_SYSTEM}/**`])).toEqual(
       new Set(aliasGroup(["shell", ...MODULE_KEYS])),
     );
   });
@@ -264,9 +336,23 @@ describe("ESLint repeats the alias rules", () => {
   it.each(MODULE_KEYS)(
     "module %s may import no other product's alias",
     (key) => {
-      expect(forbiddenFor(`${MODULES[key]}/**`)).toEqual(
+      expect(forbidden([`${MODULES[key]}/**`])).toEqual(
         new Set(aliasGroup(MODULE_KEYS.filter((k) => k !== key))),
       );
     },
   );
+
+  it.each(Object.keys(PENDING))(
+    "pending group %s may import no product alias",
+    (group) => {
+      const scripts = PENDING[group].files.filter((f) => /\.jsx?$/.test(f));
+      expect(forbidden(scripts)).toEqual(new Set(aliasGroup(MODULE_KEYS)));
+    },
+  );
+
+  it("no override remains for the retired pre-12.4 Audit locations", () => {
+    expect(
+      (eslint.overrides || []).some((x) => (x.files || []).includes("src/**")),
+    ).toBe(false);
+  });
 });

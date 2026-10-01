@@ -23,15 +23,15 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import PrivateRoute from "@shell/auth/PrivateRoute";
 import { AccessFallbackProvider } from "@shell/auth/accessFallback";
-import { AUDIT_ACCESS_FALLBACKS } from "./config/accessFallbacks";
-import { ScanProvider } from "./context/ScanContext";
+import { AUDIT_ACCESS_FALLBACKS } from "@audit/config/accessFallbacks";
+import { ScanProvider } from "@audit/context/ScanContext";
 
 // ── New dashboard pages ───────────────────────────────────────────────────────
-import SecurityDashboard from "./pages/SecurityDashboard";
-import AssetRegistry from "./pages/AssetRegistry";
-import AssetDetail from "./pages/AssetDetail";
-import VulnerabilityBrowser from "./pages/VulnerabilityBrowser";
-import ComplianceWorkspace from "./pages/ComplianceWorkspace";
+import SecurityDashboard from "@audit/pages/SecurityDashboard";
+import AssetRegistry from "@audit/pages/AssetRegistry";
+import AssetDetail from "@audit/pages/AssetDetail";
+import VulnerabilityBrowser from "@audit/pages/VulnerabilityBrowser";
+import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
 import Login from "./pages/Login";
@@ -39,29 +39,29 @@ import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
-import ScanHistory from "./pages/ScanHistory";
-import ScanSchedules from "./pages/scan/ScanSchedules";
-import ConfigurationChecks from "./pages/scan/ConfigurationChecks";
-import ConfigurationRuleValidator from "./pages/scan/ConfigurationRuleValidator";
-import ScanCredentials from "./pages/scan/ScanCredentials";
-import ArchivedScans from "./pages/ArchivedScans";
-import RecycleBin from "./pages/RecycleBin";
-import SecurityReports from "./pages/SecurityReports";
+import Dashboard from "@audit/pages/Dashboard"; // scan launcher → /scan
+import ScanHistory from "@audit/pages/ScanHistory";
+import ScanSchedules from "@audit/pages/scan/ScanSchedules";
+import ConfigurationChecks from "@audit/pages/scan/ConfigurationChecks";
+import ConfigurationRuleValidator from "@audit/pages/scan/ConfigurationRuleValidator";
+import ScanCredentials from "@audit/pages/scan/ScanCredentials";
+import ArchivedScans from "@audit/pages/ArchivedScans";
+import RecycleBin from "@audit/pages/RecycleBin";
+import SecurityReports from "@audit/pages/SecurityReports";
 
 // Scan sub-pages
-import NewScan from "./pages/scan/NewScan";
-import Phase1Results from "./pages/scan/Phase1Results";
-import Phase2Results from "./pages/scan/Phase2Results";
-import Phase3Results from "./pages/scan/Phase3Results";
-import CredentialedScan from "./pages/scan/CredentialedScan";
-import CredentialedResults from "./pages/scan/CredentialedResults";
-import ScanComparison from "./pages/scan/ScanComparison";
-import ScanPolicies from "./pages/scan/ScanPolicies";
-import Remediation from "./pages/Remediation";
-import NetworkMap from "./pages/scan/NetworkMap";
+import NewScan from "@audit/pages/scan/NewScan";
+import Phase1Results from "@audit/pages/scan/Phase1Results";
+import Phase2Results from "@audit/pages/scan/Phase2Results";
+import Phase3Results from "@audit/pages/scan/Phase3Results";
+import CredentialedScan from "@audit/pages/scan/CredentialedScan";
+import CredentialedResults from "@audit/pages/scan/CredentialedResults";
+import ScanComparison from "@audit/pages/scan/ScanComparison";
+import ScanPolicies from "@audit/pages/scan/ScanPolicies";
+import Remediation from "@audit/pages/Remediation";
+import NetworkMap from "@audit/pages/scan/NetworkMap";
 
-import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
+import WebScanningRoutes from "@audit/web-scanning/WebScanningRoutes";
 
 // ── Platform shell (Phase 12): CCure Home and the product entry pages ────────
 import CcureHome from "@shell/pages/CcureHome";
@@ -77,17 +77,17 @@ import ModuleEntryPage from "@shell/pages/ModuleEntryPage";
 // reachable in development without an auth gate. It exists to exercise the
 // primitives in both themes; it is not, and must not become, a product page.
 const Ux4gShowcase = import.meta.env.DEV
-  ? lazy(() => import("./pages/DesignSystemShowcase"))
+  ? lazy(() => import("@audit/pages/DesignSystemShowcase"))
   : null;
 
 // Admin pages
-import AuditLogs from "./pages/admin/AuditLogs";
-import EmailDomainRules from "./pages/admin/EmailDomainRules";
-import UserManagement from "./pages/admin/UserManagement";
-import OrganizationManagement from "./pages/admin/OrganizationManagement";
-import RoleManagement from "./pages/admin/RoleManagement";
-import DeletedUsers from "./pages/admin/DeletedUsers";
-import AMTIntegration from "./pages/admin/AMTIntegration";
+import AuditLogs from "@audit/pages/admin/AuditLogs";
+import EmailDomainRules from "@audit/pages/admin/EmailDomainRules";
+import UserManagement from "@audit/pages/admin/UserManagement";
+import OrganizationManagement from "@audit/pages/admin/OrganizationManagement";
+import RoleManagement from "@audit/pages/admin/RoleManagement";
+import DeletedUsers from "@audit/pages/admin/DeletedUsers";
+import AMTIntegration from "@audit/pages/admin/AMTIntegration";
 
 // /dashboard → /audit-dashboard, keeping the query string, fragment and router
 // state, so a link carrying any of them lands exactly where it pointed.

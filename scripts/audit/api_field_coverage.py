@@ -12,8 +12,8 @@ fields returned by one endpoint and displayed by nothing, so a surface can be
 
 The manifest maps each surface to the files that are allowed to render it:
 
-    {"dashboard": {"files": ["Frontend/src/pages/SecurityDashboard.jsx",
-                             "Frontend/src/api/dashboard.js"],
+    {"dashboard": {"files": ["Frontend/src/modules/audit/pages/SecurityDashboard.jsx",
+                             "Frontend/src/modules/audit/api/dashboard.js"],
                    "payloads": ["summary", "risk-breakdown"]}}
 
 Five decisions, and the first four are what stop this reporting nonsense:

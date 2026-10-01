@@ -1,11 +1,11 @@
 # Phase 12 — Frontend shell and CCure Home
 
-|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). **12.2 committed (§8) and live since 1 Oct 2026, 10:26 IST**, approved and verified by the owner (§8, "Live deployment"). **12.3 (§9), 12.4 (§10) and 12.5 (§11) committed, not deployed** — the Phase 12 frontend structure is complete in the repository; production stays on the 12.2 frontend until the one deploy of 12.3–12.5 §4 plans, with the owner present. Written at HEAD `1f9a32f` from measurements of the live tree. |
-| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+|                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**       | **Approved by the owner, 30 Sep 2026, with two corrections** (D12-8 rewritten; the 12.2 row's wording). Revision 2 added the owner's **CCure Home / Product Hub** requirement and the final URL map (§0). Implemented one step per commit with a review stop after each: **12.1 committed with this revision (§7) and live since 1 Oct 2026, 09:09 IST**, approved and verified by the owner (§7, "Live activation"). **12.2 committed (§8) and live since 1 Oct 2026, 10:26 IST**, approved and verified by the owner (§8, "Live deployment"). **12.3 (§9), 12.4 (§10) and 12.5 (§11) committed and live since 1 Oct 2026, 14:53 IST** (`e684d88`), deployed with the owner present and verified (§12). **Phase 12 is fully deployed and complete.** Phase 13 has not started. Written at HEAD `1f9a32f` from measurements of the live tree. |
+| **Plan**         | [`CCURE_PLATFORM_MODULAR_ARCHITECTURE.md`](CCURE_PLATFORM_MODULAR_ARCHITECTURE.md) rev 4: Phase 12 (Stage 3) and §3.6 "Frontend and the homepage", **as amended by §0 below**; Phase 11 decision **D11-2** ("the homepage's module list endpoint is built in Phase 12, with the UI that consumes it").                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Done when**    | After sign-in, `/` is **CCure Home**, showing four cards — CCure Policy Pro, CCure Audit, CCure Rank, CCure IR — each with its name, a short description of what it is responsible for, and an entry action. Audit's opens `/audit-dashboard`, today's dashboard. The other three open their module pages, which say plainly that the product is not available yet. Every existing Audit address still works.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Out of scope** | Any Policy Pro, Rank or IR feature, data or settings (their teams build those); per-organisation entitlement to a product (a later platform feature); moving Audit's **backend** code (Phase 16); the IR service itself (Stage 4); module database roles (Phase 18); 10.8.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## 0. The owner's requirement (30 Sep 2026)
 
@@ -672,3 +672,84 @@ were written and are unchanged.
 **Verification** is recorded in the commit and the step report: the full
 Vitest suite, lint, build, the backend checks that read frontend paths and
 documentation, and the harness against the production 12.2 image.
+
+## 12. Phase 12 final deployment (1 Oct 2026)
+
+The completed Phase 12 frontend — 12.3, 12.4 and 12.5 together, the one
+deploy §4 planned — approved by the owner, who was present (D12-6). Only
+`ccure-frontend` was changed: no code, configuration, database, migration,
+gateway policy, authentication or rate-limiting change, and the API, gateway,
+gateway-auth, worker, web-worker, beat, PostgreSQL and Redis were not touched.
+
+- **Pre-checks** — HEAD `e684d88`, no tracked changes, only the three known
+  untracked files; production on the 12.2 image `sha256:f681c4c0…`, 0 restarts;
+  145 GB free.
+- **Rollback tag first** — `ccure-audit-pro-frontend:pre-phase12-final`, the
+  running 12.2 image `sha256:f681c4c012bf…`.
+- **Build from the commit, not the working tree** — a detached checkout of
+  `e684d88`, the repository Dockerfile, `VITE_API_BASE_URL=/api`, labelled
+  `org.opencontainers.image.revision=e684d887d931029c74636957d906720aee442c77`:
+  `ccure-audit-pro-frontend:phase12-e684d88`, image
+  `sha256:d7d491f8f1c15ea2b571055edab16ef24146969d5d0a7485cdf01fba37ad0c00`.
+  Before promotion: the label and the rollback tag were confirmed; the image's
+  own build stage held the 12.3–12.5 structure (`modules.config.js`,
+  `src/shell/`, `src/modules/{audit,policy,rank,ir}`, the READMEs, no pre-12.4
+  locations) and its `dist/` was byte-identical to what the runtime image
+  serves. Against 12.2 only the JS bundle (`index-CzaKDzq3.js` →
+  `index-BZoUyHcP.js`) and the `index.html` naming it differ; the CSS, fonts and
+  the frontend's nginx configuration are byte-identical — structure-only, as
+  12.3–12.5 were.
+- **Deployed 1 Oct 2026, 14:53:23 IST** — tagged `:latest`, then
+  `docker compose up -d --no-deps frontend`; `:443` answered 200 two seconds
+  later.
+
+**Credential-free checks** — container running, 0 restarts; running image
+revision `e684d88`; `index.html`, `index-BZoUyHcP.js` and `index-C375QD7K.css`
+served through `:443` equal the image's files by SHA-256; the 12.2 bundle is
+neither referenced nor served (404); `/`, the four entry addresses,
+`/dashboard`, the Audit addresses and `/login` serve the new `index.html` with
+the Content-Security-Policy header.
+
+**Browser acceptance through `:443`** — headless Chrome, signing in with the
+owner's own account through the real form (credentials prompted locally, never
+printed), paced for the edge sign-in limit (12 auth calls). Every required
+check passed:
+
+| Check                                                                                                                                     | Result |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Sign-in → `/`, CCure Home; the page loaded `index-BZoUyHcP.js`                                                                            | pass   |
+| Four cards, Policy Pro → Audit → Rank → IR, equal to the live `GET /api/platform/modules` (title, description, entry path, state, action) | pass   |
+| `/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard` — not-yet-available page, nothing data-shaped                                     | pass   |
+| Audit card → `/audit-dashboard`, Security Dashboard                                                                                       | pass   |
+| Audit header CCure Home link (the shell's shared link since 12.3) → `/`                                                                   | pass   |
+| `/dashboard?…#…` → `/audit-dashboard?…#…`, in-app and as a page load                                                                      | pass   |
+| Audit `/scan`, `/history`, `/assets`, `/reports`                                                                                          | pass   |
+| Signed out, `/history?tab=x` → sign-in → back to `/history?tab=x`                                                                         | pass   |
+| No uncaught browser error; no 5xx; no API route answering 404                                                                             | pass   |
+| Signed out at the end                                                                                                                     | pass   |
+
+**One additional check failed, and it was the test, not the deployment.** The
+script also asserted that no response at all was a 429, and one was:
+`/api/scan/quota`. The gateway logged no 429, so it was refused at host nginx
+by the general `/api/` limit (not the sign-in limit) — the script opened
+`/scan`, `/history`, `/assets` and `/reports` in-app within about a second,
+and each page mounts with a burst of API calls no person produces. In the same
+second the script signed out, and three quota requests already in flight left
+without a token and were refused by the gateway as `missing_bearer` (403) — the
+12.2 runs reloaded the page before signing out, so did not show it. None of the
+code issuing these requests changed between `58a369d` and `e684d88`
+(`axiosInstance`, `AuthContext`, `tokenStorage` identical; `scans.js`,
+`ScanQuotaBar` and `AppLayout` differ in import paths and, in `AppLayout`, the
+shared CCure Home link only). The run was not repeated to manufacture a clean
+tally.
+
+**After cutover**: 0 gateway 5xx, 0 API errors, 0 frontend errors; production
+healthy.
+
+**Rollback**: `docker tag ccure-audit-pro-frontend:pre-phase12-final
+ccure-audit-pro-frontend:latest`, then `docker compose up -d --no-deps
+frontend`.
+
+**Phase 12 is fully deployed and complete.** Recorded and still open, for the
+owner: the platform's sign-in branding (D12-9), a platform administration area,
+and real `CODEOWNERS` handles. Phase 13 has not started.

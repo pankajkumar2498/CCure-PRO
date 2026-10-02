@@ -112,6 +112,8 @@ cascade: `archive_organization` archives and never deletes, and the database's
 
 ## 7. Limitations, recorded and not fixed
 
+> Classified item by item in [`PLATFORM_AUDIT_VOCABULARY.md`](PLATFORM_AUDIT_VOCABULARY.md) (follow-up 3), with a ratchet test.
+
 - **Audit vocabulary inside platform code.** `/user/preferences` still validates
   Audit's `default_scan_type`; the notification types and categories still carry
   Audit's words (`scan_completed`, `vulnerability_found`, the `scan` category);

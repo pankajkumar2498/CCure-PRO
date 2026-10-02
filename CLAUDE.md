@@ -445,7 +445,9 @@ The platform's backend now matches the frontend's Platform Shell. Record:
   asset-timeline code, not the audit log.
 - **Still open:** Audit vocabulary inside platform strings (`default_scan_type`,
   notification types and categories, audit-event names) and Audit-shaped
-  permission atoms in the platform's tables.
+  permission atoms in the platform's tables. Classified in
+  [`docs/architecture/PLATFORM_AUDIT_VOCABULARY.md`](docs/architecture/PLATFORM_AUDIT_VOCABULARY.md);
+  `tests/repo/test_platform_audit_vocabulary.py` lets it only fall.
 
 ## Frontend modules (Phase 12)
 

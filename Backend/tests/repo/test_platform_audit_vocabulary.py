@@ -47,11 +47,6 @@ BASELINE: dict[str, tuple[int, str]] = {
         1,
         "API contract: related_scan_id (notification-ownership follow-up)",
     ),
-    "identity/profile.py": (
-        17,
-        "persisted JSONB key + API + frontend contract: default_scan_type and its "
-        "allowed values (preference-namespacing follow-up)",
-    ),
     "administration/organizations.py": (
         25,
         "owner decision (29 Sep 2026): the organisation plan is platform-owned — "

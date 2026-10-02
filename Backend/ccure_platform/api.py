@@ -71,6 +71,7 @@ from ccure_platform.notifications.service import (
     fan_out_notification,
 )
 from ccure_platform.offboarding import register_user_purge_hook
+from ccure_platform.preferences import register_product_preferences
 from ccure_platform.rbac.dependencies import require_permission, require_role
 from ccure_platform.rbac.dependencies import (
     user_has_permission as _role_holds_permission,
@@ -118,6 +119,8 @@ __all__ = (
     "log_audit_event",
     # offboarding contract — a module detaches its own data from a purged user
     "register_user_purge_hook",
+    # preferences — a product registers the schema of its own preference block
+    "register_product_preferences",
 )
 
 

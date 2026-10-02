@@ -114,8 +114,8 @@ cascade: `archive_organization` archives and never deletes, and the database's
 
 > Classified item by item in [`PLATFORM_AUDIT_VOCABULARY.md`](PLATFORM_AUDIT_VOCABULARY.md) (follow-up 3), with a ratchet test.
 
-- **Audit vocabulary inside platform code.** `/user/preferences` still validates
-  Audit's `default_scan_type`; the notification types and categories still carry
+- **Audit vocabulary inside platform code.** (`default_scan_type` is Audit's since
+  follow-up 4: see `PLATFORM_AUDIT_VOCABULARY.md` §7.) The notification types and categories still carry
   Audit's words (`scan_completed`, `vulnerability_found`, the `scan` category);
   the audit-event severity table still lists Audit's `scan.*`, `credential.*` and
   finding events. These are strings and data, not imports. Preference

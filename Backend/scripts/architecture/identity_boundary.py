@@ -130,6 +130,8 @@ PLATFORM_API_SURFACE = frozenset(
         "fan_out_notification",
         # the platform's audit log — every module records events through it
         "log_audit_event",
+        # a product registers the schema of its own user-preference block
+        "register_product_preferences",
         # the offboarding contract: a module registers what it detaches from a
         # purged account, so the platform never touches the module's tables
         "register_user_purge_hook",

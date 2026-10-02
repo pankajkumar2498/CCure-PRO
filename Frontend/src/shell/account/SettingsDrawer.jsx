@@ -156,8 +156,11 @@ export default function SettingsDrawer({
   onClose,
   onPreferencesUpdated,
   // A product's own settings, rendered between the platform's Display and
-  // Notifications sections: `(prefs, set) => sections`. They are stored in
-  // the same preferences document and saved with the rest.
+  // Notifications sections: `(prefs, set, setProduct) => sections`. They are
+  // stored in the same preferences document and saved with the rest. `set(key)`
+  // sets a platform preference; `setProduct(namespace, key)` sets one in the
+  // product's own block (`prefs.products[namespace]`), which the platform stores
+  // without reading.
   productSettings,
 }) {
   const [prefs, setPrefs] = useState(null);
@@ -183,6 +186,17 @@ export default function SettingsDrawer({
 
   const set = (key) => (val) => {
     setPrefs((p) => ({ ...p, [key]: val }));
+    setSaved(false);
+  };
+
+  const setProduct = (namespace, key) => (val) => {
+    setPrefs((p) => ({
+      ...p,
+      products: {
+        ...p.products,
+        [namespace]: { ...p.products?.[namespace], [key]: val },
+      },
+    }));
     setSaved(false);
   };
 
@@ -278,7 +292,7 @@ export default function SettingsDrawer({
 
               {productSettings ? (
                 <>
-                  {productSettings(prefs, set)}
+                  {productSettings(prefs, set, setProduct)}
 
                   <div className="shs-divider" />
                 </>

@@ -7,11 +7,13 @@
  *                     at the place it always rendered, and none otherwise.
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import ProductFrame, { ProductFrameProvider } from "@shell/layout/ProductFrame";
 import SettingsDrawer from "@shell/account/SettingsDrawer";
 import renderAuditSettings from "@audit/components/layout/auditSettings";
+import { getPreferences, updatePreferences } from "@shell/api/user";
 
 // The platform header composes the shell's shared pieces (Phase 12 platform
 // navigation): preferences come from the provider main.jsx mounts, and the
@@ -102,5 +104,70 @@ describe("SettingsDrawer productSettings", () => {
     await screen.findByText("Theme");
     expect(titles()).toEqual(["Display", "Scan Defaults", "Notifications"]);
     expect(screen.getByText("Default scan type")).toBeInTheDocument();
+  });
+});
+
+describe("Audit's preference block (preference namespacing)", () => {
+  const BASE = {
+    theme: "light",
+    default_rows_per_page: 10,
+    sidebar_collapsed: false,
+    email_alerts: true,
+    in_app_alerts: true,
+  };
+  const open = async () => {
+    render(
+      <SettingsDrawer
+        onClose={() => {}}
+        productSettings={renderAuditSettings}
+      />,
+    );
+    await screen.findByText("Default scan type");
+  };
+  const checked = () =>
+    screen
+      .getAllByRole("radio")
+      .filter((r) => r.getAttribute("aria-checked") === "true")
+      .map((r) => r.textContent);
+
+  it("reads the namespaced value in preference to the flat one", async () => {
+    getPreferences.mockResolvedValueOnce({
+      ...BASE,
+      default_scan_type: "asset",
+      products: { audit: { default_scan_type: "credentialed" } },
+    });
+    await open();
+    expect(checked()).toContain("Credentialed");
+    expect(checked()).not.toContain("Asset Scan");
+  });
+
+  it("falls back to the flat key when the response has no block", async () => {
+    getPreferences.mockResolvedValueOnce({
+      ...BASE,
+      default_scan_type: "vulnerability_audit",
+    });
+    await open();
+    expect(checked()).toContain("Vulnerability Audit");
+  });
+
+  it("writes the choice into products.audit and sends the rest back", async () => {
+    getPreferences.mockResolvedValueOnce({
+      ...BASE,
+      default_scan_type: "asset",
+      products: { audit: { default_scan_type: "asset" } },
+    });
+    updatePreferences.mockResolvedValueOnce({ ...BASE });
+    await open();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("radio", { name: "Host Discovery" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Save Settings" }));
+    await waitFor(() => expect(updatePreferences).toHaveBeenCalledTimes(1));
+    const sent = updatePreferences.mock.calls[0][0];
+    expect(sent.products.audit.default_scan_type).toBe("host-discovery");
+    expect(sent.theme).toBe("light");
+    expect(sent.default_rows_per_page).toBe(10);
   });
 });

@@ -443,9 +443,14 @@ The platform's backend now matches the frontend's Platform Shell. Record:
   by `main.py`. A new module that records who did something registers its own.
 - **Do not move a file on its name.** `core/audit_event_translator.py` is Audit's
   asset-timeline code, not the audit log.
-- **Still open:** Audit vocabulary inside platform strings (`default_scan_type`,
-  notification types and categories, audit-event names) and Audit-shaped
-  permission atoms in the platform's tables. Classified in
+- **Preferences are namespaced.** `users.preferences` holds the platform's keys
+  and, under `products.<product>`, each product's own block, which the product
+  registers and validates (`ccure_platform/preferences.py`; Audit's is
+  `ccure_audit/preferences.py`, imported by `main.py`). `default_scan_type` is
+  Audit's; `/user/preferences` still returns and accepts it flat for old clients.
+- **Still open:** Audit vocabulary inside platform strings (notification types
+  and categories, audit-event names) and Audit-shaped permission atoms in the
+  platform's tables. Classified in
   [`docs/architecture/PLATFORM_AUDIT_VOCABULARY.md`](docs/architecture/PLATFORM_AUDIT_VOCABULARY.md);
   `tests/repo/test_platform_audit_vocabulary.py` lets it only fall.
 

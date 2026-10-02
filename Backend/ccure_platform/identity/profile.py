@@ -36,7 +36,14 @@ from ccure_platform.audit_log.writer import log_audit_event
 from db.base import get_db, utcnow
 from db.models import RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, field_validator
+from ccure_platform.preferences import (
+    UnknownProductPreferences,
+    ValidationError,
+    apply_product_updates,
+    legacy_flat,
+    product_blocks,
+)
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/user", tags=["User Profile & Preferences"])
@@ -80,38 +87,30 @@ class ChangePasswordRequest(BaseModel):
         return v
 
 
+# A schema docstring is its OpenAPI description, so these notes are comments.
+# The platform's own preferences are fields here. A product's are in
+# ``products``, keyed by namespace (``{"audit": {"default_scan_type": …}}``), and
+# validated by the product (ccure_platform/preferences.py). A flat key a product
+# has always carried (Audit's ``default_scan_type``) is still accepted: it
+# arrives as an extra field and is applied to that product.
 class PreferencesRequest(BaseModel):
     """Update user preferences."""
 
+    model_config = ConfigDict(extra="allow")
+
     theme: str | None = None  # "light", "dark"
-    default_scan_type: str | None = (
-        None  # "host-discovery", "asset", "vulnerability_audit", "credentialed"
-    )
     email_alerts: bool | None = None
     in_app_alerts: bool | None = None
     timezone: str | None = None
     sidebar_collapsed: bool | None = None
     default_rows_per_page: int | None = None
+    products: dict[str, dict] | None = None
 
     @field_validator("theme")
     @classmethod
     def validate_theme(cls, v):
         if v is not None and v not in ["light", "dark"]:
             raise ValueError("Theme must be 'light' or 'dark'")
-        return v
-
-    @field_validator("default_scan_type")
-    @classmethod
-    def validate_scan_type(cls, v):
-        valid_types = [
-            "host-discovery",
-            "asset",
-            "vulnerability_audit",
-            "advanced",
-            "credentialed",
-        ]
-        if v is not None and v not in valid_types:
-            raise ValueError(f"Scan type must be one of {valid_types}")
         return v
 
 
@@ -133,19 +132,21 @@ class UserProfileResponse(BaseModel):
         from_attributes = True
 
 
+# ``products`` carries each registered product's preference block. The flat keys
+# a product has always returned (Audit's ``default_scan_type``) are still
+# present, as extra fields, for clients that predate ``products``.
 class UserPreferencesResponse(BaseModel):
     """User preferences."""
 
+    model_config = ConfigDict(extra="allow", from_attributes=True)
+
     theme: str = "light"
-    default_scan_type: str = "asset"
     email_alerts: bool = True
     in_app_alerts: bool = True
     timezone: str = "UTC"
     sidebar_collapsed: bool = False
     default_rows_per_page: int = 10
-
-    class Config:
-        from_attributes = True
+    products: dict[str, dict] = {}
 
 
 class SessionResponse(BaseModel):
@@ -182,19 +183,19 @@ def _serialize_profile(user: User) -> UserProfileResponse:
 
 
 def _get_user_preferences(user: User) -> UserPreferencesResponse:
-    """Merge stored preferences with defaults."""
+    """Merge stored preferences with defaults, and add each product's block."""
     stored = user.preferences or {}
     defaults = {
         "theme": "light",
-        "default_scan_type": "asset",
         "email_alerts": True,
         "in_app_alerts": True,
         "timezone": "UTC",
         "sidebar_collapsed": False,
         "default_rows_per_page": 10,
     }
-    merged = {**defaults, **stored}
-    return UserPreferencesResponse(**merged)
+    merged = {**defaults, **{k: v for k, v in stored.items() if k in defaults}}
+    blocks = product_blocks(stored)
+    return UserPreferencesResponse(**merged, products=blocks, **legacy_flat(blocks))
 
 
 def _current_session_jti(request: Request) -> str | None:
@@ -451,12 +452,6 @@ def update_preferences(
         changes["theme"] = req.theme
         stored["theme"] = req.theme
 
-    if req.default_scan_type is not None and req.default_scan_type != stored.get(
-        "default_scan_type"
-    ):
-        changes["default_scan_type"] = req.default_scan_type
-        stored["default_scan_type"] = req.default_scan_type
-
     if req.email_alerts is not None and req.email_alerts != stored.get("email_alerts"):
         changes["email_alerts"] = req.email_alerts
         stored["email_alerts"] = req.email_alerts
@@ -483,6 +478,36 @@ def update_preferences(
     ):
         changes["default_rows_per_page"] = req.default_rows_per_page
         stored["default_rows_per_page"] = req.default_rows_per_page
+
+    # A product's preferences (and the flat keys it has always carried) are the
+    # product's to validate; the platform only stores the result.
+    try:
+        changes.update(
+            apply_product_updates(stored, req.products, req.model_extra or {})
+        )
+    except UnknownProductPreferences as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "value_error",
+                    "loc": ["body", "products", str(exc)],
+                    "msg": f"Unknown product preferences {str(exc)!r}",
+                }
+            ],
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": e["type"],
+                    "loc": ["body", *e["loc"]],
+                    "msg": e["msg"],
+                }
+                for e in exc.errors()
+            ],
+        )
 
     if changes:
         from sqlalchemy.orm.attributes import flag_modified

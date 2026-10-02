@@ -116,9 +116,9 @@ that react to _Audit's_ collapsed sidebar (hiding the user card's text) stay in
 - **Notification categories** are fixed in the backend to
   `scan / security / system / admin`. A second product's notifications will
   need categories of its own — a backend change.
-- **Preferences** are one JSONB document with a backend schema that includes
-  Audit's `default_scan_type`; product preferences should be namespaced before
-  a second product adds its own.
+- **Preferences** are one JSONB document. Product preferences are namespaced
+  (`products.<product>`) and owned by the product since follow-up 4
+  (`PLATFORM_AUDIT_VOCABULARY.md` §7); Audit's `default_scan_type` is the first.
 - **The toaster's visual rules** are in the root-owned global stylesheet
   (`styles/scan.css`); only its dismiss control's rule moved with it.
 - **AMT permission mismatch** (sidebar `settings:update`, route

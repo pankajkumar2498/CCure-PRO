@@ -160,11 +160,10 @@ class User(Base):
         "RefreshTokenSession", back_populates="user", cascade="all, delete-orphan"
     )
     audit_logs = relationship("AuditLog", back_populates="user", passive_deletes=True)
-    scans = relationship("Scan", back_populates="created_by_user", passive_deletes=True)
-    asset_notes = relationship("AssetNote", back_populates="user", passive_deletes=True)
-    asset_tags = relationship(
-        "AssetTag", back_populates="created_by_user", passive_deletes=True
-    )
+    # No relationships to a module's tables. The scans, asset notes and asset
+    # tags that point at a user are Audit's, and Audit keeps the one-way link
+    # (Scan.created_by_user, AssetNote.user, AssetTag.created_by_user); what a
+    # purge does to them is ccure_platform/offboarding.py's contract.
 
     def __repr__(self):
         return f"<User {self.id!r}>"

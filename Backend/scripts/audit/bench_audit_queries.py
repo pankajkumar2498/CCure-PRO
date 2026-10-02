@@ -298,7 +298,7 @@ class _FakeUser:
 
 def query_shapes(db: Session):
     """(label, sqlalchemy_query) for every access pattern the API exposes."""
-    from routers.audit import _apply_filters, _scoped_query
+    from ccure_platform.audit_log.router import _apply_filters, _scoped_query
 
     tenant = _FakeUser(_ORGS[0], "org_admin")
     root = _FakeUser(_ORGS[0], "superadmin")

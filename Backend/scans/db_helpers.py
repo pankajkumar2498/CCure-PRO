@@ -11,7 +11,7 @@ import logging
 from datetime import timedelta
 from typing import Any, List, Optional
 
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from db.base import gen_scan_id, gen_scan_phase_id, utcnow
 from ccure_platform import api as platform_api
 from db.models.scans import Scan, ScanPhase
@@ -309,7 +309,7 @@ def update_scan_phase1(
 
     if is_final:
         try:
-            from core.notifications import (
+            from ccure_platform.api import (
                 NotificationCategory,
                 NotificationType,
                 create_notification,
@@ -589,7 +589,7 @@ def update_scan_phase(
 
     if is_final:
         try:
-            from core.notifications import (
+            from ccure_platform.api import (
                 NotificationCategory,
                 NotificationType,
                 create_notification,
@@ -710,7 +710,7 @@ def mark_scan_failed(
         db.commit()
 
     try:
-        from core.notifications import (
+        from ccure_platform.api import (
             NotificationCategory,
             NotificationType,
             create_notification,
@@ -892,7 +892,7 @@ def create_completed_scan(
             db.commit()
 
     try:
-        from core.notifications import (
+        from ccure_platform.api import (
             NotificationCategory,
             NotificationType,
             create_notification,

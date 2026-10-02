@@ -48,7 +48,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import CurrentUser, require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
 from ccure_platform import api as platform_api

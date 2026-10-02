@@ -141,7 +141,7 @@ def service_token(
         _refuse(503, "Service authentication is unavailable.", "signing", identity.id)
     issued = tokens.unverified_claims(token)
 
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     log_audit_event(
         db,

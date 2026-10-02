@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 from ccure_platform.api import CurrentUser, require_permission
 from engines.credentialed.vuln_matcher import compare_distro_versions
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
 from db.models.assets import Asset

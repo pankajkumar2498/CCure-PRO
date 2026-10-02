@@ -123,6 +123,16 @@ PLATFORM_API_SURFACE = frozenset(
         "RemediationSlaSettingView",
         "remediation_sla_setting",
         "store_remediation_sla_setting",
+        # in-app notifications — every module raises them through the platform
+        "NotificationCategory",
+        "NotificationType",
+        "create_notification",
+        "fan_out_notification",
+        # the platform's audit log — every module records events through it
+        "log_audit_event",
+        # the offboarding contract: a module registers what it detaches from a
+        # purged account, so the platform never touches the module's tables
+        "register_user_purge_hook",
     }
 )
 
@@ -157,6 +167,12 @@ PLATFORM_SIDE_PREFIXES = (
     "routers.notifications",  # a platform service
     # Alias stub: moved to ccure_platform.identity in step 8.3.
     "core.email_security_tasks",
+    # Alias stubs: the audit-log service moved to ccure_platform.audit_log.
+    "core.audit",
+    "core.audit_taxonomy",
+    "core.audit_retention",
+    "reporting.audit_export",
+    "core.notifications",
 )
 #: Exempt as an exact name only: the model registry re-exports every model, and
 #: a prefix would exempt Audit's model modules with it.

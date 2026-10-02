@@ -187,12 +187,12 @@ def _principal(db):
 
 def _measure(db, principal, rows: int, chain_schema: str | None, label: str) -> None:
     from db.models import AuditLog
-    from reporting.audit_export import (
+    from ccure_platform.audit_log.export import (
         VERIFICATION_NOT_REQUESTED,
         VERIFICATION_PERFORMED,
         iter_csv,
     )
-    from routers.audit import (
+    from ccure_platform.audit_log.router import (
         _apply_filters,
         _integrity_counts,
         _iter_export_rows,
@@ -302,7 +302,7 @@ def main() -> int:
     sizes = args.rows or [10_000, 50_000]
 
     from db.base import SessionLocal
-    from routers.audit import _chain_hash_schema
+    from ccure_platform.audit_log.router import _chain_hash_schema
 
     db = SessionLocal()
     name = _assert_disposable(str(db.get_bind().url))

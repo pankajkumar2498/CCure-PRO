@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from ccure_platform.api import CurrentUser, require_permission
 from core import compliance_frameworks, nist_csf
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
 from core.upload_guard import (
     MalwareDetected,

@@ -52,7 +52,7 @@ def purge_expired_audit_logs() -> dict:
     log nobody reads, whereas ``{"skipped": ...}`` is visible in the result.
     """
     from config import AppConfig
-    from core.audit_retention import RetentionRefused, run_retention
+    from ccure_platform.audit_log.retention import RetentionRefused, run_retention
 
     db = SessionLocal()
     try:

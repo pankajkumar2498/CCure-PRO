@@ -31,24 +31,27 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from routers.admin_email_domains import router as admin_email_domains_router
+from ccure_platform.administration.email_domains import (
+    router as admin_email_domains_router,
+)
 from routers.admin_nvd import router as admin_nvd_router
-from routers.admin_orgs import router as admin_orgs_router
-from routers.admin_rbac import router as admin_rbac_router
-from routers.admin_users import router as admin_users_router
+from ccure_platform.administration.organizations import router as admin_orgs_router
+from ccure_platform.administration.roles import router as admin_rbac_router
+from ccure_platform.administration.users import router as admin_users_router
 from routers.assets import router as assets_router
-from routers.audit import router as audit_router
+from ccure_platform.audit_log.router import router as audit_router
 from routers.compliance import router as compliance_router
 from routers.credentialed import router as credentialed_router
 from routers.dashboard import router as dashboard_router
 from routers.findings import router as findings_router
 from routers.health import router as health_router
-from routers.notifications import router as notifications_router
+from routers.scan_progress import router as scan_progress_router
+from ccure_platform.notifications.router import router as notifications_router
 from routers.phase_scans import router as phase_scans_router
 from routers.reports import router as reports_router
 from routers.topology import router as topology_router
 from routers.traditional_scans import router as traditional_scans_router
-from routers.user_profile import router as user_profile_router
+from ccure_platform.identity.profile import router as user_profile_router
 from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
 from db.models.scans import ensure_scan_schema
@@ -58,6 +61,9 @@ from routers.credentials import router as credentials_router
 from routers.remediation import router as remediation_router
 from routers.scan_policies import router as scan_policies_router
 from routers.scan_schedules import router as scan_schedules_router
+
+# Audit registers what it detaches from a purged account (ccure_platform/offboarding.py).
+import ccure_audit.offboarding  # noqa: F401,E402
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -1074,6 +1080,7 @@ app.include_router(auth_router)
 app.include_router(service_identity_router)
 app.include_router(scans_router)
 app.include_router(health_router)
+app.include_router(scan_progress_router)
 app.include_router(traditional_scans_router)
 app.include_router(phase_scans_router)
 app.include_router(credentialed_router)

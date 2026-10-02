@@ -295,7 +295,7 @@ def main() -> int:
     args = parser.parse_args()
     sizes = args.rows or [100_000, 1_000_000]
 
-    from core.audit_retention import retention_installed
+    from ccure_platform.audit_log.retention import retention_installed
     from db.base import SessionLocal, gen_uuid
     from db.models import Organization
 

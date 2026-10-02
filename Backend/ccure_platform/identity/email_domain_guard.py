@@ -626,7 +626,7 @@ def _log_block(db, verdict: DomainVerdict, *, request=None, actor=None, enforced
     }
 
     try:
-        from core.audit import log_audit_event
+        from ccure_platform.audit_log.writer import log_audit_event
 
         if enforced:
             # The caller is about to raise, so anything written on `db` is

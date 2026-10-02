@@ -14,7 +14,7 @@ import logging
 from typing import Optional
 
 from ccure_platform.api import CurrentUser, require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.upload_guard import (
     UploadTooLarge,
     looks_like_text,

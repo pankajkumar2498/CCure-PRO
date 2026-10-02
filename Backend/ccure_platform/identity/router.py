@@ -286,7 +286,7 @@ def _deny_login(
     db: Session, user: User, request: Request, reason: str, detail: str
 ) -> None:
     """Audit a post-credential login denial and raise 403. Never returns."""
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     log_audit_event(
         db,
@@ -389,7 +389,7 @@ def _issue_verification_token(db: Session, user: User, request: Request | None =
         )
     )
 
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     log_audit_event(
         db,
@@ -670,7 +670,7 @@ def register(
         return pending_response
 
     db.refresh(user)
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     log_audit_event(
         db,
@@ -759,7 +759,7 @@ def verify_email(
     from datetime import datetime, timezone
 
     from config import AppConfig
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
     from db.base import utcnow
     from db.models import EmailVerificationToken
 
@@ -895,7 +895,7 @@ def login(
     """
     import datetime
 
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
     from db.base import utcnow
 
     identifier = req.email_or_username.strip()
@@ -1117,7 +1117,7 @@ def logout(
     """
     Revoke the presented refresh token server-side.
     """
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     refresh_token = _resolve_refresh_token(request, req.refresh_token if req else None)
     if not refresh_token:
@@ -1283,7 +1283,7 @@ def forgot_password(
     from datetime import datetime, timedelta, timezone
 
     from config import AppConfig
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
     from ccure_platform.identity.mail_dispatch import dispatch_email
     from core.throttle import hit
     from db.models import PasswordResetToken
@@ -1419,7 +1419,7 @@ def reset_password_endpoint(
 
     from ccure_platform.identity.jwt_handler import hash_password
     from config import AppConfig
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
     from core.throttle import client_identity, hit
     from db.models import PasswordResetToken, RefreshTokenSession
 
@@ -1627,7 +1627,7 @@ def verify_mfa(
     Verify the MFA code (App TOTP, Email OTP, or Recovery Backup Code).
     Rate limited to 5 requests/minute.
     """
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
     from db.base import utcnow
 
     payload = tokens.verify(
@@ -1835,7 +1835,7 @@ def confirm_mfa(
     import secrets
 
     import pyotp
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     if not current_user.totp_secret:
         raise HTTPException(
@@ -1892,7 +1892,7 @@ def disable_mfa(
     """
     Disable MFA. Requires password validation for safety.
     """
-    from core.audit import log_audit_event
+    from ccure_platform.audit_log.writer import log_audit_event
 
     if not current_user.mfa_enabled:
         raise HTTPException(

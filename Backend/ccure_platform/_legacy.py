@@ -65,6 +65,19 @@ MOVED_MODULES: dict[str, str] = {
     "db.models.rbac": "ccure_platform.models.rbac",
     # Phase 8.3: account screening and lifecycle tasks
     "core.email_security_tasks": "ccure_platform.identity.email_security_tasks",
+    # Backend alignment, step 2: the audit-log service
+    "core.audit": "ccure_platform.audit_log.writer",
+    "core.audit_taxonomy": "ccure_platform.audit_log.taxonomy",
+    "core.audit_retention": "ccure_platform.audit_log.retention",
+    "reporting.audit_export": "ccure_platform.audit_log.export",
+    "routers.audit": "ccure_platform.audit_log.router",
+    "core.notifications": "ccure_platform.notifications.service",
+    "routers.notifications": "ccure_platform.notifications.router",
+    "routers.admin_users": "ccure_platform.administration.users",
+    "routers.admin_orgs": "ccure_platform.administration.organizations",
+    "routers.admin_rbac": "ccure_platform.administration.roles",
+    "routers.admin_email_domains": "ccure_platform.administration.email_domains",
+    "routers.user_profile": "ccure_platform.identity.profile",
 }
 
 

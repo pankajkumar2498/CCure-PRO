@@ -134,12 +134,11 @@ class Organization(Base):
     users = relationship(
         "User", back_populates="organization", cascade="all, delete-orphan"
     )
-    assets = relationship(
-        "Asset", back_populates="organization", cascade="all, delete-orphan"
-    )
-    scans = relationship(
-        "Scan", back_populates="organization", cascade="all, delete-orphan"
-    )
+    # No relationships to a module's tables: assets and scans are Audit's, and
+    # Audit keeps the one-way link (Asset.organization, Scan.organization).
+    # Organisations are archived, never deleted, so nothing relies on the ORM
+    # cascade that used to sit here; the database's ON DELETE CASCADE is
+    # unchanged.
 
     def __repr__(self):
         return f"<Organization {self.id!r} plan={self.plan!r}>"

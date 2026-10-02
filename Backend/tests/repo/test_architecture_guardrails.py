@@ -209,7 +209,7 @@ def test_the_rules_catch_what_they_describe(src, dst, rule):
         ("ccure_audit.services.s", "core.remediation.sla"),  # and use capabilities
         ("reporting.exports", "ccure_audit.services"),  # the Phase 5 transition
         ("ccure_platform.identity.x", "core.rate_limiter"),  # shared infrastructure
-        ("ccure_platform.identity.x", "core.audit"),  # the platform's audit log
+        ("ccure_platform.identity.x", "ccure_platform.audit_log.writer"),  # its own
         ("ccure_platform.identity.x", "db.models"),  # the model registry
         ("ccure_platform.models.users", "db.base"),  # the platform's models are models
         ("db.models.users", "ccure_platform.models.users"),  # the legacy alias stub

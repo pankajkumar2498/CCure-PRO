@@ -1495,7 +1495,7 @@ def get_web_findings_drilldown(
     """Org-wide web findings with the same filters the dashboard counts use."""
     from datetime import datetime
 
-    from routers.web_scans import _finding_detail
+    from core.web.finding_view import finding_detail as _finding_detail
     from db.models.web_scans import WebFinding, WebScan
 
     org = _resolve_org(user, org_id)

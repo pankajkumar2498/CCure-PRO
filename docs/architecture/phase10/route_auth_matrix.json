@@ -2205,7 +2205,7 @@
     "require_permission"
    ],
    "limits": [],
-   "endpoint": "routers.health.get_scan_progress",
+   "endpoint": "routers.scan_progress.get_scan_progress",
    "refusal_behaviour": "classes.bearer",
    "gateway_policy_proposed": "bearer"
   },
@@ -2216,7 +2216,7 @@
    "response_kind": "json",
    "guards": [],
    "limits": [],
-   "endpoint": "routers.health.pipeline_modes",
+   "endpoint": "routers.scan_progress.pipeline_modes",
    "refusal_behaviour": null,
    "gateway_policy_proposed": "none"
   },
@@ -2227,7 +2227,7 @@
    "response_kind": "json",
    "guards": [],
    "limits": [],
-   "endpoint": "routers.health.workflow_example",
+   "endpoint": "routers.scan_progress.workflow_example",
    "refusal_behaviour": null,
    "gateway_policy_proposed": "none"
   },

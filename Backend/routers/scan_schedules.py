@@ -42,7 +42,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import CurrentUser, require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.scheduling.dispatcher import advance_schedule, dispatch_schedule
 from core.scheduling.recurrence import (
     MAX_RUN_MINUTE,

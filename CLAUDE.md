@@ -423,6 +423,30 @@ each module's `README.md` is the guide its team works from.
   (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
 
+## Backend platform extraction (backend alignment, steps 1–2)
+
+The platform's backend now matches the frontend's Platform Shell. Record:
+[`docs/architecture/BACKEND_PLATFORM_EXTRACTION.md`](docs/architecture/BACKEND_PLATFORM_EXTRACTION.md).
+
+- **Moved into `ccure_platform/`:** the audit-log service (`audit_log/`: writer,
+  taxonomy, retention, export, router, task), notifications (`notifications/`),
+  user/organisation/role/email-domain administration (`administration/`) and
+  account/profile/preferences (`identity/profile.py`). Paths, permissions,
+  OpenAPI, Celery names and the beat schedule are unchanged; the legacy module
+  names are aliases of the same module objects (`MOVED_MODULES`), and the moved
+  modules keep their legacy `__name__`.
+- **`ccure_platform` imports no Audit code and no Audit model, and has no ORM
+  relationship into a module's tables.** Audit reaches it through
+  `ccure_platform.api` (`log_audit_event`, `create_notification`, …).
+- **A purge asks, never reaches in.** `purge_user` runs
+  `run_user_purge_hooks`; Audit's hook is `ccure_audit/offboarding.py`, imported
+  by `main.py`. A new module that records who did something registers its own.
+- **Do not move a file on its name.** `core/audit_event_translator.py` is Audit's
+  asset-timeline code, not the audit log.
+- **Still open:** Audit vocabulary inside platform strings (`default_scan_type`,
+  notification types and categories, audit-event names) and Audit-shaped
+  permission atoms in the platform's tables.
+
 ## Frontend modules (Phase 12)
 
 One React application holds the four products. Record:

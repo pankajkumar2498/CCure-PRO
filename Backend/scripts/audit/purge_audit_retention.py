@@ -36,7 +36,7 @@ if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
 from config import AppConfig  # noqa: E402
-from core.audit_retention import (  # noqa: E402
+from ccure_platform.audit_log.retention import (  # noqa: E402
     NOT_INSTALLED_HINT,
     RetentionRefused,
     newest_backup,
@@ -90,14 +90,14 @@ def _print_preview(rows: list[dict]) -> None:
 
 def _run_chained(db, args) -> int:
     """Chained mode: one organisation, one archive, oldest-first."""
-    from core.audit_retention import (
+    from ccure_platform.audit_log.retention import (
         ArchiveUnacceptable,
         chained_retention_installed,
         run_chained_retention,
     )
 
     if not chained_retention_installed(db):
-        from core.audit_retention import CHAINED_NOT_INSTALLED_HINT
+        from ccure_platform.audit_log.retention import CHAINED_NOT_INSTALLED_HINT
 
         print("\n" + CHAINED_NOT_INSTALLED_HINT)
         return 2

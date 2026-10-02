@@ -87,7 +87,7 @@ def _continuation_scan(
     scan the caller could not open answers 404 here too — and without a scan
     id there is nothing admitted to continue.
     """
-    from routers.scan_history import _get_scan_or_404
+    from scans.scan_access import get_scan_or_404 as _get_scan_or_404
 
     if not scan_id:
         raise HTTPException(

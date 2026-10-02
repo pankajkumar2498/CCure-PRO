@@ -34,6 +34,12 @@ from fastapi.responses import StreamingResponse
 
 from scan_helpers import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
+from scans.scan_access import (  # noqa: F401  (the old private names stay)
+    get_scan_or_404 as _get_scan_or_404,
+    is_superadmin as _is_superadmin,
+    resolve_org as _resolve_org,
+    user_can_read_all_scans as _user_can_read_all_scans,
+)
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -61,18 +67,6 @@ TERMINAL_STATUSES = {
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
 
 
 def _as_utc_iso(dt: datetime | None) -> str | None:
@@ -157,28 +151,6 @@ def _scan_to_dict(
     if include_results and db:
         d["results"] = _load_phase_results(db, scan)
     return d
-
-
-def _user_can_read_all_scans(user: CurrentUser, db: Session) -> bool:
-    return platform_api.user_has_permission(db, user, "scans", "read_all")
-
-
-def _get_scan_or_404(
-    scan_id: str, user: CurrentUser, db: Session, org_id: str | None = None
-) -> Scan:
-    target_org_id = _resolve_org(user, org_id)
-    query = (
-        db.query(Scan)
-        .options(joinedload(Scan.created_by_user))
-        .filter(Scan.id == scan_id, Scan.org_id == target_org_id)
-    )
-    if not _user_can_read_all_scans(user, db):
-        query = query.filter(Scan.created_by == str(user.id))
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    return scan
 
 
 def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:

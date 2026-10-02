@@ -137,10 +137,8 @@ class Scan(Base):
         super().__init__(**kwargs)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    organization = relationship("Organization", back_populates="scans")
-    created_by_user = relationship(
-        "User", back_populates="scans", foreign_keys=[created_by]
-    )
+    organization = relationship("Organization")
+    created_by_user = relationship("User", foreign_keys=[created_by])
     phases = relationship(
         "ScanPhase",
         back_populates="scan",

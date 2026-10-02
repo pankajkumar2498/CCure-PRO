@@ -36,7 +36,7 @@
   "websocket": 2,
   "total": 274
  },
- "inventory_sha256": "90e199d37287d92a5894302fff0321b9f1557bb36678724ef9a7f45977c1a6a4",
+ "inventory_sha256": "04135fe854ad69faeab0121f91cc97326a552a3a1d47948fec6139ebe1b4cf72",
  "routes": [
   {
    "order": 0,
@@ -388,7 +388,7 @@
    "map_key": "~^http:GET:/scan/progress/[^/]+$",
    "class": "bearer",
    "checker_policy": "bearer",
-   "endpoint": "routers.health.get_scan_progress"
+   "endpoint": "routers.scan_progress.get_scan_progress"
   },
   {
    "order": 32,
@@ -399,7 +399,7 @@
    "map_key": "http:GET:/api/pipeline-modes",
    "class": "public",
    "checker_policy": "none",
-   "endpoint": "routers.health.pipeline_modes"
+   "endpoint": "routers.scan_progress.pipeline_modes"
   },
   {
    "order": 33,
@@ -410,7 +410,7 @@
    "map_key": "http:GET:/api/workflow-example",
    "class": "public",
    "checker_policy": "none",
-   "endpoint": "routers.health.workflow_example"
+   "endpoint": "routers.scan_progress.workflow_example"
   },
   {
    "order": 34,

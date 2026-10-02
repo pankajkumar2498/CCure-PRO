@@ -455,6 +455,9 @@ The platform's backend now matches the frontend's Platform Shell. Record:
   `ccure_audit/audit_events.py`, declared in its manifest (`audit_event_modules`) and
   loaded by name by the platform in every process that writes an event; declared
   definitions that cannot load raise instead of defaulting.
+- **Boundary review (3 Oct 2026):** `docs/architecture/PLATFORM_AUDIT_BOUNDARY_REVIEW.md`
+  — no platform → Audit import, relationship or query; remaining items classified;
+  `tests/repo/test_legacy_alias_importers.py` keeps legacy paths out of module code.
 - **Still open:** Audit-shaped permission atoms in the
   platform's tables. Classified in
   [`docs/architecture/PLATFORM_AUDIT_VOCABULARY.md`](docs/architecture/PLATFORM_AUDIT_VOCABULARY.md);

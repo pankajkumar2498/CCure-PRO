@@ -175,3 +175,7 @@ A production log line after the `bc73f02` deployment:
   stream had no test: first frame `connected` with the durable summary, relay of
   a published message under its own event name, heartbeat on a quiet interval,
   cleanup on close, and the warning as a known client-side early close.
+
+## 9. Follow-ups 3–7
+
+The vocabulary left in the platform is classified in [`PLATFORM_AUDIT_VOCABULARY.md`](PLATFORM_AUDIT_VOCABULARY.md) (preferences §7, notifications §8, audit-event severities §9), and the final boundary review is [`PLATFORM_AUDIT_BOUNDARY_REVIEW.md`](PLATFORM_AUDIT_BOUNDARY_REVIEW.md).

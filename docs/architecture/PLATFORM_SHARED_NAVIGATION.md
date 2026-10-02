@@ -1,10 +1,10 @@
 # Shared platform capabilities and Audit's navigation
 
-|              |                                                                                                                                                                                                                        |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**   | **Implemented, committed, not deployed** (1 Oct 2026): the move of the shared capabilities (`4ba9bd4`) and the platform header that presents them after sign-in (§7). Production runs the Phase 12 frontend `e684d88`. |
-| **Decided**  | By the owner, 1 Oct 2026, after an inventory of every item in Audit's sidebar, header and footer, traced to the page, API, permission and table behind it.                                                             |
-| **Baseline** | `335047b` (Phase 12 complete). Builds on [`PHASE12_FRONTEND_SHELL.md`](PHASE12_FRONTEND_SHELL.md).                                                                                                                     |
+|              |                                                                                                                                                                                                                                                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**   | **Deployed** (2 Oct 2026, 15:53:04 IST, frontend `6b60061`; §8). The move of the shared capabilities (`4ba9bd4`) and the platform header (§7) were committed earlier and shipped with it; the Platform Shell / Product Shell separation of §8 supersedes the parts of §3 and §7 that put shared screens in Audit's layout. |
+| **Decided**  | By the owner, 1 Oct 2026, after an inventory of every item in Audit's sidebar, header and footer, traced to the page, API, permission and table behind it.                                                                                                                                                                 |
+| **Baseline** | `335047b` (Phase 12 complete). Builds on [`PHASE12_FRONTEND_SHELL.md`](PHASE12_FRONTEND_SHELL.md).                                                                                                                                                                                                                         |
 
 ## 1. The ownership model (owner decision)
 
@@ -64,6 +64,10 @@ sidebar badges, the help panel, and Audit's own setting ("Scan Defaults").
 reassessed when Policy Pro is built.
 
 ## 3. How a shared screen keeps its place in a product
+
+> **Superseded by §8 (6b60061).** Shared screens no longer take Audit's
+> layout: they render in the Platform Shell. What follows is the design as it
+> stood from `4ba9bd4` to `d8647be`.
 
 Two seams, so the shell never imports a product:
 
@@ -213,3 +217,127 @@ bell is styled by the shell wherever it appears.
   ARIA state, the notification summary and stream requests, and screenshot
   change confined to the header band — with the Product Hub's headings and
   card links unchanged.
+
+## 8. Platform Shell and Product Shells (`6b60061`, deployed 2 Oct 2026)
+
+**What was wrong.** After §7, CCure Home, the product entry pages and the
+shared administration screens were still mounted inside Audit's providers
+(`AuditProviders` in `App.jsx`: Audit's `ScanProvider`, and Audit's `AppLayout`
+as the `ProductFrame`). Choosing Administration from CCure Home therefore drew
+the shared screens in Audit's shell, and Audit's own sidebar carried the
+platform's administration screens. Audit read as the parent application of the
+platform rather than one product of it.
+
+**The rule.** The platform sidebar answers "which CCure product do I want to
+use?"; a product's sidebar answers "what can I do inside this product?".
+Neither appears in the other, and the separation is in the route tree, not CSS.
+
+**As built (verified in a real browser and in production, below):**
+
+- **Platform Home uses the Platform Shell.** `PlatformLayout` is a left-sidebar
+  shell: Home, every product from the platform registry
+  (`GET /platform/modules`, fetched once and shared by sidebar and page through
+  `ProductListProvider`), and Administration by permission. The header carries
+  the organisation switcher (superadmin), notifications, settings, the account
+  menu and Sign out. `AdminMenu` was removed.
+- **The platform sidebar owns product switching.** Home and the entry pages
+  (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) and the shared
+  `/admin/*` screens render in it. A failed or pending product list is said in
+  the sidebar ("Products could not be loaded"), never rendered as no products.
+- **Audit uses its own Product Shell.** Audit's routes sit under an
+  `AuditProduct` layout route that mounts Audit's `ScanProvider` and nothing
+  else of Audit's; the platform's routes sit outside it, so Audit's state is not
+  mounted on Home, the entry pages or the administration screens. Audit's
+  `AppLayout` carries Audit's navigation only; AMT Integration (Audit's own)
+  sits under "Audit Settings". Audit's addresses are unchanged
+  (`/audit-dashboard`, `/assets`, `/scan`, … and the `/dashboard` redirect).
+- **Platform navigation does not appear inside Audit.** No Home / Policy Pro /
+  Rank / IR items, and no shared administration, in Audit's sidebar. The
+  existing "CCure Home" control in Audit's header is the way out (D12-8).
+- **Audit is not the parent shell of the platform.** `ProductFrame` falls back
+  to `PlatformLayout`; `App.jsx` no longer supplies Audit's layout to it. This
+  reverses the 1 Oct decision (§1, §3) that shared screens render inside the
+  navigation a person reached them from: administering from inside Audit now
+  means going to CCure Home first.
+- **Policy Pro, Rank and IR remain visible but unavailable** ("Not yet
+  available") in the platform sidebar, on Home and on their entry pages, until
+  their products are implemented. They have no product shell yet and load no
+  Audit navigation or state.
+- **Phones (390px).** The sidebar is a drawer; the platform header drops its
+  standalone Sign out (the account menu carries Sign Out) and shortens the
+  organisation switcher. No horizontal overflow for analyst, org admin or
+  superadmin on Home, entry pages and administration.
+
+**Tests.** `__tests__/shell/navigationIsolation.test.jsx` (new);
+`PlatformLayout`, `AppLayout`, shared-frame and Phase 3 route tests updated.
+98 files, 2954 tests; ESLint, Prettier and the module-boundary test clean.
+
+### Deployment (2 Oct 2026)
+
+**Frontend only.** No backend, API, database or schema change; the API, gateway,
+worker and database containers were not restarted or touched.
+
+|                     |                                                                                                                                                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deployed commit     | `6b60061` (chain `4ba9bd4` → `76fd1e4` → `d8647be` → `6b60061`)                                                                                                                                                 |
+| Deployed            | 2026-10-02 15:53:04 IST                                                                                                                                                                                         |
+| Image               | `ccure-audit-pro-frontend:platform-shell-6b60061` (also `latest`), `VITE_API_BASE_URL=/api`, labelled `org.opencontainers.image.revision=6b600617584115f75aafd4eecf5f031529536a78`, built from a clean checkout |
+| Digest              | `sha256:8cbee255af9987ef88ad8f919ade52a7e2a04abd9ae1f6990e28969efc347ff3`                                                                                                                                       |
+| Previous production | `d8647be`, image `platform-home-d8647be`, digest `sha256:c09e58337c4e6f6db870e9537793148c752ee294049f27b54ad97115f3533189` (container started 2 Oct 2026 12:44 IST)                                             |
+| Rollback image      | `ccure-audit-pro-frontend:pre-platform-shell` (same digest as the previous production)                                                                                                                          |
+| Database backup     | `backups/ccure_db_20261002_155234_ops.dump` (operational, taken before the cutover)                                                                                                                             |
+| Command             | `docker compose up -d --no-deps --no-build frontend`                                                                                                                                                            |
+
+**Correction.** Production was **not** running `e684d88` (`phase12-e684d88`,
+`d7d491f8`) at deployment: `d8647be` had been deployed on 2 Oct before this
+change, with no deployment record. `e684d88` was the Phase 12 final deployment
+of 1 Oct (PHASE12_FRONTEND_SHELL.md §12) and the image is kept as a further
+rollback.
+
+**Rollback.** `docker tag ccure-audit-pro-frontend:pre-platform-shell
+ccure-audit-pro-frontend:latest && docker compose up -d --no-deps --no-build
+frontend`.
+
+**Verified.**
+
+- _Browser, against the deployed digest (served in isolation with a stubbed
+  API, because no production login was available):_ 66 of 67 checks, the one
+  failure being Audit's own header at 390px for superadmin (below). Platform
+  Home, the platform sidebar, Administration by permission (analyst none, org
+  admin 5, superadmin 6), organisation switcher (superadmin only), Audit entry
+  and exit, direct Audit URLs, the `/dashboard` redirect, sign-in redirects and
+  the three entry pages. No uncaught exceptions.
+- _UX4G harness, deployed digest:_ 265 of 265 identical to the verified
+  pre-deployment build; against the previous production `d8647be` 250 of 265
+  identical — the 12 platform-home states (now with the sidebar) and the 3
+  Audit states that lose the "Audit Logs" sidebar link (`sd-admin` light and
+  dark, `sd-tab-audit`). Every other Audit state is unchanged.
+- _Production, by HTTP:_ `/`, `/login`, `/audit-dashboard`, `/dashboard`,
+  `/policy-dashboard`, `/admin/users` answer 200 with the new bundle; the
+  unauthenticated API answers 403 as before; CSP, HSTS and `X-Frame-Options`
+  present; no gateway, API or frontend 5xx or 429 after the cutover.
+- _Not verified:_ the checks needing a production login — fresh login, real
+  401/403 with a session, notifications, settings and My Account against the
+  live API, Sign Out, Audit core workflows, and console errors on the live
+  site.
+
+### Follow-ups carried forward (none addressed here)
+
+1. Audit's own header overflows at 390px for superadmin (674px; org switcher
+   and search) — present before this change, unchanged by it.
+2. Two Sign Out controls on desktop: the header button and the account menu's.
+3. The UX4G harness stubs `GET /notifications` as an object where the API
+   returns a bare list (the `ph-*` states override it).
+4. The organisation list is requested again by each layout that mounts the
+   switcher; no caching.
+5. Sign-in branding: the sign-in screens still carry Audit's branding
+   (`PENDING` in `modules.config.js`, D12-9).
+6. Compliance stays in Audit until the Policy Pro work reassesses its owner.
+7. Notification categories are Audit-shaped; a cross-product design is open.
+8. Preferences are not namespaced per product (Audit's scan defaults share the
+   platform's preference record).
+9. The organisation plan and quota fields (`max_assets`, `max_scans_per_day`,
+   `max_concurrent_scans`, `scan_scope_cidrs`) are Audit's and still sit with
+   the platform's organisation (Phase 8.4).
+10. AMT Integration is gated on `assets:update` by its route and
+    `settings:update` by Audit's sidebar item.

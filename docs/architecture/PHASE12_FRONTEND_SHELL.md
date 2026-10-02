@@ -758,3 +758,7 @@ owner: the platform's sign-in branding (D12-9), a platform administration area
 (since decided — shared capabilities in the shell, no platform-admin area:
 [`PLATFORM_SHARED_NAVIGATION.md`](PLATFORM_SHARED_NAVIGATION.md)), and real
 `CODEOWNERS` handles. Phase 13 has not started.
+
+> **Later (2 Oct 2026).** The Phase 12 frontend `e684d88` was superseded in
+> production by `d8647be` and then `6b60061` (Platform Shell / Product Shell
+> separation) — see [`PLATFORM_SHARED_NAVIGATION.md`](PLATFORM_SHARED_NAVIGATION.md) §8.

@@ -465,27 +465,41 @@ each folder's `README.md` says what belongs in it.
   administration (`shell/admin/`), the account menu and dialog, notifications,
   organisation switching, the user card and the platform preferences are
   common capabilities; any product team may contribute to them under the same
-  boundaries and review. A shared screen renders in `ProductFrame`, whose layout
-  the composition root supplies (Audit's `AppLayout` today); the settings
+  boundaries and review. A shared screen renders in `ProductFrame`, which
+  resolves to the Platform Shell's `PlatformLayout`; the settings
   drawer takes a product's own sections through `productSettings`. Routes
   (`/admin/*`) and APIs are unchanged. Record:
   `docs/architecture/PLATFORM_SHARED_NAVIGATION.md`.
 - **Sign-in lands on the whole platform, not on a product.** CCure Home's
   frame, `PlatformLayout`, carries the shared navigation — Administration
-  (`AdminMenu`, by permission), organisation switcher (superadmin),
+  (in the sidebar, by permission), organisation switcher (superadmin),
   notifications, settings (platform preferences only), account menu, sign out
   — above the Product Hub's four products. Administration items have one list
   (`shell/admin/adminNav.js`) and one rule (`shell/auth/navVisibility.js`),
-  read by the platform header and Audit's sidebar alike. A boundary test
+  read by the platform sidebar. A boundary test
   requires `PlatformLayout`'s whole import closure to be shell or design system.
 - **Still open:** the sign-in screens stay in `src/pages/`,
   `src/components/auth/` and `src/styles/` (`PENDING` in `modules.config.js`)
   because they carry Audit's branding; Compliance stays in Audit until the
   Policy Pro work reassesses it.
-- **Production** runs the Phase 12 frontend `e684d88`
-  (`ccure-audit-pro-frontend:phase12-e684d88`, since 1 Oct 2026 14:53 IST);
-  the shared-navigation refactor and the platform header are committed and not
-  yet deployed.
+- **Platform Shell and Product Shells (verified, live 2 Oct 2026).**
+  CCure Home, the product entry pages and the shared `/admin/*` screens render
+  in `PlatformLayout` — a left sidebar of Home, the registry's products and
+  Administration (by permission). Audit's routes sit under an `AuditProduct`
+  layout route that mounts Audit's `ScanProvider`; Audit's `AppLayout` carries
+  Audit's navigation only.
+  - **Platform navigation never appears inside a product, and a product's never
+    in the platform's.** Done in the route tree, not CSS. Audit is one product,
+    not the parent shell: `ProductFrame` resolves to `PlatformLayout`.
+  - **Policy Pro, Rank and IR** stay visible and "Not yet available" until
+    built; they have no shell yet and load no Audit state.
+  - **Guarded by** `__tests__/shell/navigationIsolation.test.jsx`. Record and
+    follow-ups: `docs/architecture/PLATFORM_SHARED_NAVIGATION.md` §8.
+- **Production** runs frontend `6b60061`
+  (`ccure-audit-pro-frontend:platform-shell-6b60061`, digest
+  `sha256:8cbee255…347ff3`, since 2 Oct 2026 15:53 IST), a frontend-only
+  deployment. Rollback image `pre-platform-shell` (`d8647be`, `c09e5833`);
+  backup `backups/ccure_db_20261002_155234_ops.dump`.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 

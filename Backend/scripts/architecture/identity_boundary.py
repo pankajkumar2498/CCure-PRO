@@ -128,6 +128,7 @@ PLATFORM_API_SURFACE = frozenset(
         "NotificationType",
         "create_notification",
         "fan_out_notification",
+        "register_notification_categories",
         # the platform's audit log — every module records events through it
         "log_audit_event",
         # a product registers the schema of its own user-preference block

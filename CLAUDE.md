@@ -448,8 +448,10 @@ The platform's backend now matches the frontend's Platform Shell. Record:
   registers and validates (`ccure_platform/preferences.py`; Audit's is
   `ccure_audit/preferences.py`, imported by `main.py`). `default_scan_type` is
   Audit's; `/user/preferences` still returns and accepts it flat for old clients.
-- **Still open:** Audit vocabulary inside platform strings (notification types
-  and categories, audit-event names) and Audit-shaped permission atoms in the
+- **Notification vocabulary is the product's.** Audit's types and the `scan`
+  category are `scans/notification_vocabulary.py` (registered category; the platform
+  stores plain strings). `related_scan_id` stays for compatibility.
+- **Still open:** Audit vocabulary inside platform strings (audit-event names) and Audit-shaped permission atoms in the
   platform's tables. Classified in
   [`docs/architecture/PLATFORM_AUDIT_VOCABULARY.md`](docs/architecture/PLATFORM_AUDIT_VOCABULARY.md);
   `tests/repo/test_platform_audit_vocabulary.py` lets it only fall.

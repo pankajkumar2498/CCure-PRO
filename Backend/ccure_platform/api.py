@@ -69,6 +69,7 @@ from ccure_platform.notifications.service import (
     NotificationType,
     create_notification,
     fan_out_notification,
+    register_notification_categories,
 )
 from ccure_platform.offboarding import register_user_purge_hook
 from ccure_platform.preferences import register_product_preferences
@@ -115,6 +116,7 @@ __all__ = (
     "NotificationType",
     "create_notification",
     "fan_out_notification",
+    "register_notification_categories",
     # the platform's audit log: the one write path every module records through
     "log_audit_event",
     # offboarding contract — a module detaches its own data from a purged user

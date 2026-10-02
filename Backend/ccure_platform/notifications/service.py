@@ -41,23 +41,49 @@ logger = logging.getLogger("routers.notifications")
 
 
 class NotificationType(str, Enum):
-    """Available notification types."""
+    """
+    The notification types the platform itself raises.
 
-    SCAN_COMPLETED = "scan_completed"
-    SCAN_FAILED = "scan_failed"
-    SCAN_PAUSED = "scan_paused"
-    VULNERABILITY_FOUND = "vulnerability_found"
+    ``type`` is stored and returned as a plain string, so a product raises its
+    own types as strings or as its own enum (``create_notification`` takes any):
+    Audit's (``scan_completed`` …) are ``scans/notification_vocabulary.py``'s.
+    """
+
     SYSTEM_MESSAGE = "system_message"
     ADMIN_NOTICE = "admin_notice"
 
 
 class NotificationCategory(str, Enum):
-    """Notification categories for filtering."""
+    """The categories the platform itself uses, for filtering."""
 
-    SCAN = "scan"
     SECURITY = "security"
     SYSTEM = "system"
     ADMIN = "admin"
+
+
+#: Categories products have registered, in registration order. The platform
+#: does not know them; it needs them for one thing — the summary lists every
+#: category, zero when nothing is unread, as it always has.
+_product_categories: list[str] = []
+
+
+def register_notification_categories(*categories: "str | Enum") -> None:
+    """A product declares the categories it raises. Registering one twice is a no-op."""
+    for category in categories:
+        value = _text(category)
+        if value not in _product_categories and value not in {
+            c.value for c in NotificationCategory
+        }:
+            _product_categories.append(value)
+
+
+def known_categories() -> list[str]:
+    """Every category the summary lists: products' first, then the platform's."""
+    return [*_product_categories, *(c.value for c in NotificationCategory)]
+
+
+def _text(value: "str | Enum") -> str:
+    return value.value if isinstance(value, Enum) else str(value)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -112,7 +138,7 @@ def summary_payload(db: Session, user_id: str) -> dict:
         .all()
     )
 
-    category_counts = {cat: 0 for cat in ["scan", "security", "system", "admin"]}
+    category_counts = {cat: 0 for cat in known_categories()}
     for cat, count in unread_by_category:
         category_counts[cat] = count
 
@@ -153,8 +179,8 @@ def publish_summary(db: Session, user_id: str) -> None:
 def create_notification(
     db: Session,
     user_id: str,
-    notification_type: NotificationType,
-    category: NotificationCategory,
+    notification_type: "NotificationType | str",
+    category: "NotificationCategory | str",
     title: str,
     message: str,
     related_scan_id: str | None = None,
@@ -167,10 +193,10 @@ def create_notification(
     Called internally when scan completes, vulnerability is found, etc.
     """
     notification = Notification(
-        id=gen_notification_id(user_id, notification_type.value),
+        id=gen_notification_id(user_id, _text(notification_type)),
         user_id=user_id,
-        type=notification_type.value,
-        category=category.value,
+        type=_text(notification_type),
+        category=_text(category),
         title=title,
         message=message,
         related_scan_id=related_scan_id,
@@ -190,8 +216,8 @@ def fan_out_notification(
     db: Session,
     org_id: str,
     target_roles: list[str],
-    notification_type: NotificationType,
-    category: NotificationCategory,
+    notification_type: "NotificationType | str",
+    category: "NotificationCategory | str",
     title: str,
     message: str,
     related_scan_id: str | None = None,
@@ -219,10 +245,10 @@ def fan_out_notification(
             continue
 
         notification = Notification(
-            id=gen_notification_id(user.id, notification_type.value),
+            id=gen_notification_id(user.id, _text(notification_type)),
             user_id=user.id,
-            type=notification_type.value,
-            category=category.value,
+            type=_text(notification_type),
+            category=_text(category),
             title=title,
             message=message,
             related_scan_id=related_scan_id,

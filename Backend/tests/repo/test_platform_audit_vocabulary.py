@@ -38,10 +38,10 @@ BASELINE: dict[str, tuple[int, str]] = {
         "and their severities; split needs a start-up registration (follow-up)",
     ),
     "notifications/service.py": (
-        18,
-        "persisted + API + frontend contract: notification types/categories "
-        "(scan_completed, vulnerability_found, 'scan') and related_scan_id "
-        "(notification-ownership follow-up)",
+        7,
+        "persisted + API + frontend contract: related_scan_id (column, response "
+        "field, parameters) — kept for compatibility; Audit's types and the "
+        "'scan' category moved to scans/notification_vocabulary.py (follow-up 5)",
     ),
     "notifications/router.py": (
         1,

@@ -65,6 +65,7 @@ from routers.scan_schedules import router as scan_schedules_router
 # Audit registers what it detaches from a purged account (ccure_platform/offboarding.py).
 import ccure_audit.offboarding  # noqa: F401,E402
 import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
+import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 

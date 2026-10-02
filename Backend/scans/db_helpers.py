@@ -15,6 +15,10 @@ from ccure_platform.api import log_audit_event
 from db.base import gen_scan_id, gen_scan_phase_id, utcnow
 from ccure_platform import api as platform_api
 from db.models.scans import Scan, ScanPhase
+from scans.notification_vocabulary import (
+    AuditNotificationCategory,
+    AuditNotificationType,
+)
 from scans.asset_syncer import (
     sync_asset_discovery,
     sync_host_discovery,
@@ -311,15 +315,14 @@ def update_scan_phase1(
         try:
             from ccure_platform.api import (
                 NotificationCategory,
-                NotificationType,
                 create_notification,
             )
 
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.SCAN_COMPLETED,
-                category=NotificationCategory.SCAN,
+                notification_type=AuditNotificationType.SCAN_COMPLETED,
+                category=AuditNotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Host Discovery scan on {scan.target_str} has finished. Found {scan.active_hosts} active hosts.",
                 related_scan_id=str(scan.id),
@@ -591,7 +594,6 @@ def update_scan_phase(
         try:
             from ccure_platform.api import (
                 NotificationCategory,
-                NotificationType,
                 create_notification,
                 fan_out_notification,
             )
@@ -601,7 +603,7 @@ def update_scan_phase(
                 create_notification(
                     db=db,
                     user_id=scan.created_by,
-                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
                     title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
@@ -613,7 +615,7 @@ def update_scan_phase(
                     db=db,
                     org_id=str(scan.org_id),
                     target_roles=["superadmin", "org_admin"],
-                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
                     title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
@@ -624,8 +626,8 @@ def update_scan_phase(
                 create_notification(
                     db=db,
                     user_id=scan.created_by,
-                    notification_type=NotificationType.SCAN_COMPLETED,
-                    category=NotificationCategory.SCAN,
+                    notification_type=AuditNotificationType.SCAN_COMPLETED,
+                    category=AuditNotificationCategory.SCAN,
                     title=f"Scan {scan.scan_no} Completed",
                     message=f"Scan on {scan.target_str} has finished successfully.",
                     related_scan_id=str(scan.id),
@@ -712,11 +714,10 @@ def mark_scan_failed(
     try:
         from ccure_platform.api import (
             NotificationCategory,
-            NotificationType,
             create_notification,
         )
 
-        ntype = NotificationType.SCAN_FAILED
+        ntype = AuditNotificationType.SCAN_FAILED
         title = f"Scan {scan.scan_no} Failed"
         if status == "unreachable":
             title = f"Scan {scan.scan_no} Unreachable"
@@ -725,7 +726,7 @@ def mark_scan_failed(
             db=db,
             user_id=scan.created_by,
             notification_type=ntype,
-            category=NotificationCategory.SCAN,
+            category=AuditNotificationCategory.SCAN,
             title=title,
             message=f"Scan on {scan.target_str} {status}: {reason}",
             related_scan_id=str(scan.id),
@@ -894,7 +895,6 @@ def create_completed_scan(
     try:
         from ccure_platform.api import (
             NotificationCategory,
-            NotificationType,
             create_notification,
             fan_out_notification,
         )
@@ -913,7 +913,7 @@ def create_completed_scan(
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.VULNERABILITY_FOUND,
+                notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
                 title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
@@ -925,7 +925,7 @@ def create_completed_scan(
                 db=db,
                 org_id=str(scan.org_id),
                 target_roles=["superadmin", "org_admin"],
-                notification_type=NotificationType.VULNERABILITY_FOUND,
+                notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
                 title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
@@ -936,8 +936,8 @@ def create_completed_scan(
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.SCAN_COMPLETED,
-                category=NotificationCategory.SCAN,
+                notification_type=AuditNotificationType.SCAN_COMPLETED,
+                category=AuditNotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Credentialed scan on {scan.target_str} has finished successfully.",
                 related_scan_id=str(scan.id),

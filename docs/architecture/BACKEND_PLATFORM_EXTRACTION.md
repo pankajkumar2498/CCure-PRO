@@ -132,3 +132,44 @@ cascade: `archive_organization` archives and never deletes, and the database's
 - **Deployment.** The running API and workers load the old code until
   restarted; `ccure-worker` and `ccure-beat` must be restarted to register
   `ccure_platform.audit_log.tasks` (step 1).
+
+## 8. Investigated: "notification stream closed before its first heartbeat" (3 Oct 2026)
+
+A production log line after the `bc73f02` deployment:
+`Notification stream for user … closed after 0.0s, before its first heartbeat`.
+**Harmless; no code change.**
+
+- **Where:** the `finally` block of `event_generator()` in
+  `ccure_platform/notifications/router.py` (`GET /notifications/stream`). It warns
+  when a connection ends in under 20 s.
+- **What it is:** the **client** ending the request early — a full page load, or
+  a layout remount (every page renders its own layout, so each navigation aborts
+  the open stream and the hook opens a new one). A browser run of 8 page loads
+  and 4 in-app navigations opened 18 streams, all `200`, with gateway durations
+  from 0 to 29 s.
+- **Why it is rare and inconsistent:** a disconnect cancels the generator, and
+  the cleanup in `finally` awaits (`unsubscribe`, `close`). Whether it reaches
+  the warning line depends on whether those awaits suspend after the
+  cancellation: when they do, nothing is logged. In the browser run above 15
+  aborts of under 2 s logged nothing; production has logged the warning three
+  times, so its presence is not an incident and its absence proves nothing. The
+  comment's reading ("not routine churn") is out of date now that short-lived
+  connections are routine, but changing the level is not needed.
+- **Redis:** pub/sub only. With an isolated copy of the router and a real Redis,
+  aborted clients left no subscription behind (subscriber count 0 immediately
+  and 30 s later). No error path (`heartbeat-only mode`, `stream failed`) fired.
+- **No notifications are lost by it:** the stream is a live push. The record is
+  the `notifications` table; each (re)connect begins with a `connected` frame
+  carrying the current unread summary, and the frontend hook reconnects with
+  backoff and fetches `GET /notifications/summary` after a drop. An event
+  published while no stream is connected is not replayed live (pub/sub), but the
+  notification is in the inbox and in the count.
+- **Not caused by the move:** the router body is byte-identical to
+  `routers/notifications.py` apart from the import path (the same module object
+  through the alias), and it keeps the logger name `routers.notifications`. The
+  same warning was logged on the previous code on 2 Oct at 12:52:58 and 12:53:17
+  (a real user, 0.0 s and 0.2 s).
+- **Added:** `tests/auth/test_notification_stream_contract.py`, because the
+  stream had no test: first frame `connected` with the durable summary, relay of
+  a published message under its own event name, heartbeat on a quiet interval,
+  cleanup on close, and the warning as a known client-side early close.

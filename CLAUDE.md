@@ -495,8 +495,17 @@ each folder's `README.md` says what belongs in it.
   in the same change as its `tile_state` becomes `available`
   (`Backend/tests/repo/test_platform_entry_routes.py`).
 - **The route guard holds the rule, the product names the pages**: a refused
-  route falls back to Audit's `modules/audit/config/accessFallbacks.js`, never
-  to CCure Home (D12-8).
+  *Audit* route falls back to Audit's `modules/audit/config/accessFallbacks.js`,
+  never to CCure Home (D12-8). A refused *platform* route (`/admin/*`) is not
+  redirected anywhere: it passes `deniedElement={<AccessDenied />}` and the user is
+  told so inside the Platform Shell. Unauthenticated visitors still go to `/login`.
+- **Notification presentation is the product's.** The shared panel knows the
+  platform's types and categories only; Audit's icons, tones and `Scans` tab are
+  `modules/audit/config/notificationPresentation.js`, handed to the shell by the
+  composition root (`NotificationPresentationProvider`).
+- **The AMT page's permission is one constant**, `AMT_PERMISSION`
+  (`modules/audit/config/permissions.js`): `settings:update`, which the backend
+  also requires, shared by the sidebar item and the route.
 - **Tests that read source import anchors from `src/__tests__/testPaths.js`**;
   never count `..` — the frontend twin of the backend's `testpaths` rule.
 - **Shared platform capabilities live in the shell, not in a product** (owner

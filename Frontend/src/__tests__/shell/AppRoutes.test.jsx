@@ -431,17 +431,19 @@ describe("D12-8 — authentication and authorisation are unchanged", () => {
     expect(where().from).toBe("/dashboard");
   });
 
-  it("a refused permission keeps its fallback and never lands on CCure Home", () => {
+  it("a refused platform route is refused in place: not CCure Home, not Audit", () => {
     visit("/admin/users");
-    expect(where().pathname).toBe("/audit-dashboard");
-    expect(page()).toBe("SecurityDashboard");
-    expect(api.get).not.toHaveBeenCalledWith("/platform/modules");
+    expect(where().pathname).toBe("/admin/users");
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeTruthy();
+    expect(page()).toBeNull(); // no Audit page rendered
+    expect(api.get).not.toHaveBeenCalledWith("/platform/modules/never");
   });
 
-  it("a refused user with no fallback goes to sign-in, not CCure Home", () => {
+  it("a refused user with nothing else to open is still refused in the platform, not sent to sign-in", () => {
     auth = signedIn([]);
     visit("/admin/roles");
-    expect(where().pathname).toBe("/login");
+    expect(where().pathname).toBe("/admin/roles");
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeTruthy();
   });
 
   it("a 403 from the product list is shown on CCure Home, not navigated away from", async () => {
@@ -454,5 +456,123 @@ describe("D12-8 — authentication and authorisation are unchanged", () => {
       "The server answered HTTP 403.",
     );
     expect(where().pathname).toBe("/");
+  });
+});
+
+const platformSidebarLists = () =>
+  [
+    ...document.querySelectorAll(
+      'nav[aria-label="Sections"] [id^="cc-navsec-"]',
+    ),
+  ].map((n) => n.textContent);
+
+describe("a denied platform route stays in the Platform Shell", () => {
+  const ADMIN_ROUTES = [
+    ["/admin/users", ["users:read"]],
+    ["/admin/users/deleted", ["users:read"]],
+    ["/admin/roles", ["roles:read"]],
+    ["/admin/organizations", ["organizations:read"]],
+    ["/admin/audit-logs", ["audit:read"]],
+  ];
+
+  it.each(ADMIN_ROUTES)("%s: an authorised user opens it", (path, perms) => {
+    auth = signedIn([...ANALYST, ...perms]);
+    visit(path);
+    expect(where().pathname).toBe(path);
+    expect(screen.queryByRole("heading", { name: "Access denied" })).toBeNull();
+  });
+
+  it.each(ADMIN_ROUTES)(
+    "%s: an authenticated user without the permission is refused in place",
+    (path) => {
+      auth = signedIn(ANALYST);
+      visit(path);
+      expect(where().pathname).toBe(path);
+      expect(
+        screen.getByRole("heading", { name: "Access denied" }),
+      ).toBeTruthy();
+      expect(where().pathname).not.toBe("/audit-dashboard");
+    },
+  );
+
+  it("email-domain rules are superadmin-only: an org admin is refused in place, a superadmin is not", () => {
+    auth = {
+      ...signedIn([...ANALYST, "users:read"]),
+      user: {
+        username: "oa",
+        role: { name: "org_admin", permissions: [...ANALYST, "users:read"] },
+      },
+    };
+    visit("/admin/email-domains");
+    expect(where().pathname).toBe("/admin/email-domains");
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeTruthy();
+  });
+
+  it("the denied page is in the platform's frame and offers no Audit navigation", () => {
+    auth = signedIn(ANALYST);
+    visit("/admin/users");
+    const sections = platformSidebarLists();
+    expect(sections).toContain("CCure Platform");
+    expect(sections.join("|")).not.toMatch(/Overview|Scanning|Intelligence/);
+    expect(
+      screen.getByRole("link", { name: "Back to CCure Home" }),
+    ).toBeTruthy();
+  });
+
+  it("an unauthenticated visitor still goes to sign-in", () => {
+    auth = { user: null, loading: false, authState: "anonymous" };
+    visit("/admin/users");
+    expect(where().pathname).toBe("/login");
+    expect(where().from).toBe("/admin/users");
+  });
+});
+
+describe("Audit's refusals are unchanged: they still fall back to an Audit page", () => {
+  it("a refused Audit route (AMT) falls back to the first Audit page the user may open", () => {
+    auth = signedIn(ANALYST); // no settings:update
+    visit("/admin/amt");
+    expect(where().pathname).toBe("/audit-dashboard");
+    expect(page()).toBe("SecurityDashboard");
+  });
+});
+
+describe("AMT Integration: the route and the sidebar share one permission", () => {
+  it("settings:update opens the page", () => {
+    auth = signedIn([...ANALYST, "settings:update"]);
+    visit("/admin/amt");
+    expect(where().pathname).toBe("/admin/amt");
+    expect(page()).toBe("AMTIntegration");
+  });
+
+  it("assets:update alone — what the route used to ask — does not", () => {
+    auth = signedIn([...ANALYST, "assets:update"]);
+    visit("/admin/amt");
+    expect(where().pathname).toBe("/audit-dashboard");
+    expect(page()).not.toBe("AMTIntegration");
+  });
+
+  it("a user with neither cannot reach it by URL", () => {
+    auth = signedIn(ANALYST);
+    visit("/admin/amt");
+    expect(page()).not.toBe("AMTIntegration");
+  });
+
+  it("the sidebar item and the route name the same permission", async () => {
+    const { AMT_PERMISSION } = await import("@audit/config/permissions");
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { SRC } = await import("../testPaths.js");
+    const layout = readFileSync(
+      path.join(SRC, "modules/audit/components/layout/AppLayout.jsx"),
+      "utf8",
+    );
+    const app = readFileSync(path.join(SRC, "App.jsx"), "utf8");
+    expect(AMT_PERMISSION).toEqual({ resource: "settings", action: "update" });
+    expect(layout).toMatch(
+      /route: "\/admin\/amt",\s+permission: AMT_PERMISSION/,
+    );
+    expect(app).toMatch(
+      /<PrivateRoute requiredPermission=\{AMT_PERMISSION\} \/>/,
+    );
   });
 });

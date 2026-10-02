@@ -1,7 +1,9 @@
 /**
  * src/shell/auth/PrivateRoute.jsx
  * Wraps protected routes. Shows spinner while auth state loads,
- * then redirects to /login if user is not authenticated.
+ * then redirects to /login if user is not authenticated. A signed-in user who
+ * is refused is redirected to the product's first permitted page, or shown
+ * `deniedElement` when the route supplies one (platform routes do).
  */
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
@@ -23,6 +25,11 @@ export default function PrivateRoute({
   requiredAny,
   requiredAll,
   superadminOnly = false,
+  // What a refused user sees instead of being redirected. A platform route
+  // passes the platform's own denied page, so the refusal stays in the Platform
+  // Shell; without it the guard sends the user to the product's first
+  // permitted page (accessFallback.jsx), as it always has.
+  deniedElement,
 }) {
   const { user, loading, authState, authMessage } = useAuth();
   const location = useLocation();
@@ -61,6 +68,7 @@ export default function PrivateRoute({
     (!requiredAll || canAll(user, requiredAll));
 
   if (!authorized) {
+    if (deniedElement) return deniedElement;
     return (
       <Navigate
         to={fallbackPathFor(user, location.pathname, fallbacks)}

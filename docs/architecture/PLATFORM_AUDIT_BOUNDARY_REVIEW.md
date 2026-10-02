@@ -65,3 +65,33 @@ listed one disappearing without the list being lowered.
 
 It fixed none of §3. It did not run the full suites or deploy: the final
 verification is a separate step.
+
+## 6. Resolved after the review (platform/product boundary and UX cleanup)
+
+Four of the items classified in §3 were fixed in one small change:
+
+- **AMT permission mismatch.** The `/admin/amt` route was gated on `assets:update`
+  while the sidebar item and the API (`POST /assets/import-amt`, the page's one
+  action) use `settings:update`. Both now use one constant, `AMT_PERMISSION`
+  (`modules/audit/config/permissions.js`) = `settings:update`. An analyst, who holds
+  `assets:update` but not `settings:update`, can no longer open the page by URL; an
+  org admin and a superadmin still can. No permission definition changed.
+- **Platform denied-route fallback.** A refused `/admin/*` route no longer
+  redirects to Audit's dashboard: `PrivateRoute` takes an optional `deniedElement`,
+  and the platform's administration routes pass `shell/pages/AccessDenied.jsx`, which
+  renders in the Platform Shell with a way back to CCure Home. Unauthenticated
+  visitors still go to `/login`; Audit's refusals (AMT among them) still fall back
+  to an Audit page.
+- **Platform authentication branding.** The five account emails (password reset,
+  MFA code, email verification, password changed, account approved) and the TOTP
+  issuer said "CCure Audit PRO"; they say "CCure". Behaviour, tokens, MFA secrets
+  and delivery are unchanged (only the issuer label in the provisioning URI for new
+  enrolments). **Not changed:** the sign-in screens' own brand marks and legal copy
+  (`src/pages/*`, D12-9) and the audit-trail PDF title/author
+  (`audit_log/export.py`, "CCure Audit PRO - audit trail export").
+- **Frontend shell notification vocabulary.** Audit's type icons and tones and its
+  `Scans` tab moved from `shell/notifications/NotificationsPanel.jsx` to
+  `modules/audit/config/notificationPresentation.js`, supplied by the composition
+  root through `NotificationPresentationProvider`. The panel is generic: an unknown
+  type renders with a neutral icon. Display with Audit's presentation is unchanged,
+  including the tab order.

@@ -40,6 +40,7 @@ import PrivateRoute from "@shell/auth/PrivateRoute";
 import AuthContext from "@shell/auth/AuthContext";
 import { AccessFallbackProvider } from "@shell/auth/accessFallback";
 import { AUDIT_ACCESS_FALLBACKS } from "@audit/config/accessFallbacks";
+import { AMT_PERMISSION } from "@audit/config/permissions";
 import api from "@shell/api/axiosInstance";
 import { SRC, AUDIT_SRC } from "../../../../testPaths";
 
@@ -994,12 +995,15 @@ describe("AMTIntegration — contract", () => {
   });
 
   describe("route permission", () => {
-    it("App.jsx mounts the page once, behind assets:update", () => {
+    it("App.jsx mounts the page once, behind AMT_PERMISSION (settings:update)", () => {
       const app = readFileSync(path.join(SRC, "App.jsx"), "utf8");
-      const gate = app.match(
-        /<Route\s+element=\{\s*<PrivateRoute\s+requiredPermission=\{\{\s*resource:\s*"([a-z_]+)",\s*action:\s*"([a-z_]+)",?\s*\}\}\s*\/>\s*\}\s*>\s*<Route\s+path="\/admin\/amt"\s+element=\{<AMTIntegration\s*\/>\}\s*\/>\s*<\/Route>/,
+      expect(app).toMatch(
+        /<Route\s+element=\{\s*<PrivateRoute\s+requiredPermission=\{AMT_PERMISSION\}\s*\/>\s*\}\s*>\s*<Route\s+path="\/admin\/amt"\s+element=\{<AMTIntegration\s*\/>\}\s*\/>\s*<\/Route>/,
       );
-      expect(gate?.slice(1)).toEqual(["assets", "update"]);
+      expect(AMT_PERMISSION).toEqual({
+        resource: "settings",
+        action: "update",
+      });
       expect(app.match(/<AMTIntegration\b/g)).toHaveLength(1);
     });
 
@@ -1017,14 +1021,7 @@ describe("AMTIntegration — contract", () => {
             <MemoryRouter initialEntries={["/admin/amt"]}>
               <Routes>
                 <Route
-                  element={
-                    <PrivateRoute
-                      requiredPermission={{
-                        resource: "assets",
-                        action: "update",
-                      }}
-                    />
-                  }
+                  element={<PrivateRoute requiredPermission={AMT_PERMISSION} />}
                 >
                   <Route path="/admin/amt" element={<AMTIntegration />} />
                 </Route>
@@ -1039,15 +1036,16 @@ describe("AMTIntegration — contract", () => {
         </AuthContext.Provider>,
       );
 
-    it("without assets:update the page never mounts and nothing is requested", async () => {
-      guarded(["assets:read", "scans:execute"]);
+    it("without settings:update the page never mounts and nothing is requested", async () => {
+      // assets:update — what the route used to ask — is not enough
+      guarded(["assets:read", "assets:update", "scans:execute"]);
       await settle();
       expect(screen.getByText("Fallback page")).toBeInTheDocument();
       expect(api.get).not.toHaveBeenCalled();
     });
 
-    it("with assets:update the page mounts and loads its statistics", async () => {
-      guarded(["assets:read", "assets:update"]);
+    it("with settings:update the page mounts and loads its statistics", async () => {
+      guarded(["assets:read", "settings:update"]);
       await settle();
       expect(screen.queryByText("Fallback page")).toBeNull();
       expect(statsCalls()).toHaveLength(1);

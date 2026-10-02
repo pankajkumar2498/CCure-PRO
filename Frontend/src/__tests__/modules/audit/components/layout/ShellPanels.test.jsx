@@ -19,6 +19,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import {
+  AUDIT_NOTIFICATION_CATEGORIES,
+  AUDIT_NOTIFICATION_TYPES,
+} from "@audit/config/notificationPresentation";
+import { NotificationPresentationProvider } from "@shell/notifications/notificationPresentation";
 import NotificationsPanel, {
   NotificationBell,
 } from "@shell/notifications/NotificationsPanel";
@@ -227,7 +232,14 @@ describe("NotificationsPanel", () => {
         : Promise.reject(new Error("x")),
     );
     const u = userEvent.setup();
-    render(<NotificationsPanel onClose={() => {}} />);
+    render(
+      <NotificationPresentationProvider
+        types={AUDIT_NOTIFICATION_TYPES}
+        categories={AUDIT_NOTIFICATION_CATEGORIES}
+      >
+        <NotificationsPanel onClose={() => {}} />
+      </NotificationPresentationProvider>,
+    );
     expect(
       await screen.findByText("No notifications available."),
     ).toBeInTheDocument();

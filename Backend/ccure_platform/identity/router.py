@@ -1804,7 +1804,7 @@ def enable_mfa(
     db.commit()
 
     provisioning_url = pyotp.TOTP(secret).provisioning_uri(
-        name=current_user.email, issuer_name="CCure Audit PRO"
+        name=current_user.email, issuer_name="CCure"
     )
 
     # Generate QR Code as Base64 Data URI

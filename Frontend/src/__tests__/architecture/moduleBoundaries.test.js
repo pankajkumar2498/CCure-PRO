@@ -489,3 +489,39 @@ describe("the platform header reaches no product", () => {
     expect([...owners].sort()).toEqual(["design-system", "shell"]);
   });
 });
+
+describe("the shared notification panel reaches no product", () => {
+  // The panel shows every product's notifications and knows the platform's own
+  // vocabulary only; a product describes its types and categories through the
+  // presentation context the composition root provides.
+  const closure = (start) => {
+    const byFrom = new Map();
+    for (const e of edges) {
+      if (!byFrom.has(e.from)) byFrom.set(e.from, []);
+      byFrom.get(e.from).push(e.to);
+    }
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      for (const to of byFrom.get(queue.shift()) || []) {
+        if (!seen.has(to)) {
+          seen.add(to);
+          queue.push(to);
+        }
+      }
+    }
+    return seen;
+  };
+
+  it.each([
+    "src/shell/notifications/NotificationsPanel.jsx",
+    "src/shell/notifications/notificationPresentation.jsx",
+    "src/shell/notifications/useNotificationFeed.js",
+  ])("%s: its whole import closure is shell or design system", (start) => {
+    const owners = new Set([...closure(start)].map(ownerOf));
+    expect(
+      [...owners].every((o) => o === "shell" || o === "design-system"),
+    ).toBe(true);
+    expect(owners.has("audit")).toBe(false);
+  });
+});

@@ -27,6 +27,7 @@ import NotificationsPanel, {
 } from "@shell/notifications/NotificationsPanel";
 import HelpPanel from "./HelpPanel";
 import renderAuditSettings from "./auditSettings";
+import { AMT_PERMISSION } from "../../config/permissions";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 // Every icon is decorative — the control's text or aria-label carries the
@@ -301,7 +302,7 @@ const SIDEBAR_SECTIONS = [
         label: "AMT Integration",
         Icon: IcoSettings,
         route: "/admin/amt",
-        permission: { resource: "settings", action: "update" },
+        permission: AMT_PERMISSION,
       },
     ],
   },

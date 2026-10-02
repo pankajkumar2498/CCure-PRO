@@ -3,7 +3,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Dropdown notification center with:
  *   • Real-time unread badge on the bell icon
- *   • Category filter tabs (All / Scan / Security / System)
+ *   • Category filter tabs (All, then each product's and the platform's)
  *   • Mark individual / all as read
  *   • Delete individual notifications
  *   • Auto-polling every 30 seconds
@@ -27,6 +27,7 @@ import {
   deleteNotification,
 } from "../api/notifications";
 import { CcureTabs } from "../../design-system";
+import { useNotificationPresentation } from "./notificationPresentation";
 import "../navigation/navigation.css";
 import "./notifications.css";
 
@@ -70,30 +71,6 @@ const IcoTrash = () => <Icon d="M3 6h18M19 6l-1 14H6L5 6M9 6V4h6v2" />;
 const IcoCheck = () => <Icon d="M20 6L9 17l-5-5" />;
 const IcoChecks = () => <Icon d="M4 12l4 4L20 6M9 17l4-4" />;
 
-/* ── Category config ─────────────────────────────────────────────────────── */
-const CATEGORIES = [
-  { id: "all", label: "All" },
-  { id: "scan", label: "Scans" },
-  { id: "security", label: "Security" },
-  { id: "system", label: "System" },
-  { id: "admin", label: "Admin" },
-];
-
-/* ── Type icons / tones ──────────────────────────────────────────────────── */
-/* `tone` resolves to a token pair in app-shell.css (shn-item-icon--<tone>). */
-const TYPE_META = {
-  scan_completed: { emoji: "✅", tone: "success" },
-  scan_failed: { emoji: "❌", tone: "danger" },
-  scan_paused: { emoji: "⏸", tone: "warning" },
-  vulnerability_found: { emoji: "🚨", tone: "danger" },
-  system_message: { emoji: "ℹ️", tone: "info" },
-  admin_notice: { emoji: "🔔", tone: "primary" },
-};
-
-function getTypeMeta(type) {
-  return TYPE_META[type] || { emoji: "📢", tone: "neutral" };
-}
-
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 60) return "just now";
@@ -104,7 +81,7 @@ function timeAgo(iso) {
 
 /* ── Single notification item ────────────────────────────────────────────── */
 function NotifItem({ notif, onRead, onDelete }) {
-  const meta = getTypeMeta(notif.type);
+  const meta = useNotificationPresentation().typeMeta(notif.type);
   return (
     <div
       className={`shn-item ${!notif.is_read ? "shn-item--unread" : ""}`}
@@ -188,6 +165,7 @@ export default function NotificationsPanel({
   onUnreadChange,
   liveEvent,
 }) {
+  const { categories: CATEGORIES } = useNotificationPresentation();
   const [category, setCategory] = useState("all");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);

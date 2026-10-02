@@ -53,7 +53,7 @@ Frontend/
     │   ├── admin/             /admin/*: users, deleted users, organisations, roles, email domains, audit logs; adminNav (the one list)
     │   ├── account/           account dialog, change password, settings drawer (platform preferences)
     │   ├── notifications/     bell, panel, useNotificationFeed
-    │   ├── navigation/        CcureHomeLink, AdminMenu, AccountMenu, OrgSwitcher (+ hook), UserCard
+    │   ├── navigation/        CcureHomeLink, AccountMenu, OrgSwitcher (+ hook), UserCard
     │   ├── preferences/       PreferencesContext
     │   ├── layout/            PlatformLayout (the platform header + frame), ProductFrame
     │   ├── auth/              AuthContext, PrivateRoute, permissions, navVisibility, accessFallback
@@ -162,10 +162,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 `AuthProvider` and `PreferencesProvider` are the shell's
 (`@shell/auth/AuthContext`, `@shell/preferences/PreferencesContext`);
 `RootErrorBoundary` is Audit's (`@audit/components/common/RootErrorBoundary`).
-`App.jsx` wraps `<Routes>` in `AuditProviders`: Audit's `ScanProvider`, the
-shell's `ProductFrameProvider` supplying Audit's `AppLayout` as the frame of the
-shared administration screens, and the shell's
-`AccessFallbackProvider` carrying Audit's refused-route pages.
+`App.jsx` keeps two levels apart in the route tree. Audit's routes sit under an
+`AuditProduct` layout route that mounts Audit's `ScanProvider` and nothing else
+of Audit's; CCure Home, the product entry pages and the shared administration
+screens sit outside it and render in the shell's `PlatformLayout` (a left
+sidebar of Home, the registry's products and Administration). Audit's own
+`AppLayout` carries Audit's sidebar only. The shell's `AccessFallbackProvider`
+wraps both, carrying Audit's refused-route pages.
 
 ```mermaid
 graph TD

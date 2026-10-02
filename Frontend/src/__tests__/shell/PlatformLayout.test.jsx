@@ -13,6 +13,12 @@ import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import PlatformLayout from "@shell/layout/PlatformLayout";
+import real from "./../fixtures/platformModules.real.json";
+
+vi.mock("@shell/api/axiosInstance", () => ({
+  default: { get: vi.fn() },
+}));
+import api from "@shell/api/axiosInstance";
 
 let user;
 const logout = vi.fn();
@@ -83,6 +89,8 @@ const renderLayout = () =>
   );
 
 beforeEach(() => {
+  api.get.mockReset();
+  api.get.mockResolvedValue({ data: real });
   logout.mockReset();
   listOrganizations.mockClear();
   localStorage.clear();
@@ -90,9 +98,10 @@ beforeEach(() => {
 });
 
 describe("the shared platform navigation", () => {
-  it("carries CCure Home, notifications, settings, the account menu and Sign out", () => {
+  it("carries a platform sidebar, notifications, settings, the account menu and Sign out", async () => {
     renderLayout();
-    expect(screen.getByRole("link", { name: "CCure Home" })).toHaveAttribute(
+    const nav = screen.getByRole("navigation", { name: "Sections" });
+    expect(within(nav).getByRole("link", { name: "Home" })).toHaveAttribute(
       "href",
       "/",
     );
@@ -121,26 +130,27 @@ describe("the shared platform navigation", () => {
 });
 
 describe("Administration — the same gates as Audit's sidebar", () => {
-  const adminLinks = async () => {
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: /Administration/ }));
-    const menu = screen.getByRole("menu", { name: "Administration" });
-    return within(menu)
-      .getAllByRole("menuitem")
-      .map((a) => [a.textContent, a.getAttribute("href")]);
+  const adminLinks = () => {
+    const nav = screen.getByRole("navigation", { name: "Sections" });
+    const list = within(nav).getByRole("list", { name: "Administration" });
+    return within(list)
+      .getAllByRole("link")
+      .map((a) => [
+        a.querySelector(".cc-sidebar__label").textContent,
+        a.getAttribute("href"),
+      ]);
   };
 
   it("is absent for a user who may see none of the screens", () => {
     user = VIEWER;
     renderLayout();
-    expect(screen.queryByRole("button", { name: /Administration/ })).toBeNull();
+    expect(screen.queryByText("Administration")).toBeNull();
   });
 
   it("shows an org admin only what their permissions allow", async () => {
     user = ORG_ADMIN;
     renderLayout();
-    expect(await adminLinks()).toEqual([
+    expect(adminLinks()).toEqual([
       ["User Management", "/admin/users"],
       ["Deleted Users", "/admin/users/deleted"],
       ["Audit Logs", "/admin/audit-logs"],
@@ -150,7 +160,7 @@ describe("Administration — the same gates as Audit's sidebar", () => {
   it("shows a superadmin every screen, Email Domain Rules included", async () => {
     user = SUPERADMIN;
     renderLayout();
-    expect(await adminLinks()).toEqual([
+    expect(adminLinks()).toEqual([
       ["User Management", "/admin/users"],
       ["Deleted Users", "/admin/users/deleted"],
       ["Email Domain Rules", "/admin/email-domains"],
@@ -230,5 +240,49 @@ describe("settings", () => {
       screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent),
     ).toEqual(["Display", "Notifications"]);
     expect(screen.queryByText("Default scan type")).toBeNull();
+  });
+});
+
+describe("the platform sidebar is a product switcher", () => {
+  it("lists every product from the registry, in its order, and nothing of Audit's", async () => {
+    renderLayout();
+    const nav = screen.getByRole("navigation", { name: "Sections" });
+    const list = within(nav).getByRole("list", { name: "CCure Platform" });
+    await waitFor(() =>
+      expect(within(list).getAllByRole("link")).toHaveLength(
+        1 + real.modules.length,
+      ),
+    );
+    expect(
+      within(list)
+        .getAllByRole("link")
+        .map((a) => [
+          a.querySelector(".cc-sidebar__label").textContent,
+          a.getAttribute("href"),
+        ]),
+    ).toEqual([
+      ["Home", "/"],
+      ...real.modules.map((m) => [m.title, m.entry_path]),
+    ]);
+    for (const auditItem of [
+      /Scan Templates/,
+      /Asset Registry/,
+      /Compliance/,
+    ]) {
+      expect(screen.queryByText(auditItem)).toBeNull();
+    }
+  });
+
+  it("fetches the product list once for the sidebar and the page", async () => {
+    renderLayout();
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
+  });
+
+  it("says when the products could not be loaded, rather than listing none", async () => {
+    api.get.mockRejectedValue(new Error("boom"));
+    renderLayout();
+    expect(
+      await screen.findByText("Products could not be loaded"),
+    ).toBeInTheDocument();
   });
 });

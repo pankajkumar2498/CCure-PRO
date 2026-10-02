@@ -1,26 +1,33 @@
 /**
  * src/shell/layout/PlatformLayout.jsx
  * ─────────────────────────────────────────────────────────────────────────────
- * The platform's own page frame — CCure Home, the product entry pages, and any
- * shared screen rendered without a product's layout. After sign-in a person
- * lands here, so it carries the whole shared platform navigation:
+ * The CCure Platform Shell — the frame of CCure Home, the product entry pages
+ * and the shared administration screens. It is the platform's own and no
+ * product's: it never renders a product's navigation, and no product renders
+ * this one.
  *
- *   CCure Home · Administration (the /admin/* screens the user may see) ·
- *   organisation switcher (superadmin) · notifications · settings (platform
- *   preferences only) · account menu (My Account, Sign Out) · Sign out
+ *   LEFT SIDEBAR   "Which CCure product do I want to use?" — CCure Home, every
+ *                  product from the platform registry (fetched, never copied),
+ *                  and Administration (the /admin/* screens, by permission).
+ *   HEADER         organisation switcher (superadmin) · notifications ·
+ *                  settings (platform preferences only) · account menu ·
+ *                  sign out
  *
- * Every piece is the shell's own — the same components a product's layout
- * composes — so there is one implementation of each. Nothing here names or
- * imports a product: a product's own settings, actions and navigation belong
- * in that product's layout, never in this one.
+ * Choosing a product navigates to its entry address, which mounts that
+ * product's own layout with its own sidebar. Nothing here names or imports a
+ * product.
  */
 import { useCallback, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { CcureButton } from "../../design-system";
+import { useLocation, useNavigate } from "react-router-dom";
+import { CcureAppShell, CcureButton } from "../../design-system";
 import { useAuth } from "../auth/AuthContext";
 import { isSuperAdmin } from "../auth/permissions";
 import { usePreferences } from "../preferences/PreferencesContext";
-import AdminMenu from "../navigation/AdminMenu";
+import { SHARED_ADMIN_NAV } from "../admin/adminNav";
+import { canSeeNavItem } from "../auth/navVisibility";
+import useProductList, {
+  ProductListProvider,
+} from "../products/useProductList";
 import AccountMenu from "../navigation/AccountMenu";
 import OrgSwitcher from "../navigation/OrgSwitcher";
 import useOrganizationSwitcher from "../navigation/useOrganizationSwitcher";
@@ -33,7 +40,52 @@ import ProfileModal from "../account/ProfileModal";
 import SettingsDrawer from "../account/SettingsDrawer";
 import "./platform-layout.css";
 
+// The sidebar's sections. Products come from the registry; a failed or pending
+// request is said so in the sidebar rather than rendered as "no products".
+function platformSections(user, productList) {
+  const { status, products } = productList;
+  const productItems =
+    status === "ready"
+      ? products
+          .filter((p) => p.entryPath)
+          .map((p) => ({
+            id: `product-${p.key || p.entryPath}`,
+            label: p.title || "Unnamed product",
+            route: p.entryPath,
+          }))
+      : [
+          {
+            id: "products-status",
+            label:
+              status === "loading"
+                ? "Loading products…"
+                : "Products could not be loaded",
+            route: "/",
+            disabled: true,
+          },
+        ];
+  const admin = SHARED_ADMIN_NAV.filter((item) => canSeeNavItem(user, item));
+  return [
+    {
+      label: "CCure Platform",
+      items: [{ id: "home", label: "Home", route: "/" }, ...productItems],
+    },
+    ...(admin.length ? [{ label: "Administration", items: admin }] : []),
+  ];
+}
+
 export default function PlatformLayout({ children }) {
+  return (
+    <ProductListProvider>
+      <PlatformFrame>{children}</PlatformFrame>
+    </ProductListProvider>
+  );
+}
+
+function PlatformFrame({ children }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const productList = useProductList();
   const { user, logout } = useAuth();
   const { updateLocalPreferences } = usePreferences();
   const superadmin = isSuperAdmin(user);
@@ -65,82 +117,91 @@ export default function PlatformLayout({ children }) {
   }, []);
   const closeOrg = useCallback(() => setShowOrgMenu(false), []);
 
-  return (
-    <div className="pl-frame">
-      <header className="pl-header">
-        <Link to="/" className="pl-brand" aria-label="CCure Home">
-          <span className="pl-brand__name">CCure</span>
-          <span className="pl-brand__sub">Home</span>
-        </Link>
-        <div className="pl-header__actions">
-          <AdminMenu user={user} />
-          {superadmin ? (
-            <OrgSwitcher
-              selectedOrg={selectedOrg}
-              orgs={orgs}
-              loading={loadingOrgs}
-              open={showOrgMenu}
-              onToggle={() => {
-                const next = !showOrgMenu;
-                closeAll();
-                setShowOrgMenu(next);
-              }}
-              onClose={closeOrg}
-              onSwitch={(org) => {
-                setShowOrgMenu(false);
-                switchOrg(org);
-              }}
+  const headerActions = (
+    <>
+      {superadmin ? (
+        <OrgSwitcher
+          selectedOrg={selectedOrg}
+          orgs={orgs}
+          loading={loadingOrgs}
+          open={showOrgMenu}
+          onToggle={() => {
+            const next = !showOrgMenu;
+            closeAll();
+            setShowOrgMenu(next);
+          }}
+          onClose={closeOrg}
+          onSwitch={(org) => {
+            setShowOrgMenu(false);
+            switchOrg(org);
+          }}
+        />
+      ) : null}
+      <div className="sh-menu-anchor">
+        <NotificationBell
+          ref={bellRef}
+          unreadCount={unreadCount}
+          expanded={showNotifs}
+          onClick={() => {
+            const next = !showNotifs;
+            closeAll();
+            setShowNotifs(next);
+          }}
+        />
+        {showNotifs && (
+          <div className="pl-popover">
+            <NotificationsPanel
+              id="sh-notifications"
+              onClose={closeNotifs}
+              onUnreadChange={setUnreadCount}
+              liveEvent={notificationEvent}
             />
-          ) : null}
-          <div className="sh-menu-anchor">
-            <NotificationBell
-              ref={bellRef}
-              unreadCount={unreadCount}
-              expanded={showNotifs}
-              onClick={() => {
-                const next = !showNotifs;
-                closeAll();
-                setShowNotifs(next);
-              }}
-            />
-            {showNotifs && (
-              <div className="pl-popover">
-                <NotificationsPanel
-                  id="sh-notifications"
-                  onClose={closeNotifs}
-                  onUnreadChange={setUnreadCount}
-                  liveEvent={notificationEvent}
-                />
-              </div>
-            )}
           </div>
-          <button
-            type="button"
-            ref={settingsBtnRef}
-            className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn"
-            aria-label="Settings"
-            aria-expanded={showSettings}
-            aria-controls="sh-settings"
-            onClick={() => {
-              closeAll();
-              setShowSettings((s) => !s);
-            }}
-          >
-            <IcoSettings />
-          </button>
-          <AccountMenu
-            user={user}
-            onLogout={() => logout()}
-            onOpenProfile={() => setShowProfile(true)}
-          />
-          <CcureButton variant="ghost" size="sm" onClick={() => logout()}>
-            Sign out
-          </CcureButton>
-        </div>
-      </header>
-      <main className="pl-main" id="main-content">
+        )}
+      </div>
+      <button
+        type="button"
+        ref={settingsBtnRef}
+        className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn"
+        aria-label="Settings"
+        aria-expanded={showSettings}
+        aria-controls="sh-settings"
+        onClick={() => {
+          closeAll();
+          setShowSettings((s) => !s);
+        }}
+      >
+        <IcoSettings />
+      </button>
+      <AccountMenu
+        user={user}
+        onLogout={() => logout()}
+        onOpenProfile={() => setShowProfile(true)}
+      />
+      <CcureButton
+        variant="ghost"
+        size="sm"
+        className="pl-signout"
+        onClick={() => logout()}
+      >
+        Sign out
+      </CcureButton>
+    </>
+  );
+
+  return (
+    <>
+      <CcureAppShell
+        brand={{ name: "CCure", sub: "Platform", mark: "◈" }}
+        sections={platformSections(user, productList)}
+        currentPath={pathname}
+        onNavigate={(route) => navigate(route)}
+        headerActions={headerActions}
+        mainClassName="pl-main"
+        className="pl-shell"
+      >
         {children}
-      </main>
+      </CcureAppShell>
       {showSettings && (
         <SettingsDrawer
           id="sh-settings"
@@ -149,6 +210,6 @@ export default function PlatformLayout({ children }) {
         />
       )}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
-    </div>
+    </>
   );
 }

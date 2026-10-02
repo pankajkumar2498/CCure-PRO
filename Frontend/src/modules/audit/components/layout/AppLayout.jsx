@@ -4,7 +4,6 @@ import { useAuth } from "@shell/auth/AuthContext";
 import CcureHomeLink from "@shell/navigation/CcureHomeLink";
 import { canPermission, isSuperAdmin } from "@shell/auth/permissions";
 import { canSeeNavItem } from "@shell/auth/navVisibility";
-import { SHARED_ADMIN_NAV } from "@shell/admin/adminNav";
 import {
   CcureAppShell,
   CcureButton,
@@ -78,21 +77,6 @@ const IcoCheckCircle = () => (
   <Icon d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
 );
 const IcoTrendUp = () => <Icon d="M23 6l-9.5 9.5-5-5L1 18M17 6h6v6" />;
-const IcoUsers = () => (
-  <Icon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-);
-const IcoOrg = () => (
-  <Icon d="M3 21h18M3 7v1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7M4 21V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v17" />
-);
-const IcoShieldKey = () => (
-  <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM8 11h8M8 15h6" />
-);
-const IcoMail = () => (
-  <Icon d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6" />
-);
-const IcoList = () => (
-  <Icon d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-);
 const IcoSettings = () => (
   <Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.65.22 1h.38a2 2 0 1 1 0 4h-.38c0 .35-.08.69-.22 1z" />
 );
@@ -118,16 +102,6 @@ const IcoTopology = () => (
 );
 
 // ── Sidebar Definition ───────────────────────────────────────────────────────
-// Audit's icons for the shared administration items.
-const ADMIN_ICONS = {
-  "user-management": IcoUsers,
-  "deleted-users": IcoTrash,
-  "email-domains": IcoMail,
-  organizations: IcoOrg,
-  "roles-perms": IcoShieldKey,
-  "audit-logs": IcoList,
-};
-const withAdminIcon = (item) => ({ ...item, Icon: ADMIN_ICONS[item.id] });
 
 const SIDEBAR_SECTIONS = [
   {
@@ -317,13 +291,11 @@ const SIDEBAR_SECTIONS = [
     ],
   },
   {
-    label: "Administration",
-    // The shared administration screens come from the shell's one list, with
-    // the same gates; Audit adds its own AMT Integration in its usual place.
+    // Audit's own configuration only. User, organisation, role, email-domain
+    // and audit-log administration are the platform's: they live in the
+    // platform shell's sidebar, never in a product's.
+    label: "Audit Settings",
     items: [
-      ...SHARED_ADMIN_NAV.filter((item) => item.id !== "audit-logs").map(
-        withAdminIcon,
-      ),
       {
         id: "amt-integration",
         label: "AMT Integration",
@@ -331,9 +303,6 @@ const SIDEBAR_SECTIONS = [
         route: "/admin/amt",
         permission: { resource: "settings", action: "update" },
       },
-      ...SHARED_ADMIN_NAV.filter((item) => item.id === "audit-logs").map(
-        withAdminIcon,
-      ),
     ],
   },
 ];

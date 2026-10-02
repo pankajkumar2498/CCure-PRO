@@ -1445,8 +1445,8 @@ describe("Phase3Results — contract", () => {
       const baseAt = app.indexOf("<Route element={<PrivateRoute />}>");
       const firstGate = app.indexOf("requiredPermission", baseAt);
       for (const re of [
-        /<Route path="\/scan\/vulnerability-audit" element=\{<Phase3Results \/>\} \/>/,
-        /<Route path="\/scan\/:scanId\/phase3" element=\{<Phase3Results \/>\} \/>/,
+        /<Route\s+path="\/scan\/vulnerability-audit"\s+element=\{<Phase3Results \/>\}\s*\/>/,
+        /<Route\s+path="\/scan\/:scanId\/phase3"\s+element=\{<Phase3Results \/>\}\s*\/>/,
       ]) {
         const at = app.search(re);
         expect(at).toBeGreaterThan(baseAt);

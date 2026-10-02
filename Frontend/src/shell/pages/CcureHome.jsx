@@ -90,11 +90,11 @@ function ProductCard({ product, tileStates }) {
   );
 }
 
-export default function CcureHome() {
+function HomeContent() {
   const { status, products, tileStates, error, retry } = useProductList();
 
   return (
-    <PlatformLayout>
+    <>
       <h1 className="pl-title">CCure Home</h1>
       <p className="pl-lead">
         The CCure products and what each is responsible for. Choose where to go.
@@ -122,6 +122,14 @@ export default function CcureHome() {
           ))}
         </ul>
       ) : null}
+    </>
+  );
+}
+
+export default function CcureHome() {
+  return (
+    <PlatformLayout>
+      <HomeContent />
     </PlatformLayout>
   );
 }

@@ -29,6 +29,9 @@ vi.mock("@shell/api/notifications", () => ({
   deleteAllNotifications: vi.fn(),
 }));
 
+vi.mock("@shell/api/axiosInstance", () => ({
+  default: { get: vi.fn().mockResolvedValue({ data: { modules: [] } }) },
+}));
 vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: { username: "analyst" }, logout: vi.fn() }),
 }));
@@ -55,7 +58,7 @@ describe("ProductFrame", () => {
     );
     expect(screen.getByText("page body")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "CCure Home" }),
+      screen.getByRole("navigation", { name: "Sections" }),
     ).toBeInTheDocument();
   });
 

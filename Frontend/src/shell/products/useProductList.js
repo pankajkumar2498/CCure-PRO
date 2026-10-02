@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { fetchProductList, parseProductList } from "./productList";
 
 const LOADING = {
@@ -15,11 +22,12 @@ const LOADING = {
  * product list at all — not an empty one and not a built-in fallback — so a
  * page cannot render a failed request as "no products" or as a guessed list.
  */
-export default function useProductList() {
+function useFetchedProductList(enabled = true) {
   const [state, setState] = useState(LOADING);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let cancelled = false;
     setState(LOADING);
     fetchProductList()
@@ -35,9 +43,28 @@ export default function useProductList() {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [attempt, enabled]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   return { ...state, retry };
+}
+
+const ProductListContext = createContext(null);
+
+/**
+ * One fetch for the whole platform frame: `PlatformLayout` provides the list,
+ * so its sidebar and the page inside it (CCure Home, an entry page) read the
+ * same answer instead of asking the server twice.
+ */
+export function ProductListProvider({ children }) {
+  const value = useFetchedProductList(true);
+  return createElement(ProductListContext.Provider, { value }, children);
+}
+
+/** The provided list inside the platform frame; its own fetch outside one. */
+export default function useProductList() {
+  const provided = useContext(ProductListContext);
+  const own = useFetchedProductList(provided === null);
+  return provided ?? own;
 }

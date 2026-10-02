@@ -74,7 +74,7 @@ const BADGE = {
   [AVAILABILITY.UNKNOWN]: ["Status unknown", "warning"],
 };
 
-export default function ModuleEntryPage() {
+function EntryContent() {
   const { pathname } = useLocation();
   const { status, products, tileStates, error, retry } = useProductList();
   const address = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
@@ -86,7 +86,7 @@ export default function ModuleEntryPage() {
     const availability = availabilityOf(product, tileStates);
     const [badge, variant] = BADGE[availability];
     return (
-      <PlatformLayout>
+      <>
         <h1 className="pl-title">{product.title || "Unnamed product"}</h1>
         <p className="pl-lead">
           <CcureBadge variant={variant} dot>
@@ -98,12 +98,12 @@ export default function ModuleEntryPage() {
         ) : null}
         <Statement product={product} availability={availability} />
         <BackToHome />
-      </PlatformLayout>
+      </>
     );
   }
 
   return (
-    <PlatformLayout>
+    <>
       {status === "loading" ? (
         <ProductListLoading />
       ) : (
@@ -112,6 +112,14 @@ export default function ModuleEntryPage() {
           <BackToHome />
         </>
       )}
+    </>
+  );
+}
+
+export default function ModuleEntryPage() {
+  return (
+    <PlatformLayout>
+      <EntryContent />
     </PlatformLayout>
   );
 }

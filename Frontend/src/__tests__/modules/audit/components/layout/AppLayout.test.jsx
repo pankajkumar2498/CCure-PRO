@@ -344,20 +344,27 @@ describe("AppLayout — navigation gating (real permissions)", () => {
       "Scan Schedules",
       "Vulnerabilities",
       "Security Reports",
-      "User Management",
-      "Email Domain Rules",
-      "Organizations",
-      "Audit Logs",
+      "AMT Integration",
     ]) {
       expect(navButton(new RegExp("^" + label))).toBeTruthy();
     }
   });
 
-  it("hides the superadmin-only item from an org_admin who holds the permissions", async () => {
-    user = ORG_ADMIN;
+  it("carries no platform navigation: no product switcher, no shared administration", async () => {
     await renderShell();
-    expect(navButton(/User Management/)).toBeTruthy();
-    expect(navButton(/Email Domain Rules/)).toBeNull();
+    for (const label of [
+      /^Policy Pro/,
+      /^Rank/,
+      /^IR$/,
+      /^Home$/,
+      /User Management/,
+      /Email Domain Rules/,
+      /^Organizations/,
+      /Roles & Permissions/,
+      /Audit Logs/,
+    ]) {
+      expect(navButton(label)).toBeNull();
+    }
   });
 
   it("shows a viewer only what their permissions allow", async () => {
@@ -366,9 +373,8 @@ describe("AppLayout — navigation gating (real permissions)", () => {
     expect(navButton(/Security Dashboard/)).toBeTruthy();
     expect(navButton(/Asset Registry/)).toBeTruthy();
     expect(navButton(/Scan Templates/)).toBeNull();
-    expect(navButton(/User Management/)).toBeNull();
-    expect(navButton(/Audit Logs/)).toBeNull();
-    expect(screen.queryByText("Administration")).not.toBeInTheDocument();
+    expect(navButton(/AMT Integration/)).toBeNull();
+    expect(screen.queryByText("Audit Settings")).not.toBeInTheDocument();
   });
 
   it("navigates to the item's route on activation", async () => {

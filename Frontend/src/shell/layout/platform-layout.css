@@ -1,63 +1,7 @@
 /* Platform frame for CCure Home and the module entry pages. Tokens only. */
 
-.pl-frame {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--ccure-bg);
-  color: var(--ccure-text);
-  font-family: var(--ccure-font);
-}
-
-.pl-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-  min-height: var(--ccure-header-height);
-  padding: 0 var(--ccure-space-xl);
-  background: var(--ccure-surface);
-  border-bottom: 1px solid var(--ccure-border);
-}
-
-.pl-brand {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--ccure-space-xs);
-  color: var(--ccure-text);
-  text-decoration: none;
-  border-radius: var(--ccure-radius-sm);
-}
-
-.pl-brand:focus-visible {
-  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
-  outline-offset: var(--ccure-focus-ring-offset);
-}
-
-.pl-brand__name {
-  font-family: var(--ccure-font-display);
-  font-size: var(--ccure-text-lg);
-  font-weight: var(--ccure-weight-bold);
-}
-
-.pl-brand__sub {
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
-
-.pl-header__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  min-width: 0;
-}
-
 .pl-main {
-  flex: 1;
-  width: 100%;
   max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--ccure-space-2xl) var(--ccure-space-xl);
   box-sizing: border-box;
 }
 
@@ -127,14 +71,6 @@
   margin-top: var(--ccure-space-md);
 }
 
-@media (max-width: 40rem) {
-  .pl-header,
-  .pl-main {
-    padding-left: var(--ccure-space-md);
-    padding-right: var(--ccure-space-md);
-  }
-}
-
 /* ── Shared navigation in the platform header ────────────────────────────── */
 /* The notification panel opens below the bell, aligned to its right edge —
    the same placement a product's layout gives it. */
@@ -143,4 +79,24 @@
   right: 0;
   top: calc(100% + var(--ccure-space-xs));
   z-index: var(--ccure-z-drawer);
+}
+
+/* On a phone the header has no room for a second sign-out control: the account
+   menu beside it carries Sign Out, so the standalone button yields. */
+@media (max-width: 40rem) {
+  .pl-signout {
+    display: none;
+  }
+  .pl-shell .cc-header__right {
+    gap: var(--ccure-space-xs);
+  }
+  .pl-shell .sh-org-btn .cc-badge {
+    display: none;
+  }
+  .pl-shell .sh-org-name {
+    max-width: 5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

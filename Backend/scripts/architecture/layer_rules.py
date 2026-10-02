@@ -294,6 +294,10 @@ RULES: tuple[Rule, ...] = (
         # 28 Sep 2026), so moving auth/ here in step 8.2 needs no exception.
         exempt_targets=(
             "core.audit",
+            # The audit-log retention task (ccure_platform.audit_log.tasks) calls
+            # the retention service, which is the platform's own and moves here
+            # in a later step, as core.audit will.
+            "core.audit_retention",
             "core.celery_app",
             "core.ip_resolver",
             "core.rate_limiter",

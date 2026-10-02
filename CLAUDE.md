@@ -4375,7 +4375,8 @@ request that drew the same connection.
 
 **No HTTP endpoint deletes an audit row.** `/admin/audit-logs/retention/preview`
 is read-only and superadmin-only; execution is beat
-(`ccure.tasks.purge_expired_audit_logs`) or
+(`ccure.tasks.purge_expired_audit_logs`, defined in
+`ccure_platform/audit_log/tasks.py` since the task-hub split) or
 `scripts/audit/purge_audit_retention.py --apply`. Destroying audit history
 therefore needs shell access to the host as well as the role.
 

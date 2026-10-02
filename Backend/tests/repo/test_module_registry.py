@@ -383,6 +383,7 @@ def test_celery_carries_exactly_its_previous_task_modules_and_queues():
         "core.email_security_tasks",
         "auth.mail_tasks",
         "ccure_platform.identity.account_maintenance",
+        "ccure_platform.audit_log.tasks",
     ]
     assert [q.name for q in celery_app.conf.task_queues] == [
         "default",

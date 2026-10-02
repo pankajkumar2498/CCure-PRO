@@ -22,6 +22,7 @@ celery_app = Celery(
         "core.email_security_tasks",  # Email domain screening and account hygiene
         "auth.mail_tasks",  # Outgoing application email
         "ccure_platform.identity.account_maintenance",  # Account and session purges
+        "ccure_platform.audit_log.tasks",  # Audit-log retention
         # Each enabled module's task modules (Phase 11). Empty until a module
         # declares one: Audit's are the list above until Phase 16, and Policy Pro
         # and Rank are disabled.

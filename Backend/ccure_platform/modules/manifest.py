@@ -92,6 +92,11 @@ class ModuleManifest:
     routers: tuple[str, ...] = ()
     #: Dotted names of the modules defining this module's Celery tasks.
     task_modules: tuple[str, ...] = ()
+    #: Dotted names of the modules that register this module's audit-event
+    #: definitions (severities). Loaded by the platform by name, in whichever
+    #: process writes an audit event — the API, a Celery worker, a script — so a
+    #: module's events are classified wherever they are emitted.
+    audit_event_modules: tuple[str, ...] = ()
     #: Celery queues this module declares (none until a module needs isolation).
     queues: tuple[str, ...] = ()
     #: ``"package.module:attribute"`` of each SQLAlchemy ``MetaData`` holding the
@@ -142,6 +147,13 @@ class ModuleManifest:
             if not self._inside(module):
                 refuse(
                     f"task module {module!r} is outside the module's package {self.package!r}"
+                )
+        for module in self.audit_event_modules:
+            if not _DOTTED.match(module):
+                refuse(f"audit-event module {module!r} is not a dotted module name")
+            if not self._inside(module):
+                refuse(
+                    f"audit-event module {module!r} is outside the module's package {self.package!r}"
                 )
         for queue in self.queues:
             if not _QUEUE.match(queue):

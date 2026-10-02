@@ -9,8 +9,14 @@
 # Audit's code into ccure_audit one capability at a time. Declaring them here as
 # well would mount every Audit router twice.
 
+# The one thing Audit does declare is where its audit-event definitions are
+# registered: the platform loads that module by name in every process that
+# writes an audit event (API, Celery workers, scripts), so Audit's events are
+# classified wherever they are emitted — see ccure_audit/audit_events.py.
+
 [module]
 key = "audit"
 routers = []
 task_modules = []
 models = []
+audit_event_modules = ["ccure_audit.audit_events"]

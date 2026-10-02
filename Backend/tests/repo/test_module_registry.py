@@ -59,6 +59,10 @@ def test_each_module_declares_its_contributions_in_its_own_manifest(package, key
         "routers": (),
         "task_modules": (),
         "models": (),
+        # Audit alone declares where its audit-event definitions are registered
+        "audit_event_modules": (
+            ("ccure_audit.audit_events",) if key == "audit" else ()
+        ),
     }
 
 

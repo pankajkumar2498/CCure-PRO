@@ -50,7 +50,7 @@ from ccure_platform.modules.manifest import (
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 #: What a module's manifest.toml may declare, under ``[module]``.
-CONTRIBUTIONS = ("routers", "task_modules", "models")
+CONTRIBUTIONS = ("routers", "task_modules", "models", "audit_event_modules")
 
 
 def load_contributions(package: str, key: str, root: Path = BACKEND_ROOT) -> dict:
@@ -287,6 +287,12 @@ def get(key: str) -> ModuleManifest:
 def task_modules() -> list[str]:
     """Task modules of the enabled modules, for ``celery_app``'s ``include``."""
     return [t for m in enabled_modules() for t in m.task_modules]
+
+
+def audit_event_modules() -> list[str]:
+    """Audit-event definition modules of the enabled modules, loaded by name by
+    the audit log (``ccure_platform/audit_log/taxonomy.py``)."""
+    return [t for m in enabled_modules() for t in m.audit_event_modules]
 
 
 def queues() -> list[str]:

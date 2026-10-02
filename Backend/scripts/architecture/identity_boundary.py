@@ -131,6 +131,8 @@ PLATFORM_API_SURFACE = frozenset(
         "register_notification_categories",
         # the platform's audit log — every module records events through it
         "log_audit_event",
+        # a module registers the severities of its own audit events
+        "register_event_severities",
         # a product registers the schema of its own user-preference block
         "register_product_preferences",
         # the offboarding contract: a module registers what it detaches from a

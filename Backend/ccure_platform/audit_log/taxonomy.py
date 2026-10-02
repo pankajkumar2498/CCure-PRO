@@ -22,10 +22,13 @@ from ccure_platform._legacy import adopt_legacy_name
 adopt_legacy_name(__name__, "core.audit_taxonomy")
 
 
+import logging
 import re
 from typing import Any
 
 # ─── Severity levels ─────────────────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
 
 INFO = "info"
 LOW = "low"
@@ -44,9 +47,13 @@ DEFAULT_SEVERITY = MEDIUM
 
 # ─── Action → severity ───────────────────────────────────────────────────────
 #
-# Covers every action string emitted by this codebase as of the audit review.
-# Adding a new audited action means adding it here; the inventory test in
-# tests/audit/ fails on an action a router emits that this table does not name.
+# The **platform's** events: sign-in and accounts (``user.*``, ``auth.*``),
+# tenancy (``organization.*``) and the platform's administration and audit log
+# (``admin.*``, ``audit.*``). A product's own events are that product's: Audit's
+# (scans, findings, credentials, schedules, remediation, compliance, reports) are
+# registered by ``ccure_audit/audit_events.py``. Together they cover every action
+# string emitted by this codebase; the inventory test in tests/audit/ fails on an
+# action nobody classifies. The values are the ones the single table always held.
 
 SEVERITY_BY_ACTION: dict[str, str] = {
     # ── Authentication ──────────────────────────────────────────────────────
@@ -108,117 +115,11 @@ SEVERITY_BY_ACTION: dict[str, str] = {
     "admin.email_domain_rule_deleted": MEDIUM,
     "auth.email_domain_blocked": MEDIUM,
     "auth.email_domain_flagged": LOW,
-    # ── Scanning ────────────────────────────────────────────────────────────
-    "scan.created": LOW,
-    "scan.completed": INFO,
-    "scan.failed": MEDIUM,
-    "scan.cancelled": LOW,
-    # ── Web application scanning ────────────────────────────────────────────
-    # Launching a web scan sends sqlmap, ffuf and nuclei at a URL the caller
-    # names — active attack traffic from this host against somebody's
-    # application — so it outranks launching a network scan. The entry also
-    # records the authorisation confirmation the caller gave, which is the
-    # only durable evidence it was given.
-    "web_scan.created": MEDIUM,
-    "web_scan.cancelled": LOW,
-    # Triage outcomes, one per status, weighted like their network-finding
-    # counterparts: accepting a risk is the decision an auditor looks for;
-    # marking one false positive removes it from every count built on it.
-    "web_finding.open": INFO,
-    "web_finding.reopened": LOW,
-    "web_finding.confirmed": LOW,
-    "web_finding.fixed": LOW,
-    "web_finding.false_positive": MEDIUM,
-    "web_finding.accepted_risk": HIGH,
-    # ── Scan scheduling (Phase 1) ───────────────────────────────────────────
-    # Creating or editing a schedule decides what this platform will point at
-    # a network unattended, repeatedly, from now on — so it outranks starting
-    # one scan by hand ("scan.created": LOW). Deleting one is the same weight
-    # as creating: an assurance scan that silently stops running is a
-    # compliance gap nobody is told about.
-    "scan_schedule.created": MEDIUM,
-    "scan_schedule.updated": MEDIUM,
-    "scan_schedule.deleted": MEDIUM,
-    # Enable/disable is the switch that decides whether the above happens at
-    # all, and is the most likely thing to be changed quietly.
-    "scan_schedule.enabled": MEDIUM,
-    "scan_schedule.disabled": MEDIUM,
-    # A person pressing Run Now is one scan, deliberately taken, and is
-    # rated like the manual scan it produces.
-    "scan_schedule.run_now": LOW,
-    # The scheduler switching a schedule off after repeated failures. HIGH
-    # because nobody asked for it and the effect is that assurance scanning
-    # silently stops — exactly the state a reviewer needs to find.
-    "scan_schedule.auto_disabled": HIGH,
-    # ── Credentials (Phase 2) ───────────────────────────────────────────────
-    # Storing a credential gives this platform a way into a host, so it
-    # outranks ordinary configuration changes. Deletion matches: a scheduled
-    # assurance scan whose credential vanished stops producing findings, and
-    # nothing else announces that.
-    "credential.created": HIGH,
-    "credential.updated": HIGH,
-    "credential.deleted": HIGH,
-    # A validation is one deliberate authentication attempt against one named
-    # host. LOW on its own; the value is the trail — repeated failures against
-    # many hosts is credential spraying wearing an administrator's session.
-    "credential.validated": LOW,
-    # ── Assets ──────────────────────────────────────────────────────────────
-    "asset_updated": LOW,
-    "amt_inventory_imported": MEDIUM,
-    # ── Findings ────────────────────────────────────────────────────────────
-    # Accepting or ignoring a finding is a decision to live with a risk, and
-    # is the finding action an auditor comes looking for.
-    "finding_open": INFO,
-    "finding_resolved": LOW,
-    "finding_false_positive": MEDIUM,
-    "finding_accepted": HIGH,
-    "finding_ignored": HIGH,
-    # ── Remediation (GAP-14) ────────────────────────────────────────────────
-    # Ownership and workflow are routine bookkeeping. Accepting a risk is not:
-    # it is a decision to live with a finding, and it is the remediation action
-    # an auditor comes looking for — the same reading `finding_accepted` above
-    # already gets. Withdrawing one is HIGH for the mirror reason: it is the
-    # record of a decision being reversed.
-    "remediation.assigned": INFO,
-    "remediation.unassigned": LOW,
-    "remediation.state_changed": LOW,
-    "remediation.note_added": INFO,
-    "remediation.risk_accepted": HIGH,
-    "remediation.acceptance_withdrawn": HIGH,
-    # Changing the SLA changes when every future finding is reported overdue,
-    # across the whole organisation, from one settings edit.
-    "remediation.sla_policy_updated": HIGH,
-    # ── Compliance ──────────────────────────────────────────────────────────
-    "install_framework": MEDIUM,
-    "uninstall_framework": HIGH,
-    "compliance.rule_updated": HIGH,
-    "create_policy": MEDIUM,
-    "trigger_scan": LOW,
-    "attest_control": HIGH,
-    "upload_evidence": LOW,
-    "delete_evidence": HIGH,
-    "create_schedule": LOW,
-    "update_schedule": LOW,
-    "delete_schedule": MEDIUM,
-    "create_credential": HIGH,
-    "delete_credential": MEDIUM,
-    "export_soa": MEDIUM,
-    "export_report": MEDIUM,
-    # Remediation: requesting is routine, approving executes something on a
-    # host, and bypassing the maker-checker queue removes the second pair of
-    # eyes that the queue exists to provide.
-    "request_remediation": LOW,
-    "approve_remediation": HIGH,
-    "reject_remediation": MEDIUM,
-    "cancel_remediation": LOW,
-    "request_rollback": LOW,
-    "approve_rollback": HIGH,
-    "emergency_bypass_remediation": CRITICAL,
-    "emergency_bypass_rollback": CRITICAL,
-    "request_waiver": MEDIUM,
-    "approve_waiver": HIGH,
-    # ── Reports ─────────────────────────────────────────────────────────────
-    "report.downloaded": LOW,
+    # Emitted by POST /auth/service-token (Phase 9.5) and, until now, unclassified:
+    # it took the unmapped default, which is MEDIUM, so naming MEDIUM here records
+    # what the rows already say and changes no stored severity. A service
+    # credential being exchanged for a token is an authentication event.
+    "service.token_issued": MEDIUM,
     # ── Audit trail itself ──────────────────────────────────────────────────
     # Taking a copy of the audit trail off the platform is a security event in
     # its own right; purging it is the most sensitive operation in the module.
@@ -227,11 +128,99 @@ SEVERITY_BY_ACTION: dict[str, str] = {
 }
 
 
+# ─── Product event definitions ───────────────────────────────────────────────
+#
+# A module registers its events' severities (``register_event_severities``). The
+# module that does so is named in its manifest (``audit_event_modules``) and is
+# imported **by this module, by name, the first time a severity is resolved** —
+# so every process that can write an audit event has the definitions, whichever
+# of them is the API, a Celery worker, the web worker or a script. A caller never
+# has to remember to import a module for its events to be classified.
+#
+# A severity is computed here and then stored on the row, so a process that
+# classified an event wrongly would write the wrong value permanently. Two rules
+# follow: a declared definitions module that cannot be imported raises
+# (``AuditDefinitionsUnavailable``) instead of letting its events take the
+# default; and an action nobody classified is logged, once, not silently defaulted.
+
+_registered: dict[str, str] = {}
+_sources: dict[str, str] = {}
+_loaded = False
+_warned: set[str] = set()
+
+
+class AuditDefinitionsUnavailable(RuntimeError):
+    """A module's audit-event definitions are declared but cannot be loaded."""
+
+
+def register_event_severities(source: str, severities: dict[str, str]) -> None:
+    """
+    Register a module's ``{action: severity}``. Registering the same mapping again
+    is a no-op; an action the platform or another module already defines, with a
+    different severity, or an unknown severity level, is refused.
+    """
+    for action, level in severities.items():
+        if level not in SEVERITY_RANK:
+            raise ValueError(f"{source}: {action!r} has unknown severity {level!r}")
+        if action in SEVERITY_BY_ACTION and SEVERITY_BY_ACTION[action] != level:
+            raise ValueError(f"{source}: {action!r} is a platform event")
+        known = _registered.get(action)
+        if known is not None and known != level:
+            raise ValueError(
+                f"{source}: {action!r} is already {known!r} (from {_sources[action]})"
+            )
+    for action, level in severities.items():
+        _registered[action] = level
+        _sources.setdefault(action, source)
+
+
+def ensure_definitions_loaded() -> None:
+    """Import every enabled module's declared definitions module, once."""
+    global _loaded
+    if _loaded:
+        return
+    import importlib
+
+    from ccure_platform.modules import registry
+
+    _loaded = True  # set first: a definitions module imports this package
+    try:
+        for name in registry.audit_event_modules():
+            try:
+                importlib.import_module(name)
+            except Exception as exc:  # noqa: BLE001 - re-raised, typed
+                raise AuditDefinitionsUnavailable(
+                    f"audit-event definitions {name!r} are declared in a module "
+                    f"manifest but cannot be loaded: {exc!r}. Refusing to classify "
+                    "events without them."
+                ) from exc
+    except BaseException:
+        _loaded = False
+        raise
+
+
+def all_severities() -> dict[str, str]:
+    """The platform's table and every registered module's, merged."""
+    ensure_definitions_loaded()
+    return {**SEVERITY_BY_ACTION, **_registered}
+
+
 def severity_for(action: str | None) -> str:
     """Resolve an action string to its severity, defaulting conservatively."""
     if not action:
         return DEFAULT_SEVERITY
-    return SEVERITY_BY_ACTION.get(action, DEFAULT_SEVERITY)
+    ensure_definitions_loaded()
+    level = SEVERITY_BY_ACTION.get(action) or _registered.get(action)
+    if level is not None:
+        return level
+    if action not in _warned:
+        _warned.add(action)
+        logger.warning(
+            "Audit action %r is classified by no module; recorded as %s",
+            action,
+            DEFAULT_SEVERITY,
+        )
+    return DEFAULT_SEVERITY
 
 
 # ─── Redaction ───────────────────────────────────────────────────────────────

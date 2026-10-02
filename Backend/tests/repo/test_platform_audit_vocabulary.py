@@ -33,9 +33,10 @@ PATTERN = re.compile(r"scan|asset|vulnerab|finding|compliance|remediation", re.I
 #: file -> (count, what it is). The classification is in the architecture doc.
 BASELINE: dict[str, tuple[int, str]] = {
     "audit_log/taxonomy.py": (
-        40,
-        "persisted data: audit_logs.action names (scan.*, finding.*, web_scan.*, …) "
-        "and their severities; split needs a start-up registration (follow-up)",
+        1,
+        "persisted data: the platform's own 'organization.scan_scope_changed' "
+        "event (the organisation plan's scan scope); Audit's events moved to "
+        "ccure_audit/audit_events.py (follow-up 6)",
     ),
     "notifications/service.py": (
         7,

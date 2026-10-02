@@ -63,6 +63,7 @@ from ccure_platform.accounts import (
     user,
     user_display_names,
 )
+from ccure_platform.audit_log.taxonomy import register_event_severities
 from ccure_platform.audit_log.writer import log_audit_event
 from ccure_platform.notifications.service import (
     NotificationCategory,
@@ -119,6 +120,7 @@ __all__ = (
     "register_notification_categories",
     # the platform's audit log: the one write path every module records through
     "log_audit_event",
+    "register_event_severities",
     # offboarding contract — a module detaches its own data from a purged user
     "register_user_purge_hook",
     # preferences — a product registers the schema of its own preference block

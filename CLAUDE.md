@@ -451,7 +451,11 @@ The platform's backend now matches the frontend's Platform Shell. Record:
 - **Notification vocabulary is the product's.** Audit's types and the `scan`
   category are `scans/notification_vocabulary.py` (registered category; the platform
   stores plain strings). `related_scan_id` stays for compatibility.
-- **Still open:** Audit vocabulary inside platform strings (audit-event names) and Audit-shaped permission atoms in the
+- **Audit-event severities are the product's.** Audit's definitions are
+  `ccure_audit/audit_events.py`, declared in its manifest (`audit_event_modules`) and
+  loaded by name by the platform in every process that writes an event; declared
+  definitions that cannot load raise instead of defaulting.
+- **Still open:** Audit-shaped permission atoms in the
   platform's tables. Classified in
   [`docs/architecture/PLATFORM_AUDIT_VOCABULARY.md`](docs/architecture/PLATFORM_AUDIT_VOCABULARY.md);
   `tests/repo/test_platform_audit_vocabulary.py` lets it only fall.

@@ -15,8 +15,8 @@ from core.audit import log_audit_event
 from core.audit_taxonomy import (
     DEFAULT_SEVERITY,
     REDACTED,
-    SEVERITY_BY_ACTION,
     SEVERITY_LEVELS,
+    all_severities,
     is_sensitive_key,
     redact_changes,
     severity_for,
@@ -31,7 +31,7 @@ def test_every_mapped_severity_is_a_known_level():
     """A typo in the table would otherwise produce a severity nothing filters on."""
     unknown = {
         action: level
-        for action, level in SEVERITY_BY_ACTION.items()
+        for action, level in all_severities().items()
         if level not in SEVERITY_LEVELS
     }
     assert (

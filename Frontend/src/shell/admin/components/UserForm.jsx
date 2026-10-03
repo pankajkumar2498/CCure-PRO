@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { checkUsername, checkEmail } from "../../api/auth";
 import { useDebounce } from "../../hooks/useDebounce";
-import { isSuperAdmin } from "../../auth/permissions";
+import { canSwitchOrganisation } from "../../auth/permissions";
 import {
   CcureButton,
   CcureInput,
@@ -82,7 +82,8 @@ export default function UserForm({
   }, [debouncedEmail, mode, user]);
 
   const submitLabel = mode === "create" ? "Create user" : "Save changes";
-  const isSuperadmin = isSuperAdmin(currentUser);
+  // may place a user in any organisation: cross-organisation reach, not a role name
+  const isSuperadmin = canSwitchOrganisation(currentUser);
 
   useEffect(() => {
     if (mode === "edit" && user) {

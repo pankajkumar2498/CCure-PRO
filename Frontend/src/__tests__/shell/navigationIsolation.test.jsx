@@ -28,21 +28,26 @@ vi.mock("@shell/api/notifications", () => ({
   deleteAllNotifications: vi.fn(),
 }));
 vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
-vi.mock("@shell/auth/AuthContext", () => ({
-  default: null,
-  useAuth: () => ({
-    isAuthenticated: true,
-    loading: false,
-    user: {
-      id: 1,
-      username: "root",
-      email: "root@example.test",
-      org_id: "o-1",
-      role: { name: "superadmin", permissions: [] },
-    },
-    logout: vi.fn(),
-  }),
-}));
+vi.mock("@shell/auth/AuthContext", async () => {
+  const { personaFrom } = await import("../fixtures/authorization");
+  const user = personaFrom({
+    id: 1,
+    username: "root",
+    email: "root@example.test",
+    org_id: "o-1",
+    role: { name: "superadmin", permissions: [] },
+  });
+  return {
+    default: null,
+    useAuth: () => ({
+      isAuthenticated: true,
+      loading: false,
+      user,
+      logout: vi.fn(),
+    }),
+  };
+});
+
 vi.mock("@shell/api/admin", () => ({
   listOrganizations: vi.fn().mockResolvedValue({ organizations: [] }),
 }));

@@ -43,12 +43,12 @@
     }
   },
   "summary": {
-    "total": 231,
+    "total": 232,
     "rbac3_role_name_sites": 40,
     "rbac3_role_name_migrated": 13,
     "rbac3_role_name_migrated_rbac5": 20,
     "rbac3_role_name_deferred_final": 7,
-    "migrated": 197,
+    "migrated": 198,
     "deferred": 34,
     "migrated_paths": [
       "assets:read",
@@ -1275,6 +1275,22 @@
       "site_id": "ccure_platform/identity/router.py::::role_name_role_identity_compare::None#1"
     },
     {
+      "file": "ccure_platform/identity/router.py",
+      "line": 1201,
+      "function": "_authorization_for",
+      "mechanism": "resolve_active_organisation",
+      "legacy_permission": null,
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "ccure_platform/identity/router.py::_authorization_for::resolve_active_organisation::platform.organization.switch#1"
+    },
+    {
       "file": "ccure_platform/rbac/dependencies.py",
       "line": 158,
       "function": "",
@@ -1364,7 +1380,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 63,
+      "line": 67,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -1380,7 +1396,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 189,
+      "line": 193,
       "function": "list_assets",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1396,7 +1412,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 296,
+      "line": 300,
       "function": "debug_reconcile",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1412,7 +1428,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 365,
+      "line": 369,
       "function": "list_global_certificates",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1428,7 +1444,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 481,
+      "line": 485,
       "function": "list_global_services",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1444,7 +1460,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 579,
+      "line": 583,
       "function": "list_service_assets",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1460,7 +1476,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 643,
+      "line": 647,
       "function": "get_coverage_stats",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1476,7 +1492,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 752,
+      "line": 756,
       "function": "get_reconciliation_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1492,7 +1508,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1038,
+      "line": 1042,
       "function": "get_asset",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1508,7 +1524,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1065,
+      "line": 1069,
       "function": "get_asset_services",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1524,7 +1540,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1134,
+      "line": 1138,
       "function": "get_asset_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -1540,7 +1556,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1202,
+      "line": 1206,
       "function": "get_asset_changelog",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1556,7 +1572,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1317,
+      "line": 1321,
       "function": "update_asset",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1572,7 +1588,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1368,
+      "line": 1372,
       "function": "add_tag",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1588,7 +1604,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1393,
+      "line": 1397,
       "function": "remove_tag",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1604,7 +1620,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1422,
+      "line": 1426,
       "function": "add_note",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1620,7 +1636,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1549,
+      "line": 1553,
       "function": "import_amt_inventory",
       "mechanism": "require_permission",
       "legacy_permission": "settings:update",
@@ -2486,7 +2502,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 41,
+      "line": 45,
       "function": "_enforce_credentialed_scan_scope",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2502,7 +2518,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 163,
+      "line": 167,
       "function": "scan_credentialed",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -2518,7 +2534,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 197,
+      "line": 201,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2534,7 +2550,7 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 279,
+      "line": 283,
       "function": "scan_credentialed",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2550,7 +2566,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 158,
+      "line": 162,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2566,7 +2582,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 338,
+      "line": 342,
       "function": "credential_types",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2582,7 +2598,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 432,
+      "line": 436,
       "function": "list_credentials",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2598,7 +2614,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 450,
+      "line": 454,
       "function": "create_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:create",
@@ -2614,7 +2630,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 531,
+      "line": 535,
       "function": "get_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2630,7 +2646,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 545,
+      "line": 549,
       "function": "update_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:update",
@@ -2646,7 +2662,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 628,
+      "line": 632,
       "function": "validate_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:validate",
@@ -2662,7 +2678,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 754,
+      "line": 758,
       "function": "delete_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:delete",
@@ -2678,7 +2694,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 53,
+      "line": 57,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2694,7 +2710,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 67,
+      "line": 71,
       "function": "get_dashboard_summary",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2710,7 +2726,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 274,
+      "line": 278,
       "function": "get_risk_breakdown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2726,7 +2742,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 391,
+      "line": 395,
       "function": "get_vuln_trends",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2742,7 +2758,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 445,
+      "line": 449,
       "function": "get_top_assets",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2758,7 +2774,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 492,
+      "line": 496,
       "function": "get_top_cves",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2774,7 +2790,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 566,
+      "line": 570,
       "function": "get_services_exposure",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2790,7 +2806,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 607,
+      "line": 611,
       "function": "get_tls_health",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2806,7 +2822,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 667,
+      "line": 671,
       "function": "get_http_headers",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2822,7 +2838,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 724,
+      "line": 728,
       "function": "get_compliance",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2838,7 +2854,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 897,
+      "line": 901,
       "function": "get_asset_breakdown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2854,7 +2870,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 951,
+      "line": 955,
       "function": "get_scan_activity",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2870,7 +2886,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1013,
+      "line": 1017,
       "function": "get_insights",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2886,7 +2902,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1168,
+      "line": 1172,
       "function": "get_web_scan_summary",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2902,7 +2918,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1344,
+      "line": 1348,
       "function": "get_web_owasp_scorecard",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2918,7 +2934,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1406,
+      "line": 1410,
       "function": "get_web_scan_trends",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2934,7 +2950,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1487,
+      "line": 1491,
       "function": "get_web_findings_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2950,7 +2966,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1567,
+      "line": 1571,
       "function": "get_web_endpoints_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2966,7 +2982,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 47,
+      "line": 51,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -2982,7 +2998,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 98,
+      "line": 102,
       "function": "list_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -2998,7 +3014,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 295,
+      "line": 299,
       "function": "list_findings_grouped",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3014,7 +3030,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 445,
+      "line": 449,
       "function": "get_finding",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3030,7 +3046,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 622,
+      "line": 626,
       "function": "update_finding_status",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3046,7 +3062,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 795,
+      "line": 799,
       "function": "update_finding_notes",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3062,7 +3078,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 53,
+      "line": 57,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -3078,7 +3094,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 155,
+      "line": 159,
       "function": "get_scan_quota",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3094,7 +3110,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 424,
+      "line": 428,
       "function": "scan_host_discovery",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3110,7 +3126,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 612,
+      "line": 616,
       "function": "scan_asset_discovery",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3126,7 +3142,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 683,
+      "line": 687,
       "function": "scan_vulnerability_audit",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3142,7 +3158,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 738,
+      "line": 742,
       "function": "scan_phases",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3158,7 +3174,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 112,
+      "line": 116,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -3174,7 +3190,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 274,
+      "line": 278,
       "function": "remediation_summary",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3190,7 +3206,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 399,
+      "line": 403,
       "function": "overdue_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3206,7 +3222,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 427,
+      "line": 431,
       "function": "pending_verification",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3222,7 +3238,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 456,
+      "line": 460,
       "function": "finding_remediation",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3238,7 +3254,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 472,
+      "line": 476,
       "function": "finding_history",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3254,7 +3270,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 538,
+      "line": 542,
       "function": "get_sla_policy",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3270,7 +3286,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 557,
+      "line": 561,
       "function": "set_sla_policy",
       "mechanism": "require_permission",
       "legacy_permission": "settings:update",
@@ -3286,7 +3302,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 627,
+      "line": 631,
       "function": "assign",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3302,7 +3318,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 703,
+      "line": 707,
       "function": "set_state",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3318,7 +3334,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 760,
+      "line": 764,
       "function": "append_note",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3334,7 +3350,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 794,
+      "line": 798,
       "function": "accept_finding_risk",
       "mechanism": "require_permission",
       "legacy_permission": "findings:accept_risk",
@@ -3350,7 +3366,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 856,
+      "line": 860,
       "function": "withdraw_finding_acceptance",
       "mechanism": "require_permission",
       "legacy_permission": "findings:accept_risk",
@@ -3638,7 +3654,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 98,
+      "line": 102,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -3654,7 +3670,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 305,
+      "line": 309,
       "function": "list_policies",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3670,7 +3686,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 332,
+      "line": 336,
       "function": "policy_settings",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3686,7 +3702,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 356,
+      "line": 360,
       "function": "validate_policy_body",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3702,7 +3718,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 377,
+      "line": 381,
       "function": "create_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:create",
@@ -3718,7 +3734,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 444,
+      "line": 448,
       "function": "get_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3734,7 +3750,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 459,
+      "line": 463,
       "function": "update_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3750,7 +3766,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 549,
+      "line": 553,
       "function": "enable_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3766,7 +3782,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 604,
+      "line": 608,
       "function": "set_policy_status",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3782,7 +3798,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 676,
+      "line": 680,
       "function": "new_policy_version",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:create",
@@ -3798,7 +3814,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 780,
+      "line": 784,
       "function": "policy_usage",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3814,7 +3830,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 830,
+      "line": 834,
       "function": "delete_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:delete",
@@ -3846,7 +3862,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 96,
+      "line": 100,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -3862,7 +3878,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 455,
+      "line": 459,
       "function": "list_timezones",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3878,7 +3894,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 474,
+      "line": 478,
       "function": "list_selectable_credentials",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3894,7 +3910,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 521,
+      "line": 525,
       "function": "list_schedules",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3910,7 +3926,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 541,
+      "line": 545,
       "function": "create_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:create",
@@ -3926,7 +3942,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 624,
+      "line": 628,
       "function": "get_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3942,7 +3958,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 639,
+      "line": 643,
       "function": "update_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:update",
@@ -3958,7 +3974,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 741,
+      "line": 745,
       "function": "set_enabled",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:update",
@@ -3974,7 +3990,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 781,
+      "line": 785,
       "function": "run_now",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:execute",
@@ -3990,7 +4006,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 829,
+      "line": 833,
       "function": "list_runs",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -4006,7 +4022,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 854,
+      "line": 858,
       "function": "delete_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:delete",
@@ -4118,7 +4134,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 67,
+      "line": 73,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
@@ -4134,7 +4150,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 451,
+      "line": 457,
       "function": "start_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -4150,7 +4166,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 608,
+      "line": 614,
       "function": "list_web_scans",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4166,7 +4182,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 645,
+      "line": 651,
       "function": "get_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4182,7 +4198,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 696,
+      "line": 702,
       "function": "get_web_scan_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -4198,7 +4214,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 744,
+      "line": 750,
       "function": "get_web_scan_assets",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4214,7 +4230,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 783,
+      "line": 789,
       "function": "get_web_scan_parameters",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4230,7 +4246,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 866,
+      "line": 872,
       "function": "get_web_scan_forms",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4246,7 +4262,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 914,
+      "line": 920,
       "function": "get_web_scan_api_operations",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4262,7 +4278,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 967,
+      "line": 973,
       "function": "cancel_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -4278,7 +4294,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1037,
+      "line": 1043,
       "function": "triage_finding",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -4294,7 +4310,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1073,
+      "line": 1079,
       "function": "triage_finding",
       "mechanism": "user_has_permission",
       "legacy_permission": "findings:accept_risk",
@@ -4310,7 +4326,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1130,
+      "line": 1136,
       "function": "get_finding_screenshot",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -4326,7 +4342,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1172,
+      "line": 1178,
       "function": "download_web_scan_report",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4342,7 +4358,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1279,
+      "line": 1285,
       "function": "web_scan_progress_ws",
       "mechanism": "acts_across_organisations",
       "legacy_permission": null,

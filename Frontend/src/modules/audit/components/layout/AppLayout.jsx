@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
 import CcureHomeLink from "@shell/navigation/CcureHomeLink";
-import { canPermission, isSuperAdmin } from "@shell/auth/permissions";
+import { canPermission, canSwitchOrganisation } from "@shell/auth/permissions";
 import { canSeeNavItem } from "@shell/auth/navVisibility";
 import {
   CcureAppShell,
@@ -321,7 +321,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const location = useLocation();
   const { pathname, search } = location;
   const { user, logout } = useAuth();
-  const isSuperadmin = isSuperAdmin(user);
+  const isSuperadmin = canSwitchOrganisation(user);
   const canStartScans = hasPermission(user, {
     resource: "scans",
     action: "execute",

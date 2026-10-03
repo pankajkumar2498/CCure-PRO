@@ -731,12 +731,12 @@ function AttestationEvidence({ files, onRemove, children }) {
 
 export default function ComplianceWorkspace() {
   const { user } = useAuth();
-  const roleName = (user?.role?.name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-  const isComplianceAdmin =
-    roleName === "superadmin" || roleName === "org_admin";
+  // Installing or removing a framework is the manage_frameworks capability — a
+  // permission, not a role name (RBAC-6).
+  const isComplianceAdmin = canPermission(
+    user,
+    "audit.compliance.manage_frameworks",
+  );
   /* Two atoms this workspace had no screen for. Measured on the live grants:
      `manage_schedules` is analyst and above, `approve_exception` is org_admin
      and above — deciding that the organisation will carry a compliance gap is

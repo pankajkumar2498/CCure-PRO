@@ -107,7 +107,7 @@ let permissions = new Set([
 let superadmin = true;
 vi.mock("@shell/auth/permissions", () => ({
   can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
-  isSuperAdmin: () => superadmin,
+  canSwitchOrganisation: () => superadmin,
   denyMessage: "You do not have permission to perform this action.",
 }));
 

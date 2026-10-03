@@ -71,36 +71,55 @@ vi.mock("@shell/layout/ProductFrame", () => ({
   ),
 }));
 
-/* Personas, shaped exactly as AuthContext hands them out: `role` is an object
-   with `name` and `permissions`. */
+/* Personas, shaped as AuthContext hands them out: the profile plus the backend's
+   `authorization` payload (RBAC-6). The role object is a display label here — what a
+   persona may do is only what its payload lists. */
+const ATOMS = {
+  "users:read": ["platform.user.read"],
+  "users:create": ["platform.user.create"],
+  "users:update": ["platform.user.update"],
+  "users:delete": ["platform.user.delete"],
+  "roles:read": ["platform.role.read"],
+  "organizations:read": ["platform.organization.read"],
+};
+const authz = (atoms, reach = false) => ({
+  contract: 1,
+  source: "platform",
+  home_org_id: "7",
+  active_org_id: "7",
+  permissions: {
+    platform: [],
+    organization: atoms.flatMap((atom) => ATOMS[atom]),
+  },
+  can_switch_organisation: reach,
+  assignments: [],
+  atoms: ATOMS,
+});
 const SUPERADMIN = {
   id: 1,
   username: "root",
   org_id: 7,
   role: { name: "superadmin", permissions: [] },
+  authorization: authz(Object.keys(ATOMS), true),
 };
 const ORG_ADMIN = {
   id: 2,
   username: "orgadmin",
   org_id: 7,
-  role: {
-    name: "org_admin",
-    permissions: [
-      { resource: "users", action: "read" },
-      { resource: "users", action: "create" },
-      { resource: "users", action: "update" },
-      { resource: "users", action: "delete" },
-    ],
-  },
+  role: { name: "org_admin", permissions: [] },
+  authorization: authz([
+    "users:read",
+    "users:create",
+    "users:update",
+    "users:delete",
+  ]),
 };
 const VIEWER = {
   id: 3,
   username: "viewer",
   org_id: 7,
-  role: {
-    name: "viewer",
-    permissions: [{ resource: "users", action: "read" }],
-  },
+  role: { name: "viewer", permissions: [] },
+  authorization: authz(["users:read"]),
 };
 
 let currentUser = SUPERADMIN;

@@ -37,9 +37,10 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 }));
 
 let currentUser = { id: "u1", role: { name: "superadmin" } };
-vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
-}));
+vi.mock("@shell/auth/AuthContext", async () => {
+  const { personaFrom } = await import("../../../../fixtures/authorization");
+  return { useAuth: () => ({ user: personaFrom(currentUser) }) };
+});
 
 /** The live /settings payload, verbatim. */
 const SETTINGS = {

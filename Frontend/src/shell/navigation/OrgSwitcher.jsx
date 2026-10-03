@@ -1,5 +1,5 @@
 /**
- * src/shell/navigation/OrgSwitcher.jsx — the superadmin's organisation switcher.
+ * src/shell/navigation/OrgSwitcher.jsx — the organisation switcher.
  * ─────────────────────────────────────────────────────────────────────────────
  * Tenancy is a platform concern: the shell's HTTP client already sends the
  * chosen organisation (`activeOrgId`) with every request. The state lives in
@@ -11,9 +11,11 @@ import { CcureBadge } from "../../design-system";
 import useDismiss from "./useDismiss";
 import "./navigation.css";
 
-/* Superadmin only. A real menu button now: the legacy control was a
-   `<div onClick>` with no name, no state and no keyboard path. Selection
-   semantics are unchanged — write activeOrgId, then reload the document. */
+/* Shown only to an account the backend says may switch organisation
+   (`canSwitchOrganisation`). A real menu button: the legacy control was a
+   `<div onClick>` with no name, no state and no keyboard path. Selecting an
+   organisation asks the backend (AuthContext.switchOrganisation); the document
+   reloads only after it accepts. */
 export default function OrgSwitcher({
   selectedOrg,
   orgs,

@@ -248,7 +248,7 @@ def test_no_application_code_imports_the_new_authorization_api_yet():
     assert not offenders, offenders
 
 
-def test_auth_me_keeps_its_legacy_shape_and_gains_nothing_from_the_new_model(
+def test_auth_me_keeps_its_legacy_shape_and_adds_only_the_authorization_payload(
     client, auth_headers
 ):
     body = client.get("/auth/me", headers=auth_headers).json()
@@ -262,15 +262,16 @@ def test_auth_me_keeps_its_legacy_shape_and_gains_nothing_from_the_new_model(
         "mfa_enabled",
         "role",
         "organization",
+        "authorization",  # RBAC-6: the one addition, advisory for the UI
     }
     assert set(body["role"]) == {"name", "permissions"}
     assert all(set(p) == {"resource", "action"} for p in body["role"]["permissions"])
-    text = str(body).lower()
-    for new_thing in (
-        "authorization",
-        "effective_permissions",
-        "catalogue",
-        "display_name",
-        "rbac",
-    ):
+    # the legacy part is unchanged and exposes no RBAC structure
+    text = str({k: v for k, v in body.items() if k != "authorization"}).lower()
+    for new_thing in ("effective_permissions", "catalogue", "display_name", "rbac"):
         assert new_thing not in text, new_thing
+    # and the payload itself holds keys and scope, never ids or tables
+    blob = str(body["authorization"]).lower()
+    for structure in ("role_id", "rbac_", "role_key"):
+        assert structure not in blob, structure
+    assert body["authorization"]["contract"] == 1

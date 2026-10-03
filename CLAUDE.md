@@ -516,6 +516,15 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   (`rbac.org_switch.entered`, `rbac.scope.denied`, `rbac.escalation.refused`). Missing,
   inactive or unknown organisations fail closed. Paths `scope.active_organisation`,
   `scope.cross_organisation`, `scope.assign_role`. 9 role-name sites remain (RBAC-7/8).
+- **RBAC-6 = frontend authorization** (`docs/architecture/RBAC_FRONTEND_AUTHORIZATION.md`).
+  `/auth/me` carries `authorization` (`rbac/authorization_view.py`): permission keys by scope,
+  the validated active organisation, `can_switch_organisation`, display-only assignments, and the
+  legacy `atoms` vocabulary. The UI's one helper is `Frontend/src/shell/auth/authorization.js`
+  (`can(user, key, {scope, orgId})`): no role is an input, no wildcard, nothing invented;
+  `isSuperAdmin`/`hasRole` and `superadminOnly` are gone. Switching goes through the backend
+  (`GET /auth/me?org_id=`). `Frontend/authorization-inventory.json` (generated, tested) classifies
+  every remaining site (RBAC-7/8, display-only, retained). The frontend is advisory; the backend
+  enforces.
 - **Audit attribution: an event says who owns it, and nothing is ever attributed to an
   invented organisation.** `audit_logs` is tenant-bound (`org_id` NOT NULL). An event with an
   owning organisation (an organisation role; an organisation-scope assignment; a

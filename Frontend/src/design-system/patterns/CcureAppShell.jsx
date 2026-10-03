@@ -10,7 +10,7 @@ import CcureBadge from "../components/CcureBadge";
  * It is deliberately presentational. Navigation items, the active route, the
  * user block and every action are passed in, so this component has no opinion
  * about routing, permissions or authentication — which is what lets AppLayout
- * keep SIDEBAR_SECTIONS, canSeeNavItem and superadminOnly exactly as they were
+ * keep SIDEBAR_SECTIONS and canSeeNavItem exactly as they were
  * and hand this component only what survived the filter.
  *
  * ── Landmarks ───────────────────────────────────────────────────────────────

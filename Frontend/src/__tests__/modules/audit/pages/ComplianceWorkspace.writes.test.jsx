@@ -35,6 +35,7 @@ import path from "node:path";
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 import api from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -60,11 +61,20 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user }),
 }));
 
-const person = (roleName, id = 1) => ({
-  id,
-  username: `user-${id}`,
-  role: { name: roleName, permissions: ["compliance:read"] },
-});
+// What an account may do is the permissions the backend lists for it. Only the
+// administrators hold manage_frameworks (RBAC-6: a permission, not a role name).
+const person = (roleName, id = 1) =>
+  personaFrom({
+    id,
+    username: `user-${id}`,
+    role: {
+      name: roleName,
+      permissions:
+        roleName === "analyst"
+          ? ["compliance:read"]
+          : ["compliance:read", "compliance:manage_frameworks"],
+    },
+  });
 const ANALYST = person("analyst");
 const ORG_ADMIN = person("Org Admin", 2);
 const SUPERADMIN = person("superadmin", 3);

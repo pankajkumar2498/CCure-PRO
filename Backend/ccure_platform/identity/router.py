@@ -49,7 +49,7 @@ from ccure_platform.identity.registration_limits import (
 )
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
 from db.models import Organization, RefreshTokenSession, Role, User
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 from core.rate_limiter import limiter
 from sqlalchemy import or_
@@ -169,6 +169,8 @@ class UserOut(BaseModel):
     mfa_enabled: bool = False
     role: RoleOut | None = None
     organization: OrganizationOut | None = None
+    # RBAC-6: effective permission keys for the UI (advisory; the backend enforces)
+    authorization: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -1189,13 +1191,29 @@ def jwks(request: Request, response: Response):
     return key_set
 
 
+def _authorization_for(db: Session, user: User, requested_org: str | None) -> dict:
+    """The UI's authorization payload for the organisation the backend accepts as the
+    active one. The requested id is a request: the scope seam validates it (and, with
+    the scope paths on, audits the switch)."""
+    from ccure_platform.rbac.authorization_view import build_authorization
+    from ccure_platform.rbac.scope import resolve_active_organisation
+
+    active = resolve_active_organisation(user, requested_org)
+    return build_authorization(db, user, active)
+
+
 @router.get("/me", response_model=UserOut)
-def me(current_user: User = Depends(get_current_user)):
+def me(
+    org_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Return the profile of the currently authenticated user.
     Requires: Authorization: Bearer <access_token>
     """
     return {
+        "authorization": _authorization_for(db, current_user, org_id),
         "id": str(current_user.id),
         "org_id": str(current_user.org_id),
         "username": current_user.username,

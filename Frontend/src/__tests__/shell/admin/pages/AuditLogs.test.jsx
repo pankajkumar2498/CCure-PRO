@@ -51,8 +51,9 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 let superadmin = true;
 vi.mock("@shell/auth/permissions", () => ({
-  can: () => true,
-  isSuperAdmin: () => superadmin,
+  // retention is the platform-scope key; everything else the page asks is allowed
+  can: (_user, permission) =>
+    permission === "platform.audit_log.retention" ? superadmin : true,
   denyMessage: "You do not have permission to perform this action.",
 }));
 

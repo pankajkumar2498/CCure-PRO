@@ -21,7 +21,7 @@ import { useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CcureAppShell, CcureButton } from "../../design-system";
 import { useAuth } from "../auth/AuthContext";
-import { isSuperAdmin } from "../auth/permissions";
+import { canSwitchOrganisation } from "../auth/permissions";
 import { usePreferences } from "../preferences/PreferencesContext";
 import { SHARED_ADMIN_NAV } from "../admin/adminNav";
 import { canSeeNavItem } from "../auth/navVisibility";
@@ -88,7 +88,7 @@ function PlatformFrame({ children }) {
   const productList = useProductList();
   const { user, logout } = useAuth();
   const { updateLocalPreferences } = usePreferences();
-  const superadmin = isSuperAdmin(user);
+  const superadmin = canSwitchOrganisation(user);
 
   const [showNotifs, setShowNotifs] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

@@ -33,6 +33,7 @@ import path from "node:path";
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 import api from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -58,11 +59,14 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user }),
 }));
 
-const ADMIN = {
+const ADMIN = personaFrom({
   id: 7,
   username: "operator",
-  role: { name: "Org Admin", permissions: ["compliance:read"] },
-};
+  role: {
+    name: "Org Admin",
+    permissions: ["compliance:read", "compliance:manage_frameworks"],
+  },
+});
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 const ISO = "cfw_iso27001_2022";

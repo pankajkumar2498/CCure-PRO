@@ -7,7 +7,7 @@
  */
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { canPermission, canAny, canAll, isSuperAdmin } from "./permissions";
+import { canPermission, canAny, canAll } from "./permissions";
 import { useAccessFallbacks } from "./accessFallback";
 
 // The first candidate the user may open, other than the page just refused;
@@ -24,7 +24,6 @@ export default function PrivateRoute({
   requiredPermission,
   requiredAny,
   requiredAll,
-  superadminOnly = false,
   // What a refused user sees instead of being redirected. A platform route
   // passes the platform's own denied page, so the refusal stays in the Platform
   // Shell; without it the guard sends the user to the product's first
@@ -62,7 +61,6 @@ export default function PrivateRoute({
   }
 
   const authorized =
-    (!superadminOnly || isSuperAdmin(user)) &&
     (!requiredPermission || canPermission(user, requiredPermission)) &&
     (!requiredAny || canAny(user, requiredAny)) &&
     (!requiredAll || canAll(user, requiredAll));

@@ -35,6 +35,7 @@ import {
   getNotifications,
   streamNotificationEvents,
 } from "@shell/api/notifications";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -81,8 +82,9 @@ vi.mock("react-router-dom", async () => {
 
 const logout = vi.fn();
 let user;
+const switchOrganisation = vi.fn();
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user, logout }),
+  useAuth: () => ({ user, logout, switchOrganisation }),
 }));
 
 const updateLocalPreferences = vi.fn();
@@ -93,14 +95,14 @@ vi.mock("@shell/preferences/PreferencesContext", () => ({
 
 /* ── Personas (real permissions module) ───────────────────────────────────── */
 const perm = (resource, action) => ({ resource, action });
-const SUPERADMIN = {
+const SUPERADMIN_RAW = {
   id: 1,
   username: "root",
   email: "root@example.test",
   org_id: "o-1",
   role: { name: "superadmin", permissions: [] },
 };
-const ORG_ADMIN = {
+const ORG_ADMIN_RAW = {
   id: 2,
   username: "orgadmin",
   email: "oa@example.test",
@@ -125,7 +127,7 @@ const ORG_ADMIN = {
     ],
   },
 };
-const VIEWER = {
+const VIEWER_RAW = {
   id: 3,
   username: "viewer",
   email: "v@example.test",
@@ -135,6 +137,9 @@ const VIEWER = {
     permissions: [perm("dashboard", "read"), perm("assets", "read")],
   },
 };
+const SUPERADMIN = personaFrom(SUPERADMIN_RAW);
+const ORG_ADMIN = personaFrom(ORG_ADMIN_RAW);
+const VIEWER = personaFrom(VIEWER_RAW);
 
 const SUMMARY = {
   scans: { running: 2, last_24h: 7, quota_limit_24h: 50 },
@@ -536,35 +541,75 @@ describe("AppLayout — global search (superadmin)", () => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-describe("AppLayout — organisation switcher (superadmin)", () => {
-  it("lists organisations, adopts the user's org and records activeOrgId", async () => {
+describe("AppLayout — organisation switcher (backend-authorized)", () => {
+  beforeEach(() => {
+    switchOrganisation.mockReset();
+  });
+
+  it("lists organisations and labels the organisation the backend reports as active", async () => {
     await renderShell();
     await waitFor(() => expect(listOrganizations).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("CDAC RTSG Bangalore")).toBeInTheDocument();
-    expect(localStorage.getItem("activeOrgId")).toBe("o-1");
+    // the stored hint is not written by the switcher: the backend's answer is
+    // what AuthContext stores
+    expect(localStorage.getItem("activeOrgId")).toBeNull();
   });
 
-  it("prefers a previously chosen activeOrgId", async () => {
+  it("ignores a stored organisation hint: the active organisation is the backend's", async () => {
     localStorage.setItem("activeOrgId", "o-2");
     await renderShell();
-    expect(await screen.findByText("Acme")).toBeInTheDocument();
+    expect(await screen.findByText("CDAC RTSG Bangalore")).toBeInTheDocument();
+    expect(screen.queryByText("Acme")).not.toBeInTheDocument();
     expect(localStorage.getItem("activeOrgId")).toBe("o-2");
   });
 
-  it("switching writes activeOrgId and reloads", async () => {
+  it("switching asks the backend, and reloads only after it accepts", async () => {
     const u = userEvent.setup();
     const reload = vi.fn();
     Object.defineProperty(window, "location", {
       value: { ...window.location, reload },
       writable: true,
     });
+    switchOrganisation.mockResolvedValue({});
     await renderShell();
     await screen.findByText("CDAC RTSG Bangalore");
     await u.click(screen.getByText("CDAC RTSG Bangalore"));
     await waitFor(() => expect(menuItem(/Acme/)).toBeInTheDocument());
     await u.click(menuItem(/Acme/));
-    expect(localStorage.getItem("activeOrgId")).toBe("o-2");
-    expect(reload).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(switchOrganisation).toHaveBeenCalledWith("o-2");
+  });
+
+  it("a refused switch does not reload and changes nothing", async () => {
+    const u = userEvent.setup();
+    const reload = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, reload },
+      writable: true,
+    });
+    switchOrganisation.mockImplementation(async () => {
+      throw { response: { status: 403 } };
+    });
+    await renderShell();
+    await screen.findByText("CDAC RTSG Bangalore");
+    await u.click(screen.getByText("CDAC RTSG Bangalore"));
+    await waitFor(() => expect(menuItem(/Acme/)).toBeInTheDocument());
+    await u.click(menuItem(/Acme/));
+    await waitFor(() => expect(switchOrganisation).toHaveBeenCalled());
+    expect(reload).not.toHaveBeenCalled();
+    expect(localStorage.getItem("activeOrgId")).toBeNull();
+  });
+
+  it("a role called superadmin without the backend's switch flag gets no switcher", async () => {
+    user = personaFrom({
+      id: 9,
+      org_id: "o-1",
+      role: { name: "superadmin", permissions: [] },
+    });
+    user.authorization.can_switch_organisation = false;
+    await renderShell();
+    expect(listOrganizations).not.toHaveBeenCalled();
+    expect(screen.queryByText("CDAC RTSG Bangalore")).not.toBeInTheDocument();
   });
 
   it("does not exist for an org_admin, and no organisations are read", async () => {

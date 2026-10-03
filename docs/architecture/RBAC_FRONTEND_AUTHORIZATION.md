@@ -1,0 +1,73 @@
+# RBAC-6 — frontend authorization
+
+**The backend is the authority. The frontend decides only what to show.** A hidden button
+is a courtesy; a visible one grants nothing. Every request is enforced by the backend, and
+its 403/404 is handled where the call is made. Nothing deployed: RBAC-6 changes the repo
+only, and the backend scope paths are still off.
+
+## The contract (`/auth/me` → `authorization`)
+
+Stable permission keys and scope — no role id, role key, row id or table name.
+
+| Field                          | Meaning                                                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `contract`                     | `1`. A UI that does not know the version treats it as _no authorization_.                                                                                                                  |
+| `source`                       | `platform` (the RBAC engine's answer) or `legacy_mapped` (the account has no RBAC assignment yet: the legacy role's permissions expressed as the same keys through the golden mapping).    |
+| `home_org_id`, `active_org_id` | the account's organisation, and the organisation **the backend accepted** as active (`scope.resolve_active_organisation`; with the scope paths on it is validated and the switch audited). |
+| `permissions`                  | `{platform: [key…], organization: [key…]}` — effective in the active organisation.                                                                                                         |
+| `can_switch_organisation`      | the platform-scope `platform.organization.switch` grant.                                                                                                                                   |
+| `assignments`                  | `[{display_name, scope_type}]` — **display only**.                                                                                                                                         |
+| `atoms`                        | `{"resource:action": [key…]}` — the legacy vocabulary, served so the UI copies none of it (platform administration still speaks it until RBAC-7).                                          |
+
+`GET /auth/me?org_id=` takes the organisation as a _request_; it is also the switch
+operation (the backend validates, audits, answers). Built by
+`ccure_platform/rbac/authorization_view.py`; no new route.
+
+## `can(permission, context)`
+
+`shell/auth/authorization.js` is the one helper; `permissions.js` re-exports it.
+
+- `can(user, "audit.scan.read")`, `can(user, key, {scope, orgId})`; the legacy spellings
+  (`can(user, "scans", "read")`, `{resource, action}`) resolve through the backend's `atoms`
+  map, all keys required.
+- **No role is an input** — not a name, display name or id. Renaming Superadmin → CISO changes
+  nothing. `isSuperAdmin`, `isOrgAdmin`, `hasRole`, the `superadmin = everything` rule and the
+  `resource:manage = everything` wildcard are gone.
+- **The UI never invents a permission.** No payload, an unknown contract version, an unknown atom
+  or a key the backend did not list means _no_.
+- **Scope is explicit.** An organisation key is known for the active organisation only; asking
+  about another is "no". The URL, `localStorage` (`activeOrgId` is only the hint the HTTP client
+  sends), headers and client-side role values are never evidence.
+- **Older backend:** the legacy `role.permissions` atoms are honoured _as atoms and only atoms_
+  (no wildcard, no role rule). Removed with the legacy model in RBAC-8.
+
+## Organisation switching
+
+`AuthContext.switchOrganisation(orgId)` calls the backend; only if it answers with that
+organisation as `active_org_id` is `activeOrgId` stored, the user replaced (so permissions are
+the new organisation's) and `contextVersion` bumped; the switcher then reloads the document. A
+refusal, or a backend that answers with a different organisation, changes nothing. A stored
+organisation the backend refuses (403/404) is dropped and the account re-fetched without it.
+The switcher is shown on `can_switch_organisation`, never on a role.
+
+## Guards and navigation
+
+Route guards and navigation items name a permission (key or atom) and go through `can`;
+`superadminOnly` is gone (the platform-wide routes name `platform.email_domain.read` and
+similar keys). The three outcomes stay distinct — unauthenticated → `/login`, unauthorised →
+the product's fallback or the platform's denied page, unavailable product → unchanged.
+Platform navigation stays in the Platform Shell and Audit's in Audit.
+
+## Inventory
+
+`Frontend/authorization-inventory.json`, generated by
+`scripts/build-authorization-inventory.mjs` and tested for drift: every role/permission
+decision or display is **migrated, display-only, intentionally-retained, rbac7 or rbac8**, each
+with a reason. Remaining: the platform-administration screens' atom checks and one
+role-label filter (RBAC-7), the older-backend fallback (RBAC-8), and the request hint
+(intentionally retained, validated by the backend).
+
+## Not done here
+
+RBAC administration UI (roles, assignments, custom roles, governance) is RBAC-7;
+provisioning/bootstrap is RBAC-8; Policy Pro, Rank and IR gain nothing.

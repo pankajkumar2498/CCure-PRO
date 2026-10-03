@@ -25,9 +25,9 @@ export const SHARED_ADMIN_NAV = [
     id: "email-domains",
     label: "Email Domain Rules",
     route: "/admin/email-domains",
-    // No `permission`: these rules are platform-wide, so the gate is the
-    // superadmin role rather than a permission an org_admin also holds.
-    superadminOnly: true,
+    // Platform-wide rules: the platform-scope key, which only an account granted
+    // it holds. No role name decides this.
+    permission: "platform.email_domain.read",
   },
   {
     id: "organizations",

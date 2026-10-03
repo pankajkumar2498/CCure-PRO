@@ -98,8 +98,15 @@ export const isSelfRegistrationEnabled = async () => {
   }
 };
 
-export const getCurrentUser = async () => {
-  const response = await axiosInstance.get("/auth/me");
+// `orgId` is a *request*: the backend validates it (and audits an organisation
+// switch) and answers with the organisation it accepted as active, plus the
+// effective permission keys for it (`user.authorization`, RBAC-6). `undefined`
+// sends the stored organisation hint like every other request; `null` sends none.
+export const getCurrentUser = async (orgId) => {
+  const response = await axiosInstance.get(
+    "/auth/me",
+    orgId === undefined ? undefined : { params: { org_id: orgId } },
+  );
   return response.data;
 };
 

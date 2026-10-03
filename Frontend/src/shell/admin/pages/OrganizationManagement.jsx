@@ -14,7 +14,7 @@
  *       delete  → superadmin **and** `organizations:delete`, a conjunction,
  *                 because a permission alone would let an org_admin who held
  *                 it delete somebody else's tenant
- *       manage  → `canManageOrg`: a superadmin may manage any organisation,
+ *       manage  → `canManageOrg`: an account with cross-organisation reach may manage any organisation,
  *                 an org_admin only their own;
  *   * `changeOrganizationStatus(id, { is_active: !org.is_active })` sends the
  *     inverted value, never a literal;
@@ -52,7 +52,11 @@ import {
 import { formatDateTime } from "../../utils/date";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import OrganizationForm from "../components/OrganizationForm";
-import { can, denyMessage, isSuperAdmin } from "../../auth/permissions";
+import {
+  can,
+  canSwitchOrganisation,
+  denyMessage,
+} from "../../auth/permissions";
 import {
   CcureAlert,
   CcureBadge,
@@ -86,14 +90,15 @@ export default function OrganizationManagement() {
     max_users: 10,
   });
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
-  const isSuperadmin = isSuperAdmin(currentUser);
+  // cross-organisation reach, as the backend reports it — not a role name
+  const hasCrossOrgReach = canSwitchOrganisation(currentUser);
   const canCreateOrganizations = can(currentUser, "organizations", "create");
   const canUpdateOrganizations = can(currentUser, "organizations", "update");
   const canDeleteOrganizations =
-    isSuperadmin && can(currentUser, "organizations", "delete");
+    hasCrossOrgReach && can(currentUser, "organizations", "delete");
 
   const canManageOrg = (org) =>
-    isSuperadmin ||
+    hasCrossOrgReach ||
     (canUpdateOrganizations && String(org.id) === String(currentUser?.org_id));
 
   const loadData = useCallback(async (quiet = false) => {

@@ -42,6 +42,7 @@ import path from "node:path";
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 import api from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -68,11 +69,19 @@ vi.mock("@shell/auth/AuthContext", () => ({
 }));
 
 const ME = 7;
-const person = (roleName) => ({
-  id: ME,
-  username: "operator",
-  role: { name: roleName, permissions: ["compliance:read"] },
-});
+// Only the administrators hold manage_frameworks (RBAC-6: a permission, not a role name).
+const person = (roleName) =>
+  personaFrom({
+    id: ME,
+    username: "operator",
+    role: {
+      name: roleName,
+      permissions:
+        roleName === "analyst"
+          ? ["compliance:read"]
+          : ["compliance:read", "compliance:manage_frameworks"],
+    },
+  });
 const ADMIN = person("Org Admin");
 const ANALYST = person("analyst");
 

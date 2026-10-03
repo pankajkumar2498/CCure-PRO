@@ -32,6 +32,7 @@ import {
 
 import ExportPanel from "@audit/components/scan/ExportPanel";
 import api from "@shell/api/axiosInstance";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
@@ -42,19 +43,22 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 /* ── Personas ─────────────────────────────────────────────────────────────── */
 
-const ANALYST = {
+const ANALYST = personaFrom({
   id: 1,
   role: { name: "analyst", permissions: ["reports:read"] },
-};
-const MANAGER = {
+});
+const MANAGER = personaFrom({
   id: 2,
-  role: { name: "org_admin", permissions: ["reports:manage"] },
-};
-const SUPERADMIN = { id: 3, role: { name: "superadmin", permissions: [] } };
-const VIEWER = {
+  role: { name: "org_admin", permissions: ["reports:read", "reports:delete"] },
+});
+const SUPERADMIN = personaFrom({
+  id: 3,
+  role: { name: "superadmin", permissions: [] },
+});
+const VIEWER = personaFrom({
   id: 4,
   role: { name: "viewer", permissions: ["scans:read", "assets:read"] },
-};
+});
 
 /* ── Fixtures ─────────────────────────────────────────────────────────────── */
 
@@ -773,7 +777,7 @@ describe("ExportPanel — permission", () => {
   });
 
   it.each([
-    ["reports:manage", MANAGER],
+    ["reports:read+delete", MANAGER],
     ["superadmin", SUPERADMIN],
   ])("enables exports for %s", (_label, user) => {
     currentUser = user;

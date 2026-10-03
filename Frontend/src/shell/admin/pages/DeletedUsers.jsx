@@ -10,13 +10,12 @@
  *   * `listUsers({ skip: 0, limit: 100, scope: "deleted" })` — the scope is
  *     load-bearing; without it this lists live accounts on a page whose second
  *     button deletes them permanently;
- *   * the organisation list is requested only for a superadmin, and the role
- *     name that decides it is read from `currentUser.role.name`. `role` is an
- *     object throughout this application; comparing it to a string silently
- *     takes the non-superadmin path and leaves the column empty;
- *   * `loadData` keeps `currentUser?.role?.name` in its dependency list. It was
- *     excluded once, and a render where auth had not yet hydrated then loaded
- *     the page as a non-superadmin and never retried;
+ *   * the organisation list is requested only for an account with
+ *     cross-organisation reach (`canSwitchOrganisation`, from the backend's
+ *     authorization payload — RBAC-6; no role name decides it);
+ *   * `loadData` keeps that boolean in its dependency list. It was excluded once
+ *     (as a role name), and a render where auth had not yet hydrated then loaded
+ *     the page without reach and never retried;
  *   * both actions stay gated on `users:delete`, at render *and* inside the
  *     handler, and both require an explicit confirmation — restore included,
  *     because returning an account somebody deliberately deleted is a decision
@@ -42,7 +41,11 @@ import {
   restoreUser,
 } from "../../api/admin";
 import { useAuth } from "../../auth/AuthContext";
-import { can, denyMessage } from "../../auth/permissions";
+import {
+  can,
+  canSwitchOrganisation,
+  denyMessage,
+} from "../../auth/permissions";
 import {
   CcureAlert,
   CcureButton,
@@ -92,11 +95,13 @@ export default function DeletedUsers() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
+  // cross-organisation reach as the backend reports it, not a role name
+  const hasCrossOrgReach = canSwitchOrganisation(currentUser);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
-    const isSuperadmin =
-      currentUser?.role?.name?.toLowerCase() === "superadmin";
+    const isSuperadmin = hasCrossOrgReach;
 
     try {
       const [usersData, rolesData, organizationsData] = await Promise.all([
@@ -115,12 +120,11 @@ export default function DeletedUsers() {
     } finally {
       setLoading(false);
     }
-    // The role name is read above to decide whether to ask for the
-    // organization list. It was excluded, so a render where auth had not yet
-    // hydrated loaded the page with `isSuperadmin` false and never retried —
-    // a superadmin saw an empty organization column. It is a primitive, so it
-    // settles once and reloads at most one extra time.
-  }, [currentUser?.role?.name]);
+    // Reach is read above to decide whether to ask for the organization list.
+    // It was excluded once, so a render where auth had not yet hydrated loaded
+    // the page without it and never retried. It is a boolean, so it settles once
+    // and reloads at most one extra time.
+  }, [hasCrossOrgReach]);
 
   useEffect(() => {
     loadData();

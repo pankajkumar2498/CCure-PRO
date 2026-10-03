@@ -301,7 +301,10 @@ export default function App() {
               domain would be blocking another tenant's customers. */}
             <Route
               element={
-                <PrivateRoute superadminOnly deniedElement={<AccessDenied />} />
+                <PrivateRoute
+                  requiredPermission="platform.email_domain.read"
+                  deniedElement={<AccessDenied />}
+                />
               }
             >
               <Route

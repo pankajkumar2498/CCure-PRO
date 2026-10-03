@@ -35,8 +35,7 @@ import "../styles/user-management.css";
 import {
   can,
   denyMessage,
-  isOrgAdmin,
-  isSuperAdmin,
+  canSwitchOrganisation,
 } from "../../auth/permissions";
 
 const PAGE_SIZE = 10;
@@ -170,11 +169,17 @@ export default function UserManagement() {
   const [newPassword, setNewPassword] = useState("");
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const isSuperadmin = isSuperAdmin(currentUser);
-  const orgAdmin = isOrgAdmin(currentUser);
+  // cross-organisation reach as the backend reports it; an account without it is
+  // bound to its own organisation
+  const isSuperadmin = canSwitchOrganisation(currentUser);
+  const orgAdmin = !isSuperadmin;
   const canCreateUsers = can(currentUser, "users", "create");
   const canUpdateUsers = can(currentUser, "users", "update");
   const canDeleteUsers = can(currentUser, "users", "delete");
+  // RBAC-7 dependency: this list filter still recognises the platform-wide legacy
+  // role by its label, because the roles endpoint does not yet say which roles an
+  // account may hand out. It only narrows what is offered; the backend's assignment
+  // hierarchy (RBAC-5) refuses an escalation whatever the form sends.
   const assignableRoles = useMemo(() => {
     if (isSuperadmin) return roles;
 

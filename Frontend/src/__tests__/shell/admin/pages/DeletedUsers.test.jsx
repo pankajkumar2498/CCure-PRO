@@ -14,9 +14,9 @@
  *   * A restored user must stay INACTIVE. The page says so in the confirmation
  *     and the backend enforces it; the wording is the only thing telling the
  *     admin that restoring is not the same as re-enabling.
- *   * The organisation list is requested only for a superadmin, and the role
- *     name it is decided from is read from `user.role.name` — an object, not a
- *     string.
+ *   * The organisation list is requested only for an account the backend says
+ *     has cross-organisation reach (`canSwitchOrganisation`) — RBAC-6; no role
+ *     name decides it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -62,6 +62,7 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 let permissions = new Set(["users:delete"]);
 vi.mock("@shell/auth/permissions", () => ({
+  canSwitchOrganisation: (user) => user?.reach === true,
   can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
   denyMessage: "You do not have permission to perform this action.",
 }));
@@ -161,17 +162,21 @@ describe("DeletedUsers — functional", () => {
   });
 
   it("requests organisations for a superadmin", async () => {
-    currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
+    currentUser = {
+      username: "root",
+      id: 1,
+      role: { name: "superadmin" },
+      reach: true,
+    };
     await renderPage();
     await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
   });
 
-  it("reads the role name from user.role.name, not from a bare string", async () => {
-    // `role` is an object throughout this application. A page that compared
-    // `user.role` to "superadmin" would silently take the non-superadmin path.
+  it("decides from the reach the backend reports, never from a role name", async () => {
+    // a role *called* superadmin with no reach must not ask for organisations
     currentUser = { username: "root", id: 1, role: { name: "SuperAdmin" } };
     await renderPage();
-    await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
+    expect(listOrganizations).not.toHaveBeenCalled();
   });
 
   it("renders one row per deleted user", async () => {
@@ -189,7 +194,12 @@ describe("DeletedUsers — functional", () => {
   });
 
   it("resolves the organisation name for a superadmin", async () => {
-    currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
+    currentUser = {
+      username: "root",
+      id: 1,
+      role: { name: "superadmin" },
+      reach: true,
+    };
     await renderPage();
     // Two of the three fixtures share org 7, so this must be scoped to a row.
     // The first version queried the page and failed on "found multiple" —

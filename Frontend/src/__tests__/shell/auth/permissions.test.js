@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { isSuperAdmin, can, canAny, canAll } from "@shell/auth/permissions";
+import * as permissions from "@shell/auth/permissions";
 
-describe("Permissions Logic", () => {
-  const superadmin = { role: { name: "superadmin", permissions: [] } };
+const { can, canAny, canAll, canPermission } = permissions;
+
+describe("Permissions Logic (RBAC-6: permission-based, no role rules)", () => {
+  // an older backend: only the legacy atoms, listed
   const orgAdmin = {
     role: { name: "org_admin", permissions: ["scans:execute", "reports:read"] },
   };
@@ -10,14 +12,14 @@ describe("Permissions Logic", () => {
     role: { name: "viewer", permissions: ["scans:read", "reports:read"] },
   };
 
-  it("identifies superadmin correctly", () => {
-    expect(isSuperAdmin(superadmin)).toBe(true);
-    expect(isSuperAdmin(orgAdmin)).toBe(false);
-  });
-
-  it("grants all permissions to superadmin", () => {
-    expect(can(superadmin, "users", "delete")).toBe(true);
-    expect(can(superadmin, "scans", "execute")).toBe(true);
+  it("has no role-name helpers and no wildcard", () => {
+    expect(permissions.isSuperAdmin).toBeUndefined();
+    expect(permissions.isOrgAdmin).toBeUndefined();
+    expect(permissions.hasRole).toBeUndefined();
+    expect(permissions.getPermissionSet).toBeUndefined();
+    const superadmin = { role: { name: "superadmin", permissions: [] } };
+    expect(can(superadmin, "users", "delete")).toBe(false);
+    expect(can(superadmin, "scans", "execute")).toBe(false);
   });
 
   it("checks specific permissions for standard users", () => {
@@ -38,5 +40,14 @@ describe("Permissions Logic", () => {
         { resource: "scans", action: "read" },
       ]),
     ).toBe(false);
+  });
+
+  it("canPermission accepts the object spelling", () => {
+    expect(canPermission(reader, { resource: "scans", action: "read" })).toBe(
+      true,
+    );
+    expect(canPermission(reader, { resource: "scans", action: "purge" })).toBe(
+      false,
+    );
   });
 });

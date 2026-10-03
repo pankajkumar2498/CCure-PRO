@@ -15,7 +15,7 @@ import {
   previewAuditRetention,
 } from "../../api/admin";
 import { useAuth } from "../../auth/AuthContext";
-import { can, isSuperAdmin } from "../../auth/permissions";
+import { can } from "../../auth/permissions";
 import { formatDateTime } from "../../utils/date";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import AuditLogDetailsModal from "../components/AuditLogDetailsModal";
@@ -60,10 +60,10 @@ export default function AuditLogs() {
   // actually refuses. Hiding it only stops offering an action that would 403.
   const { user: currentUser } = useAuth();
   const canExport = can(currentUser, "audit", "export");
-  // Superadmin only, matching the backend's `require_role("superadmin")`. A
-  // purge is not tenant-scoped in effect -- it destroys a record other parties
-  // may need -- so it is not expressed as a per-tenant permission.
-  const canSeeRetention = isSuperAdmin(currentUser);
+  // The platform-scope retention capability, matching the backend's
+  // `platform.audit_log.retention` guard. A purge is not tenant-scoped in effect
+  // -- it destroys a record other parties may need -- so it is a platform key.
+  const canSeeRetention = can(currentUser, "platform.audit_log.retention");
   const [retention, setRetention] = useState(null);
   const [retentionOpen, setRetentionOpen] = useState(false);
 

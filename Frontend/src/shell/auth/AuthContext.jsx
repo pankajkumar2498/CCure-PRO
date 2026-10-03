@@ -16,28 +16,40 @@ import {
   register as registerRequest,
 } from "../api/auth";
 import { authSession } from "../api/axiosInstance";
+import { activeOrganisationId, authorizationOf } from "./authorization";
 
 const AuthContext = createContext(null);
 
+// `activeOrgId` in localStorage is only the *hint* the HTTP client sends as `org_id`
+// on every request; it is never evidence. What the backend accepted as the active
+// organisation is `user.authorization.active_org_id`, and that — not the previous
+// hint, not a role — is what is stored. A forged or stale hint is therefore
+// overwritten with the backend's answer on the next sync.
 const syncActiveOrgId = (user) => {
-  if (!user) {
-    localStorage.removeItem("activeOrgId");
-    return;
-  }
-  const roleName = (user.role?.name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-  if (roleName === "superadmin") {
-    if (!localStorage.getItem("activeOrgId") && user.org_id) {
-      localStorage.setItem("activeOrgId", user.org_id);
-    }
+  const active = user ? activeOrganisationId(user) : null;
+  if (active) {
+    localStorage.setItem("activeOrgId", active);
   } else {
-    if (user.org_id) {
-      localStorage.setItem("activeOrgId", user.org_id);
-    } else {
+    localStorage.removeItem("activeOrgId");
+  }
+};
+
+// The signed-in account with its authorization. A stored organisation the backend
+// refuses (403/404: inactive, gone, no longer reachable) is dropped and the account
+// is fetched again without it, rather than signing the person out.
+const fetchCurrentUser = async () => {
+  try {
+    return await getCurrentUser();
+  } catch (error) {
+    const status = error?.response?.status;
+    if (
+      (status === 403 || status === 404) &&
+      localStorage.getItem("activeOrgId")
+    ) {
       localStorage.removeItem("activeOrgId");
+      return getCurrentUser(null);
     }
+    throw error;
   }
 };
 
@@ -46,6 +58,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [authState, setAuthState] = useState("loading");
   const [authMessage, setAuthMessage] = useState("");
+  // Bumped when the organisation context changes, so anything derived from the
+  // previous organisation's permissions can be discarded.
+  const [contextVersion, setContextVersion] = useState(0);
   const lastSessionRefreshRef = useRef(0);
 
   const syncCurrentUser = useCallback(async (quiet = false) => {
@@ -69,7 +84,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const currentUser = await getCurrentUser();
+      const currentUser = await fetchCurrentUser();
       syncActiveOrgId(currentUser);
       setUser(currentUser);
       setAuthState("authenticated");
@@ -152,10 +167,19 @@ export const AuthProvider = ({ children }) => {
     if (data?.status === "mfa_required") {
       return data;
     }
-    if (data.user) {
-      syncActiveOrgId(data.user);
+    // The login response carries the profile only; the authorization payload comes
+    // from /auth/me, so the UI never holds a user without the backend's answer.
+    let signedIn = data.user || null;
+    try {
+      signedIn = await fetchCurrentUser();
+    } catch {
+      // keep the login response's profile; it carries no authorization, so the UI
+      // grants nothing beyond the legacy atoms until the next sync
     }
-    setUser(data.user || null);
+    if (signedIn) {
+      syncActiveOrgId(signedIn);
+    }
+    setUser(signedIn);
     setAuthState("authenticated");
     setAuthMessage("");
     lastSessionRefreshRef.current = Date.now();
@@ -173,6 +197,23 @@ export const AuthProvider = ({ children }) => {
   // have, and every subsequent request would 401.
   const register = useCallback(async (payload) => {
     return registerRequest(payload);
+  }, []);
+
+  // Switching organisation is a backend operation. The requested id goes to the
+  // backend, which validates it against the account's grants and the
+  // organisation's state, audits the switch, and answers with the organisation it
+  // accepted and the permissions that apply there. Only that answer is stored; a
+  // refusal leaves everything as it was.
+  const switchOrganisation = useCallback(async (orgId) => {
+    const next = await getCurrentUser(orgId);
+    const authorization = authorizationOf(next);
+    if (!authorization || authorization.active_org_id !== orgId) {
+      throw new Error("The organisation was not accepted by the server.");
+    }
+    syncActiveOrgId(next);
+    setUser(next);
+    setContextVersion((version) => version + 1);
+    return next;
   }, []);
 
   const logout = useCallback(async () => {
@@ -199,8 +240,20 @@ export const AuthProvider = ({ children }) => {
       register,
       logout,
       refreshUser: syncCurrentUser,
+      switchOrganisation,
+      contextVersion,
     }),
-    [user, authState, authMessage, login, register, logout, syncCurrentUser],
+    [
+      user,
+      authState,
+      authMessage,
+      login,
+      register,
+      logout,
+      syncCurrentUser,
+      switchOrganisation,
+      contextVersion,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

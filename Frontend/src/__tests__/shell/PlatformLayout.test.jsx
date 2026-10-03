@@ -67,14 +67,16 @@ vi.mock("@shell/account/ProfileModal", () => ({
 }));
 
 import { listOrganizations } from "@shell/api/admin";
+import { personaFrom } from "../fixtures/authorization";
 
-const persona = (roleName, permissions = []) => ({
-  id: 7,
-  username: "pat",
-  email: "pat@example.test",
-  org_id: "o-1",
-  role: { name: roleName, permissions },
-});
+const persona = (roleName, permissions = []) =>
+  personaFrom({
+    id: 7,
+    username: "pat",
+    email: "pat@example.test",
+    org_id: "o-1",
+    role: { name: roleName, permissions },
+  });
 const SUPERADMIN = persona("superadmin");
 const ORG_ADMIN = persona("org_admin", ["users:read", "audit:read"]);
 const VIEWER = persona("viewer", ["dashboard:read"]);

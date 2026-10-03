@@ -25,6 +25,7 @@ Nothing is cached across requests: a revocation takes effect on the next call.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Mapping
 
@@ -157,4 +158,53 @@ def effective_permissions(
     keys = engine.held_keys(principal, grants, catalogue, target)
     return c.EffectivePermissionSet(
         principal_id=principal.principal_id, org_id=target, permissions=keys
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AssignmentInfo:
+    """One of a principal's role assignments, for diagnostics only. Identity (the
+    role's key) and state — never a decision input."""
+
+    role_key: str
+    role_state: str
+    scope_type: str
+    scope_org_id: str | None
+    live: bool
+
+
+def assignment_summary(
+    db: Session, principal: c.Principal, *, at: datetime | None = None
+) -> tuple[AssignmentInfo, ...]:
+    """
+    Every assignment row a human principal has — live, revoked or expired — so a
+    comparison can tell *never provisioned* (no rows at all) from *had a role and
+    lost it* (rows, none live). The first means the new side has no data to
+    compare; the second is a real divergence.
+    """
+    if principal.kind != "human":
+        return ()
+    now = at or datetime.now(timezone.utc)
+    rows = db.execute(
+        select(
+            RbacRole.key,
+            RbacRole.state,
+            RbacUserRole.scope_type,
+            RbacUserRole.scope_org_id,
+            RbacUserRole.revoked_at,
+            RbacUserRole.expires_at,
+        )
+        .join(RbacRole, RbacRole.id == RbacUserRole.role_id)
+        .where(RbacUserRole.user_id == principal.principal_id)
+        .order_by(RbacRole.key, RbacUserRole.granted_at)
+    ).all()
+    return tuple(
+        AssignmentInfo(
+            role_key=key,
+            role_state=state,
+            scope_type=scope,
+            scope_org_id=org,
+            live=revoked is None and (expires is None or expires > now),
+        )
+        for key, state, scope, org, revoked, expires in rows
     )

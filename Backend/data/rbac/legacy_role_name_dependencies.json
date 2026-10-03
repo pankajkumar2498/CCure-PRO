@@ -1,0 +1,377 @@
+{
+  "schema_version": 1,
+  "description": "Every remaining legacy authorization decision made by a role NAME (superadmin / _is_superadmin / require_role / direct role.name checks), recorded as RBAC-4 migration evidence. Nothing here is migrated or deleted in RBAC-3. Measured by scripts/architecture/rbac_guardrails.py; tests/rbac/test_rbac_legacy_role_evidence.py fails if this list and the code disagree.",
+  "categories": {
+    "permission_guard": "A route or router is guarded by a role name. RBAC-4 replaces it with the listed permission.",
+    "permission_bypass": "A permission check is skipped for the superadmin by name. RBAC-4 removes the shortcut: the superadmin role holds materialised grants.",
+    "assignment_hierarchy": "A rule about which roles may be assigned, by name. RBAC-4 replaces it with the escalation ceiling and platform.role.assign_platform.",
+    "scope_cross_org": "The superadmin by name widens which organisation's data a query returns. This is scope, not a permission: deferred to RBAC-5.",
+    "organization_switch": "The superadmin names another organisation to act in. RBAC-4/5: platform.organization.switch plus the scope model.",
+    "default_role": "The self-registration default is looked up by role name. RBAC-4: the rbac_default_roles reference.",
+    "provisioning_lookup": "A role is looked up by name to give it to a new account. RBAC-4: by role key, in a seed/bootstrap context.",
+    "bootstrap": "First-run provisioning of the initial administrator. A permitted seed/bootstrap context; moves to a role key.",
+    "legacy_authority": "The legacy check itself. Removed with the legacy model in RBAC-8."
+  },
+  "sites": [
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 61,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.read",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 166,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.read",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 212,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.read",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 249,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.read",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 287,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.manage",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 364,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.manage",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/email_domains.py",
+      "line": 411,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.email_domain.manage",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/organizations.py",
+      "line": 189,
+      "kind": "role_identity_compare",
+      "what": "org_admin",
+      "category": "provisioning_lookup",
+      "rbac4_replacement": "role key platform.org_admin",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 47,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 308,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "assignment_hierarchy",
+      "rbac4_replacement": "platform.role.assign_platform + escalation ceiling",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 308,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "assignment_hierarchy",
+      "rbac4_replacement": "platform.role.assign_platform + escalation ceiling",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 532,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "assignment_hierarchy",
+      "rbac4_replacement": "platform.role.assign_platform + escalation ceiling",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 532,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "assignment_hierarchy",
+      "rbac4_replacement": "platform.role.assign_platform + escalation ceiling",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/audit_log/router.py",
+      "line": 84,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "ccure_platform/audit_log/router.py",
+      "line": 861,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "platform.audit_log.retention",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/identity/router.py",
+      "line": 636,
+      "kind": "role_identity_compare",
+      "what": "viewer",
+      "category": "default_role",
+      "rbac4_replacement": "rbac_default_roles(self_registration)",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "ccure_platform/rbac/dependencies.py",
+      "line": 158,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "legacy_authority",
+      "rbac4_replacement": "removed in RBAC-8",
+      "deferred_to": "RBAC-8"
+    },
+    {
+      "file": "main.py",
+      "line": 276,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "bootstrap",
+      "rbac4_replacement": "role key platform.superadmin (seed context)",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/admin_nvd.py",
+      "line": 59,
+      "kind": "require_role",
+      "what": "require_role(...)",
+      "category": "permission_guard",
+      "rbac4_replacement": "audit.vuln_feed.manage",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/assets.py",
+      "line": 61,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/compliance.py",
+      "line": 281,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/compliance.py",
+      "line": 890,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "permission_guard",
+      "rbac4_replacement": "audit.compliance.manage_shared_rules",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/credentialed.py",
+      "line": 43,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "organization_switch",
+      "rbac4_replacement": "platform.organization.switch",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/credentialed.py",
+      "line": 202,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "organization_switch",
+      "rbac4_replacement": "platform.organization.switch",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/credentialed.py",
+      "line": 287,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "organization_switch",
+      "rbac4_replacement": "platform.organization.switch",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/credentials.py",
+      "line": 156,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/dashboard.py",
+      "line": 51,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/findings.py",
+      "line": 45,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/phase_scans.py",
+      "line": 51,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/remediation.py",
+      "line": 110,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/reports.py",
+      "line": 365,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "permission_bypass",
+      "rbac4_replacement": "audit.report.read / audit.report.delete grants",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/reports.py",
+      "line": 386,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "permission_bypass",
+      "rbac4_replacement": "audit.report.read / audit.report.delete grants",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/reports.py",
+      "line": 404,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/scan_history.py",
+      "line": 393,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "permission_bypass",
+      "rbac4_replacement": "audit.scan.read grant",
+      "deferred_to": "RBAC-4"
+    },
+    {
+      "file": "routers/scan_history.py",
+      "line": 556,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/scan_policies.py",
+      "line": 95,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/scan_schedules.py",
+      "line": 87,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/web_scans.py",
+      "line": 65,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "routers/web_scans.py",
+      "line": 1286,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    },
+    {
+      "file": "scans/scan_access.py",
+      "line": 20,
+      "kind": "role_identity_compare",
+      "what": "superadmin",
+      "category": "scope_cross_org",
+      "rbac4_replacement": "RBAC-5",
+      "deferred_to": "RBAC-5"
+    }
+  ]
+}

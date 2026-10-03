@@ -59,7 +59,7 @@ POISON = textwrap.dedent(
 
     from ccure_platform.rbac import (
         audit, catalogue, contract, engine, governance, legacy_map, model, offboarding,
-        resolver, shadow,
+        resolver, shadow, shadow_runtime,
     )
     from ccure_platform.rbac import contract as c
 

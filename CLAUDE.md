@@ -424,11 +424,11 @@ each module's `README.md` is the guide its team works from.
   (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
 
-## RBAC capability (`ccure_platform/rbac/`) — RBAC-1 and RBAC-2, **dark**
+## RBAC capability (`ccure_platform/rbac/`) — RBAC-1, RBAC-2 and RBAC-3, **dark / shadow only**
 
 The new, independent RBAC capability. Record:
 [`docs/architecture/RBAC_FOUNDATION.md`](docs/architecture/RBAC_FOUNDATION.md).
-**RBAC-1 and RBAC-2 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
+**RBAC-1, RBAC-2 and RBAC-3 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
 `role_permissions`, `require_permission`, `require_role` and `user_has_permission`
 are still the only authority; no route, `/auth/me` field, frontend behaviour,
 assignment or registration flow uses the new tables. Do not describe RBAC as live.
@@ -508,6 +508,30 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   advances in the same statement. Use `governance.transition_role` (gate + history), or in
   tests `rbac_testing.force_state`. `define_custom_org_role` is the checked way to make an
   organisation role.
+- **RBAC-3 = SHADOW ONLY. Legacy authorization is authoritative.** The new engine is
+  evaluated *beside* every legacy permission check and compared, **off by default**
+  (`RBAC_SHADOW_MODE`, `config.RbacShadowConfig`: `off`/`observe`; anything else is `off`;
+  never in `docker-compose.yml`; **never enable it globally in production**). The hook is
+  `rbac/dependencies.py::_observe_*`, called *after* the guard has decided — the single
+  reusable point (every atom check is `user_has_permission`), so no route was edited. The
+  decision logic moved unchanged into `_legacy_decision`. `observe_*` **return None and
+  cannot raise**, run on their **own read-only session** (`SET TRANSACTION READ ONLY` +
+  statement timeout), and a shadow ALLOW cannot grant, a DENY cannot remove, an ERROR
+  cannot change anything (proved on real routes in `tests/rbac/test_rbac_shadow_hook.py`).
+  **Do not add a branch on a shadow result, make `observe_*` return anything, or put the
+  request's `db` to use in it.** Details: `docs/architecture/RBAC_SHADOW_AUTHORIZATION.md`.
+- **Shadow results are MATCH / MISMATCH / NOT_COMPARABLE / ERROR**, and unknown is never a
+  match: retired and unmapped atoms, a user with no RBAC assignment
+  (`principal_not_provisioned`), an unsynced catalogue and anything scope-dependent
+  (`scope_deferred`, RBAC-5) are NOT_COMPARABLE. The mapping is the RBAC-2 **golden file**
+  only — no second mapping. A result has no field for a secret; the operation is a route
+  *template*; an error is recorded by exception class.
+- **The 40 role-name sites** are not migrated: they are recorded, by category, in
+  `Backend/data/rbac/legacy_role_name_dependencies.json` (RBAC-4 evidence; 16 are
+  scope, deferred to RBAC-5). `tests/rbac/test_rbac_legacy_role_evidence.py` fails if the
+  list and the code disagree. `scripts/rbac/shadow_equivalence.py` re-runs the RBAC-2
+  matrix through the real hook (always rolled back): 56 enforced atoms match for all five
+  roles, 10 retired report `retired_atom`, zero mismatches.
 - **RBAC emits severities lazily** (on its first event), so a process that ran RBAC code has
   `rbac.*` in the merged audit taxonomy; the two audit tests that pin the platform+Audit set
   exclude that source.

@@ -55,17 +55,33 @@ def test_the_api_still_exports_the_legacy_guards_unchanged():
     assert api.require_role is legacy.require_role
 
 
-def test_the_legacy_guards_do_not_mention_the_new_capability():
+def test_the_legacy_decision_logic_does_not_mention_the_new_capability():
+    """RBAC-3 hooks a shadow comparison into the guards (``_observe_*``), and the
+    hook is the *only* mention: the decision logic — the functions that say yes or
+    no — names no RBAC table, engine, resolver or shadow."""
     for fn in (
+        legacy._legacy_decision,
         legacy.require_permission,
         legacy.require_role,
-        legacy.user_has_permission,
     ):
         source_text = inspect.getsource(fn)
-        assert "rbac_" not in source_text and "Rbac" not in source_text
+        for word in (
+            "rbac_",
+            "Rbac",
+            "engine",
+            "resolver",
+            "shadow_compare",
+            "ShadowResult",
+        ):
+            assert word not in source_text, (fn.__name__, word)
     module_source = inspect.getsource(legacy)
-    assert "ccure_platform.rbac.engine" not in module_source
-    assert "resolver" not in module_source and "shadow" not in module_source
+    assert (
+        "ccure_platform.rbac.engine" not in module_source
+        and "resolver" not in module_source
+    )
+    # the shadow is reached through exactly one module, from three small helpers
+    assert module_source.count("rbac.shadow_runtime import") == 3
+    assert "shadow_compare" not in module_source
 
 
 def test_user_has_permission_still_answers_from_the_legacy_role(rbac_db):

@@ -142,3 +142,89 @@ def test_the_platform_api_exports_no_rbac_model_or_implementation_class():
     assert not exported & set(RBAC_MODELS)
     for name in ("RbacRole", "ShadowRecorder", "Violation", "CatalogueError", "decide"):
         assert name not in exported
+
+
+# ── RBAC-3: where shadow authorization is reached from ───────────────────────
+
+
+def test_only_the_legacy_guards_reach_the_shadow_runtime():
+    """RBAC-3 hooks shadow comparison into the legacy guards and nowhere else: no
+    router, task, service or module calls the shadow."""
+    offenders = []
+    for path in sorted(BACKEND_ROOT.rglob("*.py")):
+        parts = path.relative_to(BACKEND_ROOT).parts
+        if parts[0] in {"tests", ".venv", "venv", "alembic", "__pycache__", "scripts"}:
+            continue
+        rel = path.relative_to(BACKEND_ROOT).as_posix()
+        if rel in ("ccure_platform/rbac/dependencies.py",) or rel.startswith(
+            "ccure_platform/rbac/shadow"
+        ):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = []
+            if isinstance(node, ast.ImportFrom):
+                names = [node.module or "", *[a.name for a in node.names]]
+            elif isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.Name):
+                names = [node.id]
+            if any(
+                "shadow_runtime" in n
+                or n in ("shadow_compare", "observe_permission", "observe_role_check")
+                or n.endswith("rbac.shadow")
+                for n in names
+            ):
+                offenders.append(rel)
+    assert not offenders, sorted(set(offenders))
+
+
+def test_the_platform_api_exports_nothing_about_shadow():
+    import ccure_platform.api as api
+
+    assert not [n for n in api.__all__ if "shadow" in n.lower()]
+
+
+def test_modules_cannot_import_the_shadow_or_the_legacy_map():
+    from scripts.architecture.import_graph import Edge
+    from scripts.architecture.layer_rules import violations
+
+    for dst in (
+        "ccure_platform.rbac.shadow",
+        "ccure_platform.rbac.shadow_runtime",
+        "ccure_platform.rbac.legacy_map",
+        "ccure_platform.rbac.offboarding",
+    ):
+        found = {r for r, _ in violations([Edge("routers.scans", dst, False)])}
+        assert "modules-use-rbac-api-only" in found, dst
+        found = {r for r, _ in violations([Edge("ccure_audit.services.x", dst, False)])}
+        assert "modules-use-rbac-api-only" in found, dst
+
+
+def test_the_shadow_stays_independent_of_every_product():
+    for name in ("shadow.py", "shadow_runtime.py"):
+        tree = ast.parse(
+            (BACKEND_ROOT / "ccure_platform" / "rbac" / name).read_text(
+                encoding="utf-8"
+            )
+        )
+        for node in ast.walk(tree):
+            mods = (
+                [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else (
+                    [a.name for a in node.names] if isinstance(node, ast.Import) else []
+                )
+            )
+            for mod in mods:
+                assert not mod.startswith(
+                    (
+                        "ccure_audit",
+                        "ccure_policy",
+                        "ccure_rank",
+                        "ccure_ir",
+                        "routers",
+                        "scans",
+                        "core",
+                        "engines",
+                    )
+                ), (name, mod)

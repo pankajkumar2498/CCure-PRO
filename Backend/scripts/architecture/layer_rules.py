@@ -452,6 +452,9 @@ RULES: tuple[Rule, ...] = (
             "ccure_platform.rbac.governance",
             "ccure_platform.rbac.audit",
             "ccure_platform.rbac.shadow",
+            "ccure_platform.rbac.shadow_runtime",
+            "ccure_platform.rbac.legacy_map",
+            "ccure_platform.rbac.offboarding",
             "ccure_platform.composition",
         ),
         reason=(

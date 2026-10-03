@@ -80,7 +80,7 @@ def test_all_forty_rbac3_sites_are_still_tracked(inv):
     remaining = [s for s in inv["sites"] if s["mechanism"].startswith("role_name_")]
     # 13 migrated in RBAC-4, 20 in RBAC-5; 9 sites remain in the code (7 original
     # plus the legacy rollback rule's two helpers)
-    assert len(remaining) == 9
+    assert len(remaining) == 6
 
 
 def test_every_scope_site_has_a_final_rbac5_status(inv):
@@ -100,7 +100,16 @@ def test_every_scope_site_has_a_final_rbac5_status(inv):
         for s in inv["rbac3_role_name_sites"]
     ]
     assert (statuses.count("rbac4"), statuses.count("migrated")) == (13, 20)
+    # RBAC-7 migrated three of the seven; the other four are RBAC-8
     assert statuses.count("intentionally_deferred") == 7
+    assert (
+        sum(
+            1
+            for s in inv["rbac3_role_name_sites"]
+            if s.get("rbac7", {}).get("status") == "migrated"
+        )
+        == 3
+    )
 
 
 def test_only_one_to_one_mapped_atoms_outside_the_deferred_resources_migrate(inv):
@@ -147,7 +156,9 @@ def test_key_paths_name_permissions_the_catalogue_declares(inv):
         for s in inv["sites"]
         if s["migrated"] and s["mechanism"] in ("require_authorized", "has_permission")
     }
-    assert key_paths == REPLACED_KEYS and key_paths <= keys
+    # the five role-name replacements (RBAC-4) plus the platform-administration keys
+    # (RBAC-7); every one is a declared permission
+    assert key_paths >= REPLACED_KEYS and key_paths <= keys
 
 
 def test_the_runtime_switches_only_what_the_inventory_marks_migrated(inv):
@@ -161,4 +172,4 @@ def test_the_runtime_switches_only_what_the_inventory_marks_migrated(inv):
 def test_no_module_code_decides_by_role_name_except_the_recorded_sites():
     from scripts.architecture import rbac_guardrails as rg
 
-    assert sum(sum(v.values()) for v in rg.measure_legacy().values()) == 9
+    assert sum(sum(v.values()) for v in rg.measure_legacy().values()) == 6

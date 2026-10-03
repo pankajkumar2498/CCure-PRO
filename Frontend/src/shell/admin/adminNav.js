@@ -13,13 +13,13 @@ export const SHARED_ADMIN_NAV = [
     id: "user-management",
     label: "User Management",
     route: "/admin/users",
-    permission: { resource: "users", action: "read" },
+    permission: "platform.user.read",
   },
   {
     id: "deleted-users",
     label: "Deleted Users",
     route: "/admin/users/deleted",
-    permission: { resource: "users", action: "read" },
+    permission: "platform.user.read",
   },
   {
     id: "email-domains",
@@ -33,18 +33,18 @@ export const SHARED_ADMIN_NAV = [
     id: "organizations",
     label: "Organizations",
     route: "/admin/organizations",
-    permission: { resource: "organizations", action: "read" },
+    permission: "platform.organization.read",
   },
   {
     id: "roles-perms",
     label: "Roles & Permissions",
     route: "/admin/roles",
-    permission: { resource: "roles", action: "read" },
+    permission: "platform.role.read",
   },
   {
     id: "audit-logs",
     label: "Audit Logs",
     route: "/admin/audit-logs",
-    permission: { resource: "audit", action: "read" },
+    permission: "platform.audit_log.read",
   },
 ];

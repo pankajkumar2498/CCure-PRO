@@ -164,6 +164,10 @@
         "status": "intentionally_deferred",
         "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
         "deferred_to": "RBAC-7"
+      },
+      "rbac7": {
+        "status": "migrated",
+        "reason": "the user-directory scope helper is cross-organisation reach (acts_across_organisations), not a role-name test"
       }
     },
     {
@@ -259,6 +263,10 @@
         "status": "intentionally_deferred",
         "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
         "deferred_to": "RBAC-7"
+      },
+      "rbac7": {
+        "status": "migrated",
+        "reason": "audit-log visibility is cross-organisation reach (acts_across_organisations); reads and exports are platform.audit_log.read / .export"
       }
     },
     {
@@ -390,6 +398,10 @@
         "status": "intentionally_deferred",
         "reason": "not a scope decision: an emergency maker-checker bypass keyed on role names; it needs its own permission decision",
         "deferred_to": "RBAC-7"
+      },
+      "rbac7": {
+        "status": "migrated",
+        "reason": "the emergency bypass is the approval decision, so it needs the existing audit.compliance.approve_exception (organisation scope); no new permission"
       }
     },
     {

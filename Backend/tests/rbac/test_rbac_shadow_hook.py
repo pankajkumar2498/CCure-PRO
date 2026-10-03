@@ -171,7 +171,7 @@ def test_the_hook_adds_no_parameter_to_the_openapi_contract(world):
 def test_the_application_routes_and_guard_count_are_unchanged():
     from main import app
 
-    assert len(app.routes) == 274
+    assert len(app.routes) == 286
     guards = sum(
         1
         for route in app.routes

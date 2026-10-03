@@ -2576,3 +2576,76 @@ Backend capability with no frontend consumer, for completeness:
 - [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
 - [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md)
 - [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md)
+
+---
+
+## Platform RBAC administration — `/platform/rbac` (RBAC-7)
+
+The governed administration of roles, permissions and role assignments. Router:
+`ccure_platform/administration/rbac_admin.py`; rules: `ccure_platform/rbac/governance.py`
+(RBAC-2), applied by `ccure_platform/rbac/administration.py`. Authorization is the RBAC
+engine's alone: an account with no RBAC role assignment receives
+`403 RBAC administration needs an RBAC role assignment for this account.` Every mutation is
+audited; a refused one answers `403 {"code": "governance_refused", "violations": [{code, message}]}`
+and, for an escalation, writes `rbac.escalation.refused`. A sensitive change (a system or
+platform role, a privileged permission, a cross-organisation change) needs step-up: a current
+authenticator code in `X-Reauth-Code` for an account with MFA enrolled
+(`403 {"code": "reauth_required"}` otherwise). The organisation is the one the backend accepts
+(`org_id` is a request, validated by the scope seam).
+
+### `GET /platform/rbac/permissions`
+
+The permission catalogue: `key`, `module`, `resource`, `action`, `description`, `scope`,
+`sensitivity`, `delegable`, `status`. Needs `platform.permission.read`.
+
+### `GET /platform/rbac/roles`
+
+Roles visible in the active organisation (system roles and that organisation's custom roles):
+`id`, `key`, `display_name`, `kind`, `assignable_scope`, `state`, `permission_count`,
+`assignment_count`. `include_retired` optional. Needs `platform.role.read`.
+
+### `POST /platform/rbac/roles`
+
+Create a custom organisation role: `display_name`, `permission_keys`, `description`. Only
+delegable organisation-scope permissions the actor holds (the delegation ceiling). `201`.
+
+### `GET /platform/rbac/roles/{role_id}`
+
+Detail: permission keys, revision history, `retirement_blockers`, `sensitive`. `404` for a role of
+another organisation.
+
+### `PATCH /platform/rbac/roles/{role_id}`
+
+Change the display name or description — a label, never an authorization input. A system role
+needs `platform.role.rename_system`; a custom role `platform.role.update`. Unknown fields are refused.
+
+### `PUT /platform/rbac/roles/{role_id}/permissions`
+
+Make a custom role hold exactly `permission_keys`. System roles are immutable here; adding is
+bounded by the ceiling; nobody adds to a role they hold.
+
+### `POST /platform/rbac/roles/{role_id}/transition`
+
+`target`: `retiring` | `retired` | `active`. Retirement is gated (no live assignments, not a
+default role, no continuity invariant newly broken); reactivation is bounded by the ceiling.
+
+### `POST /platform/rbac/roles/{role_id}/replace`
+
+Move every live assignment to `to_role_id` (governed, all or nothing); the old role is then
+retirable. Assignments are revoked with reason `migrated`, never deleted.
+
+### `GET /platform/rbac/assignable-roles`
+
+`user_id`, `org_id` optional. Each role with `assignable` and the governance `reasons` when not,
+plus the actor's `delegation` summary. The UI offers exactly the assignable ones.
+
+### `GET /platform/rbac/users/{user_id}/assignments` · `POST …/assignments`
+
+View a user's assignments (display name, kind, state, scope, status), or assign `role_id`:
+organisation boundary, scope and permission ceilings, system-role rules, self-assignment and
+escalation are enforced.
+
+### `DELETE /platform/rbac/assignments/{assignment_id}`
+
+End an assignment (history kept). Refused when it would leave nobody holding a continuity
+permission (the last superadmin, the last role administrator of an organisation).

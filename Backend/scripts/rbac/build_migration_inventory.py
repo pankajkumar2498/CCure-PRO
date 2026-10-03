@@ -333,6 +333,7 @@ def build() -> dict:
         (x["file"], x["category"]): x["rbac5"]
         for x in decisions["sites"]
         if x.get("rbac5", {}).get("status") == "intentionally_deferred"
+        and x.get("rbac7", {}).get("status") != "migrated"
     }
     for d in remaining["sites"]:
         decided = final.get((d["file"], d["category"]))
@@ -372,6 +373,7 @@ def build() -> dict:
                 "new_permission",
                 "reason",
                 "rbac5",
+                "rbac7",
             )
             if k in d
         }
@@ -401,11 +403,15 @@ def build() -> dict:
             "rbac3_role_name_migrated_rbac5": sum(
                 1 for d in rbac3_sites if d.get("rbac5", {}).get("status") == "migrated"
             ),
+            "rbac3_role_name_migrated_rbac7": sum(
+                1 for d in rbac3_sites if d.get("rbac7", {}).get("status") == "migrated"
+            ),
             "rbac3_role_name_deferred_final": sum(
                 1
                 for d in rbac3_sites
                 if d["status"] != "migrated"
                 and d.get("rbac5", {}).get("status") != "migrated"
+                and d.get("rbac7", {}).get("status") != "migrated"
             ),
             "migrated": summary.get("migrated", 0),
             "deferred": summary.get("deferred", 0),

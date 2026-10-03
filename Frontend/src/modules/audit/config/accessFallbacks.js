@@ -13,9 +13,9 @@ export const AUDIT_ACCESS_FALLBACKS = [
   },
   { path: "/history", permission: { resource: "scans", action: "read" } },
   { path: "/reports", permission: { resource: "reports", action: "read" } },
-  { path: "/admin/users", permission: { resource: "users", action: "read" } },
+  { path: "/admin/users", permission: "platform.user.read" },
   {
     path: "/admin/audit-logs",
-    permission: { resource: "audit", action: "read" },
+    permission: "platform.audit_log.read",
   },
 ];

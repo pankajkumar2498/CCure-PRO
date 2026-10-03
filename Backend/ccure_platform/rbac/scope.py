@@ -473,3 +473,9 @@ def _audit_refusal(actor, legacy_role, target_user_id, target_org_id, verdict) -
             org_id=getattr(actor, "org_id", None),
         ),
     )
+
+
+def audit_isolated(user, draft) -> bool:
+    """Write one already-built event in its own transaction (so a refusal that rolls
+    the request back still leaves its record). Used by RBAC administration."""
+    return _audit(user, lambda: draft)

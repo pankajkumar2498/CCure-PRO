@@ -35,8 +35,8 @@ describe("frontend authorization inventory", () => {
     const sites = inv.sites.filter(
       (s) => s.kind === "role_name_read" && s.status !== "display-only",
     );
-    // the only non-display role-name reads are the RBAC-7 role-assignment screens
-    expect(new Set(sites.map((s) => s.status))).toEqual(new Set(["rbac7"]));
+    // RBAC-7 removed the last one: no role name is read for anything but display
+    expect(sites).toEqual([]);
   });
 
   it("the only legacy role-permission read is the older-backend fallback", () => {

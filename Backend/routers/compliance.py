@@ -276,9 +276,12 @@ def require_active_framework(framework_id: str) -> None:
     raise HTTPException(status_code=404, detail=f"Unknown framework {framework_id}")
 
 
-def _is_admin(user: CurrentUser) -> bool:
-    role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-    return role_name in ("admin", "superadmin", "compliance_officer")
+# The emergency bypass skips the maker-checker queue, i.e. the account performs the
+# approval decision itself. That is exactly what `audit.compliance.approve_exception`
+# grants (organisation scope, the organisation's own queue): no broader bypass
+# permission exists or was added (RBAC-7; docs/architecture/RBAC_ADMINISTRATION.md).
+def _may_bypass_maker_checker(db: Session, user: CurrentUser) -> bool:
+    return has_permission(db, user, "audit.compliance.approve_exception")
 
 
 def _latest_run_id(db: Session, org_id: str, framework_id: str) -> str | None:
@@ -2450,7 +2453,7 @@ def apply_remediation(
 
     # Maker-Checker flow check
     if payload.emergency_bypass:
-        if not _is_admin(user):
+        if not _may_bypass_maker_checker(db, user):
             raise HTTPException(
                 status_code=403,
                 detail="Emergency bypass is restricted to administrators and compliance officers.",
@@ -2933,7 +2936,7 @@ def rollback_remediation_request(
     # 6. Maker-Checker Bypass logic for administrators
     is_bypass = False
     if payload.emergency_bypass:
-        if not _is_admin(user):
+        if not _may_bypass_maker_checker(db, user):
             raise HTTPException(
                 status_code=403,
                 detail="Emergency bypass rollback is restricted to administrators and compliance officers.",

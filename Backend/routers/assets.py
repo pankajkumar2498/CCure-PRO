@@ -15,6 +15,7 @@ from typing import Optional
 
 from ccure_platform.api import (
     CurrentUser,
+    require_authorized,
     require_permission,
     resolve_active_organisation,
 )
@@ -1550,7 +1551,7 @@ def import_amt_inventory(
     file: UploadFile = File(...),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("settings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.import_amt")),
 ):
     """
     Upload an assets.json file to overwrite organization's AMT inventory reference data

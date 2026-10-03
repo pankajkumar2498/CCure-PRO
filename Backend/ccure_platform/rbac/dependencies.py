@@ -277,12 +277,17 @@ def require_permission(resource: str, action: str):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _legacy_key_decision(user: User, key: str) -> bool:
-    """The legacy rule the key replaced: the role-name set recorded for it in
-    ``authority.LEGACY_KEY_ROLES``. This is the rollback path; module code never
-    names a role."""
-    from ccure_platform.rbac.authority import legacy_roles_for_key
+def _legacy_key_decision(user: User, key: str, db: Session | None = None) -> bool:
+    """The legacy rule the key replaced. A key that was a legacy permission atom
+    answers from that atom (what ``require_permission`` always did, so a custom
+    legacy role holding it is unaffected); a key that never had one — or whose rule
+    was an inline "superadmin only" — answers from the legacy roles the golden
+    mapping grants it. The rollback path; module code never names a role."""
+    from ccure_platform.rbac.authority import legacy_atoms_for_key, legacy_roles_for_key
 
+    atoms = legacy_atoms_for_key(key)
+    if atoms and db is not None:
+        return any(_legacy_decision(db, user, r, a) for r, a in atoms)
     allowed = {r.lower() for r in legacy_roles_for_key(key)}
     role = getattr(user, "role", None)
     return bool(role) and (getattr(role, "name", "") or "").lower() in allowed
@@ -293,7 +298,7 @@ def has_permission(db: Session, user: User, key: str, *, operation=None) -> bool
     path is switched on, otherwise the legacy rule the key replaced."""
     from ccure_platform.rbac import authority
 
-    legacy = _legacy_key_decision(user, key)
+    legacy = _legacy_key_decision(user, key, db)
     return authority.decide_key(db, user, key, legacy, operation=operation).allowed
 
 
@@ -310,20 +315,36 @@ def require_authorized(key: str):
         request: Request = None,
     ) -> User:
         from ccure_platform.rbac import authority
-        from ccure_platform.rbac.authority import legacy_roles_for_key
+        from ccure_platform.rbac.authority import (
+            legacy_atoms_for_key,
+            legacy_roles_for_key,
+        )
 
+        atoms = legacy_atoms_for_key(key)
         role = getattr(user, "role", None)
         if not role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account does not have a role assigned. Contact an administrator.",
+                detail=(
+                    "Your account does not have a role assigned."
+                    if atoms
+                    else "Your account does not have a role assigned. Contact an administrator."
+                ),
             )
-        legacy = _legacy_key_decision(user, key)
+        legacy = _legacy_key_decision(user, key, db)
         _observe_role_check(user, set(legacy_roles_for_key(key)), legacy, request)
         out = authority.decide_key(db, user, key, legacy, operation=_operation(request))
         if not out.allowed:
             logger.warning("RBAC denied: user %s lacks %s.", user.id, key)
-            if out.source == authority.SOURCE_LEGACY:
+            if out.source == authority.SOURCE_LEGACY and atoms:
+                # the message the atom guard it replaced gave
+                role_name = getattr(role, "name", "unknown")
+                detail = (
+                    "Insufficient privileges. "
+                    f"Your role '{role_name}' does not have "
+                    f"'{atoms[0][0]}:{atoms[0][1]}' permission."
+                )
+            elif out.source == authority.SOURCE_LEGACY:
                 role_name = (getattr(role, "name", "") or "").lower()
                 req = ", ".join(sorted(legacy_roles_for_key(key)))
                 detail = (

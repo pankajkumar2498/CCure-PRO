@@ -18,6 +18,7 @@ import summary from "../../../fixtures/remediationSummary.real.json";
 import overdue from "../../../fixtures/remediationOverdue.real.json";
 import Remediation from "@audit/pages/Remediation";
 import api from "@shell/api/axiosInstance";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn() },
@@ -51,11 +52,11 @@ vi.mock("@shell/auth/AuthContext", () => ({
 }));
 
 const asRole = (name) => {
-  currentUser = {
+  currentUser = personaFrom({
     id: "usr_me",
     organization_id: "org_default",
     role: { name, permissions: ROLE_PERMS[name] || [] },
-  };
+  });
 };
 
 const people = {

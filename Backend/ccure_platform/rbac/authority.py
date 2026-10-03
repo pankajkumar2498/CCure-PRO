@@ -302,3 +302,27 @@ def legacy_roles_for_key(key: str) -> tuple[str, ...]:
     return tuple(
         sorted(r["legacy_role"] for r in golden["roles"] if r["role_key"] in holders)
     )
+
+
+#: Keys whose legacy rule was an inline "superadmin only" check on top of (or instead
+#: of) a permission atom, so their fallback stays the role-name rule rather than the
+#: atom (RBAC-7): an atom a custom legacy role could hold must not widen them.
+LEGACY_ROLE_NAME_ONLY_KEYS = frozenset(
+    {"platform.organization.archive", "platform.audit_log.retention"}
+)
+
+
+def legacy_atoms_for_key(key: str) -> tuple[tuple[str, str], ...]:
+    """The legacy ``(resource, action)`` atoms that were the same capability as the
+    permission ``key`` — read from the golden mapping, so nothing is copied. Empty
+    for a key that never had an atom (or whose legacy rule was role-name only)."""
+    if key in LEGACY_ROLE_NAME_ONLY_KEYS:
+        return ()
+    from ccure_platform.rbac import legacy_map
+
+    out = []
+    for entry in legacy_map.load_golden()["atoms"]:
+        if entry["status"] in ("mapped", "replaced") and key in entry["new_keys"]:
+            resource, _, action = entry["atom"].partition(":")
+            out.append((resource, action))
+    return tuple(sorted(out))

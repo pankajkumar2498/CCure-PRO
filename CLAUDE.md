@@ -525,6 +525,15 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   (`GET /auth/me?org_id=`). `Frontend/authorization-inventory.json` (generated, tested) classifies
   every remaining site (RBAC-7/8, display-only, retained). The frontend is advisory; the backend
   enforces.
+- **RBAC-7 = Platform RBAC administration** (`docs/architecture/RBAC_ADMINISTRATION.md`):
+  `/platform/rbac/*` (`administration/rbac_admin.py` over `rbac/administration.py`) governs roles,
+  permissions, custom organisation roles, lifecycle/replacement and assignments with the RBAC-2
+  rules; display names are labels; sensitive changes need step-up (`identity/reauth.py`,
+  `X-Reauth-Code`); refusals and mutations are audited. Every users/organizations/roles/settings/
+  audit-log route now asks one granular key through `require_authorized` (legacy rule as fallback);
+  the compliance emergency bypass is `audit.compliance.approve_exception` (no new permission).
+  Frontend: the Roles page and the user Roles panel are catalogue- and backend-driven;
+  `frontend authorization-inventory.json` has no rbac7 site left.
 - **Audit attribution: an event says who owns it, and nothing is ever attributed to an
   invented organisation.** `audit_logs` is tenant-bound (`org_id` NOT NULL). An event with an
   owning organisation (an organisation role; an organisation-scope assignment; a

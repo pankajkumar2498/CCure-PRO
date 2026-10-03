@@ -22,10 +22,8 @@ adopt_legacy_name(__name__, "routers.audit")
 import logging
 from datetime import datetime, timedelta, timezone
 
-from ccure_platform.rbac.dependencies import (
-    require_authorized,
-    require_permission,
-)
+from ccure_platform.rbac.dependencies import require_authorized
+from ccure_platform.rbac.scope import acts_across_organisations
 from config import AppConfig
 from ccure_platform.audit_log.writer import log_audit_event
 from ccure_platform.audit_log.retention import (
@@ -84,9 +82,9 @@ _RANGE_PRESETS = {
 
 
 def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
+    """Cross-organisation reach (the platform-scope switch grant): may this account
+    read every organisation's trail. No role name decides it (RBAC-7)."""
+    return acts_across_organisations(user)
 
 
 def _resolve_window(
@@ -304,7 +302,7 @@ def list_audit_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=1000),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("audit", "read")),
+    current_user: User = Depends(require_authorized("platform.audit_log.read")),
 ):
     """List audit events, newest first, filtered and paginated in the database."""
     if severity and severity.strip().lower() not in SEVERITY_LEVELS:
@@ -568,7 +566,7 @@ def export_audit_logs(
     date_to: datetime | None = Query(None, description="ISO 8601, inclusive"),
     q: str | None = Query(None, description="Same search as the list endpoint"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("audit", "export")),
+    current_user: User = Depends(require_authorized("platform.audit_log.export")),
 ):
     """
     Export the audit trail the caller can see, as CSV or PDF.
@@ -932,7 +930,7 @@ def preview_audit_retention(
 def get_audit_log(
     event_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("audit", "read")),
+    current_user: User = Depends(require_authorized("platform.audit_log.read")),
 ):
     """
     One audit event in full, for the detail view.

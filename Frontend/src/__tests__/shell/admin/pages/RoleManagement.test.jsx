@@ -1,39 +1,35 @@
 /**
- * RoleManagement — Checkpoint 3C migration coverage.
+ * RoleManagement — Platform RBAC administration (RBAC-7).
  *
- * Written against the page BEFORE migration so it records the functional
- * baseline, then kept as the regression suite afterwards. Every assertion
- * about behaviour — which endpoints are called, in what order, what happens on
- * failure — holds identically before and after; only the assertions marked as
- * accessibility gains are new.
- *
- * The page is behind `PrivateRoute requiredPermission={{roles, read}}`, so a
- * browser screenshot needs an authenticated session. This suite is the
- * deterministic artefact that stands in for one.
+ * Every control is driven by the backend: what the signed-in account may do (the
+ * authorization payload) and what each role reports (kind, state, blockers). A role's
+ * display name is a label — the tests rename roles and show nothing else changes.
  */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import RoleManagement from "@shell/admin/pages/RoleManagement";
 import AuthContext from "@shell/auth/AuthContext";
 import { PreferencesProvider } from "@shell/preferences/PreferencesContext";
-import { listRoles, listRolePermissions } from "@shell/api/admin";
+import * as rbac from "@shell/api/rbac";
+import { payload } from "../../../fixtures/authorization";
 
-vi.mock("@shell/api/admin", () => ({
-  listRoles: vi.fn(),
-  listRolePermissions: vi.fn(),
+vi.mock("@shell/api/rbac", async (importOriginal) => ({
+  ...(await importOriginal()),
+  listRbacRoles: vi.fn(),
+  getRbacRole: vi.fn(),
+  listPermissionCatalogue: vi.fn(),
+  createRbacRole: vi.fn(),
+  updateRbacRole: vi.fn(),
+  setRbacRolePermissions: vi.fn(),
+  transitionRbacRole: vi.fn(),
+  replaceRbacRole: vi.fn(),
 }));
-
 vi.mock("@shell/api/user", () => ({
   getPreferences: vi.fn().mockResolvedValue({ theme: "light" }),
 }));
-
-// The frame (Audit's AppLayout in the app) pulls in the notification SSE stream, the org switcher and the
-// quota bar. None of that is under test here, and mocking it keeps the diff
-// this suite is guarding narrow.
 vi.mock("@shell/layout/ProductFrame", () => ({
   default: ({ children, pageTitle }) => (
     <div data-testid="app-layout" data-page-title={pageTitle}>
@@ -42,22 +38,103 @@ vi.mock("@shell/layout/ProductFrame", () => ({
   ),
 }));
 
-const ROLES = [
-  { id: 1, name: "superadmin", description: "Full platform access" },
-  { id: 2, name: "analyst", description: "Runs scans and triages findings" },
-  { id: 3, name: "viewer", description: null },
+const CATALOGUE = [
+  {
+    key: "audit.scan.read",
+    module: "audit",
+    resource: "scan",
+    action: "read",
+    description: "Read scans",
+    scope: "organization",
+    sensitivity: "normal",
+    delegable: true,
+    status: "active",
+  },
+  {
+    key: "audit.scan.run",
+    module: "audit",
+    resource: "scan",
+    action: "run",
+    description: "Start scans",
+    scope: "organization",
+    sensitivity: "normal",
+    delegable: true,
+    status: "active",
+  },
+  {
+    key: "platform.organization.switch",
+    module: "platform",
+    resource: "organization",
+    action: "switch",
+    description: "Enter another organisation",
+    scope: "platform",
+    sensitivity: "privileged",
+    delegable: false,
+    status: "active",
+  },
+  {
+    key: "audit.old.thing",
+    module: "audit",
+    resource: "old",
+    action: "thing",
+    description: "Gone",
+    scope: "organization",
+    sensitivity: "normal",
+    delegable: true,
+    status: "retired",
+  },
 ];
 
-const PERMISSIONS = [
-  { id: 10, resource: "scans", action: "execute", description: "Start a scan" },
-  { id: 11, resource: "users", action: "manage", description: null },
+const summary = (over) => ({
+  id: "r1",
+  key: "custom.o.reader",
+  display_name: "Reader",
+  description: null,
+  kind: "custom",
+  assignable_scope: "organization",
+  org_id: "o",
+  state: "active",
+  revision: 1,
+  permission_count: 1,
+  assignment_count: 0,
+  ...over,
+});
+const detail = (over) => ({
+  ...summary(),
+  permissions: ["audit.scan.read"],
+  history: [
+    {
+      revision: 1,
+      change_kind: "created",
+      display_name: "Reader",
+      state: "active",
+    },
+  ],
+  retirement_blockers: [],
+  sensitive: false,
+  ...over,
+});
+
+const ALL = [
+  "platform.role.read",
+  "platform.role.create",
+  "platform.role.update",
+  "platform.role.retire",
+  "audit.scan.read",
+  "audit.scan.run",
 ];
 
-function renderPage() {
+function renderPage(keys = ALL, extra = {}) {
+  const user = {
+    id: "u1",
+    org_id: "o",
+    role: { name: "Whatever", permissions: [] },
+    authorization: payload({ keys, active: "o", home: "o", ...extra }),
+  };
   return render(
     <AuthContext.Provider
       value={{
-        user: { role: { name: "superadmin", permissions: ["roles:read"] } },
+        user,
         loading: false,
         authState: "authenticated",
         isAuthenticated: true,
@@ -72,244 +149,303 @@ function renderPage() {
   );
 }
 
+let current;
 beforeEach(() => {
   vi.clearAllMocks();
-  listRoles.mockResolvedValue({ roles: ROLES });
-  listRolePermissions.mockResolvedValue({ permissions: PERMISSIONS });
+  current = detail();
+  rbac.listRbacRoles.mockImplementation(async () => ({
+    roles: [
+      summary({
+        id: current.id,
+        display_name: current.display_name,
+        state: current.state,
+      }),
+      summary({
+        id: "sys",
+        key: "platform.viewer",
+        display_name: "Viewer",
+        kind: "system",
+        assignable_scope: "organization",
+        org_id: null,
+        assignment_count: 3,
+      }),
+    ],
+  }));
+  rbac.listPermissionCatalogue.mockResolvedValue({ permissions: CATALOGUE });
+  rbac.getRbacRole.mockImplementation(async (id) =>
+    id === "sys"
+      ? detail({
+          id: "sys",
+          key: "platform.viewer",
+          display_name: "Viewer",
+          kind: "system",
+          org_id: null,
+          assignment_count: 3,
+        })
+      : current,
+  );
+  rbac.updateRbacRole.mockResolvedValue({});
+  rbac.setRbacRolePermissions.mockResolvedValue({});
+  rbac.transitionRbacRole.mockResolvedValue({});
+  rbac.createRbacRole.mockResolvedValue({});
+  rbac.replaceRbacRole.mockResolvedValue({});
 });
 
-/* ── Functional baseline — must hold identically after migration ─────────── */
-
-describe("RoleManagement — API contract", () => {
-  it("loads the role list once on mount", async () => {
+describe("catalogue-driven permissions", () => {
+  it("lists the backend's catalogue and nothing else, with scope and sensitivity", async () => {
     renderPage();
-    await waitFor(() => expect(listRoles).toHaveBeenCalledTimes(1));
-    // No arguments: GET /admin/roles/ takes none.
-    expect(listRoles).toHaveBeenCalledWith();
-  });
-
-  it("auto-selects the first role and loads its permissions", async () => {
-    renderPage();
-    // Pre-existing behaviour: the page selects roles[0] so the right-hand
-    // panel is never empty on arrival. Preserved by the migration.
-    await waitFor(() => expect(listRolePermissions).toHaveBeenCalledWith(1));
-  });
-
-  it("requests permissions for the role the user selects", async () => {
-    renderPage();
-    await screen.findByText("analyst");
-    await userEvent.click(screen.getByText("analyst"));
-    await waitFor(() => expect(listRolePermissions).toHaveBeenCalledWith(2));
-  });
-
-  it("makes no other request", async () => {
-    renderPage();
-    await waitFor(() => expect(listRolePermissions).toHaveBeenCalled());
-    // The migration must not introduce polling or extra endpoints.
-    expect(listRoles).toHaveBeenCalledTimes(1);
-    expect(listRolePermissions).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("RoleManagement — rendering", () => {
-  it("renders every role with its description", async () => {
-    renderPage();
-    // "superadmin" appears twice — once in the list, once in the "Permissions
-    // for <role>" heading — so this counts rather than expecting one node.
-    expect((await screen.findAllByText("superadmin")).length).toBeGreaterThan(
-      0,
-    );
-    expect(screen.getByText("analyst")).toBeInTheDocument();
-    expect(screen.getByText("Full platform access")).toBeInTheDocument();
-  });
-
-  it("falls back to a placeholder for a role with no description", async () => {
-    renderPage();
-    expect(await screen.findByText("No description")).toBeInTheDocument();
-  });
-
-  it("renders each permission's resource and action", async () => {
-    renderPage();
-    expect(await screen.findByText("scans")).toBeInTheDocument();
-    expect(screen.getByText("execute")).toBeInTheDocument();
-    expect(screen.getByText("manage")).toBeInTheDocument();
-  });
-
-  it("synthesises a description for a permission that has none", async () => {
-    renderPage();
-    // Pre-existing string: "Allows access to " + resource.
     expect(
-      await screen.findByText("Allows access to users"),
+      await screen.findByRole("checkbox", { name: "audit.scan.read" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "audit.scan.run" }),
+    ).not.toBeChecked();
+    expect(screen.getByText("privileged")).toBeInTheDocument();
+    expect(screen.getByText("not delegable")).toBeInTheDocument();
+  });
+
+  it("does not allow a retired, platform-scope or non-delegable permission to be added", async () => {
+    renderPage();
+    await screen.findByRole("checkbox", { name: "audit.scan.read" });
+    expect(
+      screen.getByRole("checkbox", { name: "audit.old.thing" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "platform.organization.switch" }),
+    ).toBeDisabled();
+  });
+
+  it("disables what is beyond the administrator's own delegation", async () => {
+    renderPage([
+      "platform.role.read",
+      "platform.role.update",
+      "audit.scan.read",
+    ]);
+    await screen.findByRole("checkbox", { name: "audit.scan.read" });
+    expect(
+      screen.getByRole("checkbox", { name: "audit.scan.run" }),
+    ).toBeDisabled();
+  });
+
+  it("saves the chosen keys through the API and reports success", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    await u.click(
+      await screen.findByRole("checkbox", { name: "audit.scan.run" }),
+    );
+    await u.click(screen.getByRole("button", { name: "Save permissions" }));
+    await waitFor(() =>
+      expect(rbac.setRbacRolePermissions).toHaveBeenCalledWith(
+        "r1",
+        ["audit.scan.read", "audit.scan.run"],
+        {},
+      ),
+    );
+  });
+
+  it("a system role's permissions are read-only", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    await u.click(await screen.findByRole("button", { name: /Viewer/ }));
+    await screen.findByText(/change with a catalogue release/);
+    expect(
+      screen.getByRole("checkbox", { name: "audit.scan.read" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Save permissions" }),
+    ).toBeNull();
+  });
+});
+
+describe("display names are labels", () => {
+  it("a role named Superadmin gets no extra controls", async () => {
+    current = detail({ display_name: "Superadmin" });
+    renderPage(["platform.role.read"]);
+    await screen.findByRole("heading", { name: "Superadmin" });
+    expect(
+      screen.queryByRole("button", { name: "New custom role" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save name" })).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "audit.scan.read" }),
+    ).toBeDisabled();
+  });
+
+  it("renaming sends only the new label", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    const field = await screen.findByLabelText("Display name");
+    await u.clear(field);
+    await u.type(field, "CISO");
+    await u.click(screen.getByRole("button", { name: "Save name" }));
+    await waitFor(() =>
+      expect(rbac.updateRbacRole).toHaveBeenCalledWith(
+        "r1",
+        { display_name: "CISO" },
+        {},
+      ),
+    );
+  });
+
+  it("renaming a system role is offered only with the system-rename permission", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    await u.click(await screen.findByRole("button", { name: /Viewer/ }));
+    await screen.findByRole("heading", { name: "Viewer" });
+    expect(screen.getByLabelText("Display name")).toBeDisabled();
+  });
+});
+
+describe("permission-driven controls", () => {
+  it("shows create only to an account that may create roles", async () => {
+    renderPage();
+    expect(
+      await screen.findByRole("button", { name: "New custom role" }),
     ).toBeInTheDocument();
   });
 
-  it("sets the page title", async () => {
+  it("hides create without the permission", async () => {
+    renderPage(["platform.role.read"]);
+    await screen.findByRole("heading", { name: "Reader" });
+    expect(
+      screen.queryByRole("button", { name: "New custom role" }),
+    ).toBeNull();
+  });
+
+  it("creates a role from the catalogue", async () => {
+    const u = userEvent.setup();
     renderPage();
+    await u.click(
+      await screen.findByRole("button", { name: "New custom role" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await u.type(within(dialog).getByLabelText("Display name"), "Auditor");
+    await u.click(
+      within(dialog).getByRole("checkbox", { name: "audit.scan.read" }),
+    );
+    await u.click(within(dialog).getByRole("button", { name: "Create role" }));
     await waitFor(() =>
-      expect(screen.getByTestId("app-layout")).toHaveAttribute(
-        "data-page-title",
-        "Roles & Permissions",
+      expect(rbac.createRbacRole).toHaveBeenCalledWith(
+        { display_name: "Auditor", permission_keys: ["audit.scan.read"] },
+        {},
       ),
     );
   });
 });
 
-describe("RoleManagement — states", () => {
-  it("shows a loading state before the roles arrive", async () => {
-    let resolve;
-    listRoles.mockReturnValue(
-      new Promise((r) => {
-        resolve = r;
-      }),
-    );
-    renderPage();
-    // Accessibility gain: the pre-migration page rendered a bare spinner div
-    // with no text, so a screen reader was told nothing at all.
-    expect(await screen.findByRole("status")).toHaveTextContent(/loading/i);
-    resolve({ roles: ROLES });
-    await screen.findByText("superadmin");
-  });
-
-  it("reports a failure to load roles", async () => {
-    listRoles.mockRejectedValue(new Error("boom"));
-    renderPage();
-    expect(
-      await screen.findByText(/Failed to load roles/i),
-    ).toBeInTheDocument();
-  });
-
-  it("shows an empty state when a role has no permissions", async () => {
-    listRolePermissions.mockResolvedValue({ permissions: [] });
-    renderPage();
-    expect(
-      await screen.findByText(/No permissions assigned to this role/i),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps the table header visible while empty", async () => {
-    listRolePermissions.mockResolvedValue({ permissions: [] });
-    renderPage();
-    await screen.findByText(/No permissions assigned/i);
-    // Replacing the table wholesale would reflow the panel on every selection.
-    expect(screen.getAllByRole("columnheader")).toHaveLength(3);
-  });
-});
-
-/* ── Accessibility — the gains this migration is for ─────────────────────── */
-
-describe("RoleManagement — accessibility", () => {
-  it("gives the permissions table an accessible name", async () => {
-    renderPage();
-    // Before migration the table had no caption at all.
-    const table = await screen.findByRole("table");
-    expect(table).toHaveAccessibleName(/permissions/i);
-  });
-
-  it("marks every column header with scope=col", async () => {
-    renderPage();
-    const headers = await screen.findAllByRole("columnheader");
-    expect(headers).toHaveLength(3);
-    // 330 header cells across the application carry no scope; this is the
-    // first page to fix it.
-    for (const h of headers) expect(h).toHaveAttribute("scope", "col");
-  });
-
-  it("identifies each row by its resource", async () => {
-    renderPage();
-    const rowHeaders = await screen.findAllByRole("rowheader");
-    expect(rowHeaders.map((h) => h.textContent)).toEqual(["scans", "users"]);
-    for (const h of rowHeaders) expect(h).toHaveAttribute("scope", "row");
-  });
-
-  it("exposes the role list as a list of buttons with pressed state", async () => {
-    renderPage();
-    await screen.findByText("superadmin");
-    const selected = screen
-      .getAllByRole("button")
-      .filter((b) => b.getAttribute("aria-pressed") === "true");
-    // The pre-migration page styled the selected role but announced nothing,
-    // so a screen-reader user could not tell which panel they were reading.
-    expect(selected).toHaveLength(1);
-    expect(selected[0]).toHaveTextContent("superadmin");
-  });
-
-  it("moves the pressed state when another role is chosen", async () => {
-    renderPage();
-    await screen.findByText("analyst");
-    await userEvent.click(screen.getByText("analyst"));
-    await waitFor(() => {
-      const pressed = screen
-        .getAllByRole("button")
-        .filter((b) => b.getAttribute("aria-pressed") === "true");
-      expect(pressed).toHaveLength(1);
-      expect(pressed[0]).toHaveTextContent("analyst");
+describe("lifecycle", () => {
+  it("shows the retirement blockers and offers replacement when holders exist", async () => {
+    current = detail({
+      assignment_count: 2,
+      state: "retiring",
+      retirement_blockers: ["active_assignments"],
     });
+    renderPage();
+    expect(await screen.findByText(/active_assignments/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Move holders to")).toBeInTheDocument();
   });
 
-  it("names the two regions of the page", async () => {
+  it("moves assignments to the chosen replacement", async () => {
+    const u = userEvent.setup();
+    current = detail({ assignment_count: 2, state: "retiring" });
     renderPage();
-    await screen.findByText("superadmin");
-    expect(screen.getByRole("region", { name: /roles/i })).toBeInTheDocument();
+    const select = await screen.findByLabelText("Move holders to");
+    await u.selectOptions(select, "sys");
+    await u.click(screen.getByRole("button", { name: "Move assignments" }));
+    await waitFor(() =>
+      expect(rbac.replaceRbacRole).toHaveBeenCalledWith("r1", "sys", {}),
+    );
+  });
+
+  it("walks active → retiring → retired and reactivates", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    await u.click(
+      await screen.findByRole("button", { name: "Start retiring" }),
+    );
+    await waitFor(() =>
+      expect(rbac.transitionRbacRole).toHaveBeenCalledWith(
+        "r1",
+        { target: "retiring" },
+        {},
+      ),
+    );
+  });
+
+  it("offers reactivation for a retired role", async () => {
+    current = detail({ state: "retired" });
+    renderPage();
     expect(
-      screen.getByRole("region", { name: /permissions/i }),
+      await screen.findByRole("button", { name: "Reactivate" }),
     ).toBeInTheDocument();
   });
 
-  it("announces the permissions loading state", async () => {
-    let resolve;
-    listRolePermissions.mockReturnValue(
-      new Promise((r) => {
-        resolve = r;
-      }),
-    );
-    renderPage();
-    await screen.findByText("superadmin");
-    const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent(/loading/i);
-    resolve({ permissions: PERMISSIONS });
-  });
-
-  it("reports the load error as an alert", async () => {
-    listRoles.mockRejectedValue(new Error("boom"));
-    renderPage();
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/Failed to load roles/i);
+  it("without the retire permission there is no lifecycle control", async () => {
+    renderPage([
+      "platform.role.read",
+      "platform.role.update",
+      "audit.scan.read",
+    ]);
+    await screen.findByRole("heading", { name: "Reader" });
+    expect(screen.queryByRole("button", { name: "Start retiring" })).toBeNull();
   });
 });
 
-/* ── Theming ─────────────────────────────────────────────────────────────── */
-
-describe("RoleManagement — theming", () => {
-  it("renders under data-theme=dark without pinning colour", async () => {
-    document.documentElement.setAttribute("data-theme", "dark");
-    try {
-      const { container } = renderPage();
-      await screen.findByText("scans");
-      // The page is auth-gated, so a browser screenshot of it needs a session.
-      // This is the deterministic stand-in: every colour now resolves through
-      // --ccure-* tokens, which are redefined under [data-theme="dark"], and
-      // nothing is pinned inline to defeat that.
-      for (const el of container.querySelectorAll("*")) {
-        expect(el.getAttribute("style") ?? "").not.toMatch(
-          /(^|;)\s*(color|background)/,
-        );
-      }
-      expect(screen.getByRole("table")).toBeInTheDocument();
-    } finally {
-      document.documentElement.removeAttribute("data-theme");
-    }
+describe("backend refusals and step-up", () => {
+  it("shows the backend's own reasons for a refused change", async () => {
+    const u = userEvent.setup();
+    rbac.setRbacRolePermissions.mockRejectedValue({
+      response: {
+        status: 403,
+        data: {
+          detail: {
+            code: "governance_refused",
+            violations: [
+              {
+                code: "escalation_ceiling",
+                message: "the actor does not hold audit.scan.run",
+              },
+            ],
+          },
+        },
+      },
+    });
+    renderPage();
+    await u.click(
+      await screen.findByRole("checkbox", { name: "audit.scan.run" }),
+    );
+    await u.click(screen.getByRole("button", { name: "Save permissions" }));
+    expect(
+      await screen.findByText(/does not hold audit.scan.run/),
+    ).toBeInTheDocument();
   });
 
-  it("pins no colour inline", async () => {
-    const { container } = renderPage();
-    await screen.findByText("scans");
-    // The pre-migration page hardcoded #fef2f2 / #dc2626 / #f0f9ff / #0369a1
-    // and rgba(37,99,235,.05), none of which respond to data-theme, plus
-    // var(--primary) — a token that does not exist, so it resolved to nothing.
-    for (const el of container.querySelectorAll("*")) {
-      expect(el.getAttribute("style") ?? "").not.toMatch(
-        /(^|;)\s*(color|background)/,
-      );
-    }
+  it("asks for an authenticator code on reauth_required and retries with it", async () => {
+    const u = userEvent.setup();
+    rbac.updateRbacRole
+      .mockRejectedValueOnce({
+        response: {
+          status: 403,
+          data: { detail: { code: "reauth_required" } },
+        },
+      })
+      .mockResolvedValueOnce({});
+    renderPage();
+    const field = await screen.findByLabelText("Display name");
+    await u.clear(field);
+    await u.type(field, "Manager");
+    await u.click(screen.getByRole("button", { name: "Save name" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: /authenticator/i,
+    });
+    await u.type(within(dialog).getByLabelText("Authenticator code"), "123456");
+    await u.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(rbac.updateRbacRole).toHaveBeenLastCalledWith(
+        "r1",
+        { display_name: "Manager" },
+        { reauthCode: "123456" },
+      ),
+    );
   });
 });

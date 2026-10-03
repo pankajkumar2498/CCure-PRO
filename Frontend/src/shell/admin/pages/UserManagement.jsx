@@ -18,6 +18,7 @@ import {
   approveUser,
 } from "../../api/admin";
 import UserTable from "../components/UserTable";
+import UserRolesPanel from "../components/UserRolesPanel";
 import UserForm from "../components/UserForm";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import {
@@ -173,23 +174,19 @@ export default function UserManagement() {
   // bound to its own organisation
   const isSuperadmin = canSwitchOrganisation(currentUser);
   const orgAdmin = !isSuperadmin;
-  const canCreateUsers = can(currentUser, "users", "create");
-  const canUpdateUsers = can(currentUser, "users", "update");
-  const canDeleteUsers = can(currentUser, "users", "delete");
-  // RBAC-7 dependency: this list filter still recognises the platform-wide legacy
-  // role by its label, because the roles endpoint does not yet say which roles an
-  // account may hand out. It only narrows what is offered; the backend's assignment
-  // hierarchy (RBAC-5) refuses an escalation whatever the form sends.
-  const assignableRoles = useMemo(() => {
-    if (isSuperadmin) return roles;
-
-    return roles.filter((role) => {
-      const roleName = String(role.name || "")
-        .toLowerCase()
-        .replace(/\s+/g, "_");
-      return roleName !== "superadmin";
-    });
-  }, [roles, isSuperadmin]);
+  const canCreateUsers = can(currentUser, "platform.user.create");
+  const canUpdateUsers = can(currentUser, "platform.user.update");
+  const canDeleteUsers = can(currentUser, "platform.user.delete");
+  const canManageRoles = can(currentUser, "platform.role.read");
+  const [rolesUser, setRolesUser] = useState(null);
+  // The backend decides which roles may be handed out (`assignable`, from the
+  // assignment rules: organisation boundary, ceilings, hierarchy — RBAC-7). The form
+  // offers exactly those; no role label is consulted, and the backend refuses an
+  // escalation whatever the form sends.
+  const assignableRoles = useMemo(
+    () => roles.filter((role) => role.assignable !== false),
+    [roles],
+  );
 
   // ── Data loading (server-side) ────────────────────────────────────────────
   const loadUsers = useCallback(
@@ -842,6 +839,8 @@ export default function UserManagement() {
           onToggleStatus={handleToggleStatus}
           onUnlock={handleUnlockUser}
           onDelete={handleDeleteUser}
+          onManageRoles={setRolesUser}
+          canManageRoles={canManageRoles}
           canUpdateUsers={canUpdateUsers}
           canDeleteUsers={canDeleteUsers}
         />
@@ -872,6 +871,18 @@ export default function UserManagement() {
           onCancel={closeModal}
           busy={busy}
         />
+      </CcureModal>
+
+      <CcureModal
+        open={!!rolesUser}
+        title={`Roles for ${rolesUser?.username || ""}`}
+        subtitle="Role assignments in the platform RBAC model."
+        size="lg"
+        onClose={() => setRolesUser(null)}
+      >
+        {rolesUser && (
+          <UserRolesPanel user={rolesUser} currentUser={currentUser} />
+        )}
       </CcureModal>
 
       <CcureModal

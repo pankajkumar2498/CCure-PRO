@@ -279,7 +279,7 @@ export default function App() {
               element={
                 <PrivateRoute
                   deniedElement={<AccessDenied />}
-                  requiredPermission={{ resource: "audit", action: "read" }}
+                  requiredPermission={"platform.audit_log.read"}
                 />
               }
             >
@@ -289,7 +289,7 @@ export default function App() {
               element={
                 <PrivateRoute
                   deniedElement={<AccessDenied />}
-                  requiredPermission={{ resource: "users", action: "read" }}
+                  requiredPermission={"platform.user.read"}
                 />
               }
             >
@@ -316,10 +316,7 @@ export default function App() {
               element={
                 <PrivateRoute
                   deniedElement={<AccessDenied />}
-                  requiredPermission={{
-                    resource: "organizations",
-                    action: "read",
-                  }}
+                  requiredPermission={"platform.organization.read"}
                 />
               }
             >
@@ -332,7 +329,7 @@ export default function App() {
               element={
                 <PrivateRoute
                   deniedElement={<AccessDenied />}
-                  requiredPermission={{ resource: "roles", action: "read" }}
+                  requiredPermission={"platform.role.read"}
                 />
               }
             >

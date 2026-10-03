@@ -83,7 +83,7 @@ function resolveRoleName(user, roles) {
 export default function DeletedUsers() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const canDeleteUsers = can(currentUser, "users", "delete");
+  const canDeleteUsers = can(currentUser, "platform.user.delete");
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);

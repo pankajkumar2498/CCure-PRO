@@ -43,6 +43,7 @@ import { AUDIT_ACCESS_FALLBACKS } from "@audit/config/accessFallbacks";
 import { AMT_PERMISSION } from "@audit/config/permissions";
 import api from "@shell/api/axiosInstance";
 import { SRC, AUDIT_SRC } from "../../../../testPaths";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -995,15 +996,12 @@ describe("AMTIntegration — contract", () => {
   });
 
   describe("route permission", () => {
-    it("App.jsx mounts the page once, behind AMT_PERMISSION (settings:update)", () => {
+    it("App.jsx mounts the page once, behind AMT_PERMISSION (audit.asset.import_amt)", () => {
       const app = readFileSync(path.join(SRC, "App.jsx"), "utf8");
       expect(app).toMatch(
         /<Route\s+element=\{\s*<PrivateRoute\s+requiredPermission=\{AMT_PERMISSION\}\s*\/>\s*\}\s*>\s*<Route\s+path="\/admin\/amt"\s+element=\{<AMTIntegration\s*\/>\}\s*\/>\s*<\/Route>/,
       );
-      expect(AMT_PERMISSION).toEqual({
-        resource: "settings",
-        action: "update",
-      });
+      expect(AMT_PERMISSION).toBe("audit.asset.import_amt");
       expect(app.match(/<AMTIntegration\b/g)).toHaveLength(1);
     });
 
@@ -1013,7 +1011,7 @@ describe("AMTIntegration — contract", () => {
           value={{
             loading: false,
             authState: "authenticated",
-            user: { role: { name: "analyst", permissions } },
+            user: personaFrom({ role: { name: "analyst", permissions } }),
           }}
         >
           {/* As App.jsx composes it: Audit names the fallback pages. */}

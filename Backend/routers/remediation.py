@@ -62,6 +62,7 @@ from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
+    require_authorized,
     require_permission,
     resolve_active_organisation,
 )
@@ -558,7 +559,7 @@ def set_sla_policy(
     response: Response,
     body: RemediationSlaPolicyUpdate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("settings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.remediation.manage_sla")),
     db: Session = Depends(get_db),
 ):
     """

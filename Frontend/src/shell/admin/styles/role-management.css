@@ -83,3 +83,63 @@
 .rm-alert {
   margin-bottom: var(--ccure-space-lg);
 }
+
+/* RBAC-7: administration additions */
+.rm-section {
+  margin-block: var(--cc-space-4, 1rem);
+}
+.rm-muted {
+  color: var(--cc-color-text-muted, #5b6472);
+  font-size: 0.875rem;
+}
+.rm-check {
+  margin-inline-end: 1rem;
+  font-size: 0.875rem;
+}
+.rm-perms {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+.rm-perm-module__title {
+  margin: 0;
+  text-transform: capitalize;
+}
+.rm-perm-resource {
+  border: 0;
+  padding: 0;
+  margin: 0 0 0.5rem;
+}
+.rm-perm-resource legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.rm-perm {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+.rm-perm--off {
+  opacity: 0.6;
+}
+.rm-perm__action {
+  font-family: var(--cc-font-mono, monospace);
+  min-width: 8rem;
+}
+.rm-perm__desc {
+  flex: 1;
+  font-size: 0.85rem;
+}
+.rm-history {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  font-size: 0.85rem;
+}
+.rm-replace {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}

@@ -67,7 +67,15 @@ with a reason. Remaining: the platform-administration screens' atom checks and o
 role-label filter (RBAC-7), the older-backend fallback (RBAC-8), and the request hint
 (intentionally retained, validated by the backend).
 
+## RBAC-7 update
+
+The platform-administration screens now name permission keys too (`platform.user.*`,
+`platform.organization.*`, `platform.role.read`, `platform.audit_log.*`), the role-label filter is
+gone (the backend marks which roles are `assignable`), and the roles/assignment administration UI
+lives in the Platform shell (`/admin/roles`, the Roles panel on User Management). No frontend
+role-name decision remains; see `RBAC_ADMINISTRATION.md`.
+
 ## Not done here
 
-RBAC administration UI (roles, assignments, custom roles, governance) is RBAC-7;
-provisioning/bootstrap is RBAC-8; Policy Pro, Rank and IR gain nothing.
+Provisioning/bootstrap and removing the older-backend fallback are RBAC-8; Policy Pro, Rank and IR
+gain nothing.

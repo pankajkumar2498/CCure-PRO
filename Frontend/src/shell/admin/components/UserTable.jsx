@@ -37,6 +37,8 @@ function TableRow({
   onToggleStatus,
   onUnlock,
   onDelete,
+  onManageRoles,
+  canManageRoles,
   canUpdateUsers,
   canDeleteUsers,
 }) {
@@ -79,6 +81,16 @@ function TableRow({
               onClick={() => onEdit(user)}
             >
               Edit
+            </CcureButton>
+          )}
+          {canManageRoles && (
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              aria-label={`Roles for ${who}`}
+              onClick={() => onManageRoles(user)}
+            >
+              Roles
             </CcureButton>
           )}
           {canUpdateUsers && (
@@ -160,6 +172,8 @@ export default function UserTable({
   onToggleStatus,
   onUnlock,
   onDelete,
+  onManageRoles,
+  canManageRoles = false,
   canUpdateUsers = false,
   canDeleteUsers = false,
 }) {
@@ -227,6 +241,8 @@ export default function UserTable({
               onToggleStatus={onToggleStatus}
               onUnlock={onUnlock}
               onDelete={onDelete}
+              onManageRoles={onManageRoles}
+              canManageRoles={canManageRoles}
               canUpdateUsers={canUpdateUsers}
               canDeleteUsers={canDeleteUsers}
             />

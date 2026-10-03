@@ -68,43 +68,26 @@ const RULES = [
     "display-only",
     "the role badge on the profile",
   ],
+  // platform administration (RBAC-7): permission keys from the backend's catalogue
   [
     "src/shell/admin/components/UserForm.jsx",
     "role_name_read",
-    "rbac7",
-    "role option label in the user form; the role-assignment UI is RBAC-7",
-  ],
-  // platform administration still speaks the legacy atom vocabulary
-  [
-    "src/shell/admin/pages/UserManagement.jsx",
-    "role_literal",
-    "rbac7",
-    "assignable-role list filter by label; the roles endpoint does not yet say which roles may be handed out. Backend hierarchy (RBAC-5) is the control",
-  ],
-  [
-    "src/shell/admin/pages/UserManagement.jsx",
-    "role_name_read",
-    "rbac7",
-    "assignable-role list filter by label (see above)",
+    "display-only",
+    "role option label in the user form; the roles offered are the ones the backend marks assignable",
   ],
   [
     "src/shell/admin/",
     "atom_check",
-    "rbac7",
-    "platform-administration screen: legacy atom resolved through the backend's vocabulary; keys arrive with the RBAC-7 admin UI",
+    "migrated",
+    "platform-administration gate resolved by the central helper from platform permission keys",
   ],
   [
     "src/shell/admin/",
     "atom_config",
-    "rbac7",
-    "platform-administration navigation/route gate in the legacy atom vocabulary",
+    "migrated",
+    "platform-administration navigation/route gate naming a platform permission key",
   ],
-  [
-    "src/shell/admin/adminNav.js",
-    "*",
-    "rbac7",
-    "administration navigation items (users, organisations, roles, audit logs) keep atoms until RBAC-7; the email-domain item already names its platform key",
-  ],
+  ["src/shell/admin/", "role_name_read", "display-only", "label only"],
   // the request hint
   [
     "src/shell/api/axiosInstance.js",

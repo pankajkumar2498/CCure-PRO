@@ -67,9 +67,16 @@ vi.mock("@shell/auth/AuthContext", () => ({
 }));
 
 let permissions;
+// Audit's own keys are still read here as the atoms these tests were written with; the
+// one platform key the dashboard asks for (RBAC-7) is the audit-log read.
+const keyAsAtom = vi.hoisted(
+  () => (k) => (k === "platform.audit_log.read" ? "audit:read" : k),
+);
 vi.mock("@shell/auth/permissions", () => ({
-  canPermission: (_u, { resource, action }) =>
-    permissions.has(`${resource}:${action}`),
+  canPermission: (_u, p) =>
+    permissions.has(
+      typeof p === "string" ? keyAsAtom(p) : `${p.resource}:${p.action}`,
+    ),
   can: (_u, r, a) => permissions.has(`${r}:${a}`),
   denyMessage: "You do not have permission to perform this action.",
 }));

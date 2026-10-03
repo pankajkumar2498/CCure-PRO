@@ -94,7 +94,7 @@ def test_every_migrated_key_agrees_for_every_role(rbac_db, people):
     assert set(keys) >= REPLACED_KEYS
     for key in keys:
         for name, user in people.items():
-            want = legacy._legacy_key_decision(user, key)
+            want = legacy._legacy_key_decision(user, key, rbac_db)
             got = au.decide_key(rbac_db, user, key, want)
             assert got.source == au.SOURCE_NEW, (key, name, got)
             assert got.allowed == want, (key, name)

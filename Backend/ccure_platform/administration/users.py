@@ -20,7 +20,8 @@ from ccure_platform.identity.jwt_handler import (
     hash_password,
     validate_password_strength,
 )
-from ccure_platform.rbac.dependencies import require_permission
+from ccure_platform.rbac.dependencies import require_authorized
+from ccure_platform.rbac.scope import acts_across_organisations
 from ccure_platform.offboarding import run_user_purge_hooks
 
 # Registers RBAC's purge hook (it removes the account's role assignments, keeping
@@ -63,9 +64,9 @@ def _enforce_assignment_hierarchy(
 
 
 def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
+    """Cross-organisation reach (the platform-scope switch grant) — the name is
+    kept for the call sites; no role name decides it (RBAC-7)."""
+    return acts_across_organisations(user)
 
 
 def _serialize_user(user: User) -> dict:
@@ -251,7 +252,7 @@ def list_users(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "read")),
+    current_user: User = Depends(require_authorized("platform.user.read")),
 ):
     query = _scoped_users_query(db, current_user, scope=scope)
 
@@ -292,7 +293,7 @@ def create_user(
     request: Request,
     user_data: UserCreateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "create")),
+    current_user: User = Depends(require_authorized("platform.user.create")),
 ):
     target_org_id = _resolve_target_org_id(db, current_user, user_data.organization_id)
     email = normalize_email(user_data.email)
@@ -396,7 +397,7 @@ def move_user_to_organization(
     request: Request,
     body: UserMoveOrgSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.move_org")),
 ):
     """
     Move a user to a different organization.
@@ -412,12 +413,6 @@ def move_user_to_organization(
       PATCH /admin/users/usr_sel_alice_x9v1/organization
       { "organization_id": "org_acme_corp" }
     """
-    if not _is_superadmin(current_user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only superadmins can move users between organizations.",
-        )
-
     if str(user_id) == str(current_user.id):
         raise HTTPException(
             status_code=400, detail="You cannot move yourself to another organization."
@@ -492,7 +487,7 @@ def update_user(
     request: Request,
     user_data: UserUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.update")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="active")
@@ -535,7 +530,7 @@ def change_role(
     request: Request,
     role_data: UserRoleUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.assign_role")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="active")
@@ -574,7 +569,7 @@ def change_status(
     request: Request,
     status_data: UserStatusUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.update")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="active")
@@ -631,7 +626,7 @@ def change_status(
 @router.get("/pending/")
 def list_pending_users(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "read")),
+    current_user: User = Depends(require_authorized("platform.user.read")),
 ):
     """
     Self-registered accounts awaiting approval, scoped to what the caller
@@ -725,7 +720,7 @@ def approve_user(
     request: Request,
     payload: ApproveUserSchema | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.approve")),
 ):
     """
     Approve a pending account, allowing it to sign in.
@@ -872,7 +867,7 @@ def delete_user(
     user_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "delete")),
+    current_user: User = Depends(require_authorized("platform.user.delete")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="all")
@@ -936,7 +931,7 @@ def restore_user(
     user_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "delete")),
+    current_user: User = Depends(require_authorized("platform.user.delete")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="deleted")
@@ -986,7 +981,7 @@ def purge_user(
     user_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "delete")),
+    current_user: User = Depends(require_authorized("platform.user.purge")),
 ):
     user = (
         _scoped_users_query(db, current_user, scope="deleted")
@@ -1022,7 +1017,7 @@ def reset_password(
     body: UserResetPasswordSchema,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.reset_credentials")),
 ):
     """
     Reset a user's password.
@@ -1066,7 +1061,7 @@ def reset_mfa(
     user_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("users", "update")),
+    current_user: User = Depends(require_authorized("platform.user.reset_credentials")),
 ):
     """
     Reset a user's Multi-Factor Authentication.

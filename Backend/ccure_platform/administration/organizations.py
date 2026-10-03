@@ -12,7 +12,8 @@ from ccure_platform.identity.email_utils import (
     username_matches,
 )
 from ccure_platform.identity.jwt_handler import hash_password
-from ccure_platform.rbac.dependencies import require_permission
+from ccure_platform.rbac.dependencies import require_authorized
+from ccure_platform.rbac.scope import acts_across_organisations
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
 from db.models import Organization, RefreshTokenSession, Role, User
@@ -76,13 +77,10 @@ class OrganizationStatusSchema(BaseModel):
     is_active: bool
 
 
-def _role_name(user: User) -> str:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower()
-
-
 def _scoped_organization_query(db: Session, org_id: str, current_user: User):
     query = db.query(Organization).filter(Organization.id == org_id)
-    if _role_name(current_user) != "superadmin":
+    # cross-organisation reach is the platform-scope switch grant (RBAC-5/7)
+    if not acts_across_organisations(current_user):
         query = query.filter(Organization.id == current_user.org_id)
     return query
 
@@ -106,7 +104,7 @@ def _serialize_org(org: Organization) -> dict:
 @router.get("/")
 def list_organizations(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("organizations", "read")),
+    current_user: User = Depends(require_authorized("platform.organization.read")),
     include_archived: bool = False,
 ):
     """
@@ -117,7 +115,7 @@ def list_organizations(
     terminated tenants alongside live ones. `include_archived=true` is how a
     superadmin finds one to restore.
     """
-    if _role_name(current_user) == "superadmin":
+    if acts_across_organisations(current_user):
         query = db.query(Organization)
     else:
         query = db.query(Organization).filter(Organization.id == current_user.org_id)
@@ -150,7 +148,7 @@ def create_organization(
     request: Request,
     org_data: OrganizationCreateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("organizations", "create")),
+    current_user: User = Depends(require_authorized("platform.organization.create")),
 ):
     # Check for duplicate slug
     if db.query(Organization).filter(Organization.slug == org_data.slug).first():
@@ -272,7 +270,7 @@ def update_organization(
     request: Request,
     org_data: OrganizationUpdateSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("organizations", "update")),
+    current_user: User = Depends(require_authorized("platform.organization.update")),
 ):
     org = _scoped_organization_query(db, org_id, current_user).first()
     if not org:
@@ -338,7 +336,7 @@ def change_organization_status(
     request: Request,
     status_data: OrganizationStatusSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("organizations", "update")),
+    current_user: User = Depends(require_authorized("platform.organization.update")),
 ):
     """
     Update organization's active/inactive status.
@@ -399,7 +397,7 @@ def archive_organization(
     org_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_authorized("platform.organization.archive")),
     reason: Optional[str] = None,
 ):
     """
@@ -431,11 +429,6 @@ def archive_organization(
     The ``ON DELETE CASCADE`` relationships are left exactly as they were; this
     route simply stops invoking them.
     """
-    if _role_name(current_user) != "superadmin":
-        raise HTTPException(
-            status_code=403, detail="Only superadmins can archive organizations"
-        )
-
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -523,7 +516,7 @@ def restore_organization(
     org_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_authorized("platform.organization.archive")),
 ):
     """
     Reverse an archival.
@@ -535,11 +528,6 @@ def restore_organization(
     reactivation here would quietly re-enable an account that had been disabled
     for its own reasons before the organisation was archived.
     """
-    if _role_name(current_user) != "superadmin":
-        raise HTTPException(
-            status_code=403, detail="Only superadmins can restore organizations"
-        )
-
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -590,7 +578,7 @@ class ScanScopeSchema(BaseModel):
 def get_scan_scope(
     org_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("organizations", "read")),
+    current_user: User = Depends(require_authorized("platform.organization.read")),
 ):
     """Return the CIDR blocks this organisation is authorised to scan."""
     org = _scoped_organization_query(db, org_id, current_user).first()
@@ -614,7 +602,9 @@ def set_scan_scope(
     request: Request,
     payload: ScanScopeSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_authorized("platform.organization.set_scan_scope")
+    ),
 ):
     """
     Set the CIDR blocks this organisation may scan. **Superadmin only.**
@@ -627,12 +617,6 @@ def set_scan_scope(
     value lives in its own column instead of the org_admin-writable `settings`
     bag.
     """
-    if _role_name(current_user) != "superadmin":
-        raise HTTPException(
-            status_code=403,
-            detail="Only a superadmin may change an organisation's scan scope.",
-        )
-
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")

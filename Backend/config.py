@@ -757,6 +757,17 @@ class RbacAuthorityConfig:
     PATHS: str = os.getenv("RBAC_AUTHORITY_PATHS", "").strip()
 
 
+class RbacReauthConfig:
+    """
+    RBAC-7 step-up for sensitive governance operations (identity/reauth.py).
+    enforce            — an account with MFA enrolled must present a current code
+    require_enrolment  — an account with no MFA is refused sensitive operations
+    off                — no step-up (tests / controlled environments)
+    """
+
+    MODE: str = os.getenv("RBAC_REAUTH_MODE", "enforce").strip().lower()
+
+
 class RbacShadowConfig:
     """
     RBAC-3 shadow authorization: compare the new RBAC decision with the legacy one.
@@ -1071,6 +1082,8 @@ class AppConfig:
     EMAIL_VERIFICATION_TTL_HOURS = AccountSecurityConfig.EMAIL_VERIFICATION_TTL_HOURS
     UNVERIFIED_ACCOUNT_TTL_DAYS = AccountSecurityConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
     MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
+
+    RBAC_REAUTH_MODE = RbacReauthConfig.MODE
 
     # RBAC-4 controlled authority cutover (default OFF; legacy decides)
     RBAC_AUTHORITY_MODE = RbacAuthorityConfig.MODE

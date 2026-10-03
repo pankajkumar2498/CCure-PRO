@@ -1782,7 +1782,7 @@ export default function SecurityDashboard() {
     resource: "reports",
     action: "read",
   });
-  const canAudit = canPermission(user, { resource: "audit", action: "read" });
+  const canAudit = canPermission(user, "platform.audit_log.read");
 
   const nav = useCallback((path) => navigate(path), [navigate]);
 

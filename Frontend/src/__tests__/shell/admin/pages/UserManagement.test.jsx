@@ -235,7 +235,16 @@ beforeEach(() => {
   currentUser = SUPERADMIN;
   searchParams = new URLSearchParams();
   adminApi.listUsers.mockResolvedValue({ users: USERS, total: USERS.length });
-  adminApi.listRoles.mockResolvedValue({ roles: ROLES });
+  // the backend marks which roles the signed-in account may hand out
+  // (RBAC-7); here it follows the persona's reach, as the real rules do
+  adminApi.listRoles.mockImplementation(async () => ({
+    roles: ROLES.map((r) => ({
+      ...r,
+      assignable:
+        currentUser.authorization.can_switch_organisation ||
+        r.name !== "superadmin",
+    })),
+  }));
   adminApi.listOrganizations.mockResolvedValue({ organizations: ORGS });
   adminApi.listPendingUsers.mockResolvedValue([]);
   adminApi.createUser.mockResolvedValue({});

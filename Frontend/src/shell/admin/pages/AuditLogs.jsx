@@ -59,7 +59,7 @@ export default function AuditLogs() {
   // control: `require_permission("audit", "export")` on the route is what
   // actually refuses. Hiding it only stops offering an action that would 403.
   const { user: currentUser } = useAuth();
-  const canExport = can(currentUser, "audit", "export");
+  const canExport = can(currentUser, "platform.audit_log.export");
   // The platform-scope retention capability, matching the backend's
   // `platform.audit_log.retention` guard. A purge is not tenant-scoped in effect
   // -- it destroys a record other parties may need -- so it is a platform key.

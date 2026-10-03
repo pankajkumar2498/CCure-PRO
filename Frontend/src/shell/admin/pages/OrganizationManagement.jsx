@@ -92,10 +92,16 @@ export default function OrganizationManagement() {
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
   // cross-organisation reach, as the backend reports it — not a role name
   const hasCrossOrgReach = canSwitchOrganisation(currentUser);
-  const canCreateOrganizations = can(currentUser, "organizations", "create");
-  const canUpdateOrganizations = can(currentUser, "organizations", "update");
+  const canCreateOrganizations = can(
+    currentUser,
+    "platform.organization.create",
+  );
+  const canUpdateOrganizations = can(
+    currentUser,
+    "platform.organization.update",
+  );
   const canDeleteOrganizations =
-    hasCrossOrgReach && can(currentUser, "organizations", "delete");
+    hasCrossOrgReach && can(currentUser, "platform.organization.archive");
 
   const canManageOrg = (org) =>
     hasCrossOrgReach ||

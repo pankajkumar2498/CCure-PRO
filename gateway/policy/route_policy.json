@@ -31,12 +31,12 @@
  },
  "counts": {
   "public": 17,
-  "bearer": 252,
+  "bearer": 264,
   "ticket_or_bearer": 3,
   "websocket": 2,
-  "total": 274
+  "total": 286
  },
- "inventory_sha256": "04135fe854ad69faeab0121f91cc97326a552a3a1d47948fec6139ebe1b4cf72",
+ "inventory_sha256": "a80b70131484c0ce4b29303809d11fc3e6f9a3c3d076c8d745ed2b76c25dde10",
  "routes": [
   {
    "order": 0,
@@ -3051,6 +3051,138 @@
    "class": "bearer",
    "checker_policy": "bearer",
    "endpoint": "ccure_platform.hub.router.list_platform_modules"
+  },
+  {
+   "order": 274,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/rbac/permissions",
+   "match": "exact",
+   "map_key": "http:GET:/platform/rbac/permissions",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.list_permissions"
+  },
+  {
+   "order": 275,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/rbac/roles",
+   "match": "exact",
+   "map_key": "http:GET:/platform/rbac/roles",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.list_roles"
+  },
+  {
+   "order": 276,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/rbac/roles/{role_id}",
+   "match": "regex",
+   "map_key": "~^http:GET:/platform/rbac/roles/[^/]+$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.get_role"
+  },
+  {
+   "order": 277,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/rbac/assignable-roles",
+   "match": "exact",
+   "map_key": "http:GET:/platform/rbac/assignable-roles",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.assignable_roles"
+  },
+  {
+   "order": 278,
+   "scope": "http",
+   "method": "GET",
+   "path": "/platform/rbac/users/{user_id}/assignments",
+   "match": "regex",
+   "map_key": "~^http:GET:/platform/rbac/users/[^/]+/assignments$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.get_user_assignments"
+  },
+  {
+   "order": 279,
+   "scope": "http",
+   "method": "POST",
+   "path": "/platform/rbac/roles",
+   "match": "exact",
+   "map_key": "http:POST:/platform/rbac/roles",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.create_role"
+  },
+  {
+   "order": 280,
+   "scope": "http",
+   "method": "PATCH",
+   "path": "/platform/rbac/roles/{role_id}",
+   "match": "regex",
+   "map_key": "~^http:PATCH:/platform/rbac/roles/[^/]+$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.update_role"
+  },
+  {
+   "order": 281,
+   "scope": "http",
+   "method": "PUT",
+   "path": "/platform/rbac/roles/{role_id}/permissions",
+   "match": "regex",
+   "map_key": "~^http:PUT:/platform/rbac/roles/[^/]+/permissions$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.set_permissions"
+  },
+  {
+   "order": 282,
+   "scope": "http",
+   "method": "POST",
+   "path": "/platform/rbac/roles/{role_id}/transition",
+   "match": "regex",
+   "map_key": "~^http:POST:/platform/rbac/roles/[^/]+/transition$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.transition_role"
+  },
+  {
+   "order": 283,
+   "scope": "http",
+   "method": "POST",
+   "path": "/platform/rbac/roles/{role_id}/replace",
+   "match": "regex",
+   "map_key": "~^http:POST:/platform/rbac/roles/[^/]+/replace$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.replace_role"
+  },
+  {
+   "order": 284,
+   "scope": "http",
+   "method": "POST",
+   "path": "/platform/rbac/users/{user_id}/assignments",
+   "match": "regex",
+   "map_key": "~^http:POST:/platform/rbac/users/[^/]+/assignments$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.assign_role"
+  },
+  {
+   "order": 285,
+   "scope": "http",
+   "method": "DELETE",
+   "path": "/platform/rbac/assignments/{assignment_id}",
+   "match": "regex",
+   "map_key": "~^http:DELETE:/platform/rbac/assignments/[^/]+$",
+   "class": "bearer",
+   "checker_policy": "bearer",
+   "endpoint": "ccure_platform.administration.rbac_admin.revoke_assignment"
   }
  ],
  "shadowed": []

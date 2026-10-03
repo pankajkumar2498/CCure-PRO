@@ -23,6 +23,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import App from "../../App";
+import { personaFrom } from "../fixtures/authorization";
 
 // The platform header composes the shell's shared pieces (Phase 12 platform
 // navigation): preferences come from the provider main.jsx mounts, and the
@@ -184,7 +185,10 @@ const where = () => JSON.parse(screen.getByTestId("where").textContent);
 const page = () => screen.queryByTestId("page")?.textContent ?? null;
 
 const signedIn = (permissions = []) => ({
-  user: { username: "analyst", role: { name: "analyst", permissions } },
+  user: personaFrom({
+    username: "analyst",
+    role: { name: "analyst", permissions },
+  }),
   loading: false,
   authState: "authenticated",
   authMessage: "",
@@ -495,13 +499,13 @@ describe("a denied platform route stays in the Platform Shell", () => {
     },
   );
 
-  it("email-domain rules are superadmin-only: an org admin is refused in place, a superadmin is not", () => {
+  it("email-domain rules need the platform-wide key: an account without it is refused in place", () => {
     auth = {
       ...signedIn([...ANALYST, "users:read"]),
-      user: {
+      user: personaFrom({
         username: "oa",
         role: { name: "org_admin", permissions: [...ANALYST, "users:read"] },
-      },
+      }),
     };
     visit("/admin/email-domains");
     expect(where().pathname).toBe("/admin/email-domains");
@@ -567,7 +571,7 @@ describe("AMT Integration: the route and the sidebar share one permission", () =
       "utf8",
     );
     const app = readFileSync(path.join(SRC, "App.jsx"), "utf8");
-    expect(AMT_PERMISSION).toEqual({ resource: "settings", action: "update" });
+    expect(AMT_PERMISSION).toBe("audit.asset.import_amt");
     expect(layout).toMatch(
       /route: "\/admin\/amt",\s+permission: AMT_PERMISSION/,
     );

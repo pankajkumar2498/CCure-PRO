@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Every remaining legacy authorization decision made by a role NAME (superadmin / _is_superadmin / require_role / direct role.name checks), recorded as RBAC-4 migration evidence. RBAC-4 migrated 13 of the original 40 (see role_name_site_decisions.json); RBAC-5 migrated 20 more (scope, switching, hierarchy; see role_name_site_decisions.json); the 9 listed here remain, each deferred. Measured by scripts/architecture/rbac_guardrails.py; tests/rbac/test_rbac_legacy_role_evidence.py fails if this list and the code disagree.",
+  "description": "Every remaining legacy authorization decision made by a role NAME (superadmin / _is_superadmin / require_role / direct role.name checks), recorded as RBAC-4 migration evidence. RBAC-4 migrated 13 of the original 40 (see role_name_site_decisions.json); RBAC-5 migrated 20 more (scope, switching, hierarchy; see role_name_site_decisions.json); RBAC-7 resolved 3 more (user-directory helper, audit-log helper, compliance bypass); the sites listed here remain, each RBAC-8 (provisioning, default role, bootstrap, and the legacy rollback rule itself). Measured by scripts/architecture/rbac_guardrails.py; tests/rbac/test_rbac_legacy_role_evidence.py fails if this list and the code disagree.",
   "categories": {
     "permission_guard": "A route or router is guarded by a role name. RBAC-4 replaces it with the listed permission.",
     "permission_bypass": "A permission check is skipped for the superadmin by name. RBAC-4 removes the shortcut: the superadmin role holds materialised grants.",
@@ -15,7 +15,7 @@
   "sites": [
     {
       "file": "ccure_platform/administration/organizations.py",
-      "line": 189,
+      "line": 187,
       "kind": "role_identity_compare",
       "what": "org_admin",
       "category": "provisioning_lookup",
@@ -23,26 +23,8 @@
       "deferred_to": "RBAC-8"
     },
     {
-      "file": "ccure_platform/administration/users.py",
-      "line": 66,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "scope_cross_org",
-      "rbac4_replacement": "RBAC-5",
-      "deferred_to": "RBAC-7"
-    },
-    {
-      "file": "ccure_platform/audit_log/router.py",
-      "line": 87,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "scope_cross_org",
-      "rbac4_replacement": "RBAC-5",
-      "deferred_to": "RBAC-7"
-    },
-    {
       "file": "ccure_platform/identity/router.py",
-      "line": 636,
+      "line": 638,
       "kind": "role_identity_compare",
       "what": "viewer",
       "category": "default_role",
@@ -78,21 +60,12 @@
     },
     {
       "file": "main.py",
-      "line": 276,
+      "line": 277,
       "kind": "role_identity_compare",
       "what": "superadmin",
       "category": "bootstrap",
       "rbac4_replacement": "role key platform.superadmin (seed context)",
       "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "routers/compliance.py",
-      "line": 281,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "scope_cross_org",
-      "rbac4_replacement": "RBAC-5",
-      "deferred_to": "RBAC-7"
     }
   ]
 }

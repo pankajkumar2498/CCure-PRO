@@ -95,8 +95,8 @@ export default function Remediation() {
   const canRead = can(user, "findings", "read");
   const canUpdate = can(user, "findings", "update");
   const canAcceptRisk = can(user, "findings", "accept_risk");
-  const canEditSla = can(user, "settings", "update");
-  const canListUsers = can(user, "users", "read");
+  const canEditSla = can(user, "audit.remediation.manage_sla");
+  const canListUsers = can(user, "platform.user.read");
 
   const [params, setParams] = useSearchParams();
   const [queueKey, setQueueKey] = useState(QUEUES[0].key);

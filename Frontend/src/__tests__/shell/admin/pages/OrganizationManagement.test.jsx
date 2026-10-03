@@ -105,8 +105,23 @@ let permissions = new Set([
   "organizations:delete",
 ]);
 let superadmin = true;
+// RBAC-7: the pages ask for permission keys; these tests list capabilities as the
+// legacy atoms they were written with, so a key is read as the atom it replaced.
+const KEY_ATOM = vi.hoisted(() => ({
+  "platform.user.read": "users:read",
+  "platform.user.create": "users:create",
+  "platform.user.update": "users:update",
+  "platform.user.delete": "users:delete",
+  "platform.role.read": "roles:read",
+  "platform.organization.read": "organizations:read",
+  "platform.organization.create": "organizations:create",
+  "platform.organization.update": "organizations:update",
+  "platform.organization.archive": "organizations:delete",
+  "platform.audit_log.read": "audit:read",
+  "platform.audit_log.export": "audit:export",
+}));
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
+  can: (_user, key) => permissions.has(KEY_ATOM[key] || key),
   canSwitchOrganisation: () => superadmin,
   denyMessage: "You do not have permission to perform this action.",
 }));

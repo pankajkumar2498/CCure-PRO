@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
-from ccure_platform.api import CurrentUser, require_role
+from ccure_platform.api import CurrentUser, require_authorized
 from db.base import get_db
 from scans.nvd_sync import get_nvd_sync_status, sync_nvd_to_vuln_intel
 
@@ -51,12 +51,12 @@ router = APIRouter(prefix="/api/v1/admin", tags=["Admin NVD Catalog"])
 #: routes as "Feed synchronisation. Superadmin-only" in the rationale for not
 #: rate-limiting them.
 #:
-#: **``require_role`` authenticates with ``get_current_user``, not
+#: **``require_authorized`` authenticates with ``get_current_user``, not
 #: ``get_current_user_flexible``**, and that narrowing is deliberate. The
 #: flexible dependency also accepts a short-lived download ticket, which exists
 #: so a browser can fetch a report from a URL. A ticket that can be put in a URL
 #: must not be able to start an outbound synchronisation.
-_superadmin_only = require_role("superadmin")
+_superadmin_only = require_authorized("audit.vuln_feed.manage")
 
 
 @router.post("/sync-nvd")

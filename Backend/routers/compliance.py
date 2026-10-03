@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, SecretStr, model_validator
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, has_permission, require_permission
 from core import compliance_frameworks, nist_csf
 from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
@@ -887,7 +887,7 @@ def update_compliance_rule(
     `manage_rules` keeps working for the tenant-scoped compliance routes that
     legitimately use it.
     """
-    if (getattr(getattr(user, "role", None), "name", "") or "").lower() != "superadmin":
+    if not has_permission(db, user, "audit.compliance.manage_shared_rules"):
         raise HTTPException(
             status_code=403,
             detail=(

@@ -39,7 +39,7 @@ from ccure_platform.identity.email_domain_guard import (
     evaluate_email,
     invalidate_cache,
 )
-from ccure_platform.rbac.dependencies import require_role
+from ccure_platform.rbac.dependencies import require_authorized
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import get_db, utcnow
 from db.models import User
@@ -58,7 +58,7 @@ from sqlalchemy.orm import Session
 router = APIRouter(
     prefix="/admin/email-domains",
     tags=["Admin: Email Domains"],
-    dependencies=[Depends(require_role("superadmin"))],
+    dependencies=[Depends(require_authorized("platform.email_domain.read"))],
 )
 log = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ def list_rules(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.read")),
 ):
     """List the ALLOW / DENY rules, newest first."""
     query = db.query(EmailDomainRule)
@@ -209,7 +209,7 @@ def list_rules(
 @router.get("/stats/")
 def rule_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.read")),
 ):
     """
     Corpus health.
@@ -246,7 +246,7 @@ def rule_stats(
 def lookup(
     q: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.read")),
 ):
     """
     Run an address or domain through the live guard and show the verdict.
@@ -284,7 +284,7 @@ def create_rule(
     payload: RuleCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.manage")),
 ):
     """
     Create an ALLOW or DENY rule.
@@ -361,7 +361,7 @@ def update_rule(
     payload: RuleUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.manage")),
 ):
     """Flip a verdict or edit the note explaining a rule."""
     rule = db.query(EmailDomainRule).filter(EmailDomainRule.id == rule_id).first()
@@ -408,7 +408,7 @@ def delete_rule(
     rule_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.email_domain.manage")),
 ):
     """
     Remove a rule.

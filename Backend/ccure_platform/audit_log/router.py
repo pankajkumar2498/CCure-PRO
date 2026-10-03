@@ -22,7 +22,10 @@ adopt_legacy_name(__name__, "routers.audit")
 import logging
 from datetime import datetime, timedelta, timezone
 
-from ccure_platform.rbac.dependencies import require_permission, require_role
+from ccure_platform.rbac.dependencies import (
+    require_authorized,
+    require_permission,
+)
 from config import AppConfig
 from ccure_platform.audit_log.writer import log_audit_event
 from ccure_platform.audit_log.retention import (
@@ -852,13 +855,13 @@ def preview_audit_retention(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    # `require_role`, not a permission. The rules a purge follows are
+    # A superadmin-only key, not a broad permission. The rules a purge follows are
     # platform-wide and its effect is not tenant-scoped in the way reading is:
     # it destroys a record other parties may need. The same reasoning makes
     # /admin/email-domains superadmin-only, and a permission check could not
     # express it anyway — superadmin holds every permission, so any permission
     # an org_admin also held would let them through.
-    current_user: User = Depends(require_role("superadmin")),
+    current_user: User = Depends(require_authorized("platform.audit_log.retention")),
 ):
     """
     What audit retention would remove, and everything standing in its way.

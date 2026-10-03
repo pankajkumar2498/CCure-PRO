@@ -125,10 +125,17 @@ def test_the_legacy_guards_are_the_same_objects_as_before():
         "resource",
         "action",
         "operation",
+        "authoritative",  # RBAC-4: off unless a migrated path asks for it
     ]
     assert (
         inspect.signature(legacy.user_has_permission).parameters["operation"].kind
         is inspect.Parameter.KEYWORD_ONLY
+    )
+    assert (
+        inspect.signature(legacy.user_has_permission)
+        .parameters["authoritative"]
+        .default
+        is False
     )
     assert (
         api.user_has_permission

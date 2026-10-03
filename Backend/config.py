@@ -737,6 +737,26 @@ class EmailDomainGuardConfig:
     )
 
 
+class RbacAuthorityConfig:
+    """
+    RBAC-4 controlled cutover: which migrated authorization paths the new engine
+    decides. **Off by default; with it off every path is decided by the legacy rule
+    exactly as before.**
+
+    MODE  off | enforce  (anything else is off).
+    PATHS comma-separated path ids (``scans:read``, ``platform.email_domain.read``)
+          or ``*`` for every path the migration inventory marks migrated. Empty means
+          none. A path the inventory does not mark migrated is ignored.
+
+    Rollback is removing a path from PATHS (or setting MODE=off) and restarting the
+    process: the legacy implementation is still there and no data is touched.
+    docs/architecture/RBAC_AUTHORITY_MIGRATION.md
+    """
+
+    MODE: str = os.getenv("RBAC_AUTHORITY_MODE", "off").strip().lower()
+    PATHS: str = os.getenv("RBAC_AUTHORITY_PATHS", "").strip()
+
+
 class RbacShadowConfig:
     """
     RBAC-3 shadow authorization: compare the new RBAC decision with the legacy one.
@@ -1051,6 +1071,10 @@ class AppConfig:
     EMAIL_VERIFICATION_TTL_HOURS = AccountSecurityConfig.EMAIL_VERIFICATION_TTL_HOURS
     UNVERIFIED_ACCOUNT_TTL_DAYS = AccountSecurityConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
     MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
+
+    # RBAC-4 controlled authority cutover (default OFF; legacy decides)
+    RBAC_AUTHORITY_MODE = RbacAuthorityConfig.MODE
+    RBAC_AUTHORITY_PATHS = RbacAuthorityConfig.PATHS
 
     # RBAC-3 shadow authorization (default OFF; legacy authorization is authoritative)
     RBAC_SHADOW_MODE = RbacShadowConfig.MODE

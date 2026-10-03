@@ -90,7 +90,12 @@ from ccure_platform.rbac.contract import (
     Principal,
     ScopeContext,
 )
-from ccure_platform.rbac.dependencies import require_permission, require_role
+from ccure_platform.rbac.dependencies import (
+    has_permission,
+    require_authorized,
+    require_permission,
+    require_role,
+)
 from ccure_platform.rbac.dependencies import (
     user_has_permission as _role_holds_permission,
 )
@@ -116,6 +121,9 @@ __all__ = (
     "require_permission",
     "require_role",
     "user_has_permission",
+    # RBAC-4: permission-key guards that replaced role-name checks
+    "require_authorized",
+    "has_permission",
     # RBAC capability (RBAC-1): declared and consumable, used by no live route
     "PermissionDecl",
     "ScopeContext",
@@ -178,7 +186,12 @@ class OrganisationView:
 
 
 def user_has_permission(
-    db: Session, account: Union[User, str, None], resource: str, action: str
+    db: Session,
+    account: Union[User, str, None],
+    resource: str,
+    action: str,
+    *,
+    authoritative: bool = False,
 ) -> bool:
     """
     Whether the account's role holds the ``resource:action`` permission atom.
@@ -194,7 +207,9 @@ def user_has_permission(
         account = db.query(User).filter(User.id == account).first()
         if account is None:
             return False
-    return _role_holds_permission(db, account, resource, action)
+    return _role_holds_permission(
+        db, account, resource, action, authoritative=authoritative
+    )
 
 
 # ── RBAC capability (RBAC-1: dark) ────────────────────────────────────────────

@@ -170,7 +170,13 @@ def _legacy_decision(db: Session, user: User, resource: str, action: str) -> boo
 
 
 def user_has_permission(
-    db: Session, user: User, resource: str, action: str, *, operation: str | None = None
+    db: Session,
+    user: User,
+    resource: str,
+    action: str,
+    *,
+    operation: str | None = None,
+    authoritative: bool = False,
 ) -> bool:
     """
     Whether ``user``'s role holds the (resource, action) permission atom.
@@ -184,9 +190,20 @@ def user_has_permission(
     A user with no role holds nothing. Superadmin holds everything.
 
     ``operation`` is the route, for the shadow comparison's diagnostics only.
+
+    ``authoritative`` (RBAC-4) marks a call site the migration inventory lists as
+    migrated: when that path is switched on (``rbac.authority``) the new engine's
+    answer is returned instead of the legacy one. Off, or for a path not switched on,
+    the legacy answer is returned exactly as before.
     """
     allowed = _legacy_decision(db, user, resource, action)
     _observe_permission(db, user, resource, action, allowed, operation)
+    if authoritative:
+        from ccure_platform.rbac import authority
+
+        return authority.decide_atom(
+            db, user, resource, action, allowed, operation=operation
+        ).allowed
     return allowed
 
 
@@ -220,7 +237,12 @@ def require_permission(resource: str, action: str):
             )
 
         if not user_has_permission(
-            db, user, resource, action, operation=_operation(request)
+            db,
+            user,
+            resource,
+            action,
+            operation=_operation(request),
+            authoritative=True,
         ):
             role_name = getattr(role, "name", "unknown")
             logger.warning(
@@ -237,6 +259,73 @@ def require_permission(resource: str, action: str):
                     f"Your role '{role_name}' does not have '{resource}:{action}' permission."
                 ),
             )
+        return user
+
+    return _guard
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Permission-key guards (RBAC-4) — replacing role-name checks
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _legacy_key_decision(user: User, key: str) -> bool:
+    """The legacy rule the key replaced: the role-name set recorded for it in
+    ``authority.LEGACY_KEY_ROLES``. This is the rollback path; module code never
+    names a role."""
+    from ccure_platform.rbac.authority import legacy_roles_for_key
+
+    allowed = {r.lower() for r in legacy_roles_for_key(key)}
+    role = getattr(user, "role", None)
+    return bool(role) and (getattr(role, "name", "") or "").lower() in allowed
+
+
+def has_permission(db: Session, user: User, key: str, *, operation=None) -> bool:
+    """Whether ``user`` holds the permission ``key``: the new engine when the key's
+    path is switched on, otherwise the legacy rule the key replaced."""
+    from ccure_platform.rbac import authority
+
+    legacy = _legacy_key_decision(user, key)
+    return authority.decide_key(db, user, key, legacy, operation=operation).allowed
+
+
+def require_authorized(key: str):
+    """
+    A route dependency that requires the permission ``key``. With authority off (the
+    default) it is exactly the legacy role guard it replaced, including its messages
+    and the RBAC-3 role-name observation.
+    """
+
+    def _guard(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+        request: Request = None,
+    ) -> User:
+        from ccure_platform.rbac import authority
+        from ccure_platform.rbac.authority import legacy_roles_for_key
+
+        role = getattr(user, "role", None)
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account does not have a role assigned. Contact an administrator.",
+            )
+        legacy = _legacy_key_decision(user, key)
+        _observe_role_check(user, set(legacy_roles_for_key(key)), legacy, request)
+        out = authority.decide_key(db, user, key, legacy, operation=_operation(request))
+        if not out.allowed:
+            logger.warning("RBAC denied: user %s lacks %s.", user.id, key)
+            if out.source == authority.SOURCE_LEGACY:
+                role_name = (getattr(role, "name", "") or "").lower()
+                req = ", ".join(sorted(legacy_roles_for_key(key)))
+                detail = (
+                    "Insufficient privileges. "
+                    f"Your role '{role_name}' does not have access to this resource. "
+                    f"Required: {req}."
+                )
+            else:
+                detail = f"Insufficient privileges. Missing permission: {key}."
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
         return user
 
     return _guard

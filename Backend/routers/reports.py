@@ -359,18 +359,17 @@ def _resolve_report_path(stored: str | None) -> str | None:
 
 def _require_reports_read(user: CurrentUser, db: Session) -> None:
     role = getattr(user, "role", None)
-    role_name = (getattr(role, "name", "") or "").lower()
 
-    # Keep parity with global RBAC behavior: superadmin bypass.
-    if role_name == "superadmin":
-        return
-
+    # No role-name bypass: the superadmin role holds reports:read like any other
+    # role holds it, and `user_has_permission` answers for it.
     if not role:
         raise HTTPException(
             status_code=403, detail="Your account does not have a role assigned."
         )
 
-    has_reports_read = platform_api.user_has_permission(db, user, "reports", "read")
+    has_reports_read = platform_api.user_has_permission(
+        db, user, "reports", "read", authoritative=True
+    )
 
     if not has_reports_read:
         raise HTTPException(
@@ -381,17 +380,15 @@ def _require_reports_read(user: CurrentUser, db: Session) -> None:
 
 def _require_reports_delete(user: CurrentUser, db: Session) -> None:
     role = getattr(user, "role", None)
-    role_name = (getattr(role, "name", "") or "").lower()
-
-    if role_name == "superadmin":
-        return
 
     if not role:
         raise HTTPException(
             status_code=403, detail="Your account does not have a role assigned."
         )
 
-    has_reports_delete = platform_api.user_has_permission(db, user, "reports", "delete")
+    has_reports_delete = platform_api.user_has_permission(
+        db, user, "reports", "delete", authoritative=True
+    )
 
     if not has_reports_delete:
         raise HTTPException(

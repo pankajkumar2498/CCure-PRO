@@ -390,10 +390,11 @@ def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
 
-        if getattr(user.role, "name", "").lower() != "superadmin":
-            has_perm = platform_api.user_has_permission(db, user, "scans", "read")
-            if not has_perm:
-                raise HTTPException(status_code=403, detail="Insufficient privileges.")
+        # the superadmin role holds scans:read through its grants; no name test
+        if not platform_api.user_has_permission(
+            db, user, "scans", "read", authoritative=True
+        ):
+            raise HTTPException(status_code=403, detail="Insufficient privileges.")
 
         return user
     finally:

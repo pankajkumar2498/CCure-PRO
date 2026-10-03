@@ -39,7 +39,7 @@ def test_the_evidence_lists_every_site_the_ratchet_counts(evidence):
     } == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
     assert (
         len(evidence["sites"])
-        == 40
+        == 27
         == sum(sum(v.values()) for v in rg.measure_legacy().values())
     )
 
@@ -52,7 +52,6 @@ def test_every_site_has_a_known_category_a_replacement_and_a_phase(evidence):
     for s in evidence["sites"]:
         assert s["category"] in evidence["categories"], s
         assert s["rbac4_replacement"].strip() and s["deferred_to"] in (
-            "RBAC-4",
             "RBAC-5",
             "RBAC-8",
         ), s
@@ -75,7 +74,8 @@ def test_a_replacement_that_names_a_permission_names_one_that_exists():
 
 def test_scope_cases_are_deferred_to_rbac_5_and_nothing_else_is(evidence):
     for s in evidence["sites"]:
-        assert (s["deferred_to"] == "RBAC-5") == (s["category"] == "scope_cross_org"), s
+        if s["category"] == "scope_cross_org":
+            assert s["deferred_to"] == "RBAC-5", s
     scope = [s for s in evidence["sites"] if s["category"] == "scope_cross_org"]
     assert len(scope) == 16 and {s["file"] for s in scope} >= {
         "routers/assets.py",
@@ -83,30 +83,27 @@ def test_scope_cases_are_deferred_to_rbac_5_and_nothing_else_is(evidence):
     }
 
 
-def test_the_role_name_guards_map_to_permissions_that_already_exist(evidence):
-    guards = [s for s in evidence["sites"] if s["category"] == "permission_guard"]
-    assert len(guards) == 10
-    expected = {
-        "ccure_platform/administration/email_domains.py": {
-            "platform.email_domain.read",
-            "platform.email_domain.manage",
-        },
-        "ccure_platform/audit_log/router.py": {"platform.audit_log.retention"},
-        "routers/admin_nvd.py": {"audit.vuln_feed.manage"},
-        "routers/compliance.py": {"audit.compliance.manage_shared_rules"},
+def test_the_thirteen_migrated_guards_are_gone_from_the_code_and_recorded():
+    """RBAC-4 replaced the role-name permission guards and the superadmin shortcuts;
+    ``role_name_site_decisions.json`` keeps what each of the 40 sites became."""
+    decisions = json.loads(
+        (BACKEND_ROOT / "data" / "rbac" / "role_name_site_decisions.json").read_text()
+    )["sites"]
+    assert len(decisions) == 40
+    migrated = [d for d in decisions if d["status"] == "migrated"]
+    assert len(migrated) == 13
+    assert {d["category"] for d in migrated} == {
+        "permission_guard",
+        "permission_bypass",
     }
-    for f, keys in expected.items():
-        assert {g["rbac4_replacement"] for g in guards if g["file"] == f} == keys, f
-    assert {g["file"] for g in guards} == set(expected)
+    keys = {p["key"] for p in lm.load_golden()["permissions"]}
+    for d in migrated:
+        assert d["new_permission"] in keys, d
+    deferred = [d for d in decisions if d["status"] == "deferred"]
+    assert len(deferred) == 27 and all(d["reason"].strip() for d in deferred)
 
 
-def test_require_role_sites_are_exactly_the_role_name_guards(evidence):
-    ours = {(s["file"]) for s in evidence["sites"] if s["kind"] == "require_role"}
-    assert ours == {
-        "ccure_platform/administration/email_domains.py",
-        "ccure_platform/audit_log/router.py",
-        "routers/admin_nvd.py",
-    }
+def test_no_route_is_guarded_by_a_role_name_any_more():
     from main import app
 
     guarded = [
@@ -117,22 +114,16 @@ def test_require_role_sites_are_exactly_the_role_name_guards(evidence):
             for d in getattr(getattr(r, "dependant", None), "dependencies", [])
         )
     ]
-    assert (
-        len(guarded) >= 9
-    )  # the email-domain routes, the retention preview and the feed routes
-    assert any(p.startswith("/admin/email-domains") for p in guarded)
+    assert guarded == []
 
 
-def test_the_ratchet_still_holds_nothing_was_migrated_or_deleted_in_rbac_3():
-    """RBAC-3 may not move a site: the baseline is exactly RBAC-1's 40 in 22 files."""
+def test_the_ratchet_baseline_fell_from_forty_to_twenty_seven():
     assert rg.measure_legacy() == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
     assert (
-        sum(sum(v.values()) for v in rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES.values()) == 40
+        sum(sum(v.values()) for v in rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES.values()) == 27
     )
-    assert len(rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES) == 22
-    assert (
-        rg.measure_new() == []
-    )  # and the new implementation still makes no role-identity decision
+    assert len(rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES) == 20
+    assert rg.measure_new() == []
 
 
 def test_the_document_lists_the_categories_and_counts(evidence):

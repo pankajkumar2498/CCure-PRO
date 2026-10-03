@@ -1077,7 +1077,7 @@ def triage_finding(
     # everything on it. The route's own dependency is `findings:update`; only
     # the body says which status was asked for, so this check lives here.
     if body.status == "accepted_risk" and not user_has_permission(
-        db, user, "findings", "accept_risk"
+        db, user, "findings", "accept_risk", authoritative=True
     ):
         raise HTTPException(
             status_code=403,

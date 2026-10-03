@@ -85,7 +85,10 @@ def test_the_module_declares_data_and_imports_only_the_platforms_api():
 
 
 def test_the_composition_root_reads_the_declarations_as_data(example):
-    (src,) = composition.load_permission_sources()
+    sources = {s.module_key: s for s in composition.load_permission_sources()}
+    # the platform and Audit declare theirs; the proof module is one more source
+    assert set(sources) == {"platform", "audit", "example"}
+    src = sources["example"]
     assert (src.module_key, src.namespace) == ("example", "example")
     assert [d.key for d in src.permissions] == [
         "example.widget.read",
@@ -99,21 +102,29 @@ def test_a_disabled_module_declares_nothing_to_rbac(example, monkeypatch):
     monkeypatch.setattr(
         registry, "MODULES", (*[m for m in registry.MODULES if m.key != "example"], off)
     )
-    assert composition.load_permission_sources() == []
+    assert {s.module_key for s in composition.load_permission_sources()} == {
+        "platform",
+        "audit",
+    }
 
 
 def test_sync_registers_the_catalogue_and_materialises_default_grants(rbac_db, example):
     report = composition.sync_permission_catalogue(rbac_db)
-    assert report.registered == (
+    # the proof module's three, beside the platform's and Audit's real catalogue
+    assert [k for k in report.registered if k.startswith("example.")] == [
         "example.widget.purge",
         "example.widget.read",
         "example.widget.write",
-    )
-    assert report.grants_added["platform.viewer"] == ("example.widget.read",)
-    assert report.grants_added["platform.analyst"] == (
-        "example.widget.read",
-        "example.widget.write",
-    )
+    ]
+    assert len(report.registered) == 67 + 3
+
+    def mine(role_key):
+        return tuple(
+            k for k in report.grants_added[role_key] if k.startswith("example.")
+        )
+
+    assert mine("platform.viewer") == ("example.widget.read",)
+    assert mine("platform.analyst") == ("example.widget.read", "example.widget.write")
     # the superadmin role is materialised too, including the privileged permission
     assert "example.widget.purge" in report.grants_added["platform.superadmin"]
     assert not composition.sync_permission_catalogue(rbac_db).changed  # idempotent
@@ -133,10 +144,12 @@ def test_the_module_consumes_rbac_through_the_platform_api_only(rbac_db, example
         rbac_db, analyst, "example.widget.purge"
     )  # declared, granted to no one
     assert not api.can(rbac_db, nobody, "example.widget.read")
-    assert api.effective_permissions(rbac_db, analyst).permissions == {
-        "example.widget.read",
-        "example.widget.write",
+    mine = {
+        k
+        for k in api.effective_permissions(rbac_db, analyst).permissions
+        if k.startswith("example.")
     }
+    assert mine == {"example.widget.read", "example.widget.write"}
 
 
 def test_a_route_in_the_module_is_guarded_by_the_platforms_require(rbac_db, example):

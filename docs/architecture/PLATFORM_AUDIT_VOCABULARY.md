@@ -39,6 +39,11 @@ its seeded display name and the legacy-name map. It is the role's own name (a
 persisted value the RBAC-0 design froze), not Audit logic; the descriptions around it
 were reworded to avoid the domain words.
 
+RBAC-2 adds one more: `permissions.py` carries one code-level string, the key
+`platform.organization.set_scan_scope`. The organisation's scan scope is a
+platform-owned plan feature (owner decision, 29 Sep 2026), and this is the permission
+that guards it — the legacy route checks the role name instead.
+
 What is **not** here, and was checked: `ccure_platform` calls `require_permission`
 and `user_has_permission` only with whatever `(resource, action)` its callers pass
 and names no Audit atom itself (pinned by a test); it imports no Audit module,

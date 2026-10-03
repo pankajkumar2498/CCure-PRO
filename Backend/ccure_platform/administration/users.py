@@ -22,6 +22,10 @@ from ccure_platform.identity.jwt_handler import (
 )
 from ccure_platform.rbac.dependencies import require_permission
 from ccure_platform.offboarding import run_user_purge_hooks
+
+# Registers RBAC's purge hook (it removes the account's role assignments, keeping
+# their history in the audit trail, before the user row is deleted).
+import ccure_platform.rbac.offboarding  # noqa: F401,E402
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import gen_user_id, get_db, utcnow
 from db.models import (

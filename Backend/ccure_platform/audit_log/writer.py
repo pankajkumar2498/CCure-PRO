@@ -54,7 +54,7 @@ from typing import Optional, Protocol
 
 from ccure_platform.audit_log.taxonomy import redact_changes, severity_for
 from core.ip_resolver import get_client_ip
-from db.models import AuditLog
+from db.models import AuditLog, PlatformAuditEvent
 from fastapi import Request
 from sqlalchemy.orm import Session
 
@@ -199,3 +199,66 @@ def log_audit_event(
         # caller (or FastAPI's handler, via get_db closing the session) is what
         # decides how to unwind.
         raise
+
+
+def log_platform_event(
+    db: Session,
+    action: str,
+    *,
+    actor: Optional[AuditActor] = None,
+    system_actor: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    changes: dict | None = None,
+    request: Request = None,
+    severity: str | None = None,
+):
+    """
+    Write one event that **no organisation owns** into the platform's own ledger.
+
+    ``log_audit_event`` is tenant-bound — ``org_id`` is required and the chain is
+    per organisation — so a catalogue sync, a platform-scope role change or the
+    default role being re-pointed has nowhere to go in it without borrowing an
+    organisation, which would write a false statement into that tenant's trail.
+    The caller decides *attribution*: an event with an owning organisation goes
+    through ``log_audit_event`` in that organisation; one without goes here.
+    (``ccure_platform.rbac.audit.emit`` makes that choice; see
+    ``docs/architecture/RBAC_FOUNDATION.md`` §10.)
+
+    The transaction contract is ``log_audit_event``'s: the row joins the caller's
+    transaction, nothing is committed here, and a failed write **raises** — a
+    platform change must not persist without its record.
+
+    ``actor`` is a signed-in account; ``system_actor`` is a label for an event
+    with no human behind it (``system:rbac-sync``). Exactly one is required.
+    """
+    if (actor is None) == (system_actor is None):
+        raise ValueError("a platform event needs exactly one of actor or system_actor")
+    request_id = getattr(request.state, "request_id", None) if request else None
+    try:
+        row = PlatformAuditEvent(
+            action=action,
+            severity=severity or severity_for(action),
+            actor_kind="user" if actor is not None else "system",
+            actor_user_id=actor.id if actor is not None else None,
+            actor_label=actor.username if actor is not None else system_actor,
+            actor_org_id=getattr(actor, "org_id", None) if actor is not None else None,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            changes=redact_changes(changes),
+            request_id=request_id,
+        )
+        db.add(row)
+        db.flush()
+    except Exception as exc:
+        logger.error(
+            "Platform audit write failed for action=%s resource=%s/%s actor=%s: %s: %s",
+            action,
+            resource_type,
+            resource_id,
+            getattr(actor, "id", None) or system_actor,
+            exc.__class__.__name__,
+            exc,
+        )
+        raise
+    return row

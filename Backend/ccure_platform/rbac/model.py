@@ -92,6 +92,7 @@ def append_revision(
     change_kind: str,
     *,
     changed_by: str | None = None,
+    advance: bool = True,
 ) -> RbacRoleRevision:
     """
     Append the history row for ``role`` as it is now — display name,
@@ -99,11 +100,17 @@ def append_revision(
     role's first revision (1); every other kind advances the role to its next.
     Call it after the change it records; it flushes so the row exists for
     whatever reads next in the same transaction.
+
+    ``advance=False`` records the role's *current* revision without advancing it.
+    A state change uses it: the database refuses a state change that does not
+    advance the revision in the same statement (so a state change can never be
+    silent), which means the caller advances the revision together with the
+    state and only then records the row.
     """
     if change_kind not in c.REVISION_KINDS:
         raise ValueError(f"unknown revision kind {change_kind!r}")
     db.flush()  # make the grants and fields being recorded visible to the read
-    if change_kind == "created":
+    if change_kind == "created" or not advance:
         revision = int(role.revision or 1)
     else:
         revision = int(role.revision) + 1

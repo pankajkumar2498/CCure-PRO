@@ -305,6 +305,17 @@ non-delegable or continuity permission. The registration flow does not read it y
 (`kind='permission'`, one atom may map to several keys and several atoms to one),
 with an optional `behaviour_change` note. Used only by shadow evaluation.
 
+RBAC-2 (migration `b8d2f6a4c0e1`) adds `status` (`mapped`, `replaced`, `retired`) and
+`reason`. **Every legacy atom has exactly one status and none is dropped**: a
+`retired` atom — one nothing enforces — is a row with **no** `permission_key` (a
+partial unique index allows one per atom) so it is preserved with its reason. The
+rows are written from `Backend/data/rbac/golden_legacy_mapping.json` by
+`scripts/rbac/sync_catalogue.py`; the old atom is never renamed in the legacy tables.
+
+RBAC-2 also tightens `rbac_roles`: the guard trigger now refuses a **state change that
+does not advance `revision` in the same statement**, so a role cannot retire or be
+reactivated without leaving a revision row.
+
 ---
 
 ## 4. Identity, sessions and audit
@@ -510,6 +521,32 @@ unpartitioned.
 
 `user_id` is SET NULL rather than CASCADE: deleting a user must never erase the
 record of what they did.
+
+### `platform_audit_events`
+
+The platform's own audit ledger (RBAC-2, migration `b8d2f6a4c0e1`) — for events **no
+organisation owns**. `audit_logs` is tenant-bound (`org_id` NOT NULL, hash-partitioned
+on it, the chain kept per organisation), so a catalogue sync, a system or
+platform-scope role change or the default role being re-pointed cannot be written
+there without borrowing an organisation. The rule is: an event with an owner goes to
+that organisation's `audit_logs`; one without goes here; nothing is attributed to an
+invented organisation (`docs/architecture/RBAC_FOUNDATION.md` §10.4). Written by
+`ccure_platform/audit_log/writer.py::log_platform_event`.
+
+| Column                                                          | Type          | Notes                                                                                 |
+| --------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
+| `id`                                                            | `UUID`        | **PK**, `gen_random_uuid()`                                                           |
+| `occurred_at`                                                   | `TIMESTAMPTZ` | default `now()`                                                                       |
+| `action`                                                        | `String(100)` | e.g. `rbac.catalogue.permission_registered`                                           |
+| `severity`                                                      | `String(20)`  | from the same taxonomy as `audit_logs`                                                |
+| `actor_kind`                                                    | `String(10)`  | `system` (a label, no account) or `user` (an account id) — CHECKed                    |
+| `actor_user_id`, `actor_label`                                  | `String`      | plain values, no foreign key: the record outlives the account                         |
+| `actor_org_id`                                                  | `String(100)` | where the actor sat when they acted — **information, never an owner**; no foreign key |
+| `resource_type`, `resource_id`, `changes` (JSONB), `request_id` | —             | `changes` is redacted on the way in, like `audit_logs`                                |
+
+There is **no `org_id` column**, which is the point. **Append-only** (a trigger refuses
+`UPDATE` and `DELETE`) but **not hash-chained**: extending the per-organisation chain
+to a platform chain is a privileged DBA bootstrap and a separate, reviewed step.
 
 ---
 

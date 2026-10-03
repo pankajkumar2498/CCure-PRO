@@ -40,6 +40,13 @@ PRE_SPLIT_FINGERPRINT = (
 NEWLY_NAMED = {"service.token_issued": "medium"}
 
 
+def _registered_by_rbac() -> set[str]:
+    """RBAC registers its own events lazily, on the first one it emits (RBAC-2), so
+    in a process that ran RBAC tests first they are in the merged table. They belong
+    to neither the platform's table nor Audit's, and these tests pin those two."""
+    return {a for a, source in taxonomy._sources.items() if source == "rbac"}
+
+
 def _run(code: str):
     return subprocess.run(
         [sys.executable, "-c", code],
@@ -54,7 +61,9 @@ def _run(code: str):
 
 def test_every_pre_split_severity_is_unchanged():
     merged = {
-        k: v for k, v in taxonomy.all_severities().items() if k not in NEWLY_NAMED
+        k: v
+        for k, v in taxonomy.all_severities().items()
+        if k not in NEWLY_NAMED and k not in _registered_by_rbac()
     }
     assert len(merged) == 109
     digest = hashlib.sha256(json.dumps(sorted(merged.items())).encode()).hexdigest()
@@ -75,7 +84,9 @@ def test_platform_and_audit_events_are_disjoint_and_complete():
     platform = taxonomy.SEVERITY_BY_ACTION
     assert len(platform) == 47 and len(AUDIT_EVENT_SEVERITIES) == 63
     assert not set(platform) & set(AUDIT_EVENT_SEVERITIES)
-    assert set(platform) | set(AUDIT_EVENT_SEVERITIES) == set(taxonomy.all_severities())
+    assert set(platform) | set(AUDIT_EVENT_SEVERITIES) == (
+        set(taxonomy.all_severities()) - _registered_by_rbac()
+    )
 
 
 def test_the_platform_table_names_no_audit_event():

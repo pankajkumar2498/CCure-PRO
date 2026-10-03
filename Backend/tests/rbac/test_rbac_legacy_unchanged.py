@@ -197,6 +197,12 @@ def test_no_route_in_the_application_is_guarded_by_the_new_require():
     assert legacy_guards > 150  # the legacy guards still carry the application
 
 
+#: The one place outside the platform that may import ``PermissionDecl``: a module's
+#: own declaration of its permission catalogue (RBAC-2). It declares data; it makes
+#: no decision.
+DECLARATION_MODULES = {"ccure_audit/permissions.py"}
+
+
 def test_no_application_code_imports_the_new_authorization_api_yet():
     offenders = []
     for path in BACKEND_ROOT.rglob("*.py"):
@@ -214,8 +220,11 @@ def test_no_application_code_imports_the_new_authorization_api_yet():
                     "can",
                     "effective_permissions",
                     "require",
-                    "PermissionDecl",
                 }
+                if "PermissionDecl" in {a.name for a in node.names} and (
+                    path.relative_to(BACKEND_ROOT).as_posix() not in DECLARATION_MODULES
+                ):
+                    used.add("PermissionDecl")
                 if used:
                     offenders.append(
                         (str(path.relative_to(BACKEND_ROOT)), sorted(used))

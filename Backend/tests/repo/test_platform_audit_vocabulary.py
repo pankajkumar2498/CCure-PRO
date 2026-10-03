@@ -76,6 +76,12 @@ BASELINE: dict[str, tuple[int, str]] = {
         "evaluation reads. The word is the role's own name, not Audit logic; item 5's "
         "module-RBAC decision owns the atoms, this is only the role",
     ),
+    "permissions.py": (
+        1,
+        "persisted value (RBAC-2): the key platform.organization.set_scan_scope — the "
+        "organisation plan's scan scope is platform-owned (owner decision, 29 Sep 2026) "
+        "and the permission guards that platform feature",
+    ),
     "identity/email_security_tasks.py": (
         6,
         "not Audit's: 'retro-scan' of accounts for shared mailboxes (name collision)",

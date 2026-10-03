@@ -127,6 +127,8 @@ ASSIGN_PLATFORM_ROLE_KEY = "platform.role.assign_platform"
 CREATE_ROLE_KEY = "platform.role.create"
 CREATE_PLATFORM_ROLE_KEY = "platform.role.create_platform"
 UPDATE_ROLE_KEY = "platform.role.update"
+RETIRE_ROLE_KEY = "platform.role.retire"
+RETIRE_SYSTEM_ROLE_KEY = "platform.role.retire_system"
 #: Entering an organisation other than the principal's own.
 ORG_SWITCH_KEY = "platform.organization.switch"
 CREATE_ORGANIZATION_KEY = "platform.organization.create"

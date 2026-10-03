@@ -34,8 +34,11 @@ audit event can carry them:
 * **retirement** — what must be true before a role can be retired.
 * **default role** — the safety rules for the role a purpose assigns.
 
-Nothing here retires, renames or deletes anything. Destructive lifecycle
-operations belong to later phases and will call these.
+RBAC-2 adds the two internal primitives the later API will wrap —
+``transition_role`` (a lifecycle step that cannot be silent) and
+``define_custom_org_role`` (a custom organisation role, checked) — and no HTTP
+endpoint. Authority is checked by the pure ``check_*`` functions; the mutators
+assume the caller did. Nothing here deletes anything: there is no hard-delete.
 """
 
 from __future__ import annotations
@@ -552,3 +555,262 @@ def configure_default_role(
     if audit_actor is not None:
         emit(db, [draft], actor=audit_actor)
     return draft
+
+
+# ── lifecycle: authority ──────────────────────────────────────────────────────
+
+
+def check_role_lifecycle(
+    actor: c.Principal,
+    actor_grants: Iterable[c.Grant],
+    catalogue: engine.Catalogue,
+    *,
+    role: c.Role,
+    target: str,
+    role_permission_keys: Collection[str] = (),
+) -> tuple[Violation, ...]:
+    """
+    Every reason ``actor`` may not move ``role`` to ``target``: an invalid
+    transition, no authority, or — when a retired role would become active again —
+    the escalation ceiling, because reactivating a role hands its permissions back
+    to everyone who holds it, so the actor must hold them all.
+
+    Authority follows the role: a **system** role needs ``platform.role.retire_system``
+    (platform governance only, RBAC-0 D12), a **platform-scope custom** role
+    ``platform.role.create_platform``, and an **organisation custom** role
+    ``platform.role.retire`` in that organisation.
+    """
+    grants = tuple(actor_grants)
+    out: list[Violation] = []
+    bad = validate_transition(role.state, target)
+    if bad is not None:
+        out.append(bad)
+    if actor.kind != "human":
+        out.append(
+            Violation(
+                "service_actor", "a service identity cannot change a role's state"
+            )
+        )
+    if role.kind == "system":
+        key, reach = c.RETIRE_SYSTEM_ROLE_KEY, engine.platform_held_keys(
+            actor, grants, catalogue
+        )
+    elif role.assignable_scope == "platform":
+        key, reach = c.CREATE_PLATFORM_ROLE_KEY, engine.platform_held_keys(
+            actor, grants, catalogue
+        )
+    else:
+        key, reach = c.RETIRE_ROLE_KEY, engine.held_keys(
+            actor, grants, catalogue, role.org_id
+        )
+    if key not in reach:
+        out.append(Violation("missing_authority", f"the actor does not hold {key}"))
+    if role.state == "retired" and target == "active":
+        live = {
+            k
+            for k in role_permission_keys
+            if k in catalogue and catalogue[k].status != "retired"
+        }
+        missing = sorted(live - reach)
+        if missing:
+            out.append(
+                Violation(
+                    "escalation_ceiling",
+                    "reactivating the role restores permissions the actor does not hold: "
+                    + ", ".join(missing),
+                )
+            )
+    return tuple(out)
+
+
+def transition_role(
+    db: Session,
+    role: RbacRole,
+    target: str,
+    *,
+    changed_by: str | None = None,
+    reason: str | None = None,
+    replaced_by_role_id: str | None = None,
+) -> EventDraft:
+    """
+    Move ``role`` along ``active → retiring → retired`` (and back), leaving history,
+    and return the audit event (the caller emits it). Refuses with
+    ``GovernanceError``, changing nothing, when:
+
+    * the transition is not allowed;
+    * the target is ``retired`` and the retirement gate has blockers — live
+      assignments, a configured default role, or a continuity invariant it would
+      newly break (``retirement_blockers``);
+    * the target is ``active`` and the role's display name is now used by another
+      live role in its namespace (a retired role frees its name).
+
+    A state change **cannot be silent**: the revision advances in the same statement
+    (the database refuses otherwise) and a revision row records the state. Authority
+    is the caller's to check (``check_role_lifecycle``). There is no delete.
+    """
+    from datetime import datetime, timezone
+
+    from ccure_platform.rbac.audit import RoleSnapshot, role_event
+    from ccure_platform.rbac.model import append_revision
+
+    bad = validate_transition(role.state, target)
+    if bad is not None:
+        raise GovernanceError([bad])
+    if target == "retired":
+        blockers = retirement_blockers(db, role.id)
+        if blockers:
+            raise GovernanceError(blockers)
+    if target == "active" and role.state == "retired":
+        clash = db.execute(
+            select(RbacRole.id).where(
+                RbacRole.id != role.id,
+                RbacRole.state != "retired",
+                (
+                    RbacRole.org_id.is_(None)
+                    if role.org_id is None
+                    else RbacRole.org_id == role.org_id
+                ),
+                text("lower(rbac_roles.display_name) = lower(:n)").bindparams(
+                    n=role.display_name
+                ),
+            )
+        ).first()
+        if clash is not None:
+            raise GovernanceError(
+                [
+                    Violation(
+                        "display_name_in_use",
+                        "another live role already has this display name",
+                    )
+                ]
+            )
+    previous = role.state
+    role.state = target
+    role.revision = int(role.revision) + 1
+    if target == "retired":
+        role.retired_at = datetime.now(timezone.utc)
+        role.retired_by = changed_by
+        role.retirement_reason = reason
+        role.replaced_by_role_id = replaced_by_role_id
+    else:
+        role.retired_at = None
+        role.retired_by = None
+        role.retirement_reason = None
+        if previous == "retired":
+            role.replaced_by_role_id = None
+    kind = {"retired": "retired"}.get(target)
+    if kind is None:
+        kind = "reactivated" if previous == "retired" else "state_changed"
+    db.flush()
+    append_revision(db, role, kind, changed_by=changed_by, advance=False)
+    action = {
+        "retiring": "rbac.role.retiring",
+        "retired": "rbac.role.retired",
+    }.get(target, "rbac.role.reactivated")
+    return role_event(
+        action,
+        RoleSnapshot(
+            role_id=str(role.id),
+            role_key=role.key,
+            display_name=role.display_name,
+            org_id=role.org_id,
+        ),
+        from_state=previous,
+        to_state=target,
+        reason=reason,
+        replaced_by_role_id=replaced_by_role_id,
+    )
+
+
+# ── custom organisation roles ─────────────────────────────────────────────────
+
+
+def define_custom_org_role(
+    db: Session,
+    actor: c.Principal,
+    actor_grants: Iterable[c.Grant],
+    catalogue: engine.Catalogue,
+    *,
+    org_id: str,
+    slug: str,
+    display_name: str,
+    permission_keys: Collection[str],
+    description: str | None = None,
+) -> tuple[RbacRole, EventDraft]:
+    """
+    Create a custom role belonging to **one organisation**, holding only
+    permissions the actor may delegate there. Refuses with ``GovernanceError``,
+    writing nothing, unless every rule holds (``check_role_permissions``):
+
+    * the actor holds ``platform.role.create`` in that organisation;
+    * every permission is in the catalogue, not retired, **organisation-scope and
+      delegable** — so a custom role can never hold a platform-only capability;
+    * every permission is one the actor holds there (the escalation ceiling).
+
+    The role is a new row — it can never *be* a system role or alter one — whose key
+    is ``custom.<org_id>.<slug>``; its display name is a mutable label. The database
+    separately refuses to assign it outside its organisation or to grant it a
+    non-delegable permission. An internal primitive, not an endpoint: RBAC-7 wraps it.
+    """
+    from ccure_platform.rbac.audit import RoleSnapshot, role_event
+    from ccure_platform.rbac.model import RbacRolePermission, append_revision
+
+    key = f"custom.{org_id}.{slug}"
+    problems = list(
+        check_role_permissions(
+            actor,
+            actor_grants,
+            catalogue,
+            operation="create",
+            kind="custom",
+            assignable_scope="organization",
+            org_id=org_id,
+            permission_keys=permission_keys,
+        )
+    )
+    if c.role_key_kind(key) != "org_custom":
+        problems.append(
+            Violation("invalid_key", f"{key!r} is not a valid organisation role key")
+        )
+    name = (display_name or "").strip()
+    if not name or len(name) > c.DISPLAY_NAME_MAX:
+        problems.append(
+            Violation("invalid_display_name", "a display name is 1 to 100 characters")
+        )
+    if problems:
+        raise GovernanceError(problems)
+    role = RbacRole(
+        key=key,
+        display_name=name,
+        description=description,
+        kind="custom",
+        assignable_scope="organization",
+        org_id=org_id,
+        managed_by="admin",
+        state="active",
+        revision=1,
+        created_by=actor.principal_id,
+    )
+    db.add(role)
+    db.flush()
+    for permission_key in sorted(set(permission_keys)):
+        db.add(
+            RbacRolePermission(
+                role_id=role.id,
+                permission_key=permission_key,
+                granted_by=actor.principal_id,
+            )
+        )
+    db.flush()
+    append_revision(db, role, "created", changed_by=actor.principal_id)
+    draft = role_event(
+        "rbac.role.created",
+        RoleSnapshot(
+            role_id=str(role.id),
+            role_key=role.key,
+            display_name=role.display_name,
+            org_id=org_id,
+        ),
+        permissions=sorted(set(permission_keys)),
+    )
+    return role, draft

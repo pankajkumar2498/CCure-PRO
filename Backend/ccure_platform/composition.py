@@ -19,9 +19,9 @@ the result as data. That is this file, and it is the only place the two meet.
   naming the module. There is no fallback to the modules that loaded fine: a
   partly loaded catalogue is a partly granted one.
 
-RBAC-1 is dark: nothing calls ``sync_permission_catalogue`` at start-up. It is
-exercised by tests and will be called by the application in RBAC-2, when the
-catalogue is finalised.
+RBAC-1/RBAC-2 are dark: nothing calls ``sync_permission_catalogue`` at start-up.
+The catalogue is applied by the operator script ``scripts/rbac/sync_catalogue.py``
+(dry run by default) and by tests; wiring it into start-up is a later phase.
 """
 
 from __future__ import annotations
@@ -34,8 +34,9 @@ from ccure_platform.rbac.catalogue import CatalogueError, SyncReport, sync
 from sqlalchemy.orm import Session
 
 #: Dotted names of the modules that declare the **platform's own** permissions
-#: (``platform.*``). None until RBAC-2 finalises the catalogue.
-PLATFORM_PERMISSION_MODULES: tuple[str, ...] = ()
+#: (``platform.*``): the platform's administration capabilities and RBAC's own
+#: governance (RBAC-2).
+PLATFORM_PERMISSION_MODULES: tuple[str, ...] = ("ccure_platform.permissions",)
 
 PLATFORM_NAMESPACE = "platform"
 
@@ -93,10 +94,9 @@ def load_permission_sources() -> list[c.ModuleDeclarations]:
 
 
 def sync_permission_catalogue(
-    db: Session, *, actor_id: str | None = None, audit_org_id: str | None = None
+    db: Session, *, actor=None, audit: bool = True
 ) -> SyncReport:
     """Load every declaration and apply it. Writes in ``db``'s transaction and
-    does not commit."""
-    return sync(
-        db, load_permission_sources(), actor_id=actor_id, audit_org_id=audit_org_id
-    )
+    does not commit. A sync belongs to no organisation, so its events go to the
+    platform ledger."""
+    return sync(db, load_permission_sources(), actor=actor, audit=audit)

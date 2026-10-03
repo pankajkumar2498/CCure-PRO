@@ -195,5 +195,19 @@ def platform_custom_role(
     return row
 
 
+def force_state(db: Session, row: RbacRole, state: str) -> RbacRole:
+    """Move a role to ``state`` directly, the way the database requires: the
+    revision advances in the same statement, and ``retired_at`` follows the state.
+    Tests that need a role in a state use this; ``governance.transition_role`` is
+    the gated primitive and has its own tests."""
+    from datetime import datetime, timezone
+
+    row.state = state
+    row.revision = int(row.revision) + 1
+    row.retired_at = datetime.now(timezone.utc) if state == "retired" else None
+    db.flush()
+    return row
+
+
 def permission_rows(db: Session) -> dict[str, RbacPermission]:
     return {p.key: p for p in db.query(RbacPermission).all()}

@@ -63,9 +63,9 @@ def test_each_module_declares_its_contributions_in_its_own_manifest(package, key
         "audit_event_modules": (
             ("ccure_audit.audit_events",) if key == "audit" else ()
         ),
-        # RBAC-1: declared in the manifest, empty until the catalogue is
-        # finalised in RBAC-2
-        "permission_modules": (),
+        # Audit declares its permission catalogue (RBAC-2); Policy Pro and Rank
+        # declare nothing and keep their namespaces reserved
+        "permission_modules": (("ccure_audit.permissions",) if key == "audit" else ()),
     }
 
 

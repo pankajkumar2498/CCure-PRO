@@ -254,8 +254,9 @@ class SyncReport:
     grants_removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
     skipped_retired_roles: tuple[str, ...] = ()
     roles_created: tuple[str, ...] = ()
-    #: The audit events the sync produced. Written only when ``audit_org_id``
-    #: was given; always returned, so a caller can see what happened.
+    #: The audit events the sync produced. A sync belongs to no organisation, so
+    #: they go to the platform ledger (RBAC-2, ``rbac/audit.py``); always returned,
+    #: so a caller can see what happened.
     events: tuple[EventDraft, ...] = ()
     events_written: int = 0
 
@@ -286,15 +287,19 @@ def sync(
     db: Session,
     sources: Sequence[c.ModuleDeclarations],
     *,
-    actor_id: str | None = None,
-    audit_org_id: str | None = None,
+    actor=None,
+    audit: bool = True,
 ) -> SyncReport:
     """
     Apply ``sources`` to the catalogue. Raises ``CatalogueError`` — having written
     nothing — if any declaration is invalid. Does not commit.
+
+    ``actor`` is the signed-in account running it (an operator script passes none
+    and is recorded as ``system:rbac-sync``). With ``audit`` (the default) the
+    events go to the platform ledger: a catalogue sync is owned by no organisation.
     """
     sources = tuple(sources)
-    actor = actor_id or SYNC_ACTOR
+    actor_label = getattr(actor, "id", None) or SYNC_ACTOR
 
     problems = validate_declarations(sources, known_roles=_known_roles(db))
     declared: dict[str, tuple[c.ModuleDeclarations, c.PermissionDecl]] = {
@@ -329,7 +334,7 @@ def sync(
 
     report = SyncReport()
     drafts: list[EventDraft] = []
-    report.roles_created = ensure_system_roles(db, changed_by=actor)
+    report.roles_created = ensure_system_roles(db, changed_by=actor_label)
 
     # permissions ---------------------------------------------------------------
     registered, updated = [], []
@@ -460,7 +465,7 @@ def sync(
         for key in sorted(add):
             db.add(
                 RbacRolePermission(
-                    role_id=role.id, granted_by=actor, permission_key=key
+                    role_id=role.id, granted_by=actor_label, permission_key=key
                 )
             )
         if remove:
@@ -473,7 +478,7 @@ def sync(
             db,
             role,
             "synced" if role.managed_by == "code" else "permissions_changed",
-            changed_by=actor,
+            changed_by=actor_label,
         )
         report.grants_added[role.key] = tuple(sorted(add))
         report.grants_removed[role.key] = tuple(sorted(remove))
@@ -493,8 +498,12 @@ def sync(
     report.grants_removed = {k: v for k, v in report.grants_removed.items() if v}
     report.skipped_retired_roles = tuple(skipped)
     report.events = tuple(drafts)
-    if audit_org_id and drafts:
-        report.events_written = emit(
-            db, drafts, system_actor=SYNC_ACTOR, org_id=audit_org_id
+    if audit and drafts:
+        result = emit(
+            db,
+            drafts,
+            actor=actor,
+            system_actor=None if actor is not None else SYNC_ACTOR,
         )
+        report.events_written = result.total
     return report

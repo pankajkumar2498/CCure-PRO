@@ -20,8 +20,9 @@ routers = []
 task_modules = []
 models = []
 audit_event_modules = ["ccure_audit.audit_events"]
-# Where this module declares its RBAC permission catalogue (RBAC-1). Empty until
-# the catalogue is finalised in RBAC-2; the namespace ("audit") is the platform's,
-# in ccure_platform/modules/registry.py. RBAC learns what is declared as data from
-# the composition root and never imports this package.
-permission_modules = []
+# Where this module declares its RBAC permission catalogue (RBAC-1/RBAC-2): the
+# module exports PERMISSIONS, a tuple of ccure_platform.api.PermissionDecl. The
+# namespace ("audit") is the platform's, in ccure_platform/modules/registry.py.
+# RBAC learns what is declared as data from the composition root and never imports
+# this package.
+permission_modules = ["ccure_audit.permissions"]

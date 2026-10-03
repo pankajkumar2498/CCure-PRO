@@ -419,6 +419,12 @@ class RbacLegacyMap(Base):
     ``roles.name`` to a role key; ``kind='permission'`` rows map a legacy
     ``resource:action`` atom to a permission key. One atom may map to several
     keys (a split) and several atoms to one key (a merge).
+
+    **Every legacy atom has exactly one status** (RBAC-2) and none is dropped
+    silently: ``mapped`` (the same capability under a new key), ``replaced`` (the
+    capability is now expressed differently — a name check or a governance
+    permission) or ``retired`` (nothing enforces it, so there is no new key; the
+    row exists so the atom is accounted for, with the reason).
     """
 
     __tablename__ = "rbac_legacy_map"
@@ -427,11 +433,17 @@ class RbacLegacyMap(Base):
             "kind IN ('role', 'permission')", name="ck_rbac_legacy_map_kind"
         ),
         CheckConstraint(
+            "status IN ('mapped', 'replaced', 'retired')",
+            name="ck_rbac_legacy_map_status",
+        ),
+        CheckConstraint(
             "(kind = 'role' AND legacy_role_name IS NOT NULL AND role_key IS NOT NULL "
-            "AND legacy_resource IS NULL AND legacy_action IS NULL AND permission_key IS NULL) "
+            "AND legacy_resource IS NULL AND legacy_action IS NULL AND permission_key IS NULL "
+            "AND status = 'mapped') "
             "OR (kind = 'permission' AND legacy_resource IS NOT NULL "
-            "AND legacy_action IS NOT NULL AND permission_key IS NOT NULL "
-            "AND legacy_role_name IS NULL AND role_key IS NULL)",
+            "AND legacy_action IS NOT NULL AND legacy_role_name IS NULL AND role_key IS NULL "
+            "AND ((status = 'retired' AND permission_key IS NULL) "
+            "OR (status IN ('mapped', 'replaced') AND permission_key IS NOT NULL)))",
             name="ck_rbac_legacy_map_shape",
         ),
         Index(
@@ -448,6 +460,15 @@ class RbacLegacyMap(Base):
             unique=True,
             postgresql_where=text("kind = 'permission'"),
         ),
+        # A retired atom has no permission key, and NULLs are distinct in a unique
+        # index, so it needs its own: one retired row per atom.
+        Index(
+            "uq_rbac_legacy_map_retired",
+            "legacy_resource",
+            "legacy_action",
+            unique=True,
+            postgresql_where=text("kind = 'permission' AND permission_key IS NULL"),
+        ),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -463,6 +484,9 @@ class RbacLegacyMap(Base):
         ForeignKey("rbac_permissions.key", ondelete="RESTRICT"),
         nullable=True,
     )
+    status = Column(String(20), nullable=False, server_default="mapped")
+    #: Why the atom is mapped, replaced or retired.
+    reason = Column(Text, nullable=True)
     #: A behaviour change this mapping introduces, described. Anything here has
     #: to be approved; the equivalence matrix refuses an unlisted difference.
     behaviour_change = Column(Text, nullable=True)
@@ -504,6 +528,10 @@ BEGIN
     OR (OLD.state = 'retired' AND NEW.state = 'active')) THEN
     RAISE EXCEPTION USING ERRCODE = 'check_violation',
       MESSAGE = 'invalid role state transition ' || OLD.state || ' to ' || NEW.state;
+  END IF;
+  IF NEW.state IS DISTINCT FROM OLD.state AND NEW.revision <= OLD.revision THEN
+    RAISE EXCEPTION USING ERRCODE = 'check_violation',
+      MESSAGE = 'a role state change must advance the revision, so it leaves history';
   END IF;
   RETURN NEW;
 END

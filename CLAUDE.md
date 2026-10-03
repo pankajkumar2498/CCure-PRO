@@ -424,11 +424,11 @@ each module's `README.md` is the guide its team works from.
   (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
 
-## RBAC capability (`ccure_platform/rbac/`) — RBAC-1, **dark**
+## RBAC capability (`ccure_platform/rbac/`) — RBAC-1 and RBAC-2, **dark**
 
 The new, independent RBAC capability. Record:
 [`docs/architecture/RBAC_FOUNDATION.md`](docs/architecture/RBAC_FOUNDATION.md).
-**RBAC-1 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
+**RBAC-1 and RBAC-2 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
 `role_permissions`, `require_permission`, `require_role` and `user_has_permission`
 are still the only authority; no route, `/auth/me` field, frontend behaviour,
 assignment or registration flow uses the new tables. Do not describe RBAC as live.
@@ -469,9 +469,48 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   and `users`, so a committed row would fail the suite's per-test purge in an
   unrelated test. It is not a `conftest.py` because `test_schema_drift` does
   `import conftest`.
-- **Open for RBAC-2:** register a user-purge hook before any assignment row exists
-  (`purge_user` hard-deletes; the FK is `RESTRICT`); decide which organisation
-  platform-wide audit events belong to.
+- **RBAC-2 populated the catalogue and role model — prepared, not live.** 67
+  permissions: 30 `platform.*` (`ccure_platform/permissions.py`) and 37 `audit.*`
+  (`ccure_audit/permissions.py`), declared as data through the manifest seam. Every key,
+  its owner, scope, sensitivity, reason and legacy source is in
+  [`docs/architecture/RBAC_PERMISSION_CATALOG.md`](docs/architecture/RBAC_PERMISSION_CATALOG.md).
+  Keys are **capability-level** and come from what the code enforces, not from the old
+  vocabulary; **no key is invented for a future feature** (Policy Pro, Rank, IR declare
+  nothing). Verb vocabulary is settled: `read` for reading, domain verbs elsewhere.
+- **The golden legacy mapping** (`Backend/data/rbac/golden_legacy_mapping.json`, logic in
+  `rbac/legacy_map.py`) accounts for **66 legacy atoms** — 65 seeded plus `audit_logs:read`,
+  which exists only on the live database — as 50 mapped, 6 replaced, 10 retired. **No atom
+  is dropped silently**: a retired one is a keyless `rbac_legacy_map` row with its reason.
+  It is checked three independent ways (`validate_golden`; `derive_role_grants`, which
+  recomputes each role's set from its legacy role; the declarations' `default_grants`) and
+  through the real shadow comparator. A merge of atoms is only legal where every legacy role
+  holds all of them or none. **Changing a declaration's `default_grants`, or a legacy role's
+  grants, means changing the golden file in the same commit** — the tests fail otherwise.
+- **The catalogue reaches a database only through `scripts/rbac/sync_catalogue.py`** (dry
+  run unless `--apply`; validates before it writes; takes the live `permissions` table's atoms
+  and refuses any it does not account for). It is **not** wired into start-up: a failure
+  there would stop the API for a dark capability. Back up first (`scripts/backup_db.sh
+  --skip-reference-data`) before `--apply` on a real database.
+- **Audit attribution: an event says who owns it, and nothing is ever attributed to an
+  invented organisation.** `audit_logs` is tenant-bound (`org_id` NOT NULL). An event with an
+  owning organisation (an organisation role; an organisation-scope assignment; a
+  platform-scope assignment, owned by the **member's own** organisation; a user purge) goes
+  to that organisation's `audit_logs`; one with no owner (catalogue sync, permission
+  lifecycle, system or platform-scope roles, the default role) goes to the append-only
+  `platform_audit_events` ledger via `log_platform_event`. `EventDraft.org_id` has no
+  default; `rbac.audit.emit` routes by it. The ledger is **not hash-chained** (a DBA
+  bootstrap, later) — a recorded limit.
+- **User purge is handled by RBAC's offboarding hook** (`rbac/offboarding.py`, registered
+  when the purge route's module is imported): it records each assignment in the audit trail
+  (with the display name *at that moment*) and removes the rows before the user is deleted.
+  `ON DELETE RESTRICT` is unchanged.
+- **A role's state change cannot be silent**: the database refuses it unless `revision`
+  advances in the same statement. Use `governance.transition_role` (gate + history), or in
+  tests `rbac_testing.force_state`. `define_custom_org_role` is the checked way to make an
+  organisation role.
+- **RBAC emits severities lazily** (on its first event), so a process that ran RBAC code has
+  `rbac.*` in the merged audit taxonomy; the two audit tests that pin the platform+Audit set
+  exclude that source.
 
 ## Backend platform extraction (backend alignment, steps 1–2)
 

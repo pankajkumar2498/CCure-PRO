@@ -1,7 +1,9 @@
-# RBAC foundation (RBAC-1)
+# RBAC foundation (RBAC-1, RBAC-2)
 
-**Status: dark.** RBAC-1 builds the independent RBAC capability and wires it to
-nothing. The legacy authorization — `users.role_id`, `roles`, `permissions`,
+**Status: dark.** RBAC-1 built the independent RBAC capability and wired it to
+nothing; RBAC-2 populated its permission catalogue and role model and mapped every
+legacy atom onto them (§10, and [RBAC_PERMISSION_CATALOG.md](RBAC_PERMISSION_CATALOG.md)).
+**RBAC-2 is prepared, not live.** The legacy authorization — `users.role_id`, `roles`, `permissions`,
 `role_permissions`, `require_permission`, `require_role`, `user_has_permission` and
 the frontend `can()` — is **still the only authority**. No route, no `/auth/me`
 field, no frontend behaviour, no role assignment, no registration flow and no
@@ -9,7 +11,7 @@ permission changed. This document records what was built and the design it
 implements (RBAC-0, frozen); it must not be read as describing live authorization.
 
 Code: `Backend/ccure_platform/rbac/` · tables: `Backend/ccure_platform/models/rbac_tables.py`
-· migration `a7c1e5b3d9f2` · tests: `Backend/tests/rbac/`, `tests/repo/test_rbac_*`,
+· migrations `a7c1e5b3d9f2` (RBAC-1) and `b8d2f6a4c0e1` (RBAC-2) · catalogue: `ccure_platform/permissions.py`, `ccure_audit/permissions.py` · golden mapping: `Backend/data/rbac/golden_legacy_mapping.json` · tests: `Backend/tests/rbac/`, `tests/repo/test_rbac_*`,
 `tests/modules/example/test_rbac_onboarding.py` · schema: [DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md).
 
 ## 1. Ownership and independence
@@ -60,7 +62,8 @@ rbac.catalogue.sync(sources)  ▶  rbac_permissions / rbac_role_permissions
   `ccure_platform/modules/registry.py`. A module cannot pick another's. A product's
   namespace is reserved from the day it is registered, enabled or not.
 - `permission_modules` in a module's `manifest.toml` lists the dotted modules that
-  declare its catalogue (empty for every real module until RBAC-2).
+  declare its catalogue (RBAC-2: `ccure_audit/permissions.py` for Audit; Policy Pro and
+  Rank declare nothing, and the platform's own is `ccure_platform/permissions.py`).
 - RBAC validates **generic** rules only: the three-segment grammar, that the key's
   first segment is the declaring namespace, no duplicates, valid scope metadata,
   valid role references. It knows no product by name.
@@ -74,7 +77,10 @@ rbac.catalogue.sync(sources)  ▶  rbac_permissions / rbac_role_permissions
   every changed role given a revision. A retired role is skipped and reported,
   never resurrected.
 
-Nothing calls the sync at start-up yet; RBAC-2 does, with the finalised catalogue.
+Nothing calls the sync at start-up, deliberately: a failure there would stop the API
+for a capability that is still dark. The catalogue is applied by the operator script
+`scripts/rbac/sync_catalogue.py` (a dry run unless `--apply`; it validates before it
+writes). Wiring it into start-up is a later phase.
 
 ## 3. Role identity and lifecycle
 
@@ -154,14 +160,88 @@ so behaviour is unchanged; the registration flow does not read it yet. Display n
 are global in v1; per-organisation presentation overrides are deferred and would be
 additive presentation metadata, not an engine change.
 
-## 9. Known follow-ups (not defects of RBAC-1)
+## 9. Follow-ups RBAC-1 left, and where they went
 
-- **User purge.** `purge_user` hard-deletes a user. `rbac_user_roles.user_id` is
-  `ON DELETE RESTRICT`, so once assignments exist (RBAC-2's backfill) a purge hook
-  must be registered (`register_user_purge_hook`). No assignment row exists in
-  production now.
-- **Audit attribution of platform-wide events** (`audit_logs.org_id` is NOT NULL) is
-  open; `emit` and the sync refuse to guess, and the sync writes events only when
-  given an organisation.
-- The catalogue is empty until RBAC-2, so the continuity report and the shadow map
-  have nothing to measure yet; both say so rather than answer.
+- **User purge** — resolved in RBAC-2 (§10.3).
+- **Audit attribution of platform-wide events** — resolved in RBAC-2 (§10.4).
+- The catalogue was empty until RBAC-2, so the continuity report and the shadow map
+  said "not assessable" and "not mapped" rather than answer. They can answer now.
+
+## 10. RBAC-2: the catalogue and the role model
+
+RBAC-2 is **prepared, not live**: the legacy tables and checks are untouched and
+authoritative, no route uses the new engine, `/auth/me`, the frontend and the
+registration flow are unchanged, no user is assigned to a new role, and nothing
+populates the tables until an operator applies the catalogue.
+
+### 10.1 The catalogue
+
+67 permissions: 30 `platform.*` (declared in `ccure_platform/permissions.py`) and
+37 `audit.*` (declared in `ccure_audit/permissions.py`), through the module
+registration seam. Policy Pro, Rank and IR keep their namespaces reserved and declare
+nothing. Every key — owner, scope, sensitivity, delegation, continuity, legacy source
+and the reason it exists — is in [RBAC_PERMISSION_CATALOG.md](RBAC_PERMISSION_CATALOG.md).
+The catalogue is **capability-level** and **derived from what the code enforces**, not
+from the old vocabulary: the 17 dashboard routes are one permission; the generic
+`settings:update`, which gated two unrelated things, became `audit.asset.import_amt`
+and `audit.remediation.manage_sla`; thirteen role-name checks became permissions
+(`platform.organization.switch`, `platform.user.move_org`, the email-domain and
+vulnerability-feed administration, …) held only by the superadmin role.
+
+### 10.2 Legacy → new, and how it is proven
+
+66 legacy atoms — the 65 seeded and `audit_logs:read`, which exists only on the live
+database and which no code reads — each end in exactly one status: **50 mapped, 6
+replaced, 10 retired**. The ten retired atoms have no route, task or screen
+requiring them (a test searches the source), so no role loses anything any code
+checks. `rbac_legacy_map` now carries `status` and `reason`, so a retired atom is
+**preserved** as a keyless row instead of dropped.
+
+The mapping is data (`golden_legacy_mapping.json`) checked three independent ways:
+internally consistent and complete (`legacy_map.validate_golden`); each role's set
+**recomputed** from its legacy role (`derive_role_grants`: a key is held when all the
+atoms it derives from are); and equal to the declarations' `default_grants`. Run
+through the real shadow comparator in a rolled-back test, the new decision matches the
+legacy one for all five roles and all 56 enforced atoms.
+
+### 10.3 User purge
+
+`purge_user` hard-deletes an account and `rbac_user_roles.user_id` is
+`ON DELETE RESTRICT`. `ccure_platform/rbac/offboarding.py` registers an `rbac` hook
+with the platform's offboarding contract (imported by the administration module that
+holds the purge route). Before the user row is deleted it records each assignment in
+the audit trail — role id, key and the display name _at that moment_, scope, grantor,
+whether it was live — and removes the row. Role history is untouched and the foreign
+key is **not weakened**: deleting a user who still has assignments any other way is
+still refused.
+
+### 10.4 Audit attribution
+
+`audit_logs.org_id` is NOT NULL, the table is hash-partitioned on it, and the chain is
+per organisation, so an event no organisation owns cannot be written there without
+borrowing an organisation or inventing a pseudo-tenant — both a false statement in a
+trail. The rule: **the event says who owns it, the emitter never guesses, and an event
+with no owner goes to the platform's own ledger.**
+
+- an event with an owning organisation → `audit_logs` in that organisation: a role of
+  one organisation; an organisation-scope assignment; a platform-scope assignment
+  (owned by the **member's own** organisation — the tenant whose person's access
+  changed); a user purge;
+- an event with no owner → `platform_audit_events`: a catalogue sync, a permission's
+  lifecycle, a system or platform-scope role, the default role changing.
+
+`EventDraft.org_id` is set explicitly by whoever builds the draft and defaults to
+nothing; `emit` routes by it (`rbac/audit.py`), and `writer.log_platform_event` is the
+second write path of the same audit service. The ledger has no owner column to fill
+with a guess, records the actor's organisation only as information, and is append-only
+(trigger) but **not hash-chained** — extending the per-organisation chain is a
+privileged DBA bootstrap and a separate, reviewed step; recorded as a limit.
+
+### 10.5 Lifecycle and custom roles
+
+`governance.transition_role` moves a role along `active → retiring → retired` (and
+back) behind the retirement gate and leaves history: the database refuses a state
+change that does not advance the revision in the same statement, so a role cannot
+retire or reactivate silently. `governance.define_custom_org_role` creates a custom
+organisation role holding only delegable organisation-scope permissions the creator
+holds. Both are internal primitives; there is no endpoint until RBAC-7.

@@ -26,6 +26,7 @@ from rbac_testing import (
     assign,
     custom_org_role,
     decl,
+    force_state,
     grant,
     make_org,
     make_user,
@@ -155,14 +156,12 @@ def test_a_retiring_role_still_grants_and_a_retired_role_does_not(world):
     custom = custom_org_role(world.db, world.a, "lead", "Lead", "example.widget.read")
     user = make_user(world.db, world.a)
     assignment = assign(world.db, user, custom)
-    custom.state = "retiring"
-    world.db.flush()
+    force_state(world.db, custom, "retiring")
     assert keys(world.db, user) == {
         "example.widget.read"
     }  # no outage during retirement
     assignment.revoked_at, assignment.revoke_reason = NOW(), "role_retired"
-    custom.state, custom.retired_at = "retired", NOW()
-    world.db.flush()
+    force_state(world.db, custom, "retired")
     assert keys(world.db, user) == set()
 
 

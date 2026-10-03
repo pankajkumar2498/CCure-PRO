@@ -88,7 +88,10 @@ def new_role(db, **kw):
 
 
 def set_state(row, state):
+    # the database requires a state change to advance the revision in the same
+    # statement (so it can never be silent)
     row.state = state
+    row.revision = int(row.revision) + 1
     row.retired_at = NOW() if state == "retired" else None
 
 
@@ -335,6 +338,7 @@ def test_retired_requires_retirement_metadata_and_only_retired_has_it(rbac_db):
 
     def retire_without_timestamp():
         row.state = "retired"
+        row.revision = int(row.revision) + 1
 
     refused(rbac_db, retire_without_timestamp)
 
@@ -907,57 +911,87 @@ def test_one_legacy_atom_may_map_to_several_keys_and_several_atoms_to_one(rbac_d
 # ── the migration describes the same schema as the models ────────────────────
 
 
-def _migration():
-    path = BACKEND_ROOT / "alembic" / "versions" / "a7c1e5b3d9f2_rbac_foundation.py"
-    spec = importlib.util.spec_from_file_location("rbac_foundation_migration", path)
+def _load(name):
+    path = next((BACKEND_ROOT / "alembic" / "versions").glob(f"{name}_*.py"))
+    spec = importlib.util.spec_from_file_location(f"rbac_migration_{name}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _migration():
+    return _load("a7c1e5b3d9f2")
 
 
 def _norm(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
-def test_the_migration_trigger_sql_equals_the_models(rbac_db):
-    migration = _migration()
-    assert set(migration.TRIGGER_SQL) == set(rbac_tables.TRIGGER_SQL)
+def test_the_migrations_trigger_sql_equals_the_models(rbac_db):
+    """The latest definition of each function across the migrations equals the
+    model's: RBAC-1 created them, RBAC-2 replaced the role guard."""
+    from ccure_platform.models import platform_audit
+
+    m1, m2 = _load("a7c1e5b3d9f2"), _load("b8d2f6a4c0e1")
+    final = dict(m1.TRIGGER_SQL)
+    final["rbac_roles"] = (m2.ROLES_GUARD_SQL, *m1.TRIGGER_SQL["rbac_roles"][1:])
+    assert set(final) == set(rbac_tables.TRIGGER_SQL)
     for table, statements in rbac_tables.TRIGGER_SQL.items():
-        assert [_norm(s) for s in migration.TRIGGER_SQL[table]] == [
-            _norm(s) for s in statements
-        ], table
-    assert tuple(migration.TRIGGER_FUNCTIONS) == tuple(rbac_tables.TRIGGER_FUNCTIONS)
+        assert [_norm(s) for s in final[table]] == [_norm(s) for s in statements], table
+    assert tuple(m1.TRIGGER_FUNCTIONS) == tuple(rbac_tables.TRIGGER_FUNCTIONS)
+    assert [_norm(s) for s in m2.PLATFORM_AUDIT_TRIGGER_SQL] == [
+        _norm(s) for s in platform_audit.TRIGGER_SQL
+    ]
 
 
-def test_the_migration_table_sql_equals_what_the_models_compile_to():
+def test_rbac_2_changed_the_role_guard_and_the_old_one_is_kept_for_downgrade():
+    m1, m2 = _load("a7c1e5b3d9f2"), _load("b8d2f6a4c0e1")
+    assert _norm(m2.OLD_ROLES_GUARD_SQL) == _norm(m1.TRIGGER_SQL["rbac_roles"][0])
+    assert "must advance the revision" in m2.ROLES_GUARD_SQL
+    assert "must advance the revision" not in m1.TRIGGER_SQL["rbac_roles"][0]
+
+
+def test_the_migrated_schema_has_everything_the_models_define(rbac_db):
+    """Whichever way the database was built — ``create_all`` or the migrations — it
+    carries every column, constraint and index the models define."""
     from db.base import Base
-    from sqlalchemy.dialects import postgresql
-    from sqlalchemy.schema import CreateIndex, CreateTable
 
-    migration = _migration()
-    expected = []
-    for name in migration.TABLES:
-        table = Base.metadata.tables[name]
-        expected.append(
-            _norm(
-                str(
-                    CreateTable(table, if_not_exists=True).compile(
-                        dialect=postgresql.dialect()
-                    )
-                )
+    names = (*TABLES, "platform_audit_events")
+    for table_name in names:
+        table = Base.metadata.tables[table_name]
+        columns = {
+            name: nullable == "YES"
+            for name, nullable in rbac_db.execute(
+                text(
+                    "SELECT column_name, is_nullable FROM information_schema.columns "
+                    "WHERE table_name = :t"
+                ),
+                {"t": table_name},
             )
+        }
+        assert {c.name: c.nullable for c in table.c} == columns, table_name
+        constraints = set(
+            rbac_db.execute(
+                text(
+                    "SELECT conname FROM pg_constraint WHERE conrelid = CAST(:t AS regclass)"
+                ),
+                {"t": table_name},
+            ).scalars()
         )
-        for idx in sorted(table.indexes, key=lambda i: i.name):
-            expected.append(
-                _norm(
-                    str(
-                        CreateIndex(idx, if_not_exists=True).compile(
-                            dialect=postgresql.dialect()
-                        )
-                    )
-                )
-            )
-    assert [_norm(s) for s in migration.TABLE_SQL] == expected
+        wanted = {
+            c.name
+            for c in table.constraints
+            if c.name
+            and c.__class__.__name__ in ("CheckConstraint", "UniqueConstraint")
+        }
+        assert wanted <= constraints, (table_name, wanted - constraints)
+        indexes = set(
+            rbac_db.execute(
+                text("SELECT indexname FROM pg_indexes WHERE tablename = :t"),
+                {"t": table_name},
+            ).scalars()
+        )
+        assert {i.name for i in table.indexes} <= indexes, table_name
 
 
 def test_the_migration_seeds_match_the_contract():
@@ -970,23 +1004,22 @@ def test_the_migration_seeds_match_the_contract():
     assert migration.EMPTY_SET_HASH == __import__("hashlib").sha256(b"").hexdigest()
 
 
-def test_the_migration_is_audits_head_and_follows_the_previous_one():
-    migration = _migration()
-    assert migration.revision == "a7c1e5b3d9f2"
-    assert migration.down_revision == "f3b5d7e9a1c4"
+def test_the_migrations_form_one_chain_and_the_latest_is_audits_head():
+    m1, m2 = _load("a7c1e5b3d9f2"), _load("b8d2f6a4c0e1")
+    assert (m1.revision, m1.down_revision) == ("a7c1e5b3d9f2", "f3b5d7e9a1c4")
+    assert (m2.revision, m2.down_revision) == ("b8d2f6a4c0e1", "a7c1e5b3d9f2")
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     heads = set(ScriptDirectory.from_config(cfg).get_heads())
-    assert "a7c1e5b3d9f2" in heads
+    assert "b8d2f6a4c0e1" in heads and "a7c1e5b3d9f2" not in heads
     assert len(heads) == 3  # Audit's, policy_pro, rank — still exactly three
 
 
-def test_downgrade_refuses_while_assignments_exist():
-    migration = _migration()
+def test_downgrades_refuse_while_history_would_be_lost():
     import inspect
 
-    source_code = inspect.getsource(migration.downgrade)
-    assert "rbac_user_roles" in source_code and "RuntimeError" in source_code
+    assert "rbac_user_roles" in inspect.getsource(_load("a7c1e5b3d9f2").downgrade)
+    assert "platform_audit_events" in inspect.getsource(_load("b8d2f6a4c0e1").downgrade)

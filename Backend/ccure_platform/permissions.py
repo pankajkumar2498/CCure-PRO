@@ -1,0 +1,227 @@
+"""
+ccure_platform/permissions.py — the platform's own permission catalogue (RBAC-2).
+
+Declared as **data** through the module registration seam: the composition root
+(``ccure_platform/composition.py``) loads this module by name and hands the
+declarations to RBAC, which validates and applies them. The platform owns every
+``platform.*`` key; nothing here belongs to a product.
+
+What is here is what the platform's administration routes actually gate today
+(users, roles, organisations, the audit log, email-domain rules) plus RBAC's own
+governance. Every key records its reason in
+``docs/architecture/RBAC_PERMISSION_CATALOG.md`` and its legacy source in
+``Backend/data/rbac/golden_legacy_mapping.json``.
+
+**RBAC-2: prepared, not live.** Legacy authorization is still the authority.
+``default_grants`` names the code-managed system roles that hold a key by
+default — derived from what each legacy role holds today, so the catalogue
+reproduces it. The superadmin role is not listed: it holds every active
+permission through materialised grants, never a wildcard.
+"""
+
+from ccure_platform.rbac.contract import PermissionDecl
+
+PERMISSIONS = (
+    PermissionDecl(
+        key="platform.user.read",
+        description="List and view the user accounts of an organisation.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.create",
+        description="Create a user account in an organisation.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.update",
+        description="Edit a user account and activate or deactivate it.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.delete",
+        description="Soft-delete a user account and restore a soft-deleted one.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.purge",
+        description="Permanently erase a user account.",
+        scope_kind="organization",
+        sensitivity="privileged",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.approve",
+        description="Approve a newly registered account so it can sign in.",
+        scope_kind="organization",
+        sensitivity="privileged",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.reset_credentials",
+        description="Reset another account's password or multi-factor enrolment.",
+        scope_kind="organization",
+        sensitivity="privileged",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.assign_role",
+        description="Change which role a user holds within an organisation.",
+        scope_kind="organization",
+        sensitivity="privileged",
+        continuity=True,
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.user.move_org",
+        description="Move a user account to another organisation.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.read",
+        description="View the roles available in an organisation.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.role.create",
+        description="Create a custom role in an organisation.",
+        scope_kind="organization",
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.update",
+        description="Change the permissions of a custom role in an organisation.",
+        scope_kind="organization",
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.retire",
+        description="Retire a custom role in an organisation.",
+        scope_kind="organization",
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.create_platform",
+        description="Create a platform-scope custom role.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+        continuity=True,
+    ),
+    PermissionDecl(
+        key="platform.role.assign_platform",
+        description="Assign a platform-scope role to a user.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+        continuity=True,
+    ),
+    PermissionDecl(
+        key="platform.role.rename_system",
+        description="Change the display name of a system role.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.retire_system",
+        description="Retire a system role.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.role.set_default",
+        description="Choose the role that new self-registered accounts receive.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.permission.read",
+        description="View the permission catalogue and what each role holds.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.organization.read",
+        description="List and view organisations.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+    ),
+    PermissionDecl(
+        key="platform.organization.create",
+        description="Create an organisation.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+        continuity=True,
+    ),
+    PermissionDecl(
+        key="platform.organization.update",
+        description="Edit an organisation's name, plan and limits, and activate or deactivate it.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.organization.archive",
+        description="Archive an organisation and restore an archived one.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.organization.set_scan_scope",
+        description="Set the address ranges an organisation may target.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.organization.switch",
+        description="Act inside an organisation other than one's own.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.audit_log.read",
+        description="View the audit log of an organisation.",
+        scope_kind="organization",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.audit_log.export",
+        description="Export the audit log.",
+        scope_kind="organization",
+        sensitivity="privileged",
+        default_grants=("platform.org_admin",),
+    ),
+    PermissionDecl(
+        key="platform.audit_log.retention",
+        description="Preview audit-log retention and what it would remove.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
+        key="platform.email_domain.read",
+        description="View the email-domain rules and their statistics.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+    ),
+    PermissionDecl(
+        key="platform.email_domain.manage",
+        description="Create, change and delete email-domain rules.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+)

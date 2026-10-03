@@ -31,6 +31,7 @@ from ccure_platform.rbac.model import (
 )
 from rbac_testing import (
     decl,
+    force_state,
     permission_rows,
     rbac_db_fixture,
     role,
@@ -457,13 +458,8 @@ def test_a_changed_role_gets_a_revision_with_the_new_permission_set(rbac_db):
 
 def test_a_retired_system_role_is_skipped_reported_and_not_resurrected(rbac_db):
     viewer = role(rbac_db, "platform.viewer")
-    viewer.state = "retiring"
-    rbac_db.flush()
-    viewer.state = "retired"
-    viewer.retired_at = __import__("datetime").datetime.now(
-        __import__("datetime").timezone.utc
-    )
-    rbac_db.flush()
+    force_state(rbac_db, viewer, "retiring")
+    force_state(rbac_db, viewer, "retired")
     report = sync(
         rbac_db,
         [
@@ -482,11 +478,36 @@ def test_a_retired_system_role_is_skipped_reported_and_not_resurrected(rbac_db):
     assert ensure_system_roles(rbac_db) == ()
 
 
-def test_events_are_returned_and_only_written_when_an_organisation_is_given(rbac_db):
-    srcs = [source("example", decl("example.a.read"))]
-    report = sync(rbac_db, srcs)
-    assert report.events and report.events_written == 0
+def test_a_sync_belongs_to_no_organisation_so_its_events_go_to_the_platform_ledger(
+    rbac_db,
+):
+    from sqlalchemy import text
+
+    def audit_logs():
+        return rbac_db.execute(text("SELECT count(*) FROM audit_logs")).scalar()
+
+    before = audit_logs()
+    report = sync(rbac_db, [source("example", decl("example.a.read"))])
+    assert report.events and report.events_written == len(report.events)
     assert report.events[0].action == "rbac.catalogue.permission_registered"
+    assert all(not e.owned for e in report.events)  # no organisation owns a sync
+    from ccure_platform.models.platform_audit import PlatformAuditEvent
+
+    rows = rbac_db.query(PlatformAuditEvent).all()
+    assert {r.action for r in rows} >= {"rbac.catalogue.permission_registered"}
+    assert all(
+        r.actor_kind == "system" and r.actor_label == "system:rbac-sync" for r in rows
+    )
+    assert audit_logs() == before  # and no tenant's trail was touched
+
+
+def test_a_sync_can_be_run_without_auditing(rbac_db):
+    from ccure_platform.models.platform_audit import PlatformAuditEvent
+
+    before = rbac_db.query(PlatformAuditEvent).count()
+    report = sync(rbac_db, [source("example", decl("example.a.read"))], audit=False)
+    assert report.events and report.events_written == 0
+    assert rbac_db.query(PlatformAuditEvent).count() == before
 
 
 # ── seed ─────────────────────────────────────────────────────────────────────

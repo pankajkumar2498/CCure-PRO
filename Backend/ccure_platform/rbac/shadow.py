@@ -42,6 +42,10 @@ MISMATCH = "mismatch"
 #: The legacy atom has no mapping yet. Neither a match nor a mismatch: the new
 #: side cannot answer, and counting it either way would hide that.
 NOT_MAPPED = "not_mapped"
+#: The legacy atom was **retired** (RBAC-2): nothing enforces it, so the new model
+#: has no key for it. Neither a match nor a mismatch, and said so — an atom with no
+#: successor is a different fact from an atom nobody has mapped yet.
+RETIRED = "retired"
 ERROR = "error"
 
 
@@ -71,17 +75,35 @@ class ShadowRecorder:
 
 
 def mapped_keys(db: Session, resource: str, action: str) -> tuple[str, ...]:
-    """The new permission keys a legacy ``resource:action`` atom maps to."""
+    """The new permission keys a legacy ``resource:action`` atom maps to. A retired
+    atom has none (its row carries no key)."""
     return tuple(
         sorted(
-            db.execute(
+            key
+            for key in db.execute(
                 select(RbacLegacyMap.permission_key).where(
                     RbacLegacyMap.kind == "permission",
                     RbacLegacyMap.legacy_resource == resource,
                     RbacLegacyMap.legacy_action == action,
                 )
             ).scalars()
+            if key is not None
         )
+    )
+
+
+def is_retired(db: Session, resource: str, action: str) -> bool:
+    """Whether the legacy atom is recorded as retired."""
+    return (
+        db.execute(
+            select(RbacLegacyMap.id).where(
+                RbacLegacyMap.kind == "permission",
+                RbacLegacyMap.legacy_resource == resource,
+                RbacLegacyMap.legacy_action == action,
+                RbacLegacyMap.status == "retired",
+            )
+        ).first()
+        is not None
     )
 
 
@@ -105,7 +127,11 @@ def shadow_compare(
             keys = mapped_keys(db, legacy_resource, legacy_action)
             if not keys:
                 outcome = ShadowOutcome(
-                    kind=NOT_MAPPED,
+                    kind=(
+                        RETIRED
+                        if is_retired(db, legacy_resource, legacy_action)
+                        else NOT_MAPPED
+                    ),
                     legacy_resource=legacy_resource,
                     legacy_action=legacy_action,
                     legacy_allowed=legacy_allowed,

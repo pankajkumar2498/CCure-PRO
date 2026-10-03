@@ -44,6 +44,8 @@ tables:
   rbac_legacy_map: {owner: platform, capability: rbac}
   # ── platform: cross-cutting services ─────────────────────────────────────
   audit_logs: {owner: platform, capability: audit_log}
+  # Events no organisation owns (RBAC-2): audit_logs is tenant-bound and cannot hold them
+  platform_audit_events: {owner: platform, capability: audit_log}
   notifications: {owner: platform, capability: notifications}
 
   # ── audit: scan records ──────────────────────────────────────────────────

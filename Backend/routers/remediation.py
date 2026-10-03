@@ -63,7 +63,6 @@ from typing import Any, Dict, List, Optional
 from ccure_platform.api import (
     CurrentUser,
     require_authorized,
-    require_permission,
     resolve_active_organisation,
 )
 from ccure_platform.api import log_audit_event
@@ -276,7 +275,7 @@ def remediation_summary(
     response: Response,
     org_id: Optional[str] = Query(None),
     asset_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -401,7 +400,7 @@ def overdue_findings(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -429,7 +428,7 @@ def pending_verification(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -458,7 +457,7 @@ def finding_remediation(
     response: Response,
     finding_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -474,7 +473,7 @@ def finding_history(
     finding_id: str,
     org_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -540,7 +539,7 @@ def get_sla_policy(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -629,7 +628,7 @@ def assign(
     response: Response,
     body: RemediationAssign,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -705,7 +704,7 @@ def set_state(
     finding_id: str,
     body: RemediationStateUpdate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -762,7 +761,7 @@ def append_note(
     finding_id: str,
     body: RemediationNote,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -796,7 +795,7 @@ def accept_finding_risk(
     finding_id: str,
     body: RemediationAcceptRisk,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.accept_risk")),
     db: Session = Depends(get_db),
 ):
     """
@@ -858,7 +857,7 @@ def withdraw_finding_acceptance(
     finding_id: str,
     body: RemediationWithdraw,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.accept_risk")),
     db: Session = Depends(get_db),
 ):
     """Return an accepted finding to the remediation queue by hand."""

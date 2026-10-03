@@ -29,8 +29,7 @@ are **seed and migration data**. They are the one place the five original role
 names may be written, and the repository ratchet
 (``tests/repo/test_rbac_role_identity.py``) allows them nowhere else.
 
-RBAC-1 is dark: nothing here is consulted by a live route. The legacy
-``require_permission`` / ``require_role`` remain the authorization authority.
+RBAC-8 (final): this contract and the engine over it are the only authorization model.
 """
 
 from __future__ import annotations
@@ -157,6 +156,11 @@ class SystemRoleSeed:
     #: A materialisation, not a bypass: the engine reads the grants.
     auto_grant_new_permissions: bool = False
 
+
+#: The stable identities of the two system roles provisioning refers to (seed data; a
+#: role is its key, never its display name).
+PLATFORM_ADMIN_ROLE_KEY = "platform.superadmin"
+ORGANISATION_ADMIN_ROLE_KEY = "platform.org_admin"
 
 SYSTEM_ROLE_SEEDS: tuple[SystemRoleSeed, ...] = (
     SystemRoleSeed(

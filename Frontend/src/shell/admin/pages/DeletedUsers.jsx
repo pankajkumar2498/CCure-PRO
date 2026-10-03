@@ -35,7 +35,6 @@ import ProductFrame from "../../layout/ProductFrame";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import {
   listOrganizations,
-  listRoles,
   listUsers,
   purgeUser,
   restoreUser,
@@ -74,10 +73,8 @@ function resolveOrganizationName(user, organizations) {
   );
 }
 
-function resolveRoleName(user, roles) {
-  return (
-    roles.find((role) => String(role.id) === String(user.role_id))?.name || "—"
-  );
+function resolveRoleName(user) {
+  return (user.role_names || []).join(", ") || "—";
 }
 
 export default function DeletedUsers() {
@@ -85,7 +82,6 @@ export default function DeletedUsers() {
   const { user: currentUser } = useAuth();
   const canDeleteUsers = can(currentUser, "platform.user.delete");
   const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -104,16 +100,14 @@ export default function DeletedUsers() {
     const isSuperadmin = hasCrossOrgReach;
 
     try {
-      const [usersData, rolesData, organizationsData] = await Promise.all([
+      const [usersData, organizationsData] = await Promise.all([
         listUsers({ skip: 0, limit: 100, scope: "deleted" }),
-        listRoles(),
         isSuperadmin
           ? listOrganizations().catch(() => null)
           : Promise.resolve(null),
       ]);
 
       setUsers(usersData.users || []);
-      setRoles(rolesData.roles || []);
       setOrganizations(organizationsData?.organizations || []);
     } catch {
       setError("Failed to load deleted users.");
@@ -140,7 +134,7 @@ export default function DeletedUsers() {
 
     return users.filter((user) => {
       const organizationName = resolveOrganizationName(user, organizations);
-      const roleName = resolveRoleName(user, roles);
+      const roleName = resolveRoleName(user);
       return [
         user.username,
         user.full_name,
@@ -152,7 +146,7 @@ export default function DeletedUsers() {
         .toLowerCase()
         .includes(query);
     });
-  }, [organizations, roles, search, users]);
+  }, [organizations, search, users]);
 
   const totalCount = filteredUsers.length;
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -256,7 +250,7 @@ export default function DeletedUsers() {
     {
       key: "role",
       header: "Role",
-      cell: (user) => resolveRoleName(user, roles),
+      cell: (user) => resolveRoleName(user),
     },
     {
       key: "organization",

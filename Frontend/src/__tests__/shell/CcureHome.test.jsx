@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import CcureHome from "../../shell/pages/CcureHome";
+import { personaFrom } from "../fixtures/authorization";
 
 // The platform header composes the shell's shared pieces (Phase 12 platform
 // navigation): preferences come from the provider main.jsx mounts, and the
@@ -34,7 +35,7 @@ vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 const logout = vi.fn();
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { username: "analyst" }, logout }),
+  useAuth: () => ({ user: personaFrom({ username: "analyst" }), logout }),
 }));
 
 const clone = (o) => JSON.parse(JSON.stringify(o));

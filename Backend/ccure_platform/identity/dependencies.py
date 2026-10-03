@@ -32,7 +32,6 @@ class AuthContext:
     user: User
     user_id: str
     organization_id: str | None
-    role: str
 
 
 def _decode_access_payload(token: str) -> dict:
@@ -59,7 +58,7 @@ def _load_auth_context_from_payload(payload: dict, db: Session) -> AuthContext:
 
     user = (
         db.query(User)
-        .options(joinedload(User.role), joinedload(User.organization))
+        .options(joinedload(User.organization))
         .filter(User.id == user_id)
         .first()
     )
@@ -93,19 +92,12 @@ def _load_auth_context_from_payload(payload: dict, db: Session) -> AuthContext:
             detail="Your organization has been deactivated. Please contact support.",
         )
 
-    db_role = (getattr(getattr(user, "role", None), "name", "") or "").lower()
     db_org_id = str(user.org_id) if user.org_id else None
 
-    token_role = payload.get("role")
+    # A ``role`` claim in an older access token is ignored: no role — name, id or label —
+    # is an authorization input (RBAC-8). The organisation claim, when present, must
+    # still match the account.
     token_org_id = payload.get("org_id")
-
-    # Enforce claim consistency when present, while remaining compatible with
-    # older access tokens until they naturally rotate out.
-    if token_role is not None and str(token_role).lower() != db_role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token role scope no longer matches the user account",
-        )
     if token_org_id is not None and str(token_org_id) != db_org_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -116,7 +108,6 @@ def _load_auth_context_from_payload(payload: dict, db: Session) -> AuthContext:
         user=user,
         user_id=str(user.id),
         organization_id=db_org_id,
-        role=db_role,
     )
 
 
@@ -138,8 +129,8 @@ def get_current_user(
         def protected(user: User = Depends(get_current_user)):
             ...
 
-    The user's Role is eagerly loaded so RBAC guards can access
-    ``user.role.name`` without triggering lazy-load issues.
+    The account the request is authenticated as; its permissions are
+    resolved by the RBAC engine (no role is read from it).
     """
     return auth_context.user
 
@@ -154,7 +145,7 @@ def get_current_user_flexible(
       1. 'ticket' query parameter (for direct file downloads via short-lived JWT ticket)
       2. 'Authorization: Bearer <token>' header (standard API calls)
 
-    The user's Role is eagerly loaded for RBAC enforcement.
+    The account the request is authenticated as.
     """
     if ticket:
         payload = verify(

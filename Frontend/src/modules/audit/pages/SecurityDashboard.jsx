@@ -1757,10 +1757,7 @@ export default function SecurityDashboard() {
   }, [navigate]);
 
   useEffect(() => {
-    if (
-      user &&
-      !canPermission(user, { resource: "dashboard", action: "read" })
-    ) {
+    if (user && !canPermission(user, "audit.dashboard.read")) {
       navigate("/scan", { replace: true });
     }
   }, [user, navigate]);
@@ -1773,15 +1770,9 @@ export default function SecurityDashboard() {
     onChange: setActiveTab,
   });
 
-  const canAssets = canPermission(user, { resource: "assets", action: "read" });
-  const canFindings = canPermission(user, {
-    resource: "findings",
-    action: "read",
-  });
-  const canReports = canPermission(user, {
-    resource: "reports",
-    action: "read",
-  });
+  const canAssets = canPermission(user, "audit.asset.read");
+  const canFindings = canPermission(user, "audit.finding.read");
+  const canReports = canPermission(user, "audit.report.read");
   const canAudit = canPermission(user, "platform.audit_log.read");
 
   const nav = useCallback((path) => navigate(path), [navigate]);

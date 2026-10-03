@@ -33,6 +33,7 @@ import path from "node:path";
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 import api from "@shell/api/axiosInstance";
 import { SRC, AUDIT_SRC } from "../../../testPaths";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -55,7 +56,7 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 
 let user;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user }),
+  useAuth: () => ({ user: personaFrom(user) }),
 }));
 
 const ANALYST = {

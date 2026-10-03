@@ -24,6 +24,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ccure_platform.rbac import contract as c
@@ -44,6 +45,22 @@ def rbac_db_fixture():
 
     connection = engine.connect()
     outer = connection.begin()
+    # The suite seeds the catalogue and system roles once per session (committed).
+    # These tests exercise the seeding, sync and reconciliation themselves, so each
+    # starts from an empty RBAC schema; TRUNCATE is transactional, so the rollback
+    # below restores the seeded rows. The legacy-role provisioning listener in
+    # conftest is switched off for this connection: a test grants what it needs.
+    connection.info["rbac_no_provision"] = True
+    names = [
+        r[0]
+        for r in connection.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                "AND tablename LIKE 'rbac\\_%'"
+            )
+        )
+    ]
+    connection.execute(text("TRUNCATE " + ", ".join(names)))
     session = Session(
         bind=connection,
         join_transaction_mode="create_savepoint",
@@ -54,6 +71,8 @@ def rbac_db_fixture():
     finally:
         session.close()
         outer.rollback()
+        # the flag lives on the pooled DBAPI connection: leave it clean for the next test
+        connection.info.pop("rbac_no_provision", None)
         connection.close()
 
 
@@ -88,13 +107,12 @@ def make_user(
     approved: bool = True,
     deleted: bool = False,
 ):
-    """A user in ``org``. It still needs a legacy role (``users.role_id`` is NOT
-    NULL until RBAC-8); the viewer is used and nothing here depends on it."""
+    """A user in ``org`` holding no role at all: ``users.role_id`` is deprecated and
+    non-authoritative (RBAC-8), and a test grants what it needs with ``assign``."""
     from db.base import gen_user_id, utcnow
-    from db.models import Role, User
+    from db.models import User
 
     name = name or f"u{uid()}"
-    legacy_role = db.query(Role).filter(Role.name == "viewer").one()
     user = User(
         id=gen_user_id(org.slug, name),
         username=name,
@@ -102,7 +120,6 @@ def make_user(
         full_name=name,
         password_hash="not-a-real-hash",
         org_id=org.id,
-        role_id=legacy_role.id,
         is_active=active,
         is_deleted=deleted,
         is_verified=verified,
@@ -211,3 +228,12 @@ def force_state(db: Session, row: RbacRole, state: str) -> RbacRole:
 
 def permission_rows(db: Session) -> dict[str, RbacPermission]:
     return {p.key: p for p in db.query(RbacPermission).all()}
+
+
+def system_role_id(db: Session, legacy_name: str) -> str:
+    """The id of the RBAC system role the golden mapping names for a legacy role name —
+    for tests that create accounts through the API (``rbac_role_id``)."""
+    from ccure_platform.rbac import legacy_map
+
+    key = legacy_map.system_role_key_for_legacy(legacy_name)
+    return str(db.query(RbacRole).filter(RbacRole.key == key).one().id)

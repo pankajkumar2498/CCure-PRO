@@ -4,11 +4,9 @@ import { useAuth } from "../../auth/AuthContext";
 import ProductFrame from "../../layout/ProductFrame";
 import {
   listUsers,
-  listRoles,
   listOrganizations,
   createUser,
   updateUser,
-  changeUserRole,
   changeUserStatus,
   deleteUser,
   moveUserOrganization,
@@ -19,6 +17,7 @@ import {
 } from "../../api/admin";
 import UserTable from "../components/UserTable";
 import UserRolesPanel from "../components/UserRolesPanel";
+import { listAssignableRoles } from "../../api/rbac";
 import UserForm from "../components/UserForm";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import {
@@ -300,19 +299,15 @@ export default function UserManagement() {
 
   // Load roles + orgs once on mount (these rarely change)
   useEffect(() => {
-    // Superadmins need the full list of roles and orgs for filters/dropdowns.
-    // Org admins only manage their own users and don't need these global lists.
+    // The roles offered are the ones the backend marks assignable for the signed-in
+    // account; organisations are listed only for an account with cross-organisation
+    // reach (it is the only one that places users in other organisations).
+    listAssignableRoles()
+      .then((d) => setRoles(d.roles || []))
+      .catch(() => {});
     if (isSuperadmin) {
-      listRoles()
-        .then((d) => setRoles(d.roles || []))
-        .catch(() => {});
       listOrganizations()
         .then((d) => setOrganizations(d.organizations || []))
-        .catch(() => {});
-    } else {
-      // Org admins still need the roles list to assign roles (filtered in assignableRoles)
-      listRoles()
-        .then((d) => setRoles(d.roles || []))
         .catch(() => {});
     }
     // `isSuperadmin` decides which lists are fetched, so it belongs here: on a
@@ -398,10 +393,6 @@ export default function UserManagement() {
         full_name: data.full_name,
         email: data.email,
       });
-
-      if (String(data.role_id) !== String(selectedUser.role_id)) {
-        await changeUserRole(selectedUser.id, data.role_id);
-      }
 
       if (
         data.organization_id &&

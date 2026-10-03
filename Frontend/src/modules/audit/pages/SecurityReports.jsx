@@ -118,8 +118,8 @@ function ReportsView() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get("tab") || "";
-  const canReadReports = can(user, "reports", "read");
-  const canDeleteReports = can(user, "reports", "delete");
+  const canReadReports = can(user, "audit.report.read");
+  const canDeleteReports = can(user, "audit.report.delete");
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

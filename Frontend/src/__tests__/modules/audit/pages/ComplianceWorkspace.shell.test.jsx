@@ -56,7 +56,7 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 
 let user;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user }),
+  useAuth: () => ({ user: personaFrom(user) }),
 }));
 
 const ADMIN = personaFrom({

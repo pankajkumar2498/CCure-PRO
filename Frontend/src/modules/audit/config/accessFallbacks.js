@@ -9,10 +9,10 @@
 export const AUDIT_ACCESS_FALLBACKS = [
   {
     path: "/audit-dashboard",
-    permission: { resource: "scans", action: "execute" },
+    permission: "audit.scan.run",
   },
-  { path: "/history", permission: { resource: "scans", action: "read" } },
-  { path: "/reports", permission: { resource: "reports", action: "read" } },
+  { path: "/history", permission: "audit.scan.read" },
+  { path: "/reports", permission: "audit.report.read" },
   { path: "/admin/users", permission: "platform.user.read" },
   {
     path: "/admin/audit-logs",

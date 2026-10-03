@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, SecretStr, model_validator
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from ccure_platform.api import CurrentUser, has_permission, require_permission
+from ccure_platform.api import CurrentUser, has_permission, require_authorized
 from core import compliance_frameworks, nist_csf
 from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
@@ -486,7 +486,7 @@ def rolled_up_control_status(db: Session, org_id: str, control_ids: list) -> dic
 @router.get("/marketplace")
 def get_marketplace_frameworks(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """List all global frameworks and see which ones are installed on the tenant org."""
     frameworks = (
@@ -568,7 +568,9 @@ def get_marketplace_frameworks(
 def install_marketplace_framework(
     framework_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_frameworks")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.manage_frameworks")
+    ),
 ):
     """Install/enable a framework for the organization."""
     # A parked framework cannot be installed, or a tenant admin could bring one
@@ -708,7 +710,9 @@ def install_marketplace_framework(
 def uninstall_marketplace_framework(
     framework_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_frameworks")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.manage_frameworks")
+    ),
 ):
     """Uninstall/disable a framework for the organization."""
     existing = (
@@ -742,7 +746,7 @@ def uninstall_marketplace_framework(
 def list_policies(
     framework_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Retrieve compliance policies for the tenant organization."""
     # Filter only policies belonging to active/enabled frameworks for this tenant
@@ -794,7 +798,7 @@ def list_policies(
 def get_policy_rules(
     id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Retrieve all rules linked to a policy baseline, enriched with control metadata."""
     policy = (
@@ -867,7 +871,7 @@ def update_compliance_rule(
     payload: RuleUpdatePayload,
     request: Request,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_rules")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.manage_rules")),
 ):
     """
     Update a compliance rule's verification parameters and severity levels.
@@ -946,7 +950,7 @@ def update_compliance_rule(
 def create_policy_baseline(
     payload: PolicyCreate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_rules")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.manage_rules")),
 ):
     """Create version 1 of a new policy baseline."""
     # Verify associated framework is active and installed
@@ -1043,7 +1047,7 @@ def trigger_compliance_scan(
     payload: ScanTrigger,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "scan")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.scan")),
 ):
     """Dispatches a compliance scanning run task."""
     # Verify associated framework is installed and active
@@ -1159,7 +1163,7 @@ def list_findings(
     nis2_member_state: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """List compliance findings for the organization with control and rule details."""
     if framework_id and framework_id != "all":
@@ -1336,7 +1340,7 @@ def attest_manual_control(
     control_id: str,
     payload: AttestationRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "attest")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.attest")),
 ):
     """Submit manual audit evidence and notes for process controls."""
     ctrl = (
@@ -1493,7 +1497,7 @@ def list_framework_controls(
     scannability: str | None = Query(None),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Every control of a framework with its current rolled-up verdict."""
     require_active_framework(framework_id)
@@ -1698,7 +1702,7 @@ async def upload_control_evidence(
     control_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "attest")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.attest")),
 ):
     """Attach an audit evidence document to a control."""
     import hashlib
@@ -1893,7 +1897,7 @@ async def upload_control_evidence(
 def list_control_evidence(
     control_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """List the evidence documents attached to a control."""
     files = (
@@ -1925,7 +1929,7 @@ def list_control_evidence(
 def download_control_evidence(
     file_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Download one evidence document."""
     import os
@@ -1962,7 +1966,7 @@ def download_control_evidence(
 def delete_control_evidence(
     file_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "attest")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.attest")),
 ):
     """Remove an evidence document."""
     import os
@@ -2005,7 +2009,7 @@ def list_scan_runs(
     framework_id: str | None = Query(None),
     limit: int = Query(25, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Compliance scan history, most recent first."""
     if framework_id and framework_id != "all":
@@ -2038,7 +2042,7 @@ def list_scan_runs(
 def get_scan_run(
     run_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Status of one compliance scan run."""
     run = (
@@ -2095,7 +2099,9 @@ def _serialize_run(db: Session, run: ComplianceScanRun) -> dict:
 def create_scan_schedule(
     payload: ScheduleCreate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_schedules")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.manage_schedules")
+    ),
 ):
     """Create a recurring compliance scan."""
     tf = (
@@ -2153,7 +2159,7 @@ def create_scan_schedule(
 @router.get("/schedules")
 def list_scan_schedules(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """List this organization's compliance scan schedules."""
     # A schedule survives its framework being parked. `run_scheduled_scans`
@@ -2195,7 +2201,9 @@ def update_scan_schedule(
     schedule_id: str,
     payload: ScheduleUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_schedules")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.manage_schedules")
+    ),
 ):
     """Pause, resume or re-time a compliance scan schedule."""
     schedule = (
@@ -2229,7 +2237,9 @@ def update_scan_schedule(
 def delete_scan_schedule(
     schedule_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "manage_schedules")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.manage_schedules")
+    ),
 ):
     """Remove a compliance scan schedule."""
     schedule = (
@@ -2265,7 +2275,7 @@ def create_credential(
     payload: CredentialCreate,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(
-        require_permission("compliance", "manage_integrations")
+        require_authorized("audit.compliance.manage_integrations")
     ),
 ):
     """Register new SSH or Password credentials for target assets."""
@@ -2324,7 +2334,7 @@ def create_credential(
 @router.get("/credentials", response_model=list[CredentialResponse])
 def list_credentials(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """List registered target credentials (excluding passwords/private keys)."""
     creds = db.query(ComplianceCredential).filter_by(tenant_id=user.org_id).all()
@@ -2336,7 +2346,7 @@ def delete_credential(
     id: str,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(
-        require_permission("compliance", "manage_integrations")
+        require_authorized("audit.compliance.manage_integrations")
     ),
 ):
     """Delete a registered credential."""
@@ -2366,7 +2376,7 @@ def apply_remediation(
     id: str,
     payload: RemediationRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "remediate")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.remediate")),
 ):
     """Trigger a remediation task for a failed finding."""
     finding = (
@@ -2532,7 +2542,7 @@ def apply_remediation(
 def list_remediation_requests(
     status: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Retrieve remediation execution requests filterable by status."""
     # Filter only remediation requests belonging to active/enabled frameworks for this tenant
@@ -2624,7 +2634,9 @@ def approve_remediation_request(
     id: str,
     payload: RemediationApprovalPayload,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "approve_exception")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.approve_exception")
+    ),
 ):
     """Approve or reject a pending remediation request (Checker approval)."""
     req = (
@@ -2740,7 +2752,7 @@ def approve_remediation_request(
 def cancel_remediation_request(
     id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "remediate")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.remediate")),
 ):
     """Cancel a pending remediation request created by the current user."""
     req = (
@@ -2801,7 +2813,7 @@ def rollback_remediation_request(
     id: str,
     payload: RollbackRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "remediate")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.remediate")),
 ):
     """Submit a rollback command request for an already executed remediation request."""
     # 1. Fetch original request to verify it was executed
@@ -2997,7 +3009,7 @@ def request_exception_waiver(
     id: str,
     payload: ExceptionRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "attest")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.attest")),
 ):
     """Request a temporary waiver exception for a failing control."""
     finding = (
@@ -3049,7 +3061,9 @@ def approve_exception_waiver(
     id: str,
     payload: ExceptionApproval,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "approve_exception")),
+    user: CurrentUser = Depends(
+        require_authorized("audit.compliance.approve_exception")
+    ),
 ):
     """Approve or reject a pending waiver request (Compliance Officer only)."""
     exc = (
@@ -3115,7 +3129,7 @@ def get_dashboard_summary(
     nis2_sector: str | None = Query(None),
     nis2_member_state: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Retrieve compliance summary statistics and quadrant metrics."""
     # An explicit framework must be one this installation offers. Left
@@ -3960,7 +3974,7 @@ def download_statement_of_applicability(
     fmt: str = "pdf",
     framework_id: str = Query("cfw_iso27001_2022"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Statement of Applicability for one framework.
 
@@ -4078,7 +4092,7 @@ def download_statement_of_applicability(
 def download_executive_compliance_report(
     request: Request,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates the executive management compliance posture report PDF."""
     # Filter scores by enabled frameworks
@@ -4228,7 +4242,7 @@ def get_compliance_gap_analysis(
     source_framework_id: str = "cfw_iso27001_2022",
     target_framework_id: str = "cfw_nist_csf_v2",
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.read")),
 ):
     """Calculates estimated compliance posture for target framework based on source framework crosswalk mappings."""
     require_active_framework(source_framework_id)
@@ -4842,7 +4856,7 @@ def download_nist_csf_report(
         None, description="Comma-separated list of functions: GV,ID,PR,DE,RS,RC"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the NIST CSF v2.0 Current Profile report."""
     fw_id = nist_csf.FRAMEWORK_ID
@@ -4916,7 +4930,7 @@ def download_cis_v8_1_report(
         None, description="Implementation Group filter: ig1, ig2, ig3"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the CIS Controls v8.1 Compliance Assessment Report."""
     fw_id = "cfw_cis_v8_1"
@@ -4981,7 +4995,7 @@ def download_soc2_type2_report(
         90, ge=30, le=365, description="SOC 2 Type II Observation Period in Days"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the SOC 2 Type II (AICPA Trust Services Criteria) Compliance Audit Report."""
     fw_id = "cfw_soc2_type2"
@@ -5072,7 +5086,7 @@ def download_cert_in_2022_report(
         description="CERT-In theme filter: CERT_IR, CERT_LOG, CERT_AM, CERT_VM, CERT_AC, CERT_DP",
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the CERT-In Cyber Security Directions 2022 & CCMP Compliance Report."""
     fw_id = "cfw_cert_in_2022"
@@ -5314,7 +5328,7 @@ def download_pci_dss_v4_report(
         False, description="Filter only by CDE scope tagged controls/findings"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the PCI-DSS v4.0 Compliance Assessment Report."""
     fw_id = "cfw_pci_dss_v4"
@@ -5525,7 +5539,7 @@ def download_dpdp_2023_report(
         None, description="Filter by SDF scope: sdf_mandatory, general_fiduciary"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the DPDP Act 2023 Compliance Assessment Report."""
     fw_id = "cfw_dpdp_2023"
@@ -5598,7 +5612,7 @@ def download_gdpr_report(
         None, description="Filter by Privacy Role: controller, processor, both"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the EU GDPR Compliance Assessment Report."""
     fw_id = "cfw_gdpr"
@@ -5952,7 +5966,7 @@ def download_nist_800_53_r5_report(
     control_family: str | None = Query(None, description="SP53_AC | SP53_AU | etc"),
     zero_trust_only: bool = Query(False),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the NIST SP 800-53 Rev. 5 Federal Information Security Assessment Report."""
     fw_id = "cfw_nist_800_53_r5"
@@ -6318,7 +6332,7 @@ def download_iec_62443_report(
     component_type: str | None = Query(None, description="NDD | EDR | HDR | SW"),
     sl_level: str | None = Query(None, description="SL1 | SL2 | SL3 | SL4"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the IEC 62443 Industrial Cybersecurity Assessment Report."""
     fw_id = "cfw_iec_62443"
@@ -6641,7 +6655,7 @@ def download_nist_800_82_report(
         None, description="PLC | RTU | SCADA | DCS | SIS | HMI | HISTORIAN | IED"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the NIST SP 800-82 Rev. 3 OT Security Assessment Report."""
     fw_id = "cfw_nist_800_82_r3"
@@ -7294,7 +7308,7 @@ def download_nerc_cip_report(
     bes_impact_level: str | None = Query(None, description="High | Medium | Low"),
     standard_number: str | None = Query(None, description="CIP-002 … CIP-014"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """NERC CIP Critical Infrastructure Protection audit report.
 
@@ -7363,7 +7377,7 @@ def download_nis2_report(
         None, description="all | DE | FR | IT | NL | BE | ES | SE | PL | IE"
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("compliance", "export_report")),
+    user: CurrentUser = Depends(require_authorized("audit.compliance.export_report")),
 ):
     """Generates and downloads the EU NIS 2 Directive Regulatory Audit Report."""
     fw_id = "cfw_nis2"

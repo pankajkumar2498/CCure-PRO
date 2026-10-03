@@ -59,7 +59,7 @@ POISON = textwrap.dedent(
 
     from ccure_platform.rbac import (
         audit, catalogue, contract, engine, governance, legacy_map, model, offboarding,
-        resolver, shadow, shadow_runtime,
+        resolver,
     )
     from ccure_platform.rbac import contract as c
 
@@ -125,7 +125,7 @@ def test_no_rbac_source_imports_a_product_module():
     offenders = []
     for path in sorted(RBAC.glob("*.py")):
         if path.name in ("dependencies.py", "__init__.py"):
-            continue  # the legacy authority, until RBAC-8
+            continue  # the guards
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             names = []
             if isinstance(node, ast.ImportFrom):
@@ -173,8 +173,7 @@ def test_the_capability_has_the_responsibilities_the_design_names():
         "engine",
         "governance",
         "audit",
-        "shadow",
-        "dependencies",  # legacy, kept until RBAC-8
+        "dependencies",
     }
 
 
@@ -299,5 +298,6 @@ def test_a_module_cannot_import_rbac_internals_even_inside_a_function():
     _, edges = collect_edges()
     lazy = [e for e in edges if e.lazy and e.dst.startswith("ccure_platform.rbac.")]
     assert all(
-        e.src.startswith("ccure_platform") or e.src == "db.models" for e in lazy
+        e.src.startswith("ccure_platform") or e.src in ("db.models", "main")
+        for e in lazy
     ), lazy

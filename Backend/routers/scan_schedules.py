@@ -43,7 +43,7 @@ from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from ccure_platform.api import log_audit_event
@@ -456,7 +456,7 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
 def list_timezones(
     request: Request,
     response: Response,
-    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
 ):
     """
     The IANA zones this server can resolve.
@@ -475,7 +475,7 @@ def list_selectable_credentials(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -522,7 +522,7 @@ def list_schedules(
     org_id: Optional[str] = Query(None),
     scan_kind: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -542,7 +542,7 @@ def create_schedule(
     response: Response,
     body: ScanScheduleCreate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -625,7 +625,7 @@ def get_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     schedule = _get_schedule(db, schedule_id, _resolve_org(user, org_id))
@@ -640,7 +640,7 @@ def update_schedule(
     schedule_id: str,
     body: ScanScheduleUpdate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -742,7 +742,7 @@ def set_enabled(
     schedule_id: str,
     body: ScanScheduleEnableBody,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -782,7 +782,7 @@ def run_now(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -830,7 +830,7 @@ def list_runs(
     schedule_id: str,
     limit: int = Query(50, ge=1, le=500),
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -855,7 +855,7 @@ def delete_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_schedules", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.delete")),
     db: Session = Depends(get_db),
 ):
     """

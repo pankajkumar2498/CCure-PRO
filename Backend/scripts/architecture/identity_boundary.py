@@ -108,17 +108,13 @@ PLATFORM_API_SURFACE = frozenset(
         # planned in the Phase 8 proposal
         "current_user",
         "current_user_flexible",
-        "require_permission",
-        "require_role",
-        # RBAC-4: permission-key guards that replaced role-name checks
+        # RBAC-8: the permission-key guards — the only authorization decision point
         "require_authorized",
         "has_permission",
         # RBAC-5: scope
         "resolve_active_organisation",
         "acts_across_organisations",
         "resource_organisation_allowed",
-        "check_role_assignment",
-        "AssignmentVerdict",
         "user_display_names",
         "users_holding_permission",
         "organisation",
@@ -126,10 +122,8 @@ PLATFORM_API_SURFACE = frozenset(
         "is_organisation_active",
         # added in step 8.3, each for callers whose semantics the planned
         # names did not cover (PHASE8_PLATFORM_IDENTITY.md §10)
-        "user_has_permission",
         "user",
         "UserView",
-        "active_members_with_roles",
         # step 8.5: the type routes annotate the authenticated principal with
         "CurrentUser",
         # step 8.4: the organisation plan, one removable feature per group
@@ -154,8 +148,7 @@ PLATFORM_API_SURFACE = frozenset(
         # a product registers the schema of its own user-preference block
         "register_product_preferences",
         # the RBAC capability (RBAC-1, dark): how a module declares a permission
-        # and the new authorization API. Used by no live route; the legacy
-        # require_permission / require_role stay authoritative until RBAC-3+.
+        # and the engine API (RBAC-8: the only authorization model).
         "PermissionDecl",
         "ScopeContext",
         "Principal",
@@ -195,7 +188,6 @@ PLATFORM_SIDE_PREFIXES = (
     "main",
     "routers.admin_orgs",
     "routers.admin_users",
-    "routers.admin_rbac",
     "routers.admin_email_domains",
     "routers.user_profile",
     "routers.audit",  # the audit-log viewer — a platform service

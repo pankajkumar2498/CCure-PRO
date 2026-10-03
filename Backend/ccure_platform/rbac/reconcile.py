@@ -64,6 +64,12 @@ class Report:
     duplicate: list[Discrepancy] = field(default_factory=list)
     revoked_but_assigned: list[Discrepancy] = field(default_factory=list)
     without_legacy: list[Discrepancy] = field(default_factory=list)
+    #: an active account whose legacy role has no golden mapping — never assigned a role by
+    #: guesswork; an operator decides
+    unmapped_legacy: list[Discrepancy] = field(default_factory=list)
+    #: an active account with no legacy role at all and no RBAC assignment — it holds
+    #: nothing (the deprovisioning policy), reported so nobody is surprised
+    no_legacy_role: list[Discrepancy] = field(default_factory=list)
 
     @property
     def consistent(self) -> bool:
@@ -73,6 +79,8 @@ class Report:
             or self.duplicate
             or self.revoked_but_assigned
             or self.without_legacy
+            or self.unmapped_legacy
+            or self.no_legacy_role
         )
 
     def counts(self) -> dict[str, int]:
@@ -83,6 +91,8 @@ class Report:
             "duplicate": len(self.duplicate),
             "revoked_but_assigned": len(self.revoked_but_assigned),
             "without_legacy": len(self.without_legacy),
+            "unmapped_legacy": len(self.unmapped_legacy),
+            "no_legacy_role": len(self.no_legacy_role),
         }
 
 
@@ -145,6 +155,10 @@ def reconcile(db: Session) -> Report:
                 )
             continue
         if not live_legacy:
+            if not legacy_name and active and not deleted and not mine:
+                report.no_legacy_role.append(
+                    Discrepancy(user_id, None, "no legacy role and no RBAC assignment")
+                )
             continue
         want = expected.get(legacy_name)
         if want is None:

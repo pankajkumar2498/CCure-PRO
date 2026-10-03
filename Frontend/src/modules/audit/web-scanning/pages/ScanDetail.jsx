@@ -83,7 +83,7 @@ const stepState = (isDone, isActive) =>
 export default function ScanDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const canCancel = can(user, "scans", "execute");
+  const canCancel = can(user, "audit.scan.run");
   const { scan, loading, error, refresh, liveStatus, liveEvents } =
     useScanPolling(id, 5000);
   const [downloading, setDownloading] = useState(false);

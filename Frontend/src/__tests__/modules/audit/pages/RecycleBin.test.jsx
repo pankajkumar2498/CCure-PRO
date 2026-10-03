@@ -27,6 +27,8 @@ import userEvent from "@testing-library/user-event";
 
 import RecycleBin from "@audit/pages/RecycleBin";
 import { getScans, restoreScan, purgeScan } from "@audit/api/scans";
+import { atomSetHolds } from "../../../fixtures/authorization";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -51,12 +53,12 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 
 let currentUser = { username: "operator", id: 1 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set(["scans:restore", "scans:purge"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
+  can: (_user, resource, action) => atomSetHolds(permissions, resource, action),
   denyMessage: "You do not have permission to perform this action.",
 }));
 

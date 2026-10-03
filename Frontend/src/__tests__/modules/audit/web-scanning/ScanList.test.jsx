@@ -28,6 +28,7 @@ import userEvent from "@testing-library/user-event";
 
 import ScanList from "@audit/web-scanning/pages/ScanList";
 import { webScansApi } from "@audit/web-scanning/api/webScansApi";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -64,7 +65,7 @@ const VIEWER_USER = {
 };
 const authState = vi.hoisted(() => ({ user: null }));
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: authState.user }),
+  useAuth: () => ({ user: personaFrom(authState.user) }),
 }));
 authState.user = FULL_PERMISSION_USER;
 

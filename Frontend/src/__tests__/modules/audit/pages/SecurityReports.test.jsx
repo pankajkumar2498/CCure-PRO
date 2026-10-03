@@ -32,6 +32,8 @@ import userEvent from "@testing-library/user-event";
 
 import SecurityReports from "@audit/pages/SecurityReports";
 import axiosInstance from "@shell/api/axiosInstance";
+import { atomSetHolds } from "../../../fixtures/authorization";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -59,12 +61,12 @@ vi.mock("react-router-dom", async () => {
 
 let currentUser = { username: "operator", id: 1 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set(["reports:read", "reports:delete"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_u, r, a) => permissions.has(`${r}:${a}`),
+  can: (_u, r, a) => atomSetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 

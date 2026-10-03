@@ -1559,7 +1559,7 @@ def test_scan_progress_requires_scan_read_permission(
     )
 
     assert progress_response.status_code == 403
-    assert "scans:read" in progress_response.json()["detail"]
+    assert "audit.scan.read" in progress_response.json()["detail"]
 
 
 def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):

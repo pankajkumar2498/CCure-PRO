@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from db.base import SessionLocal
@@ -164,7 +164,7 @@ async def scan_credentialed(
     response: Response,
     req: CredentialedScanRequest,
     org_id: str | None = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     SSH Credentialed Scan (Trigger Background Task).

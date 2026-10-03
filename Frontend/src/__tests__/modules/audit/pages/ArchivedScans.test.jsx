@@ -26,6 +26,8 @@ import userEvent from "@testing-library/user-event";
 
 import ArchivedScans from "@audit/pages/ArchivedScans";
 import { getScans, restoreScan, deleteScan } from "@audit/api/scans";
+import { atomSetHolds } from "../../../fixtures/authorization";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -53,12 +55,12 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 
 let currentUser = { username: "operator", id: 1 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set(["scans:restore", "scans:recycle"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_user, resource, action) => permissions.has(`${resource}:${action}`),
+  can: (_user, resource, action) => atomSetHolds(permissions, resource, action),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -254,28 +256,23 @@ describe("ArchivedScans — authorization gating", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides restore when scans:restore is absent", async () => {
-    permissions = new Set(["scans:recycle"]);
-    renderPage();
-    await loaded();
-    const row = screen.getByText("10.180.6.14").closest("tr");
-
-    expect(within(row).queryByRole("button", { name: /restore/i })).toBeNull();
-    expect(
-      within(row).getByRole("button", { name: /delete/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("hides delete when scans:recycle is absent", async () => {
-    permissions = new Set(["scans:restore"]);
-    renderPage();
-    await loaded();
-    const row = screen.getByText("10.180.6.14").closest("tr");
-
-    expect(
-      within(row).getByRole("button", { name: /restore/i }),
-    ).toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: /delete/i })).toBeNull();
+  it("restore and delete are one capability, audit.scan.lifecycle", async () => {
+    // The backend merged the old scans:archive / scans:restore / scans:recycle
+    // atoms into one key; holding any of them is holding it, so both controls
+    // appear together and neither can appear alone.
+    for (const atom of ["scans:restore", "scans:recycle"]) {
+      permissions = new Set([atom]);
+      const { unmount } = renderPage();
+      await loaded();
+      const row = screen.getByText("10.180.6.14").closest("tr");
+      expect(
+        within(row).getByRole("button", { name: /restore/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(row).getByRole("button", { name: /delete/i }),
+      ).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("says read only when neither permission is held", async () => {
@@ -295,32 +292,6 @@ describe("ArchivedScans — authorization gating", () => {
 
     expect(restoreScan).not.toHaveBeenCalled();
     expect(deleteScan).not.toHaveBeenCalled();
-  });
-
-  it("gates each action independently, so one permission never implies the other", async () => {
-    // Both handlers carry their own `if (!canX) { pushToast(denyMessage) }`
-    // guard as defence in depth. That branch is deliberately NOT asserted
-    // through the UI: `canRestoreScans` is computed at render, so a user
-    // without the permission has no control to activate and the guard is
-    // unreachable from outside. Asserting it would require driving the
-    // component into a state React cannot produce, and a test that fakes its
-    // way into an impossible state proves nothing about the real one.
-    //
-    // What is reachable, and what actually protects the API, is that each
-    // control appears only with its own permission and that neither implies
-    // the other.
-    permissions = new Set(["scans:restore"]);
-    const { unmount } = renderPage();
-    await loaded();
-    let row = screen.getByText("10.180.6.14").closest("tr");
-    expect(within(row).queryByRole("button", { name: /delete/i })).toBeNull();
-    unmount();
-
-    permissions = new Set(["scans:recycle"]);
-    renderPage();
-    await loaded();
-    row = screen.getByText("10.180.6.14").closest("tr");
-    expect(within(row).queryByRole("button", { name: /restore/i })).toBeNull();
   });
 });
 

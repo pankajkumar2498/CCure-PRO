@@ -38,6 +38,7 @@ import {
   changeOrganizationStatus,
   deleteOrganization,
 } from "@shell/api/admin";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -96,7 +97,7 @@ let currentUser = {
   role: { name: "superadmin" },
 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set([

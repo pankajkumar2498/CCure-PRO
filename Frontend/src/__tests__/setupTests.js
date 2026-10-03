@@ -14,3 +14,36 @@ import { configure } from "@testing-library/react";
 // vite.config.js; the two must stay consistent or the outer one fires first
 // with a less useful message.
 configure({ asyncUtilTimeout: 5000 });
+
+// RBAC-8. The application reads one thing from a user: the backend's
+// `authorization` payload (there is no older-backend fallback). Many component
+// tests still build a user in the older shape (`role.permissions` atoms), so the
+// provider they render through hands components the payload `personaFrom` derives
+// for them; a user that already carries an `authorization` is passed through
+// untouched. This is test scaffolding: production code never derives a payload.
+//
+// It is installed in `beforeEach`, not at setup time: importing AuthContext here
+// would load its real dependencies before a test file's own `vi.mock` calls apply.
+import React from "react";
+import { beforeEach } from "vitest";
+import { personaFrom } from "./fixtures/authorization";
+
+let patched = false;
+beforeEach(async () => {
+  if (patched) return;
+  let Context;
+  try {
+    // a test that mocks the module without a default export has no Provider to wrap
+    Context = (await import("@shell/auth/AuthContext")).default;
+  } catch {
+    return;
+  }
+  if (!Context || !Context.Provider) return;
+  const Original = Context.Provider;
+  Context.Provider = function PersonaProvider({ value, children }) {
+    const next =
+      value && value.user ? { ...value, user: personaFrom(value.user) } : value;
+    return React.createElement(Original, { value: next }, children);
+  };
+  patched = true;
+});

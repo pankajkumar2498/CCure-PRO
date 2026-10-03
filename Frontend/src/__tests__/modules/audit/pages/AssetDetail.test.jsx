@@ -44,6 +44,8 @@ import userEvent from "@testing-library/user-event";
 
 import AssetDetail from "@audit/pages/AssetDetail";
 import axiosInstance from "@shell/api/axiosInstance";
+import { atomSetHolds } from "../../../fixtures/authorization";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -75,14 +77,15 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { username: "operator", id: 1, org_id: "o-1" } }),
+  useAuth: () => ({
+    user: personaFrom({ username: "operator", id: 1, org_id: "o-1" }),
+  }),
 }));
 
 let permissions = new Set(["assets:update"]);
 vi.mock("@shell/auth/permissions", () => ({
-  canPermission: (_u, { resource, action }) =>
-    permissions.has(`${resource}:${action}`),
-  can: (_u, r, a) => permissions.has(`${r}:${a}`),
+  canPermission: (_u, p) => atomSetHolds(permissions, p),
+  can: (_u, r, a) => atomSetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 

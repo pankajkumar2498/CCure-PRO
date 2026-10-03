@@ -48,7 +48,7 @@ from ccure_platform.identity.registration_limits import (
     pending_queue_full,
 )
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
-from db.models import Organization, RefreshTokenSession, Role, User
+from db.models import Organization, RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 from core.rate_limiter import limiter
@@ -141,16 +141,6 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
-class PermissionOut(BaseModel):
-    resource: str
-    action: str
-
-
-class RoleOut(BaseModel):
-    name: str
-    permissions: list[PermissionOut]
-
-
 class OrganizationOut(BaseModel):
     id: str | UUID | int
     name: str
@@ -167,7 +157,6 @@ class UserOut(BaseModel):
     full_name: str | None = None
     created_at: str
     mfa_enabled: bool = False
-    role: RoleOut | None = None
     organization: OrganizationOut | None = None
     # RBAC-6: effective permission keys for the UI (advisory; the backend enforces)
     authorization: dict | None = None
@@ -631,14 +620,11 @@ def register(
         db.add(self_service_org)
         db.flush()
 
-    # A self-registered account lands on `viewer`, not `analyst`. Even once
-    # verified and approved it is read-only until an administrator deliberately
-    # raises it, so the approval step is a decision about access rather than a
-    # rubber stamp on scan execution that has already been granted.
-    default_role = db.query(Role).filter(Role.name == "viewer").first()
-
-    if not default_role:
-        raise HTTPException(status_code=500, detail="RBAC not seeded in production DB.")
+    # A self-registered account lands on the configured *default role* (RBAC-native:
+    # ``rbac_default_roles``, assigned below inside this transaction) — read-only by
+    # configuration, never privileged — and holds no role at all when none is valid.
+    # Even once verified and approved it stays at that until an administrator
+    # deliberately raises it, so the approval step is a decision about access.
 
     user = User(
         id=gen_user_id(self_service_org.slug, username),  # → usr_sel_pankaj_x9v1
@@ -648,7 +634,6 @@ def register(
         full_name=req.full_name,
         password_hash=hash_password(req.password),
         org_id=self_service_org.id,
-        role_id=default_role.id,
         # Inert on all three axes until each is satisfied deliberately.
         is_verified=False,
         is_active=False,
@@ -661,6 +646,10 @@ def register(
     )
     db.add(user)
     try:
+        db.flush()
+        from ccure_platform.rbac.provisioning import assign_default_role
+
+        assign_default_role(db, user)
         db.commit()
     except IntegrityError:
         # Lost the race against a concurrent registration for the same email or
@@ -1047,7 +1036,6 @@ def login(
         mfa_token = create_mfa_challenge_token(
             user_id=user.id,
             username=user.username,
-            role=getattr(user.role, "name", None),
             org_id=user.org_id,
         )
         log_audit_event(
@@ -1075,32 +1063,9 @@ def login(
         "access_token": create_access_token(
             str(user.id),
             user.username,
-            role=getattr(user.role, "name", None),
             org_id=user.org_id,
         ),
-        "user": {
-            "id": str(user.id),
-            "org_id": str(user.org_id),
-            "username": user.username,
-            "email": user.email,
-            "full_name": user.full_name,
-            "created_at": user.created_at.isoformat(),
-            "mfa_enabled": user.mfa_enabled,
-            "role": (
-                {
-                    "name": user.role.name,
-                    "permissions": [
-                        {
-                            "resource": rp.permission.resource,
-                            "action": rp.permission.action,
-                        }
-                        for rp in user.role.permissions
-                    ],
-                }
-                if user.role
-                else None
-            ),
-        },
+        "user": _user_payload(db, user),
     }
 
 
@@ -1191,6 +1156,33 @@ def jwks(request: Request, response: Response):
     return key_set
 
 
+def _user_payload(db: Session, user: User) -> dict:
+    """The profile every sign-in and ``/auth/me`` returns, with the account's effective
+    permissions (``authorization``). No legacy role, role id or permission atom is
+    exposed: what the account may do is the RBAC contract (RBAC-8)."""
+    from ccure_platform.rbac.authorization_view import build_authorization
+
+    return {
+        "id": str(user.id),
+        "org_id": str(user.org_id),
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name,
+        "created_at": user.created_at.isoformat(),
+        "mfa_enabled": user.mfa_enabled,
+        "organization": (
+            {
+                "id": str(user.organization.id),
+                "name": user.organization.name,
+                "slug": user.organization.slug,
+            }
+            if getattr(user, "organization", None)
+            else None
+        ),
+        "authorization": build_authorization(db, user, str(user.org_id)),
+    }
+
+
 def _authorization_for(db: Session, user: User, requested_org: str | None) -> dict:
     """The UI's authorization payload for the organisation the backend accepts as the
     active one. The requested id is a request: the scope seam validates it (and, with
@@ -1213,34 +1205,8 @@ def me(
     Requires: Authorization: Bearer <access_token>
     """
     return {
+        **_user_payload(db, current_user),
         "authorization": _authorization_for(db, current_user, org_id),
-        "id": str(current_user.id),
-        "org_id": str(current_user.org_id),
-        "username": current_user.username,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "created_at": current_user.created_at.isoformat(),
-        "mfa_enabled": current_user.mfa_enabled,
-        "role": (
-            {
-                "name": current_user.role.name,
-                "permissions": [
-                    {"resource": rp.permission.resource, "action": rp.permission.action}
-                    for rp in current_user.role.permissions
-                ],
-            }
-            if current_user.role
-            else None
-        ),
-        "organization": (
-            {
-                "id": str(current_user.organization.id),
-                "name": current_user.organization.name,
-                "slug": current_user.organization.slug,
-            }
-            if getattr(current_user, "organization", None)
-            else None
-        ),
     }
 
 
@@ -1768,31 +1734,9 @@ def verify_mfa(
         "access_token": create_access_token(
             str(user.id),
             user.username,
-            role=getattr(user.role, "name", None),
             org_id=user.org_id,
         ),
-        "user": {
-            "id": str(user.id),
-            "org_id": str(user.org_id),
-            "username": user.username,
-            "email": user.email,
-            "created_at": user.created_at.isoformat(),
-            "mfa_enabled": user.mfa_enabled,
-            "role": (
-                {
-                    "name": user.role.name,
-                    "permissions": [
-                        {
-                            "resource": rp.permission.resource,
-                            "action": rp.permission.action,
-                        }
-                        for rp in user.role.permissions
-                    ],
-                }
-                if user.role
-                else None
-            ),
-        },
+        "user": _user_payload(db, user),
     }
 
 

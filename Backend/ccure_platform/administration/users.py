@@ -29,11 +29,15 @@ from ccure_platform.offboarding import run_user_purge_hooks
 import ccure_platform.rbac.offboarding  # noqa: F401,E402
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import gen_user_id, get_db, utcnow
+from ccure_platform.rbac import administration as rbac_admin
+from ccure_platform.rbac.audit import EventDraft
+from ccure_platform.rbac.audit import emit as emit_rbac
+from ccure_platform.rbac.governance import GovernanceError
+from ccure_platform.rbac.scope import audit_isolated
 from db.models import (
     AuditLog,
     Organization,
     RefreshTokenSession,
-    Role,
     User,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -44,22 +48,21 @@ router = APIRouter(prefix="/admin/users", tags=["User Management"])
 log = logging.getLogger(__name__)
 
 
-def _enforce_assignment_hierarchy(
-    db, actor, role, *, target_user_id: str | None, target_org_id: str
-) -> None:
-    """403 unless ``actor`` may hand ``role`` to an account in ``target_org_id``."""
-    from ccure_platform.rbac.scope import check_role_assignment
-
-    verdict = check_role_assignment(
-        actor, role, target_user_id=target_user_id, target_org_id=target_org_id
-    )
-    if verdict.allowed:
-        return
-    if verdict.source == "legacy":
-        raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
-    raise HTTPException(
-        status_code=403,
-        detail="Role assignment refused: " + ", ".join(verdict.violations),
+def _audit_refused_assignment(actor, error: GovernanceError, org_id: str) -> None:
+    """Record a refused role assignment in its own transaction (the request rolls back),
+    owned by the actor's organisation."""
+    codes = sorted({v.code for v in error.violations})
+    escalation = bool(set(codes) & rbac_admin.ESCALATION_CODES)
+    audit_isolated(
+        actor,
+        EventDraft(
+            action=(
+                "rbac.escalation.refused" if escalation else "rbac.assignment.denied"
+            ),
+            resource_type="rbac_user_role",
+            changes={"violations": codes, "target_org_id": org_id},
+            org_id=getattr(actor, "org_id", None),
+        ),
     )
 
 
@@ -69,14 +72,15 @@ def _is_superadmin(user: User) -> bool:
     return acts_across_organisations(user)
 
 
-def _serialize_user(user: User) -> dict:
+def _serialize_user(user: User, role_labels: dict | None = None) -> dict:
     return {
         "id": str(user.id),
         "username": user.username,
         "email": user.email,
         "full_name": user.full_name,
         "organization_id": str(user.org_id),
-        "role_id": user.role_id,
+        # display only: the labels of the account's live RBAC roles
+        "role_names": (role_labels or {}).get(str(user.id), []),
         "is_active": user.is_active,
         "is_deleted": bool(getattr(user, "is_deleted", False)),
         "locked_until": user.locked_until,
@@ -167,7 +171,7 @@ def _notify_user_admin_action(
         fan_out_notification(
             db=db,
             org_id=str(target_user.org_id),
-            target_roles=["superadmin", "org_admin"],
+            permission_key="platform.user.update",
             notification_type=NotificationType.ADMIN_NOTICE,
             category=NotificationCategory.ADMIN,
             title=action_title,
@@ -181,7 +185,7 @@ def _notify_user_admin_action(
             fan_out_notification(
                 db=db,
                 org_id=str(current_user.org_id),
-                target_roles=["superadmin", "org_admin"],
+                permission_key="platform.user.update",
                 notification_type=NotificationType.ADMIN_NOTICE,
                 category=NotificationCategory.ADMIN,
                 title=action_title,
@@ -206,7 +210,8 @@ class UserCreateSchema(BaseModel):
     username: str
     email: EmailStr
     full_name: str | None = None
-    role_id: int
+    # the RBAC role to assign (a role id from /platform/rbac/assignable-roles)
+    rbac_role_id: str
     password: str
     organization_id: str | None = None
 
@@ -221,7 +226,7 @@ class UserUpdateSchema(BaseModel):
 class UserRoleUpdateSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    role_id: int
+    rbac_role_id: str
 
 
 class UserStatusUpdateSchema(BaseModel):
@@ -244,7 +249,6 @@ class UserResetPasswordSchema(BaseModel):
 @router.get("")
 @router.get("/")
 def list_users(
-    role_id: int | None = None,
     organization_id: str | None = None,
     is_active: bool | None = None,
     q: str | None = None,
@@ -256,8 +260,6 @@ def list_users(
 ):
     query = _scoped_users_query(db, current_user, scope=scope)
 
-    if role_id is not None:
-        query = query.filter(User.role_id == role_id)
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
 
@@ -279,11 +281,12 @@ def list_users(
     if scope == "deleted":
         order_by = [User.deleted_at.desc(), User.created_at.desc()]
     users = query.order_by(*order_by).offset(skip).limit(limit).all()
+    labels = rbac_admin.role_labels(db, [u.id for u in users])
 
     return {
         "total": total,
         "scope": scope,
-        "users": [_serialize_user(u) for u in users],
+        "users": [_serialize_user(u, labels) for u in users],
     }
 
 
@@ -320,16 +323,6 @@ def create_user(
     # remedy is one ALLOW rule rather than a hole in the check.
     verdict = assert_email_allowed(db, email, request=request, actor=current_user)
 
-    role = db.query(Role).filter(Role.id == user_data.role_id).first()
-    if not role:
-        raise HTTPException(status_code=400, detail="Invalid role_id")
-
-    # Assignment hierarchy (RBAC-5): decided by rbac/scope.py — the legacy rule while
-    # the new model is off, the RBAC governance rules once it is switched on.
-    _enforce_assignment_hierarchy(
-        db, current_user, role, target_user_id=None, target_org_id=str(target_org_id)
-    )
-
     # Resolve org slug for readable ID generation
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
     org_slug = org.slug if org else target_org_id
@@ -344,7 +337,6 @@ def create_user(
         email=email,
         email_canonical=canonical or None,
         full_name=user_data.full_name,
-        role_id=user_data.role_id,
         org_id=target_org_id,
         password_hash=hash_password(user_data.password),
         is_active=True,
@@ -355,8 +347,29 @@ def create_user(
         email_risk=verdict.as_risk_payload(),
         flagged_at=utcnow() if (verdict.flagged or verdict.blocked) else None,
     )
-    db.add(new_user)
-    db.flush()
+    # The account and its role are one unit (RBAC-8): the role is assigned through the
+    # governed assignment API (organisation boundary, ceilings, hierarchy), and a
+    # refusal undoes the account too.
+    try:
+        with db.begin_nested():
+            db.add(new_user)
+            db.flush()
+            actor = rbac_admin.actor_for(db, current_user)
+            _, rbac_events = rbac_admin.assign(
+                db, actor, str(new_user.id), user_data.rbac_role_id
+            )
+    except GovernanceError as error:
+        _audit_refused_assignment(current_user, error, str(target_org_id))
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "governance_refused",
+                "violations": [
+                    {"code": v.code, "message": v.message} for v in error.violations
+                ],
+            },
+        ) from None
+    emit_rbac(db, rbac_events, actor=current_user, request=request)
 
     log_audit_event(
         db=db,
@@ -541,22 +554,35 @@ def change_role(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    role = db.query(Role).filter(Role.id == role_data.role_id).first()
-    if not role:
-        raise HTTPException(status_code=400, detail="Invalid role_id")
-
-    _enforce_assignment_hierarchy(
+    # The role is an RBAC assignment (RBAC-8): this route replaces the user's role through
+    # the governed assignment API (organisation boundary, ceilings, hierarchy,
+    # self-assignment, continuity) and nothing else is written.
+    try:
+        with db.begin_nested():
+            actor = rbac_admin.actor_for(db, current_user)
+            rbac_events = rbac_admin.replace_user_role(
+                db, actor, str(user.id), role_data.rbac_role_id
+            )
+    except GovernanceError as error:
+        _audit_refused_assignment(current_user, error, str(user.org_id))
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "governance_refused",
+                "violations": [
+                    {"code": v.code, "message": v.message} for v in error.violations
+                ],
+            },
+        ) from None
+    emit_rbac(db, rbac_events, actor=current_user, request=request)
+    log_audit_event(
         db,
         current_user,
-        role,
-        target_user_id=str(user.id),
-        target_org_id=str(user.org_id),
-    )
-
-    changes = {"role_id": {"old": user.role_id, "new": role.id}}
-    user.role_id = role.id
-    log_audit_event(
-        db, current_user, "user.role_changed", "user", str(user.id), changes, request
+        "user.role_changed",
+        "user",
+        str(user.id),
+        {"rbac_role_id": role_data.rbac_role_id},
+        request,
     )
     db.commit()
     return {"detail": "User role updated successfully"}
@@ -792,7 +818,6 @@ def approve_user(
         str(user.id),
         {
             "approved_by": str(current_user.id),
-            "role": getattr(user.role, "name", None),
             "allowlisted_domain": allowlisted_domain,
         },
         request,
@@ -845,7 +870,8 @@ def approve_user(
             user.email,
             user.username,
             f"{AppConfig.FRONTEND_URL.rstrip('/')}/login",
-            getattr(user.role, "name", None),
+            ", ".join(rbac_admin.role_labels(db, [user.id]).get(str(user.id), []))
+            or None,
         )
     except Exception:
         # `log`, not `logger` — this module names it `log`. Getting that wrong

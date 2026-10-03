@@ -200,13 +200,10 @@ def test_modules_cannot_import_the_shadow_or_the_legacy_map():
         assert "modules-use-rbac-api-only" in found, dst
 
 
-def test_the_shadow_stays_independent_of_every_product():
-    for name in ("shadow.py", "shadow_runtime.py"):
-        tree = ast.parse(
-            (BACKEND_ROOT / "ccure_platform" / "rbac" / name).read_text(
-                encoding="utf-8"
-            )
-        )
+def test_the_rbac_package_stays_independent_of_every_product():
+    for path in sorted((BACKEND_ROOT / "ccure_platform" / "rbac").glob("*.py")):
+        name = path.name
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             mods = (
                 [node.module or ""]

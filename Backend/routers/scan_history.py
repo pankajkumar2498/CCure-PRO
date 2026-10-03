@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from auth.jwt_handler import decode_token
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from db.base import SessionLocal, get_db, utcnow
 from ccure_platform import api as platform_api
 from db.models import User
@@ -389,10 +389,7 @@ def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
 
-        # the superadmin role holds scans:read through its grants; no name test
-        if not platform_api.user_has_permission(
-            db, user, "scans", "read", authoritative=True
-        ):
+        if not platform_api.has_permission(db, user, "audit.scan.read"):
             raise HTTPException(status_code=403, detail="Insufficient privileges.")
 
         return user
@@ -430,7 +427,7 @@ def list_scans(
     ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
@@ -470,7 +467,7 @@ async def stream_scan_history(
     status: str | None = Query(None),
     search: str | None = Query(None),
     pipeline_mode: str | None = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
@@ -645,7 +642,7 @@ def get_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -663,7 +660,7 @@ def scan_policy_record(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     The assessment configuration this scan actually ran under.
@@ -784,7 +781,7 @@ def compare_scan(
     include_findings: bool = Query(True),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     What changed between this scan and a baseline.
@@ -844,7 +841,7 @@ def archive_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "archive")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -874,7 +871,7 @@ def stop_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     Terminates an active scan session.
@@ -957,7 +954,7 @@ def restore_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "restore")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -998,7 +995,7 @@ def delete_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "recycle")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -1024,7 +1021,7 @@ def purge_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "purge")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)

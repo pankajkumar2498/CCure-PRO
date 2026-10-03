@@ -31,13 +31,11 @@ export const payload = ({
   }
   return {
     contract: 1,
-    source: "platform",
     home_org_id: home,
     active_org_id: active,
     permissions: { platform, organization },
     can_switch_organisation: reach,
     assignments: [],
-    atoms: vocabulary.atoms,
   };
 };
 
@@ -60,4 +58,23 @@ export const personaFrom = (user) => {
     .map(atomOf)
     .filter((a) => vocabulary.atoms[a]);
   return { ...user, authorization: payload({ atoms, ...base }) };
+};
+
+/**
+ * For component tests that mock `@shell/auth/permissions` with a Set of legacy
+ * atoms: does that set grant `permission`? `permission` is a permission key (the
+ * only thing the application asks for); a key is held when any atom in the set
+ * maps to it through the generated vocabulary. The `(resource, action)` pair and
+ * atom spellings are accepted so a test can still say "this user may scans:read".
+ */
+export const atomSetHolds = (atoms, permission, action) => {
+  if (action !== undefined) return atoms.has(`${permission}:${action}`);
+  if (permission && typeof permission === "object")
+    return atoms.has(`${permission.resource}:${permission.action}`);
+  if (typeof permission !== "string") return false;
+  if (atoms.has(permission)) return true;
+  for (const atom of atoms) {
+    if ((vocabulary.atoms[atom] || []).includes(permission)) return true;
+  }
+  return false;
 };

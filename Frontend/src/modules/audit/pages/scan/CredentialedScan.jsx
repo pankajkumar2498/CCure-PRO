@@ -82,7 +82,7 @@ export default function CredentialedScan() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canExecuteScans = can(user, "scans", "execute");
+  const canExecuteScans = can(user, "audit.scan.run");
   const prefillIp = location.state?.prefill?.ip ?? "";
 
   const [ip, setIp] = useState(prefillIp);

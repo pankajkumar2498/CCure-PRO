@@ -309,6 +309,12 @@ def test_bad_token_answers_uniformly_whatever_is_wrong_with_it(
     expired = _issue_token(db_session, reset_user, minutes=-5)
 
     orphan = _issue_token(db_session, reset_user)
+    # the account's RBAC assignments go with it (ON DELETE RESTRICT otherwise)
+    from sqlalchemy import text
+
+    db_session.execute(
+        text("DELETE FROM rbac_user_roles WHERE user_id = :u"), {"u": reset_user.id}
+    )
     db_session.query(User).filter(User.id == reset_user.id).delete()
     db_session.commit()
 

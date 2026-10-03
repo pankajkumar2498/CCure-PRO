@@ -24,7 +24,7 @@ from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from starlette.requests import Request
 
-from auth.rbac import require_permission, user_has_permission
+from ccure_platform.rbac.dependencies import has_permission, require_authorized
 from db.base import gen_user_id, utcnow
 from db.models import Permission, Role, RolePermission, User
 from db.models.users import AuditLog
@@ -41,39 +41,38 @@ from routers.web_scans import (
 
 _PREFIX = "wsc_authz_"
 
-#: (method, path) → the permission atom that route must require.
+#: (method, path) → the permission key that route must require.
 EXPECTED_ROUTE_PERMISSIONS = {
-    ("POST", "/web-scans"): ("scans", "execute"),
-    ("GET", "/web-scans"): ("scans", "read"),
-    ("GET", "/web-scans/{scan_id}"): ("scans", "read"),
-    ("GET", "/web-scans/{scan_id}/findings"): ("findings", "read"),
-    ("GET", "/web-scans/{scan_id}/assets"): ("scans", "read"),
-    ("GET", "/web-scans/{scan_id}/parameters"): ("scans", "read"),
-    ("GET", "/web-scans/{scan_id}/forms"): ("scans", "read"),
-    ("GET", "/web-scans/{scan_id}/api-operations"): ("scans", "read"),
-    ("POST", "/web-scans/{scan_id}/cancel"): ("scans", "execute"),
-    ("PATCH", "/web-scans/{scan_id}/findings/{finding_id}"): ("findings", "update"),
-    ("GET", "/web-scans/{scan_id}/findings/{finding_id}/screenshot"): (
-        "findings",
-        "read",
-    ),
-    ("GET", "/web-scans/{scan_id}/report"): ("scans", "read"),
+    ("POST", "/web-scans"): "audit.scan.run",
+    ("GET", "/web-scans"): "audit.scan.read",
+    ("GET", "/web-scans/{scan_id}"): "audit.scan.read",
+    ("GET", "/web-scans/{scan_id}/findings"): "audit.finding.read",
+    ("GET", "/web-scans/{scan_id}/assets"): "audit.scan.read",
+    ("GET", "/web-scans/{scan_id}/parameters"): "audit.scan.read",
+    ("GET", "/web-scans/{scan_id}/forms"): "audit.scan.read",
+    ("GET", "/web-scans/{scan_id}/api-operations"): "audit.scan.read",
+    ("POST", "/web-scans/{scan_id}/cancel"): "audit.scan.run",
+    ("PATCH", "/web-scans/{scan_id}/findings/{finding_id}"): "audit.finding.update",
+    (
+        "GET",
+        "/web-scans/{scan_id}/findings/{finding_id}/screenshot",
+    ): "audit.finding.read",
+    ("GET", "/web-scans/{scan_id}/report"): "audit.scan.read",
 }
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _permission_guards(route: APIRoute) -> set[tuple[str, str]]:
-    """Every (resource, action) a route's dependency tree enforces."""
+def _permission_guards(route: APIRoute) -> set[str]:
+    """Every permission key a route's dependency tree enforces."""
     found = set()
     stack = list(route.dependant.dependencies)
     while stack:
         dep = stack.pop()
         call = dep.call
-        if getattr(call, "__qualname__", "").startswith("require_permission."):
-            nonlocals = inspect.getclosurevars(call).nonlocals
-            found.add((nonlocals["resource"], nonlocals["action"]))
+        if getattr(call, "__qualname__", "").startswith("require_authorized."):
+            found.add(inspect.getclosurevars(call).nonlocals["key"])
         stack.extend(dep.dependencies)
     return found
 
@@ -216,7 +215,7 @@ def test_viewer_cannot_launch_or_cancel_a_web_scan(db_session, test_org):
     viewer = _user_with_role(
         db_session, test_org, _role(db_session, "viewer"), "viewer"
     )
-    guard = require_permission("scans", "execute")
+    guard = require_authorized("audit.scan.run")
     with pytest.raises(HTTPException) as exc:
         guard(user=viewer, db=db_session)
     assert exc.value.status_code == 403
@@ -226,22 +225,24 @@ def test_analyst_can_launch_a_web_scan(db_session, test_org):
     analyst = _user_with_role(
         db_session, test_org, _role(db_session, "analyst"), "analyst"
     )
-    guard = require_permission("scans", "execute")
+    guard = require_authorized("audit.scan.run")
     assert guard(user=analyst, db=db_session) is analyst
 
 
-def test_user_has_permission_edges(db_session, test_org):
+def test_has_permission_edges(db_session, test_org):
     superadmin = _user_with_role(
         db_session, test_org, _role(db_session, "superadmin"), "super"
     )
-    assert user_has_permission(db_session, superadmin, "anything", "at_all") is True
+    assert has_permission(db_session, superadmin, "audit.scan.run") is True
+    # a key nobody declared is held by nobody — superadmin included
+    assert has_permission(db_session, superadmin, "anything.at.all") is False
 
     roleless = User(id="roleless", org_id=test_org.id)
-    assert user_has_permission(db_session, roleless, "scans", "read") is False
+    assert has_permission(db_session, roleless, "audit.scan.read") is False
 
     viewer = _user_with_role(db_session, test_org, _role(db_session, "viewer"), "vw")
-    assert user_has_permission(db_session, viewer, "scans", "read") is True
-    assert user_has_permission(db_session, viewer, "scans", "execute") is False
+    assert has_permission(db_session, viewer, "audit.scan.read") is True
+    assert has_permission(db_session, viewer, "audit.scan.run") is False
 
 
 # ── accept-risk split and triage audit (F2 + F5) ────────────────────────────
@@ -266,7 +267,7 @@ def test_accepting_risk_on_a_web_finding_needs_accept_risk(
             user=triager,
         )
     assert exc.value.status_code == 403
-    assert "findings:accept_risk" in exc.value.detail
+    assert "audit.finding.accept_risk" in exc.value.detail
 
     db_session.expire_all()
     assert db_session.get(WebFinding, finding.id).status == "open"

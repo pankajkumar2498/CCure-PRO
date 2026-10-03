@@ -35,7 +35,7 @@ const createInitial = {
   full_name: "",
   email: "",
   password: "",
-  role_id: "",
+  rbac_role_id: "",
   organization_id: "",
 };
 
@@ -92,7 +92,7 @@ export default function UserForm({
         full_name: user.full_name || "",
         email: user.email || "",
         password: "",
-        role_id: user.role_id ?? "",
+        rbac_role_id: "",
         organization_id: user.organization_id || user.org_id || "",
       });
     } else {
@@ -103,7 +103,10 @@ export default function UserForm({
     }
   }, [currentUser?.org_id, isSuperadmin, mode, user]);
 
-  const isRoleSelected = useMemo(() => !!form.role_id, [form.role_id]);
+  const isRoleSelected = useMemo(
+    () => !!form.rbac_role_id,
+    [form.rbac_role_id],
+  );
   const isOrganizationSelected = useMemo(
     () => !isSuperadmin || !!form.organization_id,
     [form.organization_id, isSuperadmin],
@@ -115,7 +118,7 @@ export default function UserForm({
         form.password.trim() &&
         isRoleSelected &&
         isOrganizationSelected
-      : form.email.trim() && isRoleSelected && isOrganizationSelected) &&
+      : form.email.trim() && isOrganizationSelected) &&
     !usernameTaken &&
     !emailTaken;
 
@@ -127,7 +130,13 @@ export default function UserForm({
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!canSubmit) return;
-    onSubmit({ ...form, email: form.email.trim().toLowerCase() });
+    // Editing never sends a role: assignments are managed in the Roles panel.
+    const { rbac_role_id: roleId, ...rest } = form;
+    onSubmit({
+      ...rest,
+      ...(mode === "create" ? { rbac_role_id: roleId } : {}),
+      email: form.email.trim().toLowerCase(),
+    });
   };
 
   return (
@@ -189,26 +198,25 @@ export default function UserForm({
         />
       )}
 
-      <CcureSelect
-        id="um-role"
-        label="Role"
-        value={form.role_id ?? ""}
-        onChange={(event) =>
-          setForm((prev) => ({
-            ...prev,
-            role_id: event.target.value ? Number(event.target.value) : "",
-          }))
-        }
-        disabled={busy}
-        required
-      >
-        <option value="">Select role</option>
-        {roles.map((role) => (
-          <option key={role.id} value={role.id}>
-            {role.name}
-          </option>
-        ))}
-      </CcureSelect>
+      {mode === "create" && (
+        <CcureSelect
+          id="um-role"
+          label="Role"
+          value={form.rbac_role_id ?? ""}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, rbac_role_id: event.target.value }))
+          }
+          disabled={busy}
+          required
+        >
+          <option value="">Select role</option>
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.display_name}
+            </option>
+          ))}
+        </CcureSelect>
+      )}
 
       {isSuperadmin && (
         <CcureSelect

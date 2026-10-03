@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from engines.credentialed.vuln_matcher import compare_distro_versions
@@ -99,7 +99,7 @@ def list_findings(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -296,7 +296,7 @@ def list_findings_grouped(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """
     Findings rolled up to the component that would be remediated.
@@ -446,7 +446,7 @@ def get_finding(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -623,7 +623,7 @@ def update_finding_status(
     body: StatusUpdate,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -796,7 +796,7 @@ def update_finding_notes(
     body: NotesUpdate,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     org = _resolve_org(user, org_id)
     row = (

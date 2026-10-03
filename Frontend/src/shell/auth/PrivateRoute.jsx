@@ -9,6 +9,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { canPermission, canAny, canAll } from "./permissions";
 import { useAccessFallbacks } from "./accessFallback";
+import IncompatibleBackend from "./IncompatibleBackend";
 
 // The first candidate the user may open, other than the page just refused;
 // otherwise sign-in. Candidates come from the product (accessFallback.jsx).
@@ -48,6 +49,10 @@ export default function PrivateRoute({
         <div className="spinner" />
       </div>
     );
+  }
+
+  if (authState === "incompatible") {
+    return <IncompatibleBackend message={authMessage} />;
   }
 
   if (!user) {

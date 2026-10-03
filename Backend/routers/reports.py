@@ -359,42 +359,18 @@ def _resolve_report_path(stored: str | None) -> str | None:
 
 
 def _require_reports_read(user: CurrentUser, db: Session) -> None:
-    role = getattr(user, "role", None)
-
-    # No role-name bypass: the superadmin role holds reports:read like any other
-    # role holds it, and `user_has_permission` answers for it.
-    if not role:
-        raise HTTPException(
-            status_code=403, detail="Your account does not have a role assigned."
-        )
-
-    has_reports_read = platform_api.user_has_permission(
-        db, user, "reports", "read", authoritative=True
-    )
-
-    if not has_reports_read:
+    if not platform_api.has_permission(db, user, "audit.report.read"):
         raise HTTPException(
             status_code=403,
-            detail="Insufficient privileges. Your role does not have 'reports:read' permission.",
+            detail="Insufficient privileges. Missing permission: audit.report.read.",
         )
 
 
 def _require_reports_delete(user: CurrentUser, db: Session) -> None:
-    role = getattr(user, "role", None)
-
-    if not role:
-        raise HTTPException(
-            status_code=403, detail="Your account does not have a role assigned."
-        )
-
-    has_reports_delete = platform_api.user_has_permission(
-        db, user, "reports", "delete", authoritative=True
-    )
-
-    if not has_reports_delete:
+    if not platform_api.has_permission(db, user, "audit.report.delete"):
         raise HTTPException(
             status_code=403,
-            detail="Insufficient privileges. Your role does not have 'reports:delete' permission.",
+            detail="Insufficient privileges. Missing permission: audit.report.delete.",
         )
 
 
@@ -403,9 +379,7 @@ def _can_read_all_org_scans(
 ) -> bool:
     # read_all is organisation-wide visibility *within one organisation*: the
     # permission is evaluated for the scan's own organisation (RBAC-5).
-    return platform_api.user_has_permission(
-        db, user, "scans", "read_all", authoritative=True, org_id=org_id
-    )
+    return platform_api.has_permission(db, user, "audit.scan.read_all", org_id=org_id)
 
 
 def _audit_report_download(

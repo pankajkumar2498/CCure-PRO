@@ -37,7 +37,6 @@ EXTRACTED = {
     "routers.notifications": "ccure_platform.notifications.router",
     "routers.admin_users": "ccure_platform.administration.users",
     "routers.admin_orgs": "ccure_platform.administration.organizations",
-    "routers.admin_rbac": "ccure_platform.administration.roles",
     "routers.admin_email_domains": "ccure_platform.administration.email_domains",
     "routers.user_profile": "ccure_platform.identity.profile",
 }

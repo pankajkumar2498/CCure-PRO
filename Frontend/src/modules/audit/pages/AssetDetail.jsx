@@ -700,10 +700,7 @@ export default function AssetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canUpdate = canPermission(user, {
-    resource: "assets",
-    action: "update",
-  });
+  const canUpdate = canPermission(user, "audit.asset.update");
 
   const [asset, setAsset] = useState(null);
   const [services, setServices] = useState([]);

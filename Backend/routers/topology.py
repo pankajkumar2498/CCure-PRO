@@ -10,7 +10,7 @@ Endpoints:
 
 import logging
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from db.base import get_db
 from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -82,7 +82,7 @@ def get_topology_map(
     subnet_mask: int = _SUBNET_MASK_QUERY,
     active_within_days: int | None = _ACTIVE_WITHIN_QUERY,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Return the network topology graph for the organization.
@@ -119,7 +119,7 @@ def get_topology_map_by_scan(
     subnet_mask: int = _SUBNET_MASK_QUERY,
     active_within_days: int | None = _ACTIVE_WITHIN_QUERY,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Return the network topology graph for a specific scan.

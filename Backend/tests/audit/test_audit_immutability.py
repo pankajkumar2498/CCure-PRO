@@ -282,6 +282,9 @@ def test_deleting_a_user_still_works_and_preserves_their_events(
     from db.models import User
 
     user = db_session.get(User, test_user.id)
+    db_session.execute(
+        text("DELETE FROM rbac_user_roles WHERE user_id = :u"), {"u": user.id}
+    )
     db_session.delete(user)
     db_session.commit()
 

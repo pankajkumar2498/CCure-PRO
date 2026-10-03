@@ -89,10 +89,10 @@ def test_counts_are_the_characterised_ones(policy):
         "public": 17,
         # 252 since Phase 12.1 (GET /platform/modules); 264 since RBAC-7 added the
         # twelve /platform/rbac administration operations.
-        "bearer": 264,
+        "bearer": 260,
         "ticket_or_bearer": 3,
         "websocket": 2,
-        "total": 286,
+        "total": 282,
     }
 
 
@@ -107,7 +107,7 @@ def test_the_public_allowlist_is_exactly_the_characterised_17(policy):
 
 def test_bearer_routes(policy):
     bearer = _entries(policy, "bearer")
-    assert len(bearer) == 264  # 252 until RBAC-7 added /platform/rbac (12 operations)
+    assert len(bearer) == 260  # 264 until RBAC-8 removed the four /admin/roles routes
     assert ("GET", "/scans") in bearer and ("POST", "/auth/ticket") in bearer
     assert all(
         e["checker_policy"] == "bearer"

@@ -13,7 +13,6 @@ import { canSeeNavItem } from "@shell/auth/navVisibility";
 // What the backend sends (`/auth/me` → `authorization`); the UI invents none of it.
 const authz = (over = {}) => ({
   contract: 1,
-  source: "platform",
   home_org_id: "org_a",
   active_org_id: "org_a",
   permissions: {
@@ -27,15 +26,6 @@ const authz = (over = {}) => ({
       scope_type: "platform",
     },
   ],
-  atoms: {
-    "scans:read": ["audit.scan.read"],
-    "scans:execute": ["audit.scan.run"],
-    "scans:purge": ["audit.scan.purge"],
-    "settings:update": [
-      "audit.asset.import_amt",
-      "audit.remediation.manage_sla",
-    ],
-  },
   ...over,
 });
 const userWith = (a, role) => ({
@@ -54,25 +44,25 @@ describe("permission-based can()", () => {
     expect(can(u, "platform.email_domain.read")).toBe(true);
   });
 
-  it("resolves legacy atoms through the backend's vocabulary", () => {
-    expect(can(u, "scans", "read")).toBe(true);
-    expect(can(u, { resource: "scans", action: "execute" })).toBe(true);
-    expect(can(u, "scans:purge")).toBe(false);
+  it("does not understand the legacy atom spellings at all", () => {
+    expect(can(u, "scans", "read")).toBe(false);
+    expect(can(u, { resource: "scans", action: "execute" })).toBe(false);
+    expect(can(u, "scans:read")).toBe(false);
     expect(can(u, "nonsense", "atom")).toBe(false);
   });
 
-  it("a multi-key atom needs every key", () => {
-    expect(can(u, "settings", "update")).toBe(false);
-    const both = authz({
-      permissions: {
-        platform: [],
-        organization: [
-          "audit.asset.import_amt",
-          "audit.remediation.manage_sla",
-        ],
+  it("an older backend (no payload) grants nothing — there is no fallback", () => {
+    const old = {
+      id: "u1",
+      role: {
+        name: "analyst",
+        permissions: [{ resource: "scans", action: "read" }, "scans:execute"],
       },
-    });
-    expect(can(userWith(both), "settings", "update")).toBe(true);
+    };
+    expect(can(old, "audit.scan.read")).toBe(false);
+    expect(can(old, "scans:read")).toBe(false);
+    expect(can(old, "scans", "read")).toBe(false);
+    expect(authorizationOf(old)).toBeNull();
   });
 
   it("never invents a permission: no wildcard, no role, no payload", () => {
@@ -168,7 +158,6 @@ describe("role display names are presentation only", () => {
       permissions: [{ resource: "scans", action: "purge" }],
     };
     expect(can(viewer, "audit.scan.purge")).toBe(false);
-    expect(can(viewer, "scans", "purge")).toBe(false);
     expect(canSwitchOrganisation(viewer)).toBe(false);
   });
   it("labels come from assignments, for display", () => {
@@ -195,22 +184,6 @@ describe("multiple roles, revoked and retired assignments", () => {
       }),
     );
     expect(can(revoked, "audit.scan.purge")).toBe(false);
-  });
-});
-
-describe("older backend (no authorization payload)", () => {
-  it("honours the listed atoms exactly, with no wildcard and no role rule", () => {
-    const old = {
-      role: {
-        name: "superadmin",
-        permissions: [{ resource: "scans", action: "read" }],
-      },
-    };
-    expect(can(old, "scans", "read")).toBe(true);
-    expect(can(old, "scans", "purge")).toBe(false); // superadmin is not everything
-    expect(can(old, "audit.scan.read")).toBe(false); // keys are never guessed
-    const manage = { role: { name: "x", permissions: ["scans:manage"] } };
-    expect(can(manage, "scans", "read")).toBe(false); // `:manage` is not a wildcard
   });
 });
 

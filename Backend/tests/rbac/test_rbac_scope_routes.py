@@ -13,7 +13,6 @@ import pytest
 from fastapi import HTTPException
 
 from ccure_platform import composition
-from ccure_platform.rbac import authority as au
 from ccure_platform.rbac import scope
 from ccure_platform.rbac.catalogue import sync
 from config import AppConfig
@@ -33,11 +32,7 @@ from scans import scan_access
 
 @pytest.fixture
 def w(rbac_db, monkeypatch):
-    au.recorder.reset()
-    au.set_migrated_paths(None)
     sync(rbac_db, composition.load_permission_sources(), audit=False)
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "enforce")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "*")
     w = type("W", (), {})()
     w.db, w.a, w.b = rbac_db, make_org(rbac_db), make_org(rbac_db)
 
@@ -71,7 +66,6 @@ def w(rbac_db, monkeypatch):
     w.scan_a = make_scan(w.a, w.analyst_a)
     w.scan_b = make_scan(w.b, w.admin_b)
     yield w
-    au.set_migrated_paths(None)
 
 
 def get(w, user, scan, org=None):

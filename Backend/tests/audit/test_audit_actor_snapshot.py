@@ -75,6 +75,9 @@ def test_snapshot_survives_account_deletion(db_session, event, test_user):
     """
     expected_id, expected_name = test_user.id, test_user.username
 
+    db_session.execute(
+        text("DELETE FROM rbac_user_roles WHERE user_id = :u"), {"u": test_user.id}
+    )
     db_session.delete(db_session.get(User, test_user.id))
     db_session.commit()
     db_session.expire_all()

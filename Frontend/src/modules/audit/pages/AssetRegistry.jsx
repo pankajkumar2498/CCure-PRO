@@ -144,10 +144,7 @@ export default function AssetRegistry() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const canUpdate = canPermission(user, {
-    resource: "assets",
-    action: "update",
-  });
+  const canUpdate = canPermission(user, "audit.asset.update");
 
   const [assets, setAssets] = useState([]);
   const [total, setTotal] = useState(0);

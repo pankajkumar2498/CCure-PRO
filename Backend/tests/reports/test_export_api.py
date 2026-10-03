@@ -724,7 +724,7 @@ class TestExportAuthorisation:
             path.format(sid=world["scan"].id), headers=_headers(world["blind"])
         )
         assert response.status_code == 403
-        assert "reports:read" in response.json()["detail"]
+        assert "audit.report.read" in response.json()["detail"]
 
     @pytest.mark.parametrize(
         "path", ["/reports/download/{sid}?fmt=XLSX", "/reports/export/{sid}?fmt=json"]

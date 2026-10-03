@@ -49,7 +49,7 @@ from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from ccure_platform.api import log_audit_event
@@ -339,7 +339,7 @@ def _apply_type_rules(
 def credential_types(
     request: Request,
     response: Response,
-    user: CurrentUser = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
 ):
     """
     What this build can authenticate with — read from the code, not hardcoded
@@ -433,7 +433,7 @@ def list_credentials(
     response: Response,
     credential_type: Optional[str] = Query(None),
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -451,7 +451,7 @@ def create_credential(
     response: Response,
     body: ScanCredentialCreate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.manage")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -532,7 +532,7 @@ def get_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
     db: Session = Depends(get_db),
 ):
     return _serialize(_get(db, credential_id, _resolve_org(user, org_id)))
@@ -546,7 +546,7 @@ def update_credential(
     credential_id: str,
     body: ScanCredentialUpdate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.manage")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -629,7 +629,7 @@ def validate_credential(
     credential_id: str,
     body: ScanCredentialValidateRequest,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "validate")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.validate")),
     db: Session = Depends(get_db),
 ):
     """
@@ -755,7 +755,7 @@ def delete_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("credentials", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.delete")),
     db: Session = Depends(get_db),
 ):
     """

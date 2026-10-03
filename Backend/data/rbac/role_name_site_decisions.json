@@ -145,6 +145,10 @@
         "status": "intentionally_deferred",
         "reason": "provisioning, default role, bootstrap or the legacy check itself",
         "deferred_to": "RBAC-8"
+      },
+      "rbac8": {
+        "status": "migrated",
+        "what": "organisation creation provisions its first administrator through the governed RBAC assignment (rbac.provisioning); no role is looked up by name"
       }
     },
     {
@@ -304,6 +308,10 @@
         "status": "intentionally_deferred",
         "reason": "provisioning, default role, bootstrap or the legacy check itself",
         "deferred_to": "RBAC-8"
+      },
+      "rbac8": {
+        "status": "migrated",
+        "what": "registration assigns the RBAC default role (rbac_default_roles); no legacy role lookup"
       }
     },
     {
@@ -323,6 +331,10 @@
         "status": "intentionally_deferred",
         "reason": "provisioning, default role, bootstrap or the legacy check itself",
         "deferred_to": "RBAC-8"
+      },
+      "rbac8": {
+        "status": "migrated",
+        "what": "the legacy rollback rule is deleted; guards are engine-only"
       }
     },
     {
@@ -342,6 +354,10 @@
         "status": "intentionally_deferred",
         "reason": "provisioning, default role, bootstrap or the legacy check itself",
         "deferred_to": "RBAC-8"
+      },
+      "rbac8": {
+        "status": "migrated",
+        "what": "first-run bootstrap grants the platform administrator role through rbac.provisioning (idempotent, audited); no role-name shortcut"
       }
     },
     {

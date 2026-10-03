@@ -218,10 +218,10 @@ function PolicyWorkspace() {
   const { user } = useAuth();
   const toast = useCcureToast();
 
-  const canRead = can(user, "scan_policies", "read");
-  const canCreate = can(user, "scan_policies", "create");
-  const canUpdate = can(user, "scan_policies", "update");
-  const canDelete = can(user, "scan_policies", "delete");
+  const canRead = can(user, "audit.scan_policy.read");
+  const canCreate = can(user, "audit.scan_policy.manage");
+  const canUpdate = can(user, "audit.scan_policy.manage");
+  const canDelete = can(user, "audit.scan_policy.delete");
 
   const [settings, setSettings] = useState(null);
   const [policies, setPolicies] = useState([]);

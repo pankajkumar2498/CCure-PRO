@@ -718,10 +718,10 @@ export default function ScanHistory({ mode = "history" }) {
     resetScan,
   } = useScan();
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
-  const canReadScans = can(user, "scans", "read");
-  const canExecuteScans = can(user, "scans", "execute");
-  const canArchiveScans = can(user, "scans", "archive");
-  const canRecycleScans = can(user, "scans", "recycle");
+  const canReadScans = can(user, "audit.scan.read");
+  const canExecuteScans = can(user, "audit.scan.run");
+  const canArchiveScans = can(user, "audit.scan.lifecycle");
+  const canRecycleScans = can(user, "audit.scan.lifecycle");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);

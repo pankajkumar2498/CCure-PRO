@@ -13,7 +13,7 @@ Endpoints
   GET /api/workflow-example     → documentation: frontend orchestration example
 """
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from db.base import get_db
 from fastapi import APIRouter, Depends
 from scan_helpers import PIPELINE_PHASES
@@ -42,7 +42,7 @@ _PIPELINE_MODE_DESCRIPTIONS = {
 async def get_scan_progress(
     scan_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("scans", "read")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Get real-time progress for an ongoing scan (multi-worker safe).

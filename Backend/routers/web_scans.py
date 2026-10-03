@@ -21,8 +21,8 @@ from typing import Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
-    user_has_permission,
+    require_authorized,
+    has_permission,
     resolve_active_organisation,
     acts_across_organisations,
 )
@@ -454,7 +454,7 @@ def start_web_scan(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     Start a new web application scan.
@@ -611,7 +611,7 @@ def list_web_scans(
     status: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """List web scans for the resolved organization."""
     target_org_id = _resolve_org(user, org_id)
@@ -648,7 +648,7 @@ def get_web_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Get detailed web scan information including phase progress."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -699,7 +699,7 @@ def get_web_scan_findings(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """Get findings for a web scan with filtering and pagination."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -747,7 +747,7 @@ def get_web_scan_assets(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Get discovered web assets/endpoints for a scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -786,7 +786,7 @@ def get_web_scan_parameters(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     The attack surface at parameter granularity (Phase 23b relational model):
@@ -869,7 +869,7 @@ def get_web_scan_forms(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """The discovered form inventory (Codex item 1) — first-class WebForm rows
     with their inputs, file-upload and password flags."""
@@ -917,7 +917,7 @@ def get_web_scan_api_operations(
     per_page: int = Query(200, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
     as first-class WebApiOperation rows, with a per-kind roll-up."""
@@ -970,7 +970,7 @@ def cancel_web_scan(
     request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """Cancel a running web scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1040,7 +1040,7 @@ def triage_finding(
     request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1076,14 +1076,14 @@ def triage_finding(
     # anyone able to edit a finding could clear their own list by accepting
     # everything on it. The route's own dependency is `findings:update`; only
     # the body says which status was asked for, so this check lives here.
-    if body.status == "accepted_risk" and not user_has_permission(
-        db, user, "findings", "accept_risk", authoritative=True
+    if body.status == "accepted_risk" and not has_permission(
+        db, user, "audit.finding.accept_risk"
     ):
         raise HTTPException(
             status_code=403,
             detail=(
-                "Accepting a risk requires the 'findings:accept_risk' permission, "
-                "which your role does not have."
+                "Accepting a risk requires the 'audit.finding.accept_risk' permission, "
+                "which your account does not hold."
             ),
         )
 
@@ -1133,7 +1133,7 @@ def get_finding_screenshot(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """
     Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
@@ -1175,7 +1175,7 @@ def download_web_scan_report(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Generate and download a PDF report for a completed web scan.

@@ -24,7 +24,7 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from ccure_platform.accounts import active_members_with_roles
+from ccure_platform.accounts import users_holding_permission
 from core.redis_client import publish_notification_sync
 from db.base import gen_notification_id
 from db.models import Notification
@@ -215,7 +215,7 @@ def create_notification(
 def fan_out_notification(
     db: Session,
     org_id: str,
-    target_roles: list[str],
+    permission_key: str,
     notification_type: "NotificationType | str",
     category: "NotificationCategory | str",
     title: str,
@@ -226,10 +226,10 @@ def fan_out_notification(
     exclude_user_id: str | None = None,
 ) -> int:
     """
-    Fan-out a notification to all active users in an organization matching specific roles,
-    respecting their in-app alert preferences.
+    Fan-out a notification to all active users in an organization who hold
+    ``permission_key`` there, respecting their in-app alert preferences.
     """
-    users = active_members_with_roles(db, org_id, target_roles)
+    users = users_holding_permission(db, org_id, permission_key)
     if not users:
         return 0
 

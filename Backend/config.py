@@ -737,26 +737,6 @@ class EmailDomainGuardConfig:
     )
 
 
-class RbacAuthorityConfig:
-    """
-    RBAC-4 controlled cutover: which migrated authorization paths the new engine
-    decides. **Off by default; with it off every path is decided by the legacy rule
-    exactly as before.**
-
-    MODE  off | enforce  (anything else is off).
-    PATHS comma-separated path ids (``scans:read``, ``platform.email_domain.read``)
-          or ``*`` for every path the migration inventory marks migrated. Empty means
-          none. A path the inventory does not mark migrated is ignored.
-
-    Rollback is removing a path from PATHS (or setting MODE=off) and restarting the
-    process: the legacy implementation is still there and no data is touched.
-    docs/architecture/RBAC_AUTHORITY_MIGRATION.md
-    """
-
-    MODE: str = os.getenv("RBAC_AUTHORITY_MODE", "off").strip().lower()
-    PATHS: str = os.getenv("RBAC_AUTHORITY_PATHS", "").strip()
-
-
 class RbacReauthConfig:
     """
     RBAC-7 step-up for sensitive governance operations (identity/reauth.py).
@@ -766,42 +746,6 @@ class RbacReauthConfig:
     """
 
     MODE: str = os.getenv("RBAC_REAUTH_MODE", "enforce").strip().lower()
-
-
-class RbacShadowConfig:
-    """
-    RBAC-3 shadow authorization: compare the new RBAC decision with the legacy one.
-
-    **Legacy authorization is authoritative in every mode.** Shadow mode never
-    grants, denies or changes a request; it evaluates the new engine beside the
-    legacy check, records whether they agree, and carries on with the legacy answer.
-
-    off     — nothing is evaluated, nothing is queried, nothing is recorded. The
-              default, and the only mode that costs nothing.
-    observe — each legacy permission check is also evaluated by the new engine
-              (on its own database session), compared, counted and logged.
-
-    Anything else is treated as ``off`` (and logged once): a typo must never turn
-    on a mechanism that queries the database on every request.
-
-    Do not set ``observe`` globally in production. It is for a controlled
-    comparison — a staging copy, or one process — with ``SAMPLE_RATE`` below 1.0
-    where the load matters. See ``docs/architecture/RBAC_SHADOW_AUTHORIZATION.md``.
-    """
-
-    MODE: str = os.getenv("RBAC_SHADOW_MODE", "off").strip().lower()
-    # The fraction of legacy checks that are also shadow-evaluated, 0.0 to 1.0.
-    SAMPLE_RATE: float = float(os.getenv("RBAC_SHADOW_SAMPLE_RATE", "1.0"))
-    # Log every comparison, matches included. Off: matches are only counted, so a
-    # busy server is not drowned in lines that say nothing.
-    LOG_MATCHES: bool = os.getenv("RBAC_SHADOW_LOG_MATCHES", "false").lower() == "true"
-    # How many recent mismatches a process keeps for inspection.
-    MISMATCH_BUFFER: int = int(os.getenv("RBAC_SHADOW_MISMATCH_BUFFER", "200"))
-    # The shadow session's statement timeout. A shadow query that cannot answer in
-    # this time is an ERROR result, never a slow request.
-    STATEMENT_TIMEOUT_MS: int = int(
-        os.getenv("RBAC_SHADOW_STATEMENT_TIMEOUT_MS", "250")
-    )
 
 
 class AppConfig:
@@ -1084,17 +1028,6 @@ class AppConfig:
     MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
 
     RBAC_REAUTH_MODE = RbacReauthConfig.MODE
-
-    # RBAC-4 controlled authority cutover (default OFF; legacy decides)
-    RBAC_AUTHORITY_MODE = RbacAuthorityConfig.MODE
-    RBAC_AUTHORITY_PATHS = RbacAuthorityConfig.PATHS
-
-    # RBAC-3 shadow authorization (default OFF; legacy authorization is authoritative)
-    RBAC_SHADOW_MODE = RbacShadowConfig.MODE
-    RBAC_SHADOW_SAMPLE_RATE = RbacShadowConfig.SAMPLE_RATE
-    RBAC_SHADOW_LOG_MATCHES = RbacShadowConfig.LOG_MATCHES
-    RBAC_SHADOW_MISMATCH_BUFFER = RbacShadowConfig.MISMATCH_BUFFER
-    RBAC_SHADOW_STATEMENT_TIMEOUT_MS = RbacShadowConfig.STATEMENT_TIMEOUT_MS
 
     # Disposable / throwaway email domain screening
     EMAIL_DOMAIN_GUARD_MODE = EmailDomainGuardConfig.MODE

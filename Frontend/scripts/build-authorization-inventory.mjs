@@ -8,9 +8,11 @@
  *
  * Every place the UI decides (or displays) something from a role or a permission,
  * with its classification: migrated · display-only · intentionally-retained ·
- * rbac7 · rbac8. Generated from source and deterministic; a vitest test fails when
- * the file and the code disagree, so a new role-name or atom check cannot appear
- * without a recorded decision.
+ * compatibility-history · removed. Generated from source and deterministic; a vitest
+ * test fails when the file and the code disagree, so a new role-name or atom check
+ * cannot appear without a recorded decision. RBAC-8 removed the older-backend
+ * fallback and every legacy atom/role read; `REMOVED` records what went and the text
+ * that must never come back (a test greps the source for each).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -37,12 +39,6 @@ const KINDS = [
  *  matches wins; `reason` is mandatory. */
 const RULES = [
   // the helper itself
-  [
-    "src/shell/auth/authorization.js",
-    "role_permissions_read",
-    "intentionally-retained",
-    "older-backend fallback: legacy atoms honoured as atoms only (no wildcard, no role rule); removed with the legacy model in RBAC-8",
-  ],
   [
     "src/shell/auth/authorization.js",
     "role_name_read",
@@ -143,6 +139,30 @@ const RULES = [
   ["src/modules/audit/", "role_name_read", "display-only", "label only"],
 ];
 
+/** What RBAC-8 removed from the UI, and the source text that must never return. */
+export const REMOVED = [
+  {
+    what: "older-backend fallback in can(): legacy role.permissions atoms honoured when /auth/me had no authorization payload",
+    forbidden: ["legacyAtoms", "role?.permissions"],
+  },
+  {
+    what: "atom vocabulary: can(user, resource, action), `{resource, action}` objects and `authorization.atoms` lookups",
+    forbidden: ["authz.atoms", "legacy vocabulary"],
+  },
+  {
+    what: "legacy role administration client: GET /admin/roles and /admin/roles/{id}/permissions",
+    forbidden: ["listRolePermissions", '"/admin/roles/'],
+  },
+  {
+    what: "legacy role_id user flows (create, edit and change-role by users.role_id)",
+    forbidden: ["user.role_id", "data.role_id", "form.role_id"],
+  },
+  {
+    what: "role name read from the profile for display (user.role.name)",
+    forbidden: ["user?.role?.name", "user.role.name"],
+  },
+];
+
 const walk = (dir) =>
   fs
     .readdirSync(dir, { withFileTypes: true })
@@ -190,12 +210,28 @@ export function build() {
     summary: {
       total: sites.length,
       ...Object.fromEntries(Object.entries(counts).sort()),
+      removed: REMOVED.length,
     },
+    removed: REMOVED.map((r) => ({ status: "removed", ...r })),
     sites,
   };
 }
 
-export const render = (inv) => JSON.stringify(inv, null, 2) + "\n";
+// Prettier keeps a short array of strings on one line (the repository hook formats
+// this file), so the generator does the same and the file stays byte-identical.
+export const render = (inv) =>
+  JSON.stringify(inv, null, 2).replace(
+    /^( *)("[^"\n]+": )\[\n((?: +"(?:[^"\\\n]|\\.)*",?\n)+) *\]/gm,
+    (whole, indent, key, items) => {
+      const flat = items
+        .trim()
+        .split(/,\n/)
+        .map((x) => x.trim())
+        .join(", ");
+      const line = `${indent}${key}[${flat}]`;
+      return line.length <= 80 ? line : whole;
+    },
+  ) + "\n";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const text = render(build());

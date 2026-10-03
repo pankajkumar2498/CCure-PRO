@@ -27,6 +27,7 @@ import userEvent from "@testing-library/user-event";
 import ProfileModal from "@shell/account/ProfileModal";
 import * as userApi from "@shell/api/user";
 import * as authApi from "@shell/api/auth";
+import { personaFrom } from "../../fixtures/authorization";
 
 vi.mock("@shell/api/user", () => ({
   getProfile: vi.fn(),
@@ -50,7 +51,7 @@ let currentUser = {
 };
 const refreshUser = vi.fn().mockResolvedValue(undefined);
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser, refreshUser }),
+  useAuth: () => ({ user: personaFrom(currentUser), refreshUser }),
 }));
 
 const PROFILE = {

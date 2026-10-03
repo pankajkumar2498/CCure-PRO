@@ -52,10 +52,20 @@ def test_the_measurement_covers_the_whole_new_package():
         "engine.py",
         "governance.py",
         "resolver.py",
-        "shadow.py",
+        "administration.py",
         "audit.py",
     } <= set(files)
-    assert "dependencies.py" in files  # present, and deliberately not measured as new
+    assert (
+        "dependencies.py" in files
+    )  # the engine-only guards: measured strictly as new
+    assert not {
+        "shadow.py",
+        "shadow_runtime.py",
+        "authority.py",
+        "legacy_scope.py",
+    } & set(
+        files
+    )  # the shadow and the legacy authority are gone (RBAC-8)
 
 
 # ── the ratchet bites (synthetic source) ─────────────────────────────────────
@@ -165,11 +175,10 @@ def test_legacy_role_identity_sites_only_fall():
     )
 
 
-def test_the_legacy_baseline_is_what_rbac_4_has_to_remove():
-    total = sum(sum(v.values()) for v in rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES.values())
-    # recorded 3 Oct 2026: 40 sites in 22 files. It can only get smaller.
-    assert 0 < total <= 40
-    assert len(rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES) <= 22
+def test_the_legacy_baseline_is_empty_and_stays_empty():
+    """RBAC-8: no runtime code decides by a role's name. The ratchet can no longer fall."""
+    assert rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES == {}
+    assert rg.measure_legacy() == {}
 
 
 def test_seed_migration_tooling_and_test_contexts_are_exempt_by_design():
@@ -178,6 +187,6 @@ def test_seed_migration_tooling_and_test_contexts_are_exempt_by_design():
     assert "ccure_platform/rbac/contract.py" in rg.RBAC_SEED_FILES
 
 
-def test_the_legacy_authority_is_measured_as_legacy_not_as_new():
-    assert "ccure_platform/rbac/dependencies.py" in rg.RBAC_LEGACY_FILES
-    assert "ccure_platform/rbac/dependencies.py" in rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
+def test_no_file_of_the_package_is_exempt_as_legacy_authority():
+    assert rg.RBAC_LEGACY_FILES == frozenset()
+    assert rg.measure_new() == []

@@ -14,6 +14,7 @@ import ProductFrame, { ProductFrameProvider } from "@shell/layout/ProductFrame";
 import SettingsDrawer from "@shell/account/SettingsDrawer";
 import renderAuditSettings from "@audit/components/layout/auditSettings";
 import { getPreferences, updatePreferences } from "@shell/api/user";
+import { personaFrom } from "../fixtures/authorization";
 
 // The platform header composes the shell's shared pieces (Phase 12 platform
 // navigation): preferences come from the provider main.jsx mounts, and the
@@ -35,7 +36,10 @@ vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn().mockResolvedValue({ data: { modules: [] } }) },
 }));
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { username: "analyst" }, logout: vi.fn() }),
+  useAuth: () => ({
+    user: personaFrom({ username: "analyst" }),
+    logout: vi.fn(),
+  }),
 }));
 vi.mock("@shell/api/user", () => ({
   getPreferences: vi.fn().mockResolvedValue({

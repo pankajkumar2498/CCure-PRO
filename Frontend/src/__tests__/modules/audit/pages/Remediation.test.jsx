@@ -48,7 +48,7 @@ const ROLE_PERMS = {
 
 let currentUser = null;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 const asRole = (name) => {

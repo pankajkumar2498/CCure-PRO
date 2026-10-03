@@ -23,11 +23,9 @@ def resolve_org(user: CurrentUser, requested_org: str | None) -> str:
 def user_can_read_all_scans(
     user: CurrentUser, db: Session, org_id: str | None = None
 ) -> bool:
-    """``scans:read_all`` is organisation-wide visibility within one organisation —
+    """``audit.scan.read_all`` is organisation-wide visibility within one organisation —
     the organisation the request acts in — never visibility across organisations."""
-    return platform_api.user_has_permission(
-        db, user, "scans", "read_all", authoritative=True, org_id=org_id
-    )
+    return platform_api.has_permission(db, user, "audit.scan.read_all", org_id=org_id)
 
 
 def get_scan_or_404(

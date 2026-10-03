@@ -115,7 +115,7 @@ const fmtNumber = (value, digits = 1, fallback = "—") => {
 export default function Phase1Results() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canExecuteScans = can(user, "scans", "execute");
+  const canExecuteScans = can(user, "audit.scan.run");
   const {
     target,
     scanId,

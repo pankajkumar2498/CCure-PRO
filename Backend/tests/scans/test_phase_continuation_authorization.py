@@ -23,7 +23,7 @@ import pytest
 from fastapi import HTTPException, Response
 from starlette.requests import Request
 
-from auth.rbac import user_has_permission
+from ccure_platform.rbac.dependencies import has_permission
 from db.base import gen_user_id, utcnow
 from db.models import Organization, Permission, Role, RolePermission, Scan, User
 from routers import phase_scans
@@ -232,7 +232,7 @@ def test_a_colleagues_scan_is_hidden_without_read_all(
         return user
 
     owner, colleague = _member("owner"), _member("colleague")
-    assert not user_has_permission(db_session, colleague, "scans", "read_all")
+    assert not has_permission(db_session, colleague, "audit.scan.read_all")
     scan = _scan(db_session, test_org.id, owner.id, ["10.30.0.5"], created_scans)
 
     with pytest.raises(HTTPException) as exc:

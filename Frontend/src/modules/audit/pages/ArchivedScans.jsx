@@ -74,8 +74,8 @@ const fmtDur = (sec) =>
 export default function ArchivedScans() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canRestoreScans = can(user, "scans", "restore");
-  const canRecycleScans = can(user, "scans", "recycle");
+  const canRestoreScans = can(user, "audit.scan.lifecycle");
+  const canRecycleScans = can(user, "audit.scan.lifecycle");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);

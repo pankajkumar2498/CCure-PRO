@@ -31,12 +31,12 @@
  },
  "counts": {
   "public": 17,
-  "bearer": 264,
+  "bearer": 260,
   "ticket_or_bearer": 3,
   "websocket": 2,
-  "total": 286
+  "total": 282
  },
- "inventory_sha256": "a80b70131484c0ce4b29303809d11fc3e6f9a3c3d076c8d745ed2b76c25dde10",
+ "inventory_sha256": "c43989d1f89d6aa7d2bbea0bd763089588a21b072f5fbf79c59850b50f33f5a8",
  "routes": [
   {
    "order": 0,
@@ -1461,50 +1461,6 @@
    "order": 129,
    "scope": "http",
    "method": "GET",
-   "path": "/admin/roles/",
-   "match": "exact",
-   "map_key": "http:GET:/admin/roles/",
-   "class": "bearer",
-   "checker_policy": "bearer",
-   "endpoint": "routers.admin_rbac.list_roles"
-  },
-  {
-   "order": 130,
-   "scope": "http",
-   "method": "GET",
-   "path": "/admin/roles",
-   "match": "exact",
-   "map_key": "http:GET:/admin/roles",
-   "class": "bearer",
-   "checker_policy": "bearer",
-   "endpoint": "routers.admin_rbac.list_roles"
-  },
-  {
-   "order": 131,
-   "scope": "http",
-   "method": "GET",
-   "path": "/admin/roles/{role_id}/permissions/",
-   "match": "regex",
-   "map_key": "~^http:GET:/admin/roles/[^/]+/permissions/$",
-   "class": "bearer",
-   "checker_policy": "bearer",
-   "endpoint": "routers.admin_rbac.list_role_permissions"
-  },
-  {
-   "order": 132,
-   "scope": "http",
-   "method": "GET",
-   "path": "/admin/roles/{role_id}/permissions",
-   "match": "regex",
-   "map_key": "~^http:GET:/admin/roles/[^/]+/permissions$",
-   "class": "bearer",
-   "checker_policy": "bearer",
-   "endpoint": "routers.admin_rbac.list_role_permissions"
-  },
-  {
-   "order": 133,
-   "scope": "http",
-   "method": "GET",
    "path": "/admin/organizations/",
    "match": "exact",
    "map_key": "http:GET:/admin/organizations/",
@@ -1513,7 +1469,7 @@
    "endpoint": "routers.admin_orgs.list_organizations"
   },
   {
-   "order": 134,
+   "order": 130,
    "scope": "http",
    "method": "GET",
    "path": "/admin/organizations",
@@ -1524,7 +1480,7 @@
    "endpoint": "routers.admin_orgs.list_organizations"
   },
   {
-   "order": 135,
+   "order": 131,
    "scope": "http",
    "method": "POST",
    "path": "/admin/organizations/",
@@ -1535,7 +1491,7 @@
    "endpoint": "routers.admin_orgs.create_organization"
   },
   {
-   "order": 136,
+   "order": 132,
    "scope": "http",
    "method": "POST",
    "path": "/admin/organizations",
@@ -1546,7 +1502,7 @@
    "endpoint": "routers.admin_orgs.create_organization"
   },
   {
-   "order": 137,
+   "order": 133,
    "scope": "http",
    "method": "PUT",
    "path": "/admin/organizations/{org_id}/",
@@ -1557,7 +1513,7 @@
    "endpoint": "routers.admin_orgs.update_organization"
   },
   {
-   "order": 138,
+   "order": 134,
    "scope": "http",
    "method": "PUT",
    "path": "/admin/organizations/{org_id}",
@@ -1568,7 +1524,7 @@
    "endpoint": "routers.admin_orgs.update_organization"
   },
   {
-   "order": 139,
+   "order": 135,
    "scope": "http",
    "method": "PATCH",
    "path": "/admin/organizations/{org_id}/status/",
@@ -1579,7 +1535,7 @@
    "endpoint": "routers.admin_orgs.change_organization_status"
   },
   {
-   "order": 140,
+   "order": 136,
    "scope": "http",
    "method": "PATCH",
    "path": "/admin/organizations/{org_id}/status",
@@ -1590,7 +1546,7 @@
    "endpoint": "routers.admin_orgs.change_organization_status"
   },
   {
-   "order": 141,
+   "order": 137,
    "scope": "http",
    "method": "DELETE",
    "path": "/admin/organizations/{org_id}/",
@@ -1601,7 +1557,7 @@
    "endpoint": "routers.admin_orgs.archive_organization"
   },
   {
-   "order": 142,
+   "order": 138,
    "scope": "http",
    "method": "DELETE",
    "path": "/admin/organizations/{org_id}",
@@ -1612,7 +1568,7 @@
    "endpoint": "routers.admin_orgs.archive_organization"
   },
   {
-   "order": 143,
+   "order": 139,
    "scope": "http",
    "method": "POST",
    "path": "/admin/organizations/{org_id}/restore/",
@@ -1623,7 +1579,7 @@
    "endpoint": "routers.admin_orgs.restore_organization"
   },
   {
-   "order": 144,
+   "order": 140,
    "scope": "http",
    "method": "POST",
    "path": "/admin/organizations/{org_id}/restore",
@@ -1634,7 +1590,7 @@
    "endpoint": "routers.admin_orgs.restore_organization"
   },
   {
-   "order": 145,
+   "order": 141,
    "scope": "http",
    "method": "GET",
    "path": "/admin/organizations/{org_id}/scan-scope/",
@@ -1645,7 +1601,7 @@
    "endpoint": "routers.admin_orgs.get_scan_scope"
   },
   {
-   "order": 146,
+   "order": 142,
    "scope": "http",
    "method": "GET",
    "path": "/admin/organizations/{org_id}/scan-scope",
@@ -1656,7 +1612,7 @@
    "endpoint": "routers.admin_orgs.get_scan_scope"
   },
   {
-   "order": 147,
+   "order": 143,
    "scope": "http",
    "method": "PUT",
    "path": "/admin/organizations/{org_id}/scan-scope/",
@@ -1667,7 +1623,7 @@
    "endpoint": "routers.admin_orgs.set_scan_scope"
   },
   {
-   "order": 148,
+   "order": 144,
    "scope": "http",
    "method": "PUT",
    "path": "/admin/organizations/{org_id}/scan-scope",
@@ -1678,7 +1634,7 @@
    "endpoint": "routers.admin_orgs.set_scan_scope"
   },
   {
-   "order": 149,
+   "order": 145,
    "scope": "http",
    "method": "POST",
    "path": "/api/v1/admin/sync-nvd",
@@ -1689,7 +1645,7 @@
    "endpoint": "routers.admin_nvd.trigger_nvd_sync"
   },
   {
-   "order": 150,
+   "order": 146,
    "scope": "http",
    "method": "GET",
    "path": "/api/v1/admin/nvd-sync-status",
@@ -1700,7 +1656,7 @@
    "endpoint": "routers.admin_nvd.get_sync_status"
   },
   {
-   "order": 151,
+   "order": 147,
    "scope": "http",
    "method": "GET",
    "path": "/admin/audit-logs/",
@@ -1711,7 +1667,7 @@
    "endpoint": "routers.audit.list_audit_logs"
   },
   {
-   "order": 152,
+   "order": 148,
    "scope": "http",
    "method": "GET",
    "path": "/admin/audit-logs",
@@ -1722,7 +1678,7 @@
    "endpoint": "routers.audit.list_audit_logs"
   },
   {
-   "order": 153,
+   "order": 149,
    "scope": "http",
    "method": "GET",
    "path": "/admin/audit-logs/export",
@@ -1733,7 +1689,7 @@
    "endpoint": "routers.audit.export_audit_logs"
   },
   {
-   "order": 154,
+   "order": 150,
    "scope": "http",
    "method": "GET",
    "path": "/admin/audit-logs/retention/preview",
@@ -1744,7 +1700,7 @@
    "endpoint": "routers.audit.preview_audit_retention"
   },
   {
-   "order": 155,
+   "order": 151,
    "scope": "http",
    "method": "GET",
    "path": "/admin/audit-logs/{event_id}",
@@ -1755,7 +1711,7 @@
    "endpoint": "routers.audit.get_audit_log"
   },
   {
-   "order": 156,
+   "order": 152,
    "scope": "http",
    "method": "GET",
    "path": "/user/profile",
@@ -1766,7 +1722,7 @@
    "endpoint": "routers.user_profile.get_profile"
   },
   {
-   "order": 157,
+   "order": 153,
    "scope": "http",
    "method": "PUT",
    "path": "/user/profile",
@@ -1777,7 +1733,7 @@
    "endpoint": "routers.user_profile.update_profile"
   },
   {
-   "order": 158,
+   "order": 154,
    "scope": "http",
    "method": "POST",
    "path": "/user/change-password",
@@ -1788,7 +1744,7 @@
    "endpoint": "routers.user_profile.change_password"
   },
   {
-   "order": 159,
+   "order": 155,
    "scope": "http",
    "method": "GET",
    "path": "/user/preferences",
@@ -1799,7 +1755,7 @@
    "endpoint": "routers.user_profile.get_preferences"
   },
   {
-   "order": 160,
+   "order": 156,
    "scope": "http",
    "method": "PUT",
    "path": "/user/preferences",
@@ -1810,7 +1766,7 @@
    "endpoint": "routers.user_profile.update_preferences"
   },
   {
-   "order": 161,
+   "order": 157,
    "scope": "http",
    "method": "GET",
    "path": "/user/sessions",
@@ -1821,7 +1777,7 @@
    "endpoint": "routers.user_profile.get_sessions"
   },
   {
-   "order": 162,
+   "order": 158,
    "scope": "http",
    "method": "DELETE",
    "path": "/user/sessions",
@@ -1832,7 +1788,7 @@
    "endpoint": "routers.user_profile.revoke_other_sessions"
   },
   {
-   "order": 163,
+   "order": 159,
    "scope": "http",
    "method": "DELETE",
    "path": "/user/sessions/{session_id}",
@@ -1843,7 +1799,7 @@
    "endpoint": "routers.user_profile.revoke_session"
   },
   {
-   "order": 164,
+   "order": 160,
    "scope": "http",
    "method": "GET",
    "path": "/notifications",
@@ -1854,7 +1810,7 @@
    "endpoint": "routers.notifications.list_notifications"
   },
   {
-   "order": 165,
+   "order": 161,
    "scope": "http",
    "method": "GET",
    "path": "/notifications/summary",
@@ -1865,7 +1821,7 @@
    "endpoint": "routers.notifications.get_notification_summary"
   },
   {
-   "order": 166,
+   "order": 162,
    "scope": "http",
    "method": "GET",
    "path": "/notifications/stream",
@@ -1876,7 +1832,7 @@
    "endpoint": "routers.notifications.stream_notifications"
   },
   {
-   "order": 167,
+   "order": 163,
    "scope": "http",
    "method": "PATCH",
    "path": "/notifications/{notification_id}/read",
@@ -1887,7 +1843,7 @@
    "endpoint": "routers.notifications.mark_as_read"
   },
   {
-   "order": 168,
+   "order": 164,
    "scope": "http",
    "method": "PATCH",
    "path": "/notifications/read-all",
@@ -1898,7 +1854,7 @@
    "endpoint": "routers.notifications.mark_all_as_read"
   },
   {
-   "order": 169,
+   "order": 165,
    "scope": "http",
    "method": "DELETE",
    "path": "/notifications/{notification_id}",
@@ -1909,7 +1865,7 @@
    "endpoint": "routers.notifications.delete_notification"
   },
   {
-   "order": 170,
+   "order": 166,
    "scope": "http",
    "method": "DELETE",
    "path": "/notifications",
@@ -1920,7 +1876,7 @@
    "endpoint": "routers.notifications.delete_all_notifications"
   },
   {
-   "order": 171,
+   "order": 167,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/summary",
@@ -1931,7 +1887,7 @@
    "endpoint": "routers.dashboard.get_dashboard_summary"
   },
   {
-   "order": 172,
+   "order": 168,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/risk-breakdown",
@@ -1942,7 +1898,7 @@
    "endpoint": "routers.dashboard.get_risk_breakdown"
   },
   {
-   "order": 173,
+   "order": 169,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/vuln-trends",
@@ -1953,7 +1909,7 @@
    "endpoint": "routers.dashboard.get_vuln_trends"
   },
   {
-   "order": 174,
+   "order": 170,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/top-assets",
@@ -1964,7 +1920,7 @@
    "endpoint": "routers.dashboard.get_top_assets"
   },
   {
-   "order": 175,
+   "order": 171,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/top-cves",
@@ -1975,7 +1931,7 @@
    "endpoint": "routers.dashboard.get_top_cves"
   },
   {
-   "order": 176,
+   "order": 172,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/services-exposure",
@@ -1986,7 +1942,7 @@
    "endpoint": "routers.dashboard.get_services_exposure"
   },
   {
-   "order": 177,
+   "order": 173,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/tls-health",
@@ -1997,7 +1953,7 @@
    "endpoint": "routers.dashboard.get_tls_health"
   },
   {
-   "order": 178,
+   "order": 174,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/http-headers",
@@ -2008,7 +1964,7 @@
    "endpoint": "routers.dashboard.get_http_headers"
   },
   {
-   "order": 179,
+   "order": 175,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/compliance",
@@ -2019,7 +1975,7 @@
    "endpoint": "routers.dashboard.get_compliance"
   },
   {
-   "order": 180,
+   "order": 176,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/asset-breakdown",
@@ -2030,7 +1986,7 @@
    "endpoint": "routers.dashboard.get_asset_breakdown"
   },
   {
-   "order": 181,
+   "order": 177,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/scan-activity",
@@ -2041,7 +1997,7 @@
    "endpoint": "routers.dashboard.get_scan_activity"
   },
   {
-   "order": 182,
+   "order": 178,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/insights",
@@ -2052,7 +2008,7 @@
    "endpoint": "routers.dashboard.get_insights"
   },
   {
-   "order": 183,
+   "order": 179,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/web-scan-summary",
@@ -2063,7 +2019,7 @@
    "endpoint": "routers.dashboard.get_web_scan_summary"
   },
   {
-   "order": 184,
+   "order": 180,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/web-owasp-scorecard",
@@ -2074,7 +2030,7 @@
    "endpoint": "routers.dashboard.get_web_owasp_scorecard"
   },
   {
-   "order": 185,
+   "order": 181,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/web-scan-trends",
@@ -2085,7 +2041,7 @@
    "endpoint": "routers.dashboard.get_web_scan_trends"
   },
   {
-   "order": 186,
+   "order": 182,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/web-findings",
@@ -2096,7 +2052,7 @@
    "endpoint": "routers.dashboard.get_web_findings_drilldown"
   },
   {
-   "order": 187,
+   "order": 183,
    "scope": "http",
    "method": "GET",
    "path": "/dashboard/web-endpoints",
@@ -2107,7 +2063,7 @@
    "endpoint": "routers.dashboard.get_web_endpoints_drilldown"
   },
   {
-   "order": 188,
+   "order": 184,
    "scope": "http",
    "method": "GET",
    "path": "/assets/",
@@ -2118,7 +2074,7 @@
    "endpoint": "routers.assets.list_assets"
   },
   {
-   "order": 189,
+   "order": 185,
    "scope": "http",
    "method": "GET",
    "path": "/assets",
@@ -2129,7 +2085,7 @@
    "endpoint": "routers.assets.list_assets"
   },
   {
-   "order": 190,
+   "order": 186,
    "scope": "http",
    "method": "GET",
    "path": "/assets/debug-reconcile",
@@ -2140,7 +2096,7 @@
    "endpoint": "routers.assets.debug_reconcile"
   },
   {
-   "order": 191,
+   "order": 187,
    "scope": "http",
    "method": "GET",
    "path": "/assets/certificates",
@@ -2151,7 +2107,7 @@
    "endpoint": "routers.assets.list_global_certificates"
   },
   {
-   "order": 192,
+   "order": 188,
    "scope": "http",
    "method": "GET",
    "path": "/assets/services",
@@ -2162,7 +2118,7 @@
    "endpoint": "routers.assets.list_global_services"
   },
   {
-   "order": 193,
+   "order": 189,
    "scope": "http",
    "method": "GET",
    "path": "/assets/services/assets",
@@ -2173,7 +2129,7 @@
    "endpoint": "routers.assets.list_service_assets"
   },
   {
-   "order": 194,
+   "order": 190,
    "scope": "http",
    "method": "GET",
    "path": "/assets/coverage-stats",
@@ -2184,7 +2140,7 @@
    "endpoint": "routers.assets.get_coverage_stats"
   },
   {
-   "order": 195,
+   "order": 191,
    "scope": "http",
    "method": "GET",
    "path": "/assets/reconciliation/drilldown",
@@ -2195,7 +2151,7 @@
    "endpoint": "routers.assets.get_reconciliation_drilldown"
   },
   {
-   "order": 196,
+   "order": 192,
    "scope": "http",
    "method": "GET",
    "path": "/assets/{asset_id}",
@@ -2206,7 +2162,7 @@
    "endpoint": "routers.assets.get_asset"
   },
   {
-   "order": 197,
+   "order": 193,
    "scope": "http",
    "method": "GET",
    "path": "/assets/{asset_id}/services",
@@ -2217,7 +2173,7 @@
    "endpoint": "routers.assets.get_asset_services"
   },
   {
-   "order": 198,
+   "order": 194,
    "scope": "http",
    "method": "GET",
    "path": "/assets/{asset_id}/findings",
@@ -2228,7 +2184,7 @@
    "endpoint": "routers.assets.get_asset_findings"
   },
   {
-   "order": 199,
+   "order": 195,
    "scope": "http",
    "method": "GET",
    "path": "/assets/{asset_id}/changelog",
@@ -2239,7 +2195,7 @@
    "endpoint": "routers.assets.get_asset_changelog"
   },
   {
-   "order": 200,
+   "order": 196,
    "scope": "http",
    "method": "PATCH",
    "path": "/assets/{asset_id}",
@@ -2250,7 +2206,7 @@
    "endpoint": "routers.assets.update_asset"
   },
   {
-   "order": 201,
+   "order": 197,
    "scope": "http",
    "method": "POST",
    "path": "/assets/{asset_id}/tags",
@@ -2261,7 +2217,7 @@
    "endpoint": "routers.assets.add_tag"
   },
   {
-   "order": 202,
+   "order": 198,
    "scope": "http",
    "method": "DELETE",
    "path": "/assets/{asset_id}/tags/{tag}",
@@ -2272,7 +2228,7 @@
    "endpoint": "routers.assets.remove_tag"
   },
   {
-   "order": 203,
+   "order": 199,
    "scope": "http",
    "method": "POST",
    "path": "/assets/{asset_id}/notes",
@@ -2283,7 +2239,7 @@
    "endpoint": "routers.assets.add_note"
   },
   {
-   "order": 204,
+   "order": 200,
    "scope": "http",
    "method": "POST",
    "path": "/assets/import-amt",
@@ -2294,7 +2250,7 @@
    "endpoint": "routers.assets.import_amt_inventory"
   },
   {
-   "order": 205,
+   "order": 201,
    "scope": "http",
    "method": "GET",
    "path": "/findings/",
@@ -2305,7 +2261,7 @@
    "endpoint": "routers.findings.list_findings"
   },
   {
-   "order": 206,
+   "order": 202,
    "scope": "http",
    "method": "GET",
    "path": "/findings",
@@ -2316,7 +2272,7 @@
    "endpoint": "routers.findings.list_findings"
   },
   {
-   "order": 207,
+   "order": 203,
    "scope": "http",
    "method": "GET",
    "path": "/findings/grouped/by-component",
@@ -2327,7 +2283,7 @@
    "endpoint": "routers.findings.list_findings_grouped"
   },
   {
-   "order": 208,
+   "order": 204,
    "scope": "http",
    "method": "GET",
    "path": "/findings/{finding_id}",
@@ -2338,7 +2294,7 @@
    "endpoint": "routers.findings.get_finding"
   },
   {
-   "order": 209,
+   "order": 205,
    "scope": "http",
    "method": "PATCH",
    "path": "/findings/{finding_id}/status",
@@ -2349,7 +2305,7 @@
    "endpoint": "routers.findings.update_finding_status"
   },
   {
-   "order": 210,
+   "order": 206,
    "scope": "http",
    "method": "PATCH",
    "path": "/findings/{finding_id}/notes",
@@ -2360,7 +2316,7 @@
    "endpoint": "routers.findings.update_finding_notes"
   },
   {
-   "order": 211,
+   "order": 207,
    "scope": "http",
    "method": "POST",
    "path": "/web-scans",
@@ -2371,7 +2327,7 @@
    "endpoint": "routers.web_scans.start_web_scan"
   },
   {
-   "order": 212,
+   "order": 208,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans",
@@ -2382,7 +2338,7 @@
    "endpoint": "routers.web_scans.list_web_scans"
   },
   {
-   "order": 213,
+   "order": 209,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}",
@@ -2393,7 +2349,7 @@
    "endpoint": "routers.web_scans.get_web_scan"
   },
   {
-   "order": 214,
+   "order": 210,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/findings",
@@ -2404,7 +2360,7 @@
    "endpoint": "routers.web_scans.get_web_scan_findings"
   },
   {
-   "order": 215,
+   "order": 211,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/assets",
@@ -2415,7 +2371,7 @@
    "endpoint": "routers.web_scans.get_web_scan_assets"
   },
   {
-   "order": 216,
+   "order": 212,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/parameters",
@@ -2426,7 +2382,7 @@
    "endpoint": "routers.web_scans.get_web_scan_parameters"
   },
   {
-   "order": 217,
+   "order": 213,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/forms",
@@ -2437,7 +2393,7 @@
    "endpoint": "routers.web_scans.get_web_scan_forms"
   },
   {
-   "order": 218,
+   "order": 214,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/api-operations",
@@ -2448,7 +2404,7 @@
    "endpoint": "routers.web_scans.get_web_scan_api_operations"
   },
   {
-   "order": 219,
+   "order": 215,
    "scope": "http",
    "method": "POST",
    "path": "/web-scans/{scan_id}/cancel",
@@ -2459,7 +2415,7 @@
    "endpoint": "routers.web_scans.cancel_web_scan"
   },
   {
-   "order": 220,
+   "order": 216,
    "scope": "http",
    "method": "PATCH",
    "path": "/web-scans/{scan_id}/findings/{finding_id}",
@@ -2470,7 +2426,7 @@
    "endpoint": "routers.web_scans.triage_finding"
   },
   {
-   "order": 221,
+   "order": 217,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/findings/{finding_id}/screenshot",
@@ -2481,7 +2437,7 @@
    "endpoint": "routers.web_scans.get_finding_screenshot"
   },
   {
-   "order": 222,
+   "order": 218,
    "scope": "http",
    "method": "GET",
    "path": "/web-scans/{scan_id}/report",
@@ -2492,7 +2448,7 @@
    "endpoint": "routers.web_scans.download_web_scan_report"
   },
   {
-   "order": 223,
+   "order": 219,
    "scope": "websocket",
    "method": "GET",
    "path": "/web-scans/{scan_id}/progress",
@@ -2503,7 +2459,7 @@
    "endpoint": "routers.web_scans.web_scan_progress_ws"
   },
   {
-   "order": 224,
+   "order": 220,
    "scope": "http",
    "method": "GET",
    "path": "/topology/map",
@@ -2514,7 +2470,7 @@
    "endpoint": "routers.topology.get_topology_map"
   },
   {
-   "order": 225,
+   "order": 221,
    "scope": "http",
    "method": "GET",
    "path": "/topology/map/{scan_id}",
@@ -2525,7 +2481,7 @@
    "endpoint": "routers.topology.get_topology_map_by_scan"
   },
   {
-   "order": 226,
+   "order": 222,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/marketplace",
@@ -2536,7 +2492,7 @@
    "endpoint": "routers.compliance.get_marketplace_frameworks"
   },
   {
-   "order": 227,
+   "order": 223,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/marketplace/{framework_id}/install",
@@ -2547,7 +2503,7 @@
    "endpoint": "routers.compliance.install_marketplace_framework"
   },
   {
-   "order": 228,
+   "order": 224,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/marketplace/{framework_id}/uninstall",
@@ -2558,7 +2514,7 @@
    "endpoint": "routers.compliance.uninstall_marketplace_framework"
   },
   {
-   "order": 229,
+   "order": 225,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/policies",
@@ -2569,7 +2525,7 @@
    "endpoint": "routers.compliance.list_policies"
   },
   {
-   "order": 230,
+   "order": 226,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/policies/{id}/rules",
@@ -2580,7 +2536,7 @@
    "endpoint": "routers.compliance.get_policy_rules"
   },
   {
-   "order": 231,
+   "order": 227,
    "scope": "http",
    "method": "PUT",
    "path": "/compliance/rules/{id}",
@@ -2591,7 +2547,7 @@
    "endpoint": "routers.compliance.update_compliance_rule"
   },
   {
-   "order": 232,
+   "order": 228,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/policies",
@@ -2602,7 +2558,7 @@
    "endpoint": "routers.compliance.create_policy_baseline"
   },
   {
-   "order": 233,
+   "order": 229,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/scans",
@@ -2613,7 +2569,7 @@
    "endpoint": "routers.compliance.trigger_compliance_scan"
   },
   {
-   "order": 234,
+   "order": 230,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/findings",
@@ -2624,7 +2580,7 @@
    "endpoint": "routers.compliance.list_findings"
   },
   {
-   "order": 235,
+   "order": 231,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/controls/{control_id}/attest",
@@ -2635,7 +2591,7 @@
    "endpoint": "routers.compliance.attest_manual_control"
   },
   {
-   "order": 236,
+   "order": 232,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/frameworks/{framework_id}/controls",
@@ -2646,7 +2602,7 @@
    "endpoint": "routers.compliance.list_framework_controls"
   },
   {
-   "order": 237,
+   "order": 233,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/controls/{control_id}/evidence",
@@ -2657,7 +2613,7 @@
    "endpoint": "routers.compliance.upload_control_evidence"
   },
   {
-   "order": 238,
+   "order": 234,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/controls/{control_id}/evidence",
@@ -2668,7 +2624,7 @@
    "endpoint": "routers.compliance.list_control_evidence"
   },
   {
-   "order": 239,
+   "order": 235,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/evidence/{file_id}/download",
@@ -2679,7 +2635,7 @@
    "endpoint": "routers.compliance.download_control_evidence"
   },
   {
-   "order": 240,
+   "order": 236,
    "scope": "http",
    "method": "DELETE",
    "path": "/compliance/evidence/{file_id}",
@@ -2690,7 +2646,7 @@
    "endpoint": "routers.compliance.delete_control_evidence"
   },
   {
-   "order": 241,
+   "order": 237,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/scans",
@@ -2701,7 +2657,7 @@
    "endpoint": "routers.compliance.list_scan_runs"
   },
   {
-   "order": 242,
+   "order": 238,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/scans/{run_id}",
@@ -2712,7 +2668,7 @@
    "endpoint": "routers.compliance.get_scan_run"
   },
   {
-   "order": 243,
+   "order": 239,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/schedules",
@@ -2723,7 +2679,7 @@
    "endpoint": "routers.compliance.create_scan_schedule"
   },
   {
-   "order": 244,
+   "order": 240,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/schedules",
@@ -2734,7 +2690,7 @@
    "endpoint": "routers.compliance.list_scan_schedules"
   },
   {
-   "order": 245,
+   "order": 241,
    "scope": "http",
    "method": "PATCH",
    "path": "/compliance/schedules/{schedule_id}",
@@ -2745,7 +2701,7 @@
    "endpoint": "routers.compliance.update_scan_schedule"
   },
   {
-   "order": 246,
+   "order": 242,
    "scope": "http",
    "method": "DELETE",
    "path": "/compliance/schedules/{schedule_id}",
@@ -2756,7 +2712,7 @@
    "endpoint": "routers.compliance.delete_scan_schedule"
   },
   {
-   "order": 247,
+   "order": 243,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/credentials",
@@ -2767,7 +2723,7 @@
    "endpoint": "routers.compliance.create_credential"
   },
   {
-   "order": 248,
+   "order": 244,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/credentials",
@@ -2778,7 +2734,7 @@
    "endpoint": "routers.compliance.list_credentials"
   },
   {
-   "order": 249,
+   "order": 245,
    "scope": "http",
    "method": "DELETE",
    "path": "/compliance/credentials/{id}",
@@ -2789,7 +2745,7 @@
    "endpoint": "routers.compliance.delete_credential"
   },
   {
-   "order": 250,
+   "order": 246,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/findings/{id}/remediate",
@@ -2800,7 +2756,7 @@
    "endpoint": "routers.compliance.apply_remediation"
   },
   {
-   "order": 251,
+   "order": 247,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/remediations/requests",
@@ -2811,7 +2767,7 @@
    "endpoint": "routers.compliance.list_remediation_requests"
   },
   {
-   "order": 252,
+   "order": 248,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/remediations/requests/{id}/approve",
@@ -2822,7 +2778,7 @@
    "endpoint": "routers.compliance.approve_remediation_request"
   },
   {
-   "order": 253,
+   "order": 249,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/remediations/requests/{id}/cancel",
@@ -2833,7 +2789,7 @@
    "endpoint": "routers.compliance.cancel_remediation_request"
   },
   {
-   "order": 254,
+   "order": 250,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/remediations/requests/{id}/rollback",
@@ -2844,7 +2800,7 @@
    "endpoint": "routers.compliance.rollback_remediation_request"
   },
   {
-   "order": 255,
+   "order": 251,
    "scope": "http",
    "method": "POST",
    "path": "/compliance/findings/{id}/exception",
@@ -2855,7 +2811,7 @@
    "endpoint": "routers.compliance.request_exception_waiver"
   },
   {
-   "order": 256,
+   "order": 252,
    "scope": "http",
    "method": "PATCH",
    "path": "/compliance/exceptions/{id}",
@@ -2866,7 +2822,7 @@
    "endpoint": "routers.compliance.approve_exception_waiver"
   },
   {
-   "order": 257,
+   "order": 253,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/summary",
@@ -2877,7 +2833,7 @@
    "endpoint": "routers.compliance.get_dashboard_summary"
   },
   {
-   "order": 258,
+   "order": 254,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/soa",
@@ -2888,7 +2844,7 @@
    "endpoint": "routers.compliance.download_statement_of_applicability"
   },
   {
-   "order": 259,
+   "order": 255,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/executive",
@@ -2899,7 +2855,7 @@
    "endpoint": "routers.compliance.download_executive_compliance_report"
   },
   {
-   "order": 260,
+   "order": 256,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/gap-analysis",
@@ -2910,7 +2866,7 @@
    "endpoint": "routers.compliance.get_compliance_gap_analysis"
   },
   {
-   "order": 261,
+   "order": 257,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/nist_csf",
@@ -2921,7 +2877,7 @@
    "endpoint": "routers.compliance.download_nist_csf_report"
   },
   {
-   "order": 262,
+   "order": 258,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/cis_v8_1",
@@ -2932,7 +2888,7 @@
    "endpoint": "routers.compliance.download_cis_v8_1_report"
   },
   {
-   "order": 263,
+   "order": 259,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/soc2_type2",
@@ -2943,7 +2899,7 @@
    "endpoint": "routers.compliance.download_soc2_type2_report"
   },
   {
-   "order": 264,
+   "order": 260,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/cert_in_2022",
@@ -2954,7 +2910,7 @@
    "endpoint": "routers.compliance.download_cert_in_2022_report"
   },
   {
-   "order": 265,
+   "order": 261,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/pci_dss_v4",
@@ -2965,7 +2921,7 @@
    "endpoint": "routers.compliance.download_pci_dss_v4_report"
   },
   {
-   "order": 266,
+   "order": 262,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/dpdp_2023",
@@ -2976,7 +2932,7 @@
    "endpoint": "routers.compliance.download_dpdp_2023_report"
   },
   {
-   "order": 267,
+   "order": 263,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/gdpr",
@@ -2987,7 +2943,7 @@
    "endpoint": "routers.compliance.download_gdpr_report"
   },
   {
-   "order": 268,
+   "order": 264,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/nist_800_53_r5",
@@ -2998,7 +2954,7 @@
    "endpoint": "routers.compliance.download_nist_800_53_r5_report"
   },
   {
-   "order": 269,
+   "order": 265,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/iec_62443",
@@ -3009,7 +2965,7 @@
    "endpoint": "routers.compliance.download_iec_62443_report"
   },
   {
-   "order": 270,
+   "order": 266,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/nist_800_82",
@@ -3020,7 +2976,7 @@
    "endpoint": "routers.compliance.download_nist_800_82_report"
   },
   {
-   "order": 271,
+   "order": 267,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/nerc_cip",
@@ -3031,7 +2987,7 @@
    "endpoint": "routers.compliance.download_nerc_cip_report"
   },
   {
-   "order": 272,
+   "order": 268,
    "scope": "http",
    "method": "GET",
    "path": "/compliance/reports/nis2",
@@ -3042,7 +2998,7 @@
    "endpoint": "routers.compliance.download_nis2_report"
   },
   {
-   "order": 273,
+   "order": 269,
    "scope": "http",
    "method": "GET",
    "path": "/platform/modules",
@@ -3053,7 +3009,7 @@
    "endpoint": "ccure_platform.hub.router.list_platform_modules"
   },
   {
-   "order": 274,
+   "order": 270,
    "scope": "http",
    "method": "GET",
    "path": "/platform/rbac/permissions",
@@ -3064,7 +3020,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.list_permissions"
   },
   {
-   "order": 275,
+   "order": 271,
    "scope": "http",
    "method": "GET",
    "path": "/platform/rbac/roles",
@@ -3075,7 +3031,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.list_roles"
   },
   {
-   "order": 276,
+   "order": 272,
    "scope": "http",
    "method": "GET",
    "path": "/platform/rbac/roles/{role_id}",
@@ -3086,7 +3042,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.get_role"
   },
   {
-   "order": 277,
+   "order": 273,
    "scope": "http",
    "method": "GET",
    "path": "/platform/rbac/assignable-roles",
@@ -3097,7 +3053,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.assignable_roles"
   },
   {
-   "order": 278,
+   "order": 274,
    "scope": "http",
    "method": "GET",
    "path": "/platform/rbac/users/{user_id}/assignments",
@@ -3108,7 +3064,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.get_user_assignments"
   },
   {
-   "order": 279,
+   "order": 275,
    "scope": "http",
    "method": "POST",
    "path": "/platform/rbac/roles",
@@ -3119,7 +3075,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.create_role"
   },
   {
-   "order": 280,
+   "order": 276,
    "scope": "http",
    "method": "PATCH",
    "path": "/platform/rbac/roles/{role_id}",
@@ -3130,7 +3086,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.update_role"
   },
   {
-   "order": 281,
+   "order": 277,
    "scope": "http",
    "method": "PUT",
    "path": "/platform/rbac/roles/{role_id}/permissions",
@@ -3141,7 +3097,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.set_permissions"
   },
   {
-   "order": 282,
+   "order": 278,
    "scope": "http",
    "method": "POST",
    "path": "/platform/rbac/roles/{role_id}/transition",
@@ -3152,7 +3108,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.transition_role"
   },
   {
-   "order": 283,
+   "order": 279,
    "scope": "http",
    "method": "POST",
    "path": "/platform/rbac/roles/{role_id}/replace",
@@ -3163,7 +3119,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.replace_role"
   },
   {
-   "order": 284,
+   "order": 280,
    "scope": "http",
    "method": "POST",
    "path": "/platform/rbac/users/{user_id}/assignments",
@@ -3174,7 +3130,7 @@
    "endpoint": "ccure_platform.administration.rbac_admin.assign_role"
   },
   {
-   "order": 285,
+   "order": 281,
    "scope": "http",
    "method": "DELETE",
    "path": "/platform/rbac/assignments/{assignment_id}",

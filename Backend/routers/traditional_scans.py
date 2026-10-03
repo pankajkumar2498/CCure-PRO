@@ -11,7 +11,7 @@ Endpoints
   POST /scan/subnets   → sub-networks of a parent CIDR (discovery only)
 """
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from scan_helpers import limiter, log
@@ -54,7 +54,7 @@ async def scan_host(
     request: Request,
     response: Response,
     req: SingleHostRequest,
-    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),
@@ -80,7 +80,7 @@ async def scan_range(
     request: Request,
     response: Response,
     req: RangeRequest,
-    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),
@@ -106,7 +106,7 @@ async def scan_subnet(
     request: Request,
     response: Response,
     req: SubnetRequest,
-    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     task = run_traditional_scan_task.delay(
         user_id=str(current_user.id),
@@ -132,7 +132,7 @@ async def scan_subnets(
     request: Request,
     response: Response,
     req: SubnetsRequest,
-    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     # Note: run_phases doesn't natively handle subnet_prefix expansion in the same way,
     # but for compatibility we trigger it as Phase 1.

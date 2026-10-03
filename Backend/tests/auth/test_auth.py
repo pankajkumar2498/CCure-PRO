@@ -96,9 +96,12 @@ def test_register_creates_pending_account_without_tokens(
     assert user.is_verified is False
     assert user.is_active is False
     assert user.approved_at is None
-    # Read-only role, not analyst: approval must not be a rubber stamp on
+    # Signup grants nothing privileged: with no default role configured the
+    # account holds no assignment at all; approval is not a rubber stamp on
     # scan execution that was granted at signup.
-    assert user.role.name == "viewer"
+    from ccure_platform.api import has_permission
+
+    assert not has_permission(db_session, user, "audit.scan.run")
 
 
 def test_register_pending_account_cannot_log_in(

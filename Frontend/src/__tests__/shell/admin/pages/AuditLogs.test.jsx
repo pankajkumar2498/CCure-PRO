@@ -29,6 +29,7 @@ import userEvent from "@testing-library/user-event";
 
 import AuditLogs from "@shell/admin/pages/AuditLogs";
 import axiosInstance from "@shell/api/axiosInstance";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -46,7 +47,7 @@ vi.mock("@shell/layout/ProductFrame", () => ({
 
 let currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let superadmin = true;

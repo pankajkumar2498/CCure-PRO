@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Every remaining legacy authorization decision made by a role NAME (superadmin / _is_superadmin / require_role / direct role.name checks), recorded as RBAC-4 migration evidence. RBAC-4 migrated 13 of the original 40 (see role_name_site_decisions.json); RBAC-5 migrated 20 more (scope, switching, hierarchy; see role_name_site_decisions.json); RBAC-7 resolved 3 more (user-directory helper, audit-log helper, compliance bypass); the sites listed here remain, each RBAC-8 (provisioning, default role, bootstrap, and the legacy rollback rule itself). Measured by scripts/architecture/rbac_guardrails.py; tests/rbac/test_rbac_legacy_role_evidence.py fails if this list and the code disagree.",
+  "description": "RBAC-8: every role-name authorization decision has been removed; the list is empty and the ratchet baseline is empty. The decisions for the original 40 sites are kept in role_name_site_decisions.json.",
   "categories": {
     "permission_guard": "A route or router is guarded by a role name. RBAC-4 replaces it with the listed permission.",
     "permission_bypass": "A permission check is skipped for the superadmin by name. RBAC-4 removes the shortcut: the superadmin role holds materialised grants.",
@@ -12,60 +12,6 @@
     "bootstrap": "First-run provisioning of the initial administrator. A permitted seed/bootstrap context; moves to a role key.",
     "legacy_authority": "The legacy check itself. Removed with the legacy model in RBAC-8."
   },
-  "sites": [
-    {
-      "file": "ccure_platform/administration/organizations.py",
-      "line": 187,
-      "kind": "role_identity_compare",
-      "what": "org_admin",
-      "category": "provisioning_lookup",
-      "rbac4_replacement": "role key platform.org_admin",
-      "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "ccure_platform/identity/router.py",
-      "line": 638,
-      "kind": "role_identity_compare",
-      "what": "viewer",
-      "category": "default_role",
-      "rbac4_replacement": "rbac_default_roles(self_registration)",
-      "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "ccure_platform/rbac/dependencies.py",
-      "line": 158,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "legacy_authority",
-      "rbac4_replacement": "removed with the legacy model",
-      "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "ccure_platform/rbac/legacy_scope.py",
-      "line": 21,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "legacy_authority",
-      "rbac4_replacement": "removed with the legacy model",
-      "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "ccure_platform/rbac/legacy_scope.py",
-      "line": 16,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "legacy_authority",
-      "rbac4_replacement": "removed with the legacy model",
-      "deferred_to": "RBAC-8"
-    },
-    {
-      "file": "main.py",
-      "line": 277,
-      "kind": "role_identity_compare",
-      "what": "superadmin",
-      "category": "bootstrap",
-      "rbac4_replacement": "role key platform.superadmin (seed context)",
-      "deferred_to": "RBAC-8"
-    }
-  ]
+  "sites": [],
+  "status": "closed-rbac8"
 }

@@ -46,6 +46,7 @@ import NewScan from "@audit/pages/scan/NewScan";
 import { ScanProvider } from "@audit/context/ScanContext";
 import api from "@shell/api/axiosInstance";
 import { SRC, AUDIT_SRC } from "../../../../testPaths";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -76,7 +77,7 @@ vi.mock("@audit/components/scan/ScanQuotaBar", () => ({
 
 let user;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user }),
+  useAuth: () => ({ user: personaFrom(user) }),
 }));
 
 const EXECUTOR = {

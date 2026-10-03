@@ -1,5 +1,9 @@
 # RBAC-4 — backend authorization migration
 
+> **COMPLETED AND RETIRED (RBAC-8).** The per-path authority switch, the legacy fallback and the
+> `RBAC_AUTHORITY_*` settings described below were deleted: Platform RBAC is the only authority.
+> Kept as history. See [RBAC_CUTOVER.md](RBAC_CUTOVER.md).
+
 **Status: the mechanism is built and proven in a disposable database; it is OFF in
 every deployment.** Legacy authorization (`users.role_id`, `roles`, `role_permissions`)
 is still what decides, until an operator switches a path on. Production was not

@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from core.quota import check_scan_quota, get_quota_status
@@ -156,7 +156,7 @@ def _assert_hosts_admitted(db: Session, scan, hosts: list[dict]) -> None:
 def get_scan_quota(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Return the organisation's current scan quota status.
@@ -425,7 +425,7 @@ async def scan_host_discovery(
     response: Response,
     req: HostDiscoveryRequest,
     org_id: str | None = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
     db: Session = Depends(get_db),
 ):
     """
@@ -613,7 +613,7 @@ async def scan_asset_discovery(
     response: Response,
     req: AssetDiscoveryRequest,
     org_id: str | None = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
     db: Session = Depends(get_db),
 ):
     """
@@ -684,7 +684,7 @@ async def scan_vulnerability_audit(
     response: Response,
     req: VulnerabilityAuditRequest,
     org_id: str | None = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
     db: Session = Depends(get_db),
 ):
     """
@@ -739,7 +739,7 @@ async def scan_phases(
     request: Request,
     response: Response,
     req: PhasesRequest,
-    current_user: CurrentUser = Depends(require_permission("scans", "execute")),
+    current_user: CurrentUser = Depends(require_authorized("audit.scan.run")),
     db: Session = Depends(get_db),
 ):
     """Convenience endpoint — run any combination of phases in one call (Background)."""

@@ -9,6 +9,7 @@ answer for a missing id, and no ORM object crossing the boundary.
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 
 import pytest
 
@@ -28,6 +29,7 @@ def _add_user(db, org, role, name, **extra):
         role_id=role.id if role is not None else None,
         is_active=extra.pop("is_active", True),
         is_verified=True,
+        approved_at=datetime.now(timezone.utc),
         **extra,
     )
     db.add(row)
@@ -107,9 +109,10 @@ def test_in_app_alerts_is_off_only_when_explicitly_false(
     assert api.user(db_session, test_user.id).in_app_alerts is expected
 
 
-def test_active_members_with_roles_matches_the_fan_out_query(
+def test_users_holding_permission_matches_the_fan_out_query(
     db_session, test_org, test_role_admin, test_role_viewer
 ):
+    """Who is notified is decided by the permission, never a role name (RBAC-8)."""
     admin = _add_user(db_session, test_org, test_role_admin, "admin1")
     viewer = _add_user(db_session, test_org, test_role_viewer, "viewer1")
     inactive = _add_user(
@@ -121,40 +124,41 @@ def test_active_members_with_roles_matches_the_fan_out_query(
 
     ids = {
         v.id
-        for v in api.active_members_with_roles(db_session, test_org.id, ["org_admin"])
+        for v in api.users_holding_permission(
+            db_session, test_org.id, "platform.user.update"
+        )
     }
     assert admin.id in ids
     assert viewer.id not in ids
     assert inactive.id not in ids
     assert deleted.id not in ids
+    assert api.users_holding_permission(db_session, test_org.id, "no.such.key") == []
     assert (
-        api.active_members_with_roles(db_session, test_org.id, ["no_such_role"]) == []
+        api.users_holding_permission(db_session, "org_other", "platform.user.update")
+        == []
     )
-    assert api.active_members_with_roles(db_session, "org_other", ["org_admin"]) == []
 
 
 # ── RBAC ──────────────────────────────────────────────────────────────────────
 
 
-def test_user_has_permission_is_require_permissions_rule(
-    db_session, test_org, test_role_viewer
-):
+def test_has_permission_is_the_engines_rule(db_session, test_org, test_role_viewer):
     viewer = _add_user(db_session, test_org, test_role_viewer, "viewer2")
     superadmin_role = db_session.query(Role).filter(Role.name == "superadmin").first()
     boss = _add_user(db_session, test_org, superadmin_role, "boss")
-    # users.role_id is NOT NULL, so a role-less account exists only in memory —
-    # which is the case require_permission guards against.
-    nobody = User(id="usr_norole", role_id=None)
+    nobody = _add_user(db_session, test_org, None, "norole")  # no role at all
 
     # by ORM user (what a route holds) and by id (what a task holds) agree
     for account in (viewer, viewer.id):
-        assert api.user_has_permission(db_session, account, "scans", "read")
-        assert not api.user_has_permission(db_session, account, "users", "delete")
+        assert api.has_permission(db_session, account, "audit.scan.read")
+        assert not api.has_permission(db_session, account, "platform.user.delete")
     for account in (boss, boss.id):
-        assert api.user_has_permission(db_session, account, "anything", "at_all")
-    assert not api.user_has_permission(db_session, nobody, "scans", "read")
-    assert not api.user_has_permission(db_session, None, "scans", "read")
-    assert not api.user_has_permission(db_session, "usr_unknown", "scans", "read")
+        assert api.has_permission(db_session, account, "platform.user.delete")
+    # an account with no RBAC assignment, no account and an unknown id hold nothing
+    assert not api.has_permission(db_session, nobody, "audit.scan.read")
+    assert not api.has_permission(db_session, None, "audit.scan.read")
+    assert not api.has_permission(db_session, "usr_unknown", "audit.scan.read")
+    assert not api.has_permission(db_session, boss, "no.such.key")
 
 
 def test_request_identity_is_the_existing_dependencies():
@@ -163,8 +167,12 @@ def test_request_identity_is_the_existing_dependencies():
 
     assert api.current_user is dependencies.get_current_user
     assert api.current_user_flexible is dependencies.get_current_user_flexible
-    assert api.require_permission is rbac.require_permission
-    assert api.require_role is rbac.require_role
+    assert api.require_authorized is rbac.require_authorized
+    assert api.has_permission is rbac.has_permission
+    # the legacy guards are gone
+    assert not hasattr(api, "require_permission")
+    assert not hasattr(api, "require_role")
+    assert not hasattr(api, "user_has_permission")
     # the principal's type is the identity model, named by the platform (8.5)
     assert api.CurrentUser is User
 

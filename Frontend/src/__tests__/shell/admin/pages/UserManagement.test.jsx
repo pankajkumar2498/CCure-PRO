@@ -28,7 +28,9 @@ import userEvent from "@testing-library/user-event";
 
 import UserManagement from "@shell/admin/pages/UserManagement";
 import * as adminApi from "@shell/api/admin";
+import * as rbacApi from "@shell/api/rbac";
 import { checkUsername, checkEmail } from "@shell/api/auth";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 let searchParams = new URLSearchParams();
@@ -42,9 +44,13 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
+vi.mock("@shell/api/rbac", async (importOriginal) => ({
+  ...(await importOriginal()),
+  listAssignableRoles: vi.fn(),
+}));
+
 vi.mock("@shell/api/admin", () => ({
   listUsers: vi.fn(),
-  listRoles: vi.fn(),
   listOrganizations: vi.fn(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
@@ -124,7 +130,7 @@ const VIEWER = {
 
 let currentUser = SUPERADMIN;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 const ROLES = [
@@ -237,9 +243,10 @@ beforeEach(() => {
   adminApi.listUsers.mockResolvedValue({ users: USERS, total: USERS.length });
   // the backend marks which roles the signed-in account may hand out
   // (RBAC-7); here it follows the persona's reach, as the real rules do
-  adminApi.listRoles.mockImplementation(async () => ({
+  rbacApi.listAssignableRoles.mockImplementation(async () => ({
     roles: ROLES.map((r) => ({
-      ...r,
+      id: String(r.id),
+      display_name: r.name,
       assignable:
         currentUser.authorization.can_switch_organisation ||
         r.name !== "superadmin",
@@ -281,7 +288,7 @@ describe("UserManagement — reads and personas", () => {
 
   it("superadmin: fetches roles AND organizations, shows the organization filter, no org_admin note", async () => {
     await renderPage();
-    expect(adminApi.listRoles).toHaveBeenCalled();
+    expect(rbacApi.listAssignableRoles).toHaveBeenCalled();
     expect(adminApi.listOrganizations).toHaveBeenCalled();
     expect(screen.getByDisplayValue("All Organizations")).toBeInTheDocument();
     expect(
@@ -303,7 +310,7 @@ describe("UserManagement — reads and personas", () => {
   it("org_admin: roles only, no organization filter, own-organization note, no Organization column", async () => {
     currentUser = ORG_ADMIN;
     await renderPage();
-    expect(adminApi.listRoles).toHaveBeenCalled();
+    expect(rbacApi.listAssignableRoles).toHaveBeenCalled();
     expect(adminApi.listOrganizations).not.toHaveBeenCalled();
     expect(
       screen.queryByDisplayValue("All Organizations"),
@@ -420,7 +427,7 @@ describe("UserManagement — create and edit", () => {
       full_name: "Dave Dev",
       email: "dave@example.test",
       password: secret,
-      role_id: 3,
+      rbac_role_id: "3",
       organization_id: "8",
     });
     await waitFor(() =>
@@ -512,12 +519,12 @@ describe("UserManagement — create and edit", () => {
     );
     await waitFor(() =>
       expect(adminApi.createUser).toHaveBeenCalledWith(
-        expect.objectContaining({ organization_id: 7, role_id: 3 }),
+        expect.objectContaining({ organization_id: 7, rbac_role_id: "3" }),
       ),
     );
   });
 
-  it("edit: prefilled, and only the changed facets are written (profile, then role, then organization)", async () => {
+  it("edit: prefilled, and only the changed facets are written (profile, then organization — never a role)", async () => {
     await renderPage();
     await userEvent.click(rowButton("alice", /edit/i));
     const dlg = dialog();
@@ -527,12 +534,12 @@ describe("UserManagement — create and edit", () => {
     expect(within(dlg).getByLabelText(/full name/i)).toHaveValue(
       "Alice Analyst",
     );
-    expect(selectFor(dlg, /^role/i)).toHaveValue("3");
+    // roles are managed in the Roles panel, never in the edit form
+    expect(within(dlg).queryByLabelText(/^role/i)).not.toBeInTheDocument();
     expect(selectFor(dlg, /^organization/i)).toHaveValue("7");
 
     await userEvent.clear(within(dlg).getByLabelText(/full name/i));
     await userEvent.type(within(dlg).getByLabelText(/full name/i), "Alice A.");
-    await userEvent.selectOptions(selectFor(dlg, /^role/i), "2");
     await userEvent.selectOptions(selectFor(dlg, /^organization/i), "8");
     await userEvent.click(
       within(dlg).getByRole("button", { name: /save changes/i }),
@@ -543,7 +550,7 @@ describe("UserManagement — create and edit", () => {
       full_name: "Alice A.",
       email: "alice@example.test",
     });
-    expect(adminApi.changeUserRole).toHaveBeenCalledWith(10, 2);
+    expect(adminApi.changeUserRole).not.toHaveBeenCalled();
     expect(adminApi.moveUserOrganization).toHaveBeenCalledWith(10, "8");
   });
 

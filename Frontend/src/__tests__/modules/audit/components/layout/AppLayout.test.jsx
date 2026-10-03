@@ -84,7 +84,7 @@ const logout = vi.fn();
 let user;
 const switchOrganisation = vi.fn();
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user, logout, switchOrganisation }),
+  useAuth: () => ({ user: personaFrom(user), logout, switchOrganisation }),
 }));
 
 const updateLocalPreferences = vi.fn();

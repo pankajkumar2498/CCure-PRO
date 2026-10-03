@@ -4,6 +4,9 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import PrivateRoute from "@shell/auth/PrivateRoute";
 import AuthContext from "@shell/auth/AuthContext";
 import { AccessFallbackProvider } from "@shell/auth/accessFallback";
+import { payload } from "../../fixtures/authorization";
+
+const holder = (...keys) => ({ authorization: payload({ keys }) });
 
 describe("PrivateRoute Component", () => {
   const renderWithAuth = (authValue, route = "/dashboard") => {
@@ -15,9 +18,7 @@ describe("PrivateRoute Component", () => {
             <Route
               path="/dashboard"
               element={
-                <PrivateRoute
-                  requiredPermission={{ resource: "scans", action: "execute" }}
-                >
+                <PrivateRoute requiredPermission="audit.scan.run">
                   <div>Dashboard Area</div>
                 </PrivateRoute>
               }
@@ -39,14 +40,14 @@ describe("PrivateRoute Component", () => {
   });
 
   it("renders children if user is authenticated and authorized", () => {
-    const user = { role: { name: "admin", permissions: ["scans:execute"] } };
+    const user = holder("audit.scan.run");
     renderWithAuth({ loading: false, user, authState: "authenticated" });
     expect(screen.getByText("Dashboard Area")).toBeInTheDocument();
   });
 
   it("redirects unauthorized users away from protected routes", () => {
     // User without scans:execute permission
-    const user = { role: { name: "viewer", permissions: [] } };
+    const user = holder("audit.scan.read");
     renderWithAuth({ loading: false, user, authState: "authenticated" });
     expect(screen.queryByText("Dashboard Area")).not.toBeInTheDocument();
   });
@@ -59,7 +60,7 @@ describe("PrivateRoute Component", () => {
         value={{
           loading: false,
           authState: "authenticated",
-          user: { role: { name: "analyst", permissions } },
+          user: holder(...permissions),
         }}
       >
         <AccessFallbackProvider candidates={candidates}>
@@ -68,9 +69,7 @@ describe("PrivateRoute Component", () => {
               <Route
                 path="/locked"
                 element={
-                  <PrivateRoute
-                    requiredPermission={{ resource: "roles", action: "read" }}
-                  >
+                  <PrivateRoute requiredPermission="platform.role.read">
                     <div>Locked page</div>
                   </PrivateRoute>
                 }
@@ -84,17 +83,30 @@ describe("PrivateRoute Component", () => {
       </AuthContext.Provider>,
     );
   const CANDIDATES = [
-    { path: "/first", permission: { resource: "scans", action: "execute" } },
-    { path: "/second", permission: { resource: "scans", action: "read" } },
+    { path: "/first", permission: "audit.scan.run" },
+    { path: "/second", permission: "audit.scan.read" },
   ];
 
   it("a refusal goes to the first candidate the user may open", () => {
-    refused(CANDIDATES, ["scans:read"]);
+    refused(CANDIDATES, ["audit.scan.read"]);
     expect(screen.getByText("Second fallback")).toBeInTheDocument();
   });
 
   it("with no product candidates a refusal goes to sign-in, never to CCure Home", () => {
-    refused([], ["scans:read", "scans:execute"]);
+    refused([], ["audit.scan.read", "audit.scan.run"]);
     expect(screen.getByText("Login Page")).toBeInTheDocument();
+  });
+
+  it("an incompatible backend is reported plainly, never guessed around", () => {
+    renderWithAuth({
+      loading: false,
+      user: null,
+      authState: "incompatible",
+      authMessage: "This server does not provide the authorization contract",
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "does not provide the authorization contract",
+    );
+    expect(screen.queryByText("Login Page")).not.toBeInTheDocument();
   });
 });

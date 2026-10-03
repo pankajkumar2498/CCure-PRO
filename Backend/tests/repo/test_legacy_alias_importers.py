@@ -89,7 +89,6 @@ def test_the_extracted_modules_have_no_importer_in_module_code():
         "routers.notifications",
         "routers.admin_users",
         "routers.admin_orgs",
-        "routers.admin_rbac",
         "routers.admin_email_domains",
         "routers.user_profile",
     ):

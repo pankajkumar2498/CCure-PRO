@@ -22,6 +22,7 @@ from db.base import utcnow
 from db.models import EmailVerificationToken, Organization, Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from rbac_testing import system_role_id
 
 
 @pytest.fixture
@@ -552,7 +553,7 @@ def test_admin_created_users_are_verified_and_approved(
             "email": "provisioned@test.com",
             "password": "StrongP@ssw0rd!",
             "full_name": "Provisioned User",
-            "role_id": role.id,
+            "rbac_role_id": system_role_id(db_session, "viewer"),
             "organization_id": test_org.id,
         },
     )

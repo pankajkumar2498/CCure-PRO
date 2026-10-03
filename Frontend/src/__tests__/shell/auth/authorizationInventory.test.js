@@ -11,8 +11,7 @@ const STATUSES = new Set([
   "migrated",
   "display-only",
   "intentionally-retained",
-  "rbac7",
-  "rbac8",
+  "compatibility-history",
 ]);
 
 describe("frontend authorization inventory", () => {
@@ -39,13 +38,28 @@ describe("frontend authorization inventory", () => {
     expect(sites).toEqual([]);
   });
 
-  it("the only legacy role-permission read is the older-backend fallback", () => {
-    const reads = inv.sites.filter(
-      (s) => s.kind === "role_permissions_read" && s.status !== "display-only",
-    );
-    expect(reads.map((s) => [s.file, s.status])).toEqual([
-      ["src/shell/auth/authorization.js", "intentionally-retained"],
-    ]);
+  it("no legacy role-permission read survives", () => {
+    const reads = inv.sites.filter((s) => s.kind === "role_permissions_read");
+    expect(reads).toEqual([]);
+  });
+
+  it("what was removed stays removed: none of the recorded text is in the source", () => {
+    expect(inv.removed.length).toBeGreaterThan(0);
+    const walk = (dir) =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = `${dir}/${e.name}`;
+        if (e.isDirectory()) return e.name === "__tests__" ? [] : walk(p);
+        return /\.(js|jsx)$/.test(e.name) ? [p] : [];
+      });
+    const text = walk("src")
+      .map((p) => fs.readFileSync(p, "utf8"))
+      .join("\n");
+    for (const r of inv.removed) {
+      expect(r.status).toBe("removed");
+      for (const needle of r.forbidden) {
+        expect(text.includes(needle), `${needle} (${r.what})`).toBe(false);
+      }
+    }
   });
 
   it("the organisation hint is never an authorization input", () => {

@@ -2,7 +2,7 @@
 ccure_platform/accounts.py — an account, as a module may see it.
 
 The account views and lookups behind ``ccure_platform.api`` (``user``,
-``user_display_names``, ``active_members_with_roles``), moved out of ``api.py``
+``user_display_names``, ``users_holding_permission``), moved out of ``api.py``
 so platform-internal code (the notification service) can use them without
 importing the API facade, which imports that service. ``ccure_platform.api``
 re-exports them unchanged.
@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from db.models import Role, User
+from db.models import User
 from sqlalchemy.orm import Session
 
 
@@ -77,24 +77,24 @@ def user_display_names(db: Session, user_ids: Iterable[str]) -> dict[str, str]:
     return {str(uid): str(email or "") for uid, email in rows}
 
 
-def active_members_with_roles(
-    db: Session, org_id: str, role_names: Iterable[str]
+def users_holding_permission(
+    db: Session, org_id: str, permission_key: str
 ) -> list[UserView]:
     """
-    The active, undeleted accounts in ``org_id`` holding any of ``role_names``.
-
-    Role names are matched exactly, as stored. No matching role gives an empty
-    list without querying accounts.
+    The active, undeleted accounts that hold ``permission_key`` in ``org_id`` — an
+    organisation-scope assignment there, or a platform-scope one whose own organisation
+    it is (the RBAC engine's rule, ``governance.holders``). No role name is consulted.
     """
-    names = list(role_names)
-    role_ids = [r.id for r in db.query(Role).filter(Role.name.in_(names)).all()]
-    if not role_ids:
+    from ccure_platform.rbac.governance import holders
+
+    ids = holders(db, permission_key, platform=False, org_id=org_id)
+    if not ids:
         return []
     rows = (
         db.query(User)
         .filter(
+            User.id.in_(ids),
             User.org_id == org_id,
-            User.role_id.in_(role_ids),
             User.is_active == True,  # noqa: E712  (SQL comparison)
             User.is_deleted == False,  # noqa: E712
         )

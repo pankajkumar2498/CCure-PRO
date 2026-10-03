@@ -52,7 +52,7 @@ export default function ScanList() {
   const { user } = useAuth();
   // Launching sends active attack traffic at the target; the API requires
   // scans:execute, so the control is not offered to a role that lacks it.
-  const canLaunch = can(user, "scans", "execute");
+  const canLaunch = can(user, "audit.scan.run");
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
 

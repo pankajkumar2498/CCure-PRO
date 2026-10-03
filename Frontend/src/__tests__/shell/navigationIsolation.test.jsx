@@ -42,7 +42,7 @@ vi.mock("@shell/auth/AuthContext", async () => {
     useAuth: () => ({
       isAuthenticated: true,
       loading: false,
-      user,
+      user: personaFrom(user),
       logout: vi.fn(),
     }),
   };

@@ -48,10 +48,10 @@ from config import JWTConfig
 KINDS = ("access", "refresh", "ticket", "mfa_challenge")
 
 EXPECTED_CLAIMS = {
-    "access": {"sub", "username", "type", "role", "org_id", "iat", "exp"},
+    "access": {"sub", "username", "type", "org_id", "iat", "exp"},
     "refresh": {"sub", "type", "jti", "iat", "exp"},
     "ticket": {"sub", "username", "type", "iat", "exp"},
-    "mfa_challenge": {"sub", "username", "type", "role", "org_id", "iat", "exp"},
+    "mfa_challenge": {"sub", "username", "type", "org_id", "iat", "exp"},
 }
 EXPECTED_LIFETIME = {
     "access": timedelta(minutes=JWTConfig.ACCESS_TOKEN_EXPIRES_MINUTES),
@@ -146,8 +146,8 @@ def test_header_claims_and_lifetime(db_session, test_user, kind):
     assert timedelta(seconds=claims["exp"] - claims["iat"]) == EXPECTED_LIFETIME[kind]
     if "org_id" in claims:
         assert claims["org_id"] == str(test_user.org_id)
-    if "role" in claims:
-        assert claims["role"] == test_user.role.name
+    # RBAC-8: no role claim is issued; none is an authorization input
+    assert "role" not in claims
 
 
 def test_the_signing_configuration_is_hs256_from_jwt_secret_key():

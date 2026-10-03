@@ -33,10 +33,10 @@ KINDS = ("access", "refresh", "ticket", "mfa_challenge")
 
 #: The claims each kind carried before 9.4, unchanged.
 LEGACY_CLAIMS = {
-    "access": {"sub", "username", "type", "role", "org_id", "iat", "exp"},
+    "access": {"sub", "username", "type", "org_id", "iat", "exp"},
     "refresh": {"sub", "type", "jti", "iat", "exp"},
     "ticket": {"sub", "username", "type", "iat", "exp"},
-    "mfa_challenge": {"sub", "username", "type", "role", "org_id", "iat", "exp"},
+    "mfa_challenge": {"sub", "username", "type", "org_id", "iat", "exp"},
 }
 #: What 9.4 adds to every kind (design §3.3).
 ADDED_CLAIMS = {"iss", "aud", "ptype", "jti", "nbf"}
@@ -121,8 +121,8 @@ def test_new_tokens_carry_the_full_claim_set(db_session, test_user, kind):
     assert isinstance(claims["jti"], str) and len(claims["jti"]) >= 16
     if "org_id" in claims:
         assert claims["org_id"] == str(test_user.org_id)
-    if "role" in claims:
-        assert claims["role"] == test_user.role.name
+    # RBAC-8: no role claim is issued; none is an authorization input
+    assert "role" not in claims
 
 
 def test_every_token_gets_its_own_jti(db_session, test_user):
@@ -192,14 +192,20 @@ def test_an_es256_refresh_token_rotates_into_es256_tokens(db_session, test_user)
 
 
 def test_claim_consistency_still_applies_to_es256_tokens(client, db_session, test_user):
+    # the organisation claim must still match the account...
     token = jwt_handler.create_access_token(
-        test_user.id, test_user.username, role="superadmin", org_id=test_user.org_id
+        test_user.id, test_user.username, org_id="org_someone_else"
     )
     response = _bearer(client, token)
     assert response.status_code == 401
     assert response.json()["detail"] == (
-        "Token role scope no longer matches the user account"
+        "Token organization scope no longer matches the user account"
     )
+    # ...and a role claim is ignored: it can neither grant nor refuse anything (RBAC-8)
+    forged = jwt_handler.create_access_token(
+        test_user.id, test_user.username, role="superadmin", org_id=test_user.org_id
+    )
+    assert _bearer(client, forged).status_code == 200
 
 
 # ── legacy sessions ───────────────────────────────────────────────────────────

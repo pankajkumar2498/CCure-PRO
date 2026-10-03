@@ -160,7 +160,6 @@ function TableRow({
 
 export default function UserTable({
   users,
-  roles,
   organizations,
   showOrganizationColumn = true,
   loading,
@@ -218,9 +217,8 @@ export default function UserTable({
         density="compact"
       >
         {users.map((user) => {
-          const roleName = roles.find(
-            (role) => String(role.id) === String(user.role_id),
-          )?.name;
+          // display labels of the account's live RBAC roles, as the backend sends them
+          const roleName = (user.role_names || []).join(", ");
           const organizationName = organizations.find(
             (organization) =>
               String(organization.id) ===

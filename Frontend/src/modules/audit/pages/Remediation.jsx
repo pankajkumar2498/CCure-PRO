@@ -92,9 +92,9 @@ const when = (iso) => {
 
 export default function Remediation() {
   const { user } = useAuth();
-  const canRead = can(user, "findings", "read");
-  const canUpdate = can(user, "findings", "update");
-  const canAcceptRisk = can(user, "findings", "accept_risk");
+  const canRead = can(user, "audit.finding.read");
+  const canUpdate = can(user, "audit.finding.update");
+  const canAcceptRisk = can(user, "audit.finding.accept_risk");
   const canEditSla = can(user, "audit.remediation.manage_sla");
   const canListUsers = can(user, "platform.user.read");
 

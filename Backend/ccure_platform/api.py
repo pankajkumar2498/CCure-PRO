@@ -12,25 +12,20 @@ What is here is what the modules were measured to need, and nothing more
 (``scripts/architecture/identity_boundary.PLATFORM_API_SURFACE`` is the
 ceiling, and a test fails on anything outside it):
 
-* **Request identity** — ``current_user``, ``current_user_flexible``,
-  ``require_permission``, ``require_role``: the FastAPI dependencies routes
-  already use, re-exported unchanged. They still hand a route the ORM ``User``,
-  because every route reads its attributes; views for those are a later
-  decision, not a side effect of this step. ``CurrentUser`` (step 8.5) is the
-  name a route annotates that parameter with, so a route depends on the
-  platform's name for the principal rather than on where the model lives.
-* **RBAC** — ``user_has_permission``: the single implementation behind
-  ``require_permission``, for checks a dependency cannot express.
-* **RBAC capability (RBAC-1, inert)** — ``PermissionDecl`` (how a module
-  declares a permission), ``ScopeContext`` / ``Principal`` /
-  ``AuthorizationDecision`` / ``EffectivePermissionSet`` (the contract types) and
-  ``authorize`` / ``can`` / ``effective_permissions`` / ``require`` (the new
-  authorization API). **No live route uses any of them**: ``require_permission``
-  and ``require_role`` above remain the authorization authority until the
-  migration phases (RBAC-3 onward). They exist so a module can declare and
-  consume permissions through the platform's one way in before any route moves.
+* **Request identity** — ``current_user``, ``current_user_flexible``: the FastAPI
+  dependencies routes already use, re-exported unchanged. They hand a route the ORM
+  ``User``. ``CurrentUser`` (step 8.5) is the name a route annotates that parameter with.
+* **Authorization (RBAC-8, final)** — ``require_authorized(key)`` and
+  ``has_permission(db, account, key, org_id=)``: the Platform RBAC engine is the **only**
+  authorization decision point. A route names the permission key it enforces
+  (``module.resource.action``); there is no legacy atom, role name or ``users.role_id``
+  input and no fallback. Scope — ``resolve_active_organisation``,
+  ``acts_across_organisations``, ``resource_organisation_allowed`` — keeps *where* apart
+  from *what*. ``PermissionDecl`` declares a module's permissions as data;
+  ``authorize`` / ``can`` / ``effective_permissions`` / ``require`` are the lower-level
+  engine API.
 * **Accounts** — ``user`` / ``UserView``, ``user_display_names``,
-  ``active_members_with_roles``.
+  ``users_holding_permission``.
 * **Tenancy** — ``organisation`` / ``OrganisationView``.
 * **Organisation plan** (step 8.4) — ``scan_limits``, ``scan_scope``,
   ``remediation_sla_setting`` / ``store_remediation_sla_setting``. Each is one
@@ -67,7 +62,7 @@ from ccure_platform.identity.dependencies import (
 )
 from ccure_platform.accounts import (
     UserView,
-    active_members_with_roles,
+    users_holding_permission,
     user,
     user_display_names,
 )
@@ -91,29 +86,19 @@ from ccure_platform.rbac.contract import (
     ScopeContext,
 )
 from ccure_platform.rbac.scope import (
-    AssignmentVerdict,
     acts_across_organisations,
-    check_role_assignment,
     resolve_active_organisation,
     resource_organisation_allowed,
 )
-from ccure_platform.rbac.dependencies import (
-    has_permission,
-    require_authorized,
-    require_permission,
-    require_role,
-)
-from ccure_platform.rbac.dependencies import (
-    user_has_permission as _role_holds_permission,
-)
+from ccure_platform.rbac.dependencies import has_permission, require_authorized
 from db.base import get_db
-from db.models import Organization, Role, User
+from db.models import Organization, User
 from fastapi import Depends, HTTPException
 from fastapi import status as _http_status
 from sqlalchemy.orm import Session
 
 #: The account a request is authenticated as — what ``current_user``,
-#: ``current_user_flexible``, ``require_permission`` and ``require_role`` hand a
+#: ``current_user_flexible`` and ``require_authorized`` hand a
 #: route. Today it *is* the identity model, and the alias says so rather than
 #: pretending otherwise; naming it here is what lets a later phase (a narrower
 #: view, or a separate authentication service, plan §3.9) change one line
@@ -125,9 +110,6 @@ __all__ = (
     "CurrentUser",
     "current_user",
     "current_user_flexible",
-    "require_permission",
-    "require_role",
-    "user_has_permission",
     # RBAC-4: permission-key guards that replaced role-name checks
     "require_authorized",
     "has_permission",
@@ -135,8 +117,6 @@ __all__ = (
     "resolve_active_organisation",
     "acts_across_organisations",
     "resource_organisation_allowed",
-    "check_role_assignment",
-    "AssignmentVerdict",
     # RBAC capability (RBAC-1): declared and consumable, used by no live route
     "PermissionDecl",
     "ScopeContext",
@@ -150,7 +130,7 @@ __all__ = (
     "UserView",
     "user",
     "user_display_names",
-    "active_members_with_roles",
+    "users_holding_permission",
     "OrganisationView",
     "organisation",
     # organisation plan — one removable feature per group
@@ -198,40 +178,11 @@ class OrganisationView:
 # ── RBAC ──────────────────────────────────────────────────────────────────────
 
 
-def user_has_permission(
-    db: Session,
-    account: Union[User, str, None],
-    resource: str,
-    action: str,
-    *,
-    authoritative: bool = False,
-    org_id: str | None = None,
-) -> bool:
-    """
-    Whether the account's role holds the ``resource:action`` permission atom.
-
-    ``account`` is the ``User`` a route already holds (from ``current_user``)
-    or an account id. Superadmin holds everything; an account with no role, or
-    no account, holds nothing. This is ``require_permission``'s own rule, so a
-    check made here can never disagree with a route guard.
-    """
-    if account is None:
-        return False
-    if isinstance(account, str):
-        account = db.query(User).filter(User.id == account).first()
-        if account is None:
-            return False
-    return _role_holds_permission(
-        db, account, resource, action, authoritative=authoritative, org_id=org_id
-    )
-
-
-# ── RBAC capability (RBAC-1: dark) ────────────────────────────────────────────
+# ── Authorization (RBAC-8: the only model) ────────────────────────────────────
 #
-# The new authorization API. Nothing live calls it: the legacy functions above
-# are authoritative, and these answer from the ``rbac_*`` tables, which no
-# production data populates yet. They take the account a route holds (or a
-# ``Principal``), never a role, and decide from permissions and scope alone.
+# ``require_authorized(key)`` and ``has_permission(db, account, key)`` (above) answer from
+# the RBAC engine alone. These take the account a route holds (or a ``Principal``), never
+# a role, and decide from permissions and scope.
 
 
 def _principal(who: Union[User, Principal]) -> Principal:
@@ -273,7 +224,7 @@ def require(permission_key: str, *, scope: ScopeContext | None = None):
     """
     A FastAPI dependency that answers 403 unless the signed-in account holds
     ``permission_key``, and hands the route the account. The new counterpart of
-    ``require_permission``; **no live route uses it yet**.
+    ``require_authorized`` (which also hands the route the account).
     """
 
     def _guard(

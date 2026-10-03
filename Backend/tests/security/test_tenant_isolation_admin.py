@@ -1,6 +1,7 @@
 from auth.jwt_handler import create_access_token
 from core.audit import log_audit_event
 from db.models import AuditLog, Organization, Permission, Role, RolePermission, User
+from rbac_testing import system_role_id
 
 
 def _grant_permission(db_session, role: Role, resource: str, action: str) -> None:
@@ -308,7 +309,7 @@ def test_access_token_contains_org_and_role_claims(client, db_session):
 
     payload = decode_token(token)
     assert payload["sub"] == str(user.id)
-    assert payload["role"] == "org_admin"
+    assert "role" not in payload  # RBAC-8: no role claim is issued
     assert payload["org_id"] == str(org.id)
 
 
@@ -347,7 +348,7 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
             "username": "missing-org-user",
             "email": "missing-org-user@test.com",
             "password": "SecurePass123!",
-            "role_id": analyst_role.id,
+            "rbac_role_id": system_role_id(db_session, "analyst"),
         },
     )
 
@@ -400,7 +401,7 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
             "username": "assigned-user",
             "email": "assigned-user@test.com",
             "password": "SecurePass123!",
-            "role_id": analyst_role.id,
+            "rbac_role_id": system_role_id(db_session, "analyst"),
             "organization_id": str(org_b.id),
         },
     )
@@ -455,7 +456,7 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
             "username": "forced-org-user",
             "email": "forced-org-user@test.com",
             "password": "SecurePass123!",
-            "role_id": analyst_role.id,
+            "rbac_role_id": system_role_id(db_session, "analyst"),
             "organization_id": str(org_b.id),
         },
     )

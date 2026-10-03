@@ -16,7 +16,16 @@ import {
   register as registerRequest,
 } from "../api/auth";
 import { authSession } from "../api/axiosInstance";
-import { activeOrganisationId, authorizationOf } from "./authorization";
+import {
+  activeOrganisationId,
+  authorizationOf,
+  SUPPORTED_CONTRACT,
+} from "./authorization";
+
+// A backend that does not answer with the authorization contract this build
+// requires cannot be used: there is no older-backend fallback (RBAC-8), and the UI
+// never guesses what an account may do. It says so, plainly, and signs nobody in.
+export const INCOMPATIBLE_BACKEND_MESSAGE = `This server does not provide the authorization contract (version ${SUPPORTED_CONTRACT}) this application requires. Update the backend, then reload.`;
 
 const AuthContext = createContext(null);
 
@@ -85,6 +94,13 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const currentUser = await fetchCurrentUser();
+      if (!authorizationOf(currentUser)) {
+        authSession.clear();
+        setUser(null);
+        setAuthState("incompatible");
+        setAuthMessage(INCOMPATIBLE_BACKEND_MESSAGE);
+        return null;
+      }
       syncActiveOrgId(currentUser);
       setUser(currentUser);
       setAuthState("authenticated");
@@ -169,16 +185,24 @@ export const AuthProvider = ({ children }) => {
     }
     // The login response carries the profile only; the authorization payload comes
     // from /auth/me, so the UI never holds a user without the backend's answer.
-    let signedIn = data.user || null;
+    let signedIn = null;
     try {
       signedIn = await fetchCurrentUser();
-    } catch {
-      // keep the login response's profile; it carries no authorization, so the UI
-      // grants nothing beyond the legacy atoms until the next sync
+    } catch (error) {
+      // /auth/me failed: that is an error to show, not an incompatibility.
+      authSession.clear();
+      throw error;
     }
-    if (signedIn) {
-      syncActiveOrgId(signedIn);
+    if (!authorizationOf(signedIn)) {
+      // The backend answered without the authorization contract this build needs:
+      // the UI holds no user rather than one it would have to guess permissions for.
+      authSession.clear();
+      setUser(null);
+      setAuthState("incompatible");
+      setAuthMessage(INCOMPATIBLE_BACKEND_MESSAGE);
+      return data;
     }
+    syncActiveOrgId(signedIn);
     setUser(signedIn);
     setAuthState("authenticated");
     setAuthMessage("");

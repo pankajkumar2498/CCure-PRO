@@ -57,7 +57,7 @@ from typing import Any, Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from ccure_platform.api import log_audit_event
@@ -306,7 +306,7 @@ def list_policies(
     status: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
     usable_only: bool = Query(False, description="Only policies a scan may use now"),
-    user: CurrentUser = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -333,7 +333,7 @@ def list_policies(
 def policy_settings(
     request: Request,
     response: Response,
-    user: CurrentUser = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
 ):
     """
     The vocabularies this build honours, read from the code that honours them.
@@ -357,7 +357,7 @@ def validate_policy_body(
     request: Request,
     response: Response,
     body: ScanPolicyValidate,
-    user: CurrentUser = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
 ):
     """
     Check a configuration without storing it.
@@ -378,7 +378,7 @@ def create_policy(
     response: Response,
     body: ScanPolicyCreate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -445,7 +445,7 @@ def get_policy(
     response: Response,
     policy_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     policy = _get_policy(db, policy_id, _resolve_org(user, org_id))
@@ -460,7 +460,7 @@ def update_policy(
     policy_id: str,
     body: ScanPolicyUpdate,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -550,7 +550,7 @@ def enable_policy(
     policy_id: str,
     body: ScanPolicyEnable,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -605,7 +605,7 @@ def set_policy_status(
     policy_id: str,
     body: ScanPolicyStatus,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -677,7 +677,7 @@ def new_policy_version(
     policy_id: str,
     body: ScanPolicyVersion,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -781,7 +781,7 @@ def policy_usage(
     response: Response,
     policy_id: str,
     org_id: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -831,7 +831,7 @@ def delete_policy(
     force: bool = Query(
         False, description="Delete even though schedules reference this policy"
     ),
-    user: CurrentUser = Depends(require_permission("scan_policies", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.delete")),
     db: Session = Depends(get_db),
 ):
     """

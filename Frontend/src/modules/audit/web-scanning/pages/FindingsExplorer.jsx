@@ -70,8 +70,8 @@ export default function FindingsExplorer() {
   const { user } = useAuth();
   // The API requires findings:update to triage, and findings:accept_risk
   // on top of it to accept a risk — the same split as network findings.
-  const canTriage = can(user, "findings", "update");
-  const canAcceptRisk = can(user, "findings", "accept_risk");
+  const canTriage = can(user, "audit.finding.update");
+  const canAcceptRisk = can(user, "audit.finding.accept_risk");
   const [searchParams] = useSearchParams();
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);

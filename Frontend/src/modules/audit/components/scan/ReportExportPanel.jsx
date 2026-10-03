@@ -140,7 +140,7 @@ function CheckboxGroup({ legend, options, selected, onChange, disabled }) {
 export default function ReportExportPanel({ scanId, scanNo, baselineScanId }) {
   const { user } = useAuth();
   const toast = useCcureToast();
-  const canReadReports = can(user, "reports", "read");
+  const canReadReports = can(user, "audit.report.read");
 
   /** Which download is in flight, or null. */
   const [downloading, setDownloading] = useState(null);

@@ -26,11 +26,11 @@ import userEvent from "@testing-library/user-event";
 import DeletedUsers from "@shell/admin/pages/DeletedUsers";
 import {
   listUsers,
-  listRoles,
   listOrganizations,
   restoreUser,
   purgeUser,
 } from "@shell/api/admin";
+import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -41,7 +41,6 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("@shell/api/admin", () => ({
   listUsers: vi.fn(),
-  listRoles: vi.fn(),
   listOrganizations: vi.fn(),
   restoreUser: vi.fn(),
   purgeUser: vi.fn(),
@@ -57,7 +56,7 @@ vi.mock("@shell/layout/ProductFrame", () => ({
 
 let currentUser = { username: "admin", id: 1, role: { name: "org_admin" } };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set(["users:delete"]);
@@ -88,7 +87,7 @@ const USERS = [
     username: "jdoe",
     full_name: "Jane Doe",
     email: "jane@acme.test",
-    role_id: 3,
+    role_names: ["analyst"],
     organization_id: 7,
     deleted_at: "2026-08-01T10:00:00Z",
     last_login_at: "2026-07-30T09:00:00Z",
@@ -98,7 +97,7 @@ const USERS = [
     username: "bsmith",
     full_name: "Bob Smith",
     email: "bob@acme.test",
-    role_id: 4,
+    role_names: ["viewer"],
     organization_id: 7,
     deleted_at: "2026-08-02T11:00:00Z",
     last_login_at: null,
@@ -108,16 +107,11 @@ const USERS = [
     username: "carol",
     full_name: "",
     email: "carol@other.test",
-    role_id: 3,
+    role_names: ["analyst"],
     organization_id: 8,
     deleted_at: "2026-08-03T12:00:00Z",
     last_login_at: "2026-08-01T08:00:00Z",
   },
-];
-
-const ROLES = [
-  { id: 3, name: "analyst" },
-  { id: 4, name: "viewer" },
 ];
 
 const ORGS = [
@@ -147,7 +141,6 @@ beforeEach(() => {
   currentUser = { username: "admin", id: 1, role: { name: "org_admin" } };
   permissions = new Set(["users:delete"]);
   listUsers.mockResolvedValue({ users: USERS });
-  listRoles.mockResolvedValue({ roles: ROLES });
   listOrganizations.mockResolvedValue({ organizations: ORGS });
   restoreUser.mockResolvedValue({});
   purgeUser.mockResolvedValue({});
@@ -164,11 +157,6 @@ describe("DeletedUsers — functional", () => {
       limit: 100,
       scope: "deleted",
     });
-  });
-
-  it("requests the role list", async () => {
-    await renderPage();
-    expect(listRoles).toHaveBeenCalled();
   });
 
   it("does not request organisations for a non-superadmin", async () => {

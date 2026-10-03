@@ -12,7 +12,6 @@ import pytest
 
 from ccure_platform import composition
 from ccure_platform.identity import router as identity
-from ccure_platform.rbac import authority as au
 from ccure_platform.rbac import legacy_map, scope
 from ccure_platform.rbac.authorization_view import CONTRACT_VERSION, build_authorization
 from ccure_platform.rbac.catalogue import sync
@@ -31,8 +30,6 @@ from rbac_testing import (
 
 @pytest.fixture
 def w(rbac_db, monkeypatch):
-    au.set_migrated_paths(None)
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "off")
     sync(rbac_db, composition.load_permission_sources(), audit=False)
     w = type("W", (), {})()
     w.db, w.a, w.b = rbac_db, make_org(rbac_db), make_org(rbac_db)
@@ -59,13 +56,11 @@ def test_shape_is_stable_and_exposes_no_structure(w):
     a = build_authorization(w.db, u)
     assert set(a) == {
         "contract",
-        "source",
         "home_org_id",
         "active_org_id",
         "permissions",
         "can_switch_organisation",
         "assignments",
-        "atoms",
     }
     assert a["contract"] == CONTRACT_VERSION == 1
     blob = json.dumps(a)
@@ -78,7 +73,7 @@ def test_shape_is_stable_and_exposes_no_structure(w):
 def test_platform_source_is_the_engines_answer_split_by_scope(w):
     sa = w.person(w.a, "superadmin", "platform.superadmin")
     a = build_authorization(w.db, sa)
-    assert a["source"] == "platform" and a["can_switch_organisation"] is True
+    assert a["can_switch_organisation"] is True
     assert "platform.organization.switch" in a["permissions"]["platform"]
     assert "audit.scan.read" in a["permissions"]["organization"]
     admin = build_authorization(w.db, w.person(w.a, "org_admin", "platform.org_admin"))
@@ -87,21 +82,6 @@ def test_platform_source_is_the_engines_answer_split_by_scope(w):
         "platform.organization.switch",
         "platform.email_domain.read",
     }
-
-
-def test_a_legacy_only_account_gets_the_same_keys_through_the_golden_mapping(w):
-    for name, entry in {
-        e["legacy_role"]: e for e in legacy_map.load_golden()["roles"]
-    }.items():
-        legacy_only = build_authorization(w.db, w.person(w.a, name))
-        provisioned = build_authorization(w.db, w.person(w.a, name, entry["role_key"]))
-        assert legacy_only["source"] == "legacy_mapped"
-        assert provisioned["source"] == "platform"
-        assert keys(legacy_only) == keys(provisioned), name
-        assert (
-            legacy_only["can_switch_organisation"]
-            == provisioned["can_switch_organisation"]
-        )
 
 
 def test_a_role_rename_changes_nothing_and_a_display_name_grants_nothing(w):
@@ -141,15 +121,15 @@ def test_active_organisation_comes_from_the_backend_not_the_request(w, monkeypat
     admin = w.person(w.a, "org_admin", "platform.org_admin")
     got = identity._authorization_for(w.db, admin, w.b.id)
     assert got["active_org_id"] == w.a.id  # a forged id is not honoured
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "enforce")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "*")
     sa = w.person(w.a, "superadmin", "platform.superadmin")
     with scope.use_audit_session(w.db):
         assert identity._authorization_for(w.db, sa, w.b.id)["active_org_id"] == w.b.id
         assert identity._authorization_for(w.db, sa, None)["active_org_id"] == w.a.id
 
 
-def test_the_legacy_vocabulary_is_served_not_copied(w):
-    atoms = build_authorization(w.db, w.person(w.a, "viewer"))["atoms"]
-    assert atoms["scans:read"] == ["audit.scan.read"]
-    assert "users:update" in atoms and len(atoms["users:update"]) == 4
+def test_an_account_with_no_assignment_holds_nothing_whatever_its_legacy_role(w):
+    """RBAC-8: ``users.role_id`` is not an input; an unprovisioned account is empty."""
+    for legacy_name in ("superadmin", "org_admin", "analyst", "viewer", "scanner"):
+        a = build_authorization(w.db, w.person(w.a, legacy_name))
+        assert keys(a) == set() and a["can_switch_organisation"] is False
+        assert a["assignments"] == []

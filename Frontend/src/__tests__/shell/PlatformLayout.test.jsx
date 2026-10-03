@@ -23,7 +23,7 @@ import api from "@shell/api/axiosInstance";
 let user;
 const logout = vi.fn();
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user, logout }),
+  useAuth: () => ({ user: personaFrom(user), logout }),
 }));
 const updateLocalPreferences = vi.fn();
 vi.mock("@shell/preferences/PreferencesContext", () => ({

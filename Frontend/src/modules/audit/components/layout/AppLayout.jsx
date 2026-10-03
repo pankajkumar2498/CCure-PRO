@@ -113,14 +113,14 @@ const SIDEBAR_SECTIONS = [
         label: "Security Dashboard",
         Icon: IcoDashboard,
         route: "/audit-dashboard",
-        permission: { resource: "dashboard", action: "read" },
+        permission: "audit.dashboard.read",
       },
       {
         id: "executive-report",
         label: "Executive Report",
         Icon: IcoFileText,
         route: "/reports?tab=executive",
-        permission: { resource: "reports", action: "read" },
+        permission: "audit.report.read",
       },
     ],
   },
@@ -132,14 +132,14 @@ const SIDEBAR_SECTIONS = [
         label: "Scan Templates",
         Icon: IcoGrid,
         route: "/scan",
-        permission: { resource: "scans", action: "execute" },
+        permission: "audit.scan.run",
       },
       {
         id: "scan-monitor",
         label: "Active Scans",
         Icon: IcoMonitor,
         route: "/monitor",
-        permission: { resource: "scans", action: "read" },
+        permission: "audit.scan.read",
         badgeKey: "runningScans",
         badgeColor: "info",
       },
@@ -151,7 +151,7 @@ const SIDEBAR_SECTIONS = [
         // scan_schedules:read, not scans:read. Seeing what is scheduled to
         // point at a network unattended is its own question, and `viewer`
         // holds this one deliberately.
-        permission: { resource: "scan_schedules", action: "read" },
+        permission: "audit.scan_schedule.read",
       },
       {
         id: "scan-policies",
@@ -161,7 +161,7 @@ const SIDEBAR_SECTIONS = [
         // scan_policies:read, not scans:read. "May this person run a scan" and
         // "may this person decide what every scan assesses" are different
         // authorisations, and the backend keeps them apart.
-        permission: { resource: "scan_policies", action: "read" },
+        permission: "audit.scan_policy.read",
       },
       {
         id: "scan-credentials",
@@ -170,7 +170,7 @@ const SIDEBAR_SECTIONS = [
         route: "/scan-credentials",
         // credentials:read, an existing RBAC resource that had no API until
         // Phase 2 wired one.
-        permission: { resource: "credentials", action: "read" },
+        permission: "audit.credential.read",
       },
       {
         id: "configuration-checks",
@@ -180,34 +180,28 @@ const SIDEBAR_SECTIONS = [
         // scans:read, not a new permission. This is a read-only catalogue of
         // what a scan checks, and it describes scan capability rather than
         // granting any.
-        permission: { resource: "scans", action: "read" },
+        permission: "audit.scan.read",
       },
       {
         id: "scan-history",
         label: "Scan History",
         Icon: IcoFile,
         route: "/history",
-        permission: { resource: "scans", action: "read" },
+        permission: "audit.scan.read",
       },
       {
         id: "archived-scans",
         label: "Archived Scans",
         Icon: IcoArchive,
         route: "/archived",
-        requiredAny: [
-          { resource: "scans", action: "restore" },
-          { resource: "scans", action: "recycle" },
-        ],
+        requiredAny: ["audit.scan.lifecycle", "audit.scan.lifecycle"],
       },
       {
         id: "recycle-bin",
         label: "Recycle Bin",
         Icon: IcoTrash,
         route: "/recycle-bin",
-        requiredAny: [
-          { resource: "scans", action: "restore" },
-          { resource: "scans", action: "purge" },
-        ],
+        requiredAny: ["audit.scan.lifecycle", "audit.scan.purge"],
       },
     ],
   },
@@ -219,7 +213,7 @@ const SIDEBAR_SECTIONS = [
         label: "Vulnerabilities",
         Icon: IcoAlert,
         route: "/vulnerabilities",
-        permission: { resource: "findings", action: "read" },
+        permission: "audit.finding.read",
         badgeKey: "criticalCount",
         badgeColor: "danger",
       },
@@ -233,35 +227,35 @@ const SIDEBAR_SECTIONS = [
         // takes findings:accept_risk, and setting the deadlines takes
         // settings:update — all three are enforced inside the page, because
         // an operator who may read the queue should still be able to see it.
-        permission: { resource: "findings", action: "read" },
+        permission: "audit.finding.read",
       },
       {
         id: "asset-registry",
         label: "Asset Registry",
         Icon: IcoMonitor,
         route: "/assets",
-        permission: { resource: "assets", action: "read" },
+        permission: "audit.asset.read",
       },
       {
         id: "services-ports",
         label: "Services & Ports",
         Icon: IcoServer,
         route: "/assets?tab=services",
-        permission: { resource: "assets", action: "read" },
+        permission: "audit.asset.read",
       },
       {
         id: "tls-certs",
         label: "TLS / Certificates",
         Icon: IcoLock,
         route: "/assets?tab=tls",
-        permission: { resource: "assets", action: "read" },
+        permission: "audit.asset.read",
       },
       {
         id: "network-topology",
         label: "Network Topology",
         Icon: IcoTopology,
         route: "/topology",
-        permission: { resource: "scans", action: "read" },
+        permission: "audit.scan.read",
       },
     ],
   },
@@ -273,21 +267,21 @@ const SIDEBAR_SECTIONS = [
         label: "Security Reports",
         Icon: IcoChart,
         route: "/reports",
-        permission: { resource: "reports", action: "read" },
+        permission: "audit.report.read",
       },
       {
         id: "compliance",
         label: "Compliance",
         Icon: IcoCheckCircle,
         route: "/compliance",
-        permission: { resource: "reports", action: "read" },
+        permission: "audit.report.read",
       },
       {
         id: "risk-trends",
         label: "Risk Trends",
         Icon: IcoTrendUp,
         route: "/reports?tab=trends",
-        permission: { resource: "reports", action: "read" },
+        permission: "audit.report.read",
       },
     ],
   },
@@ -322,10 +316,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const { pathname, search } = location;
   const { user, logout } = useAuth();
   const isSuperadmin = canSwitchOrganisation(user);
-  const canStartScans = hasPermission(user, {
-    resource: "scans",
-    action: "execute",
-  });
+  const canStartScans = hasPermission(user, "audit.scan.run");
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);

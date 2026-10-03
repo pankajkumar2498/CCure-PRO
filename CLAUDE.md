@@ -292,7 +292,7 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - Unset falls back to the JWT secret, and the API logs a
     `ccure.security` warning at start-up.
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
-  (step 8.5) and take `require_permission` / `require_role` /
+  (step 8.5) and take `require_authorized` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.
   Only three identity imports remain in module code, each with its reason
   beside `KNOWN_IDENTITY_IMPORTS`: `core.tasks`'s mail-task re-export (a legacy
@@ -300,8 +300,8 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
 - **Module code asks `ccure_platform.api` (since step 8.3)**, never
   `users`/`organizations`/`roles` directly:
   - `api.user()` and `api.organisation()` return frozen views;
-  - `api.user_has_permission()` is `require_permission`'s own rule. Do not
-    hand-copy the superadmin check again; six copies were removed.
+  - `api.has_permission(db, account, key)` is the engine's answer. Never hand-copy a
+    superadmin or role check.
   - **The organisation plan is platform-owned** (project owner, 29 Sep 2026):
     plan, scan limits (quota), scan scope and the remediation SLA live in
     `ccure_platform/plan/`, one module per feature. Audit consumes each through
@@ -424,14 +424,37 @@ each module's `README.md` is the guide its team works from.
   (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
 
-## RBAC capability (`ccure_platform/rbac/`) — RBAC-1 to RBAC-4, **authority OFF by default**
+## RBAC capability (`ccure_platform/rbac/`) — **the only authorization model since RBAC-8**
 
-The new, independent RBAC capability. Record:
-[`docs/architecture/RBAC_FOUNDATION.md`](docs/architecture/RBAC_FOUNDATION.md).
-**RBAC-1, RBAC-2 and RBAC-3 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
-`role_permissions`, `require_permission`, `require_role` and `user_has_permission`
-are still the only authority; no route, `/auth/me` field, frontend behaviour,
-assignment or registration flow uses the new tables. Do not describe RBAC as live.
+The Platform RBAC capability. Records:
+[`docs/architecture/RBAC_FOUNDATION.md`](docs/architecture/RBAC_FOUNDATION.md) and, for the
+final cutover, [`docs/architecture/RBAC_CUTOVER.md`](docs/architecture/RBAC_CUTOVER.md).
+**RBAC-8 made Platform RBAC the sole authority in code**: `require_authorized(key)` /
+`has_permission(db, account, key, org_id=)` answer from the engine and nothing else. There is
+no legacy fallback, no authority switch (`RBAC_AUTHORITY_*` are gone), no shadow mode, no
+`require_permission` / `require_role` / `user_has_permission`, no role-name decision (the
+role-name ratchet is **empty and stays empty**) and no read of `users.role_id`.
+`tests/repo/test_rbac_final_ratchet.py` fails if any of it returns. **Production is not yet
+cut over**: the live database has no `rbac_*` tables; the cutover is prepared
+(`scripts/rbac/cutover.py`, `bootstrap_admin.py`, `data/rbac/cutover_checklist.json`) and needs
+operator/DBA approval. Do not describe production as running RBAC until that is recorded.
+
+- **Legacy tables.** `users.role_id` is deprecated, nullable and non-authoritative (migration
+  `c9e3a7b5d1f2`); `roles`, `permissions`, `role_permissions` are retained as history and as
+  reconciliation input, never read by a decision. Atoms exist only in migrations, docs, audit
+  data and the golden mapping. **Never write a decision on any of them.**
+- **Provisioning** (`rbac/provisioning.py`): a self-registered account gets the configured
+  `rbac_default_roles` role only if it is valid (active, organisation-assignable,
+  non-privileged) — otherwise **no role**; the first platform administrator is made only by
+  first-run bootstrap or the operator's `bootstrap_admin.py` (idempotent, audited, refuses a
+  system that already has one, no permanent bypass); a new organisation's first administrator is
+  assigned through the governed assignment API in the same transaction. Users with no assignment
+  hold nothing. Recovery of a lost last administrator is the explicit, audited operator script.
+- **Test seam.** `tests/conftest.py` has test-only listeners that give fixture-created users
+  (created with a legacy `role_id`) the RBAC assignment the golden mapping names, and translate
+  atoms a test grants a legacy role (`RolePermission`) into a shared platform custom role. They
+  are off for `rbac_db` (`connection.info["rbac_no_provision"]`), which TRUNCATEs the `rbac_*`
+  tables inside its rolled-back transaction so RBAC tests start empty.
 
 - **A role is `id` + `key` + `display_name`, and none of them is an authorization
   input** — not the name, not the key (`platform.viewer`), not a legacy role name.
@@ -439,7 +462,7 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   join path the resolver walks to find permission keys. **Never write
   `role.name == …`, `role.key == …` or `require_role(…)` in new code.**
   `tests/repo/test_rbac_role_identity.py` fails on any new one; the legacy sites
-  (27 in 20 files since RBAC-4, `scripts/architecture/rbac_guardrails.py`) may only fall. Role keys may be written in `rbac/contract.py` (seed data), the
+  (0 since RBAC-8, `scripts/architecture/rbac_guardrails.py`) stay at zero. Role keys may be written in `rbac/contract.py` (seed data), the
   legacy map and migrations, bootstrap and tests only.
 - **RBAC does not know the modules.** It imports no product (`rbac-is-module-agnostic`),
   does not read the registry and does not import `ccure_platform.api`. Modules
@@ -490,21 +513,11 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   and refuses any it does not account for). It is **not** wired into start-up: a failure
   there would stop the API for a dark capability. Back up first (`scripts/backup_db.sh
   --skip-reference-data`) before `--apply` on a real database.
-- **RBAC-4 = controlled cutover, OFF everywhere.** `rbac/authority.py` lets the new engine
-  decide *per migrated path* (`RBAC_AUTHORITY_MODE=enforce` + `RBAC_AUTHORITY_PATHS`); default
-  off, legacy decides. The guard is the seam (`require_permission`, `user_has_permission(...,
-  authoritative=True)`, and the new `require_authorized(key)` / `has_permission(key)` that
-  replaced 13 role-name sites) — call sites were not edited. The new decision wins when it can
-  answer; an unprovisioned principal, unsynced catalogue, scope denial or error falls back to
-  legacy; rollback is configuration. **Never enable it in production** without a reconciled
-  database; **no hardcoded superadmin bypass**, no role name as input. The inventory
+- **RBAC-4/RBAC-8: the authority switch and the legacy fallback are deleted.** The inventory
   (`data/rbac/authorization_migration_inventory.json`, generated by
-  `python -m scripts.rbac.build_migration_inventory --write`, tested) lists every site and
-  why it is migrated or deferred; 27 role-name sites remain (scope/hierarchy/switching/
-  provisioning, RBAC-5/8). `scripts/rbac/reconcile_assignments.py` reports legacy-vs-RBAC
-  gaps and applies only in a named, non-live database. Record:
-  `docs/architecture/RBAC_AUTHORITY_MIGRATION.md`.
-- **RBAC-5 = scope, OFF by default** (`rbac/scope.py`, `docs/architecture/RBAC_SCOPE.md`).
+  `python -m scripts.rbac.build_migration_inventory --write`, tested) lists every guard (all
+  `migrated`), the kept compatibility records and the removed role-name sites.
+- **RBAC-5 = scope** (`rbac/scope.py`, `docs/architecture/RBAC_SCOPE.md`).
   Permission is WHAT, scope is WHERE. Acting outside the home organisation is the
   platform-scope grant of `platform.organization.switch` (superadmin holds it through grants,
   no shortcut); an organisation administrator never crosses. Module code asks
@@ -516,13 +529,14 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   (`rbac.org_switch.entered`, `rbac.scope.denied`, `rbac.escalation.refused`). Missing,
   inactive or unknown organisations fail closed. Paths `scope.active_organisation`,
   `scope.cross_organisation`, `scope.assign_role`. 9 role-name sites remain (RBAC-7/8).
-- **RBAC-6 = frontend authorization** (`docs/architecture/RBAC_FRONTEND_AUTHORIZATION.md`).
+- **RBAC-6/8 = frontend authorization** (`docs/architecture/RBAC_FRONTEND_AUTHORIZATION.md`).
   `/auth/me` carries `authorization` (`rbac/authorization_view.py`): permission keys by scope,
-  the validated active organisation, `can_switch_organisation`, display-only assignments, and the
-  legacy `atoms` vocabulary. The UI's one helper is `Frontend/src/shell/auth/authorization.js`
+  the validated active organisation, `can_switch_organisation` and display-only assignments (no
+  legacy atoms, role or role id). The UI's one helper is `Frontend/src/shell/auth/authorization.js`
   (`can(user, key, {scope, orgId})`): no role is an input, no wildcard, nothing invented;
   `isSuperAdmin`/`hasRole` and `superadminOnly` are gone. Switching goes through the backend
-  (`GET /auth/me?org_id=`). `Frontend/authorization-inventory.json` (generated, tested) classifies
+  (`GET /auth/me?org_id=`). A backend without the contract is reported as incompatible
+  (`authState = "incompatible"`); there is no older-backend fallback. `Frontend/authorization-inventory.json` (generated, tested) classifies
   every remaining site (RBAC-7/8, display-only, retained). The frontend is advisory; the backend
   enforces.
 - **RBAC-7 = Platform RBAC administration** (`docs/architecture/RBAC_ADMINISTRATION.md`):
@@ -530,7 +544,7 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   permissions, custom organisation roles, lifecycle/replacement and assignments with the RBAC-2
   rules; display names are labels; sensitive changes need step-up (`identity/reauth.py`,
   `X-Reauth-Code`); refusals and mutations are audited. Every users/organizations/roles/settings/
-  audit-log route now asks one granular key through `require_authorized` (legacy rule as fallback);
+  audit-log route asks one granular key through `require_authorized`;
   the compliance emergency bypass is `audit.compliance.approve_exception` (no new permission).
   Frontend: the Roles page and the user Roles panel are catalogue- and backend-driven;
   `frontend authorization-inventory.json` has no rbac7 site left.
@@ -551,30 +565,9 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   advances in the same statement. Use `governance.transition_role` (gate + history), or in
   tests `rbac_testing.force_state`. `define_custom_org_role` is the checked way to make an
   organisation role.
-- **RBAC-3 = SHADOW ONLY. Legacy authorization is authoritative.** The new engine is
-  evaluated *beside* every legacy permission check and compared, **off by default**
-  (`RBAC_SHADOW_MODE`, `config.RbacShadowConfig`: `off`/`observe`; anything else is `off`;
-  never in `docker-compose.yml`; **never enable it globally in production**). The hook is
-  `rbac/dependencies.py::_observe_*`, called *after* the guard has decided — the single
-  reusable point (every atom check is `user_has_permission`), so no route was edited. The
-  decision logic moved unchanged into `_legacy_decision`. `observe_*` **return None and
-  cannot raise**, run on their **own read-only session** (`SET TRANSACTION READ ONLY` +
-  statement timeout), and a shadow ALLOW cannot grant, a DENY cannot remove, an ERROR
-  cannot change anything (proved on real routes in `tests/rbac/test_rbac_shadow_hook.py`).
-  **Do not add a branch on a shadow result, make `observe_*` return anything, or put the
-  request's `db` to use in it.** Details: `docs/architecture/RBAC_SHADOW_AUTHORIZATION.md`.
-- **Shadow results are MATCH / MISMATCH / NOT_COMPARABLE / ERROR**, and unknown is never a
-  match: retired and unmapped atoms, a user with no RBAC assignment
-  (`principal_not_provisioned`), an unsynced catalogue and anything scope-dependent
-  (`scope_deferred`, RBAC-5) are NOT_COMPARABLE. The mapping is the RBAC-2 **golden file**
-  only — no second mapping. A result has no field for a secret; the operation is a route
-  *template*; an error is recorded by exception class.
-- **The 40 role-name sites** are not migrated: they are recorded, by category, in
-  `Backend/data/rbac/legacy_role_name_dependencies.json` (RBAC-4 evidence; 16 are
-  scope, deferred to RBAC-5). `tests/rbac/test_rbac_legacy_role_evidence.py` fails if the
-  list and the code disagree. `scripts/rbac/shadow_equivalence.py` re-runs the RBAC-2
-  matrix through the real hook (always rolled back): 56 enforced atoms match for all five
-  roles, 10 retired report `retired_atom`, zero mismatches.
+- **Shadow authorization (RBAC-3) is retired.** There is no dual authority to compare; the code
+  (`rbac/shadow*.py`, the `_observe_*` hooks, `RBAC_SHADOW_*`) is deleted.
+- **The 40 role-name sites** are all gone; their history is `Backend/data/rbac/role_name_site_decisions.json`.
 - **RBAC emits severities lazily** (on its first event), so a process that ran RBAC code has
   `rbac.*` in the merged audit taxonomy; the two audit tests that pin the platform+Audit set
   exclude that source.
@@ -1364,8 +1357,8 @@ dump": up to six hours of operational data.
   Managed at **`/admin/email-domains`** (`routers/admin_email_domains.py`,
   `Frontend/src/shell/admin/pages/EmailDomainRules.jsx`) — list, add, flip, remove,
   plus a lookup that runs an address through the live guard and names the rule
-  or list that matched. **Superadmin only, via `require_role`, not a
-  permission.** The rules are platform-wide, so an org_admin reaching them could
+  or list that matched. **Platform-scope permissions
+  (`platform.email_domain.read` / `.manage`), held only by the superadmin role — never a role name.** The rules are platform-wide, so an org_admin reaching them could
   block another tenant's customers; and a permission check cannot express this
   anyway, because superadmin holds every permission and any permission an
   org_admin also has would let them through. `AppLayout`'s `canSeeNavItem` grew

@@ -34,7 +34,7 @@ export default function ExportPanel({
   phase2Summary = null,
 }) {
   const { user } = useAuth();
-  const canReadReports = can(user, "reports", "read");
+  const canReadReports = can(user, "audit.report.read");
   const [copied, setCopied] = useState(false);
   // Which PDF format is being fetched, or null. Both PDF exports are disabled
   // while either is in flight; only the one asked for is marked busy.

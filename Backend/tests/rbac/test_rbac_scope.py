@@ -3,9 +3,9 @@ RBAC-5 — scope: WHERE a principal may act, kept apart from WHAT it may do.
 
 Everything here drives the real seams (``ccure_platform.api``'s
 ``resolve_active_organisation`` / ``acts_across_organisations`` /
-``resource_organisation_allowed`` / ``check_role_assignment`` and the organisation-aware
-``user_has_permission``) against a rolled-back database, with the scope paths switched
-on for the test only. The default (off) is proved first.
+``resource_organisation_allowed`` and the organisation-aware ``has_permission``) against
+a rolled-back database. The engine is the only authority (RBAC-8); assignment
+governance is exercised through the administration API in test_rbac_administration.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from fastapi import HTTPException
 
 import ccure_platform.api as api
 from ccure_platform import composition
-from ccure_platform.rbac import authority as au
 from ccure_platform.rbac import scope
 from ccure_platform.rbac.catalogue import sync
 from config import AppConfig
@@ -35,18 +34,11 @@ from rbac_testing import (
 
 @pytest.fixture(autouse=True)
 def clean(monkeypatch):
-    au.recorder.reset()
-    au.restore()
-    au.set_migrated_paths(None)
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "off")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "")
     yield
-    au.set_migrated_paths(None)
 
 
 def on(monkeypatch):
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "enforce")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "*")
+    return None
 
 
 @pytest.fixture
@@ -83,17 +75,6 @@ def events(db, action, org_id=None):
 
 
 # ── off by default ───────────────────────────────────────────────────────────
-
-
-def test_off_by_default_is_exactly_the_legacy_rule(w):
-    assert api.resolve_active_organisation(w.superadmin, w.b.id) == w.b.id
-    assert api.resolve_active_organisation(w.admin_a, w.b.id) == w.a.id
-    assert api.resolve_active_organisation(w.admin_a, None) == w.a.id
-    assert api.acts_across_organisations(w.superadmin) is True
-    assert api.acts_across_organisations(w.admin_a) is False
-    # legacy trusted the name outright, unvalidated
-    assert api.resolve_active_organisation(w.superadmin, "org_nowhere") == "org_nowhere"
-    assert au.recorder.snapshot()["by_path"] == {}
 
 
 # ── organisation switching ───────────────────────────────────────────────────
@@ -204,15 +185,6 @@ def test_a_revoked_or_retired_role_loses_reach_immediately(w, monkeypatch):
     assert api.acts_across_organisations(u) is False
 
 
-def test_an_unprovisioned_account_falls_back_to_legacy(w, monkeypatch):
-    on(monkeypatch)
-    legacy_only = w.person(w.a, "superadmin")
-    with scope.use_audit_session(w.db):
-        assert api.resolve_active_organisation(legacy_only, w.b.id) == w.b.id
-    assert api.acts_across_organisations(legacy_only) is True
-    assert {k.split("|")[1] for k in au.recorder.snapshot()["by_path"]} == {"legacy"}
-
-
 def test_a_failed_audit_write_refuses_the_switch(w, monkeypatch):
     on(monkeypatch)
     monkeypatch.setattr(scope, "_audit", lambda *a, **k: False)
@@ -242,8 +214,8 @@ def test_resource_organisation_is_checked_against_reach_and_state(w, monkeypatch
 
 def test_read_all_is_evaluated_for_the_target_organisation(w, monkeypatch):
     on(monkeypatch)
-    has = lambda u, org: api.user_has_permission(  # noqa: E731
-        w.db, u, "scans", "read_all", authoritative=True, org_id=org
+    has = lambda u, org: api.has_permission(  # noqa: E731
+        w.db, u, "audit.scan.read_all", org_id=org
     )
     assert has(w.admin_a, w.a.id) is True
     assert has(w.analyst_a, w.a.id) is True
@@ -259,8 +231,8 @@ def test_read_all_from_a_custom_role_applies_in_its_organisation_only(w, monkeyp
     custom = custom_org_role(w.db, w.a, "reader", "Reader", "audit.scan.read_all")
     scanner = w.person(w.a, "scanner")
     assign(w.db, scanner, custom)
-    got = lambda org: api.user_has_permission(  # noqa: E731
-        w.db, scanner, "scans", "read_all", authoritative=True, org_id=org
+    got = lambda org: api.has_permission(  # noqa: E731
+        w.db, scanner, "audit.scan.read_all", org_id=org
     )
     assert got(w.a.id) is True and got(w.b.id) is False
 
@@ -269,18 +241,7 @@ def test_multiple_roles_union_for_read_all(w, monkeypatch):
     on(monkeypatch)
     scanner = w.person(w.a, "scanner", "platform.scanner")
     assign(w.db, scanner, custom_org_role(w.db, w.a, "r2", "R2", "audit.scan.read_all"))
-    assert api.user_has_permission(
-        w.db, scanner, "scans", "read_all", authoritative=True, org_id=w.a.id
-    )
-
-
-def test_legacy_off_read_all_for_another_org_needs_legacy_reach(w):
-    f = lambda u, org: api.user_has_permission(  # noqa: E731
-        w.db, u, "scans", "read_all", authoritative=True, org_id=org
-    )
-    assert f(w.admin_a, w.a.id) is True
-    assert f(w.admin_a, w.b.id) is False
-    assert f(w.superadmin, w.b.id) is True
+    assert api.has_permission(w.db, scanner, "audit.scan.read_all", org_id=w.a.id)
 
 
 # ── assignment hierarchy ─────────────────────────────────────────────────────
@@ -294,73 +255,6 @@ def verdict(w, actor, legacy_role, target, org):
     return api.check_role_assignment(
         actor, target_role(w.db, legacy_role), target_user_id=target, target_org_id=org
     )
-
-
-def test_hierarchy_off_is_the_legacy_rule(w):
-    assert verdict(w, w.admin_a, "superadmin", "someone", w.a.id).allowed is False
-    assert verdict(w, w.admin_a, "analyst", "someone", w.a.id).allowed is True
-    assert verdict(w, w.superadmin, "superadmin", "someone", w.a.id).allowed is True
-
-
-def test_an_org_admin_cannot_assign_the_platform_superadmin_role(w, monkeypatch):
-    on(monkeypatch)
-    with scope.use_audit_session(w.db):
-        v = verdict(w, w.admin_a, "superadmin", "someone", w.a.id)
-    assert not v.allowed and v.source == "new"
-    assert {"escalation_ceiling", "missing_authority"} <= set(v.violations)
-    refused = events(w.db, "rbac.escalation.refused", w.a.id)
-    assert len(refused) == 1 and refused[0].actor_user_id == w.admin_a.id
-
-
-def test_an_org_admin_assigns_within_its_organisation_only(w, monkeypatch):
-    on(monkeypatch)
-    with scope.use_audit_session(w.db):
-        assert verdict(w, w.admin_a, "analyst", "someone", w.a.id).allowed
-        cross = verdict(w, w.admin_a, "analyst", "someone", w.b.id)
-    # nothing the actor holds in organisation B reaches there
-    assert not cross.allowed and "missing_authority" in cross.violations
-
-
-def test_nobody_assigns_roles_to_themselves(w, monkeypatch):
-    on(monkeypatch)
-    with scope.use_audit_session(w.db):
-        v = verdict(w, w.admin_a, "viewer", w.admin_a.id, w.a.id)
-    assert not v.allowed and "self_assignment" in v.violations
-
-
-def test_an_account_without_assign_authority_cannot_assign(w, monkeypatch):
-    on(monkeypatch)
-    with scope.use_audit_session(w.db):
-        v = verdict(w, w.analyst_a, "viewer", "someone", w.a.id)
-    assert not v.allowed and "missing_authority" in v.violations
-
-
-def test_the_ceiling_blocks_handing_out_what_the_actor_lacks(w, monkeypatch):
-    on(monkeypatch)
-    narrow = custom_org_role(
-        w.db, w.a, "narrow", "Narrow", "platform.user.assign_role", "audit.scan.read"
-    )
-    actor = w.person(w.a, "org_admin")
-    assign(w.db, actor, narrow)
-    with scope.use_audit_session(w.db):
-        v = verdict(w, actor, "analyst", "someone", w.a.id)
-    assert not v.allowed and "escalation_ceiling" in v.violations
-
-
-def test_a_superadmin_may_assign_organisation_roles_in_another_organisation(
-    w, monkeypatch
-):
-    on(monkeypatch)
-    with scope.use_audit_session(w.db):
-        assert verdict(w, w.superadmin, "org_admin", "someone", w.b.id).allowed
-        assert verdict(w, w.superadmin, "superadmin", "someone", w.b.id).allowed
-
-
-def test_an_unprovisioned_actor_gets_the_legacy_hierarchy_answer(w, monkeypatch):
-    on(monkeypatch)
-    legacy_admin = w.person(w.a, "org_admin")
-    assert verdict(w, legacy_admin, "superadmin", "someone", w.a.id).allowed is False
-    assert verdict(w, legacy_admin, "analyst", "someone", w.a.id).allowed is True
 
 
 def test_custom_role_governance_is_intact_across_organisations(w):
@@ -394,7 +288,6 @@ def test_the_seam_takes_no_header_or_body_input():
         api.resolve_active_organisation,
         api.acts_across_organisations,
         api.resource_organisation_allowed,
-        api.check_role_assignment,
     ):
         params = set(inspect.signature(fn).parameters)
         assert not params & {

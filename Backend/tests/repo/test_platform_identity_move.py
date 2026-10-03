@@ -195,7 +195,6 @@ def test_limiter_route_keys_are_unchanged():
             "auth.email_domain_guard",
         ),
         ("ccure_platform.identity.mail_service", "logger", "auth.mail_service"),
-        ("ccure_platform.rbac.dependencies", "logger", "auth.rbac"),
         # these two were already named explicitly and must stay so
         ("ccure_platform.identity.mail_dispatch", "log", "ccure.mail"),
         ("ccure_platform.identity.mail_tasks", "log", "ccure.tasks"),

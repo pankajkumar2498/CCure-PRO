@@ -614,7 +614,7 @@ def update_scan_phase(
                 fan_out_notification(
                     db=db,
                     org_id=str(scan.org_id),
-                    target_roles=["superadmin", "org_admin"],
+                    permission_key="audit.scan.lifecycle",
                     notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
                     title="Critical Vulnerabilities Found",
@@ -924,7 +924,7 @@ def create_completed_scan(
             fan_out_notification(
                 db=db,
                 org_id=str(scan.org_id),
-                target_roles=["superadmin", "org_admin"],
+                permission_key="audit.scan.lifecycle",
                 notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
                 title="Critical Vulnerabilities Found",

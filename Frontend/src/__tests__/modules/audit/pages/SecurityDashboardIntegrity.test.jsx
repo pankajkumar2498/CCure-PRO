@@ -27,6 +27,7 @@ import path from "node:path";
 import SecurityDashboard from "@audit/pages/SecurityDashboard";
 import axiosInstance from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
+import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -55,7 +56,9 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { username: "operator", id: 1, org_id: "o-1" } }),
+  useAuth: () => ({
+    user: personaFrom({ username: "operator", id: 1, org_id: "o-1" }),
+  }),
 }));
 
 vi.mock("@shell/auth/permissions", () => ({

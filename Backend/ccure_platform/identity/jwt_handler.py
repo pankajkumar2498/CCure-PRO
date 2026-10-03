@@ -129,12 +129,10 @@ def _hash_token(token: str) -> str:
 def create_access_token(
     user_id: int,
     username: str,
-    role: str | None = None,
+    role: str | None = None,  # accepted and ignored: no role claim is issued (RBAC-8)
     org_id: str | None = None,
 ) -> str:
     payload = {"sub": str(user_id), "username": username, "type": "access"}
-    if role is not None:
-        payload["role"] = role
     if org_id is not None:
         payload["org_id"] = str(org_id)
     return _create_token(
@@ -146,13 +144,11 @@ def create_access_token(
 def create_mfa_challenge_token(
     user_id: str | int,
     username: str,
-    role: str | None = None,
+    role: str | None = None,  # accepted and ignored (RBAC-8)
     org_id: str | None = None,
 ) -> str:
     """Create a short-lived (5 minutes) challenge token for multi-factor authentication step-up."""
     payload = {"sub": str(user_id), "username": username, "type": "mfa_challenge"}
-    if role is not None:
-        payload["role"] = role
     if org_id is not None:
         payload["org_id"] = str(org_id)
     return _create_token(
@@ -371,7 +367,6 @@ def refresh_access_token(
             "access_token": create_access_token(
                 user.id,
                 user.username,
-                role=getattr(user.role, "name", None),
                 org_id=user.org_id,
             ),
             "refresh_token": new_refresh_token,

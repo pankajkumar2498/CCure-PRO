@@ -37,7 +37,6 @@ from ccure_platform.administration.email_domains import (
 )
 from routers.admin_nvd import router as admin_nvd_router
 from ccure_platform.administration.organizations import router as admin_orgs_router
-from ccure_platform.administration.roles import router as admin_rbac_router
 from ccure_platform.administration.users import router as admin_users_router
 from routers.assets import router as assets_router
 from ccure_platform.audit_log.router import router as audit_router
@@ -253,45 +252,75 @@ async def lifespan(app: FastAPI):
             f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}"
         )
 
-    # 1.6. Ensure first admin exists
+    # 1.5b. The RBAC catalogue and system roles (idempotent). RBAC is the only
+    # authorization model: without them nobody holds any permission, so a failure is
+    # logged loudly, not swallowed — but it does not stop the API, which an operator
+    # needs in order to see and repair it.
+    try:
+        from ccure_platform import composition
+        from ccure_platform.rbac.catalogue import ensure_system_roles, sync
+        from db.base import SessionLocal as _RbacSession
+
+        with _RbacSession() as rbac_db:
+            sync(rbac_db, composition.load_permission_sources(), audit=False)
+            ensure_system_roles(rbac_db)
+            rbac_db.commit()
+    except Exception as e:  # noqa: BLE001
+        log.critical("RBAC catalogue could not be applied: %s", e, exc_info=True)
+
+    # 1.6. First administrator — first run only.
+    #
+    # An empty installation has nobody to grant anything, so the configured default
+    # administrator is created and given the platform-administrator role through
+    # ``rbac.provisioning.grant_platform_administrator``: an ordinary, audited,
+    # revocable assignment, never a role-name rule. It runs only while the database has
+    # no users. A system that has lost its last administrator is recovered with the
+    # operator's script (scripts/rbac/bootstrap_admin.py), not by restarting with a
+    # setting.
     from auth.email_utils import email_matches, normalize_email
     from auth.jwt_handler import hash_password
     from db.base import SessionLocal, gen_user_id, utcnow
-    from db.models.rbac import Organization, Role
+    from db.models.rbac import Organization
     from db.models.users import User
 
     with SessionLocal() as db:
         if AppConfig.DEFAULT_ADMIN_EMAIL and AppConfig.DEFAULT_ADMIN_PASSWORD:
             admin_email = normalize_email(AppConfig.DEFAULT_ADMIN_EMAIL)
-            if (
-                not db.query(User)
-                .filter(email_matches(User.email, admin_email))
-                .first()
-            ):
+            existing = (
+                db.query(User).filter(email_matches(User.email, admin_email)).first()
+            )
+            first_run = db.query(User).count() == 0
+            if not existing and first_run:
                 log.info(f"Seeding default admin user: {admin_email}")
                 org = (
                     db.query(Organization)
                     .filter(Organization.slug == DEFAULT_ORG_SLUG)
                     .first()
                 )
-                role = db.query(Role).filter(Role.name == "superadmin").first()
-                if org and role:
+                if org:
                     admin = User(
                         id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1
                         username="admin",
                         email=admin_email,
                         password_hash=hash_password(AppConfig.DEFAULT_ADMIN_PASSWORD),
                         org_id=org.id,
-                        role_id=role.id,
                         is_active=True,
                         is_verified=True,
-                        # There is no other admin yet to approve this one —
-                        # it is the bootstrap superadmin the approval gate
-                        # exists to be granted by.
+                        # There is no other admin yet to approve this one.
                         approved_at=utcnow(),
                     )
                     db.add(admin)
                     try:
+                        db.flush()
+                        from ccure_platform.rbac.provisioning import (
+                            grant_platform_administrator,
+                        )
+
+                        grant_platform_administrator(
+                            db,
+                            admin.id,
+                            reason="first-run bootstrap",
+                        )
                         db.commit()
                         log.info(f"Successfully seeded admin user: {admin_email}")
                     except Exception as e:
@@ -299,12 +328,11 @@ async def lifespan(app: FastAPI):
                         log.error(f"Failed to seed admin: {e}")
                 else:
                     log.warning(
-                        "Could not seed admin: default org or superadmin role "
-                        "missing."
+                        "Could not seed admin: the default organisation is missing."
                     )
             else:
                 log.debug(
-                    f"Default admin '{admin_email}' already exists; skipping seed."
+                    f"Default admin '{admin_email}' not seeded (exists or not first run)."
                 )
         else:
             if db.query(User).count() == 0:
@@ -1095,7 +1123,6 @@ app.include_router(config_audit_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_email_domains_router)
-app.include_router(admin_rbac_router)
 app.include_router(admin_orgs_router)
 app.include_router(admin_nvd_router)
 app.include_router(audit_router)

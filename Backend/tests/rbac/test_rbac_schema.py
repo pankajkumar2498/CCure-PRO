@@ -1014,7 +1014,9 @@ def test_the_migrations_form_one_chain_and_the_latest_is_audits_head():
     cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     heads = set(ScriptDirectory.from_config(cfg).get_heads())
-    assert "b8d2f6a4c0e1" in heads and "a7c1e5b3d9f2" not in heads
+    # RBAC-8 appended c9e3a7b5d1f2 (``users.role_id`` becomes non-authoritative)
+    assert "c9e3a7b5d1f2" in heads
+    assert not heads & {"b8d2f6a4c0e1", "a7c1e5b3d9f2"}
     assert len(heads) == 3  # Audit's, policy_pro, rank — still exactly three
 
 

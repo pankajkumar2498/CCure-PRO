@@ -28,6 +28,8 @@ import userEvent from "@testing-library/user-event";
 
 import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
 import api from "@shell/api/axiosInstance";
+import { atomSetHolds } from "../../../../fixtures/authorization";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: { get: vi.fn(), delete: vi.fn() },
@@ -50,13 +52,13 @@ let currentUser = {
   permissions: [{ resource: "reports", action: "read" }],
 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 vi.mock("@shell/auth/permissions", () => ({
-  can: (user, resource, action) =>
-    (user?.permissions || []).some(
-      (p) => p.resource === resource && p.action === action,
+  can: (user, key) =>
+    (user?.permissions || []).some((p) =>
+      atomSetHolds(new Set([`${p.resource}:${p.action}`]), key),
     ),
   denyMessage: "You do not have permission to do that.",
 }));

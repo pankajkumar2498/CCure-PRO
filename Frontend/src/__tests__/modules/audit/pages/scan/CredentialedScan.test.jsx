@@ -26,6 +26,8 @@ import userEvent from "@testing-library/user-event";
 
 import CredentialedScan from "@audit/pages/scan/CredentialedScan";
 import axiosInstance from "@shell/api/axiosInstance";
+import { atomSetHolds } from "../../../../fixtures/authorization";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 const navigate = vi.fn();
 
@@ -58,12 +60,12 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 
 let currentUser = { username: "operator", id: 1 };
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set(["scans:execute"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_u, r, a) => permissions.has(`${r}:${a}`),
+  can: (_u, r, a) => atomSetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 

@@ -1,5 +1,9 @@
 # RBAC shadow authorization (RBAC-3)
 
+> **RETIRED (RBAC-8).** The shadow comparison described below was removed with the legacy
+> authorization model: Platform RBAC is the only authority and there is no second decision to
+> compare. This document is kept as history. See [RBAC_CUTOVER.md](RBAC_CUTOVER.md).
+
 > **RBAC-3 = SHADOW ONLY. LEGACY AUTHORIZATION = AUTHORITATIVE.**
 
 RBAC-3 evaluates the new RBAC engine **beside** every legacy permission check and compares the two decisions. It changes no authorization outcome: the legacy check is computed first, its answer is what the guard returns or raises, and the comparison only _observes_ it. It is **off by default**, it is not enabled in any deployed configuration, and it must not be enabled globally in production. Nothing else changed: `require_permission`, `require_role` and `user_has_permission` decide as they always did, no route was migrated, `/auth/me`, the frontend, authentication, MFA, service tokens, tenant isolation, organisation switching and the gateway are untouched, no production user is assigned to a new role, and no production table or migration was added. See [RBAC_FOUNDATION.md](RBAC_FOUNDATION.md) and [RBAC_PERMISSION_CATALOG.md](RBAC_PERMISSION_CATALOG.md).

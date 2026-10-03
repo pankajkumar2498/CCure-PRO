@@ -845,3 +845,65 @@ def replace_role(
         )
     )
     return len(live), events
+
+
+def role_labels(db: Session, user_ids) -> dict[str, list[str]]:
+    """``{user id: [display names of its live roles]}`` — for display only (a user table,
+    an email), never an authorization input."""
+    ids = [str(u) for u in user_ids]
+    if not ids:
+        return {}
+    now = datetime.now(timezone.utc)
+    rows = db.execute(
+        select(RbacUserRole.user_id, RbacRole.display_name, RbacUserRole.expires_at)
+        .join(RbacRole, RbacRole.id == RbacUserRole.role_id)
+        .where(
+            RbacUserRole.user_id.in_(ids),
+            RbacUserRole.revoked_at.is_(None),
+            RbacRole.state.in_(("active", "retiring")),
+        )
+        .order_by(RbacRole.display_name)
+    ).all()
+    out: dict[str, list[str]] = {}
+    for uid, name, expires in rows:
+        if expires is None or expires > now:
+            out.setdefault(uid, []).append(name)
+    return out
+
+
+def replace_user_role(
+    db: Session, actor: Actor, user_id: str, role_id: str
+) -> list[EventDraft]:
+    """
+    Make ``role_id`` the user's role: assign it (every governance rule applies), then end
+    the user's other live assignments of the same scope (each needs the authority to
+    remove it, and none may break a continuity invariant). All or nothing.
+    """
+    target = db.get(RbacRole, role_id)
+    if target is None:
+        raise GovernanceError([Violation("unknown_target", "no such role")])
+    others = (
+        db.execute(
+            select(RbacUserRole).where(
+                RbacUserRole.user_id == user_id,
+                RbacUserRole.revoked_at.is_(None),
+                RbacUserRole.scope_type == target.assignable_scope,
+                RbacUserRole.role_id != target.id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    already = db.execute(
+        select(RbacUserRole.id).where(
+            RbacUserRole.user_id == user_id,
+            RbacUserRole.role_id == target.id,
+            RbacUserRole.revoked_at.is_(None),
+        )
+    ).first()
+    events: list[EventDraft] = []
+    if already is None:
+        _, events = assign(db, actor, user_id, role_id)
+    for a in others:
+        events += revoke(db, actor, str(a.id), reason="manual")
+    return events

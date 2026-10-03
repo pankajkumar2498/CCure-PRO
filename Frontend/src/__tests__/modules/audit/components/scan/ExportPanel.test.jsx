@@ -38,7 +38,7 @@ vi.mock("@shell/api/axiosInstance", () => ({ default: { get: vi.fn() } }));
 
 let currentUser;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: currentUser }),
+  useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 /* ── Personas ─────────────────────────────────────────────────────────────── */

@@ -786,7 +786,7 @@ export default function Phase3Results() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const canExecuteScans = can(user, "scans", "execute");
+  const canExecuteScans = can(user, "audit.scan.run");
   const {
     phase1Hosts,
     phase1Summary,

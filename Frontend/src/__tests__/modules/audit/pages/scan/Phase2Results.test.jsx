@@ -37,6 +37,7 @@ import Phase2Results from "@audit/pages/scan/Phase2Results";
 import { ScanProvider } from "@audit/context/ScanContext";
 import api from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../../testPaths";
+import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
   default: {
@@ -87,7 +88,7 @@ vi.mock("react-router-dom", async () => {
 
 let user;
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user }),
+  useAuth: () => ({ user: personaFrom(user) }),
 }));
 
 const EXECUTOR = {

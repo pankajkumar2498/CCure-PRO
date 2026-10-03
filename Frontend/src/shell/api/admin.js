@@ -59,9 +59,11 @@ export const updateUser = async (userId, userData) => {
   return response.data;
 };
 
-export const changeUserRole = async (userId, roleId) => {
+// Replaces the account's role with another RBAC role; the id is an RBAC role id
+// (from the assignable-roles list), checked again by the backend.
+export const changeUserRole = async (userId, rbacRoleId) => {
   const response = await axiosInstance.patch(`/admin/users/${userId}/role/`, {
-    role_id: roleId,
+    rbac_role_id: rbacRoleId,
   });
   return response.data;
 };
@@ -108,18 +110,6 @@ export const resetUserPassword = async (userId, password) => {
 export const resetUserMfa = async (userId) => {
   const response = await axiosInstance.post(
     `/admin/users/${userId}/reset-mfa/`,
-  );
-  return response.data;
-};
-
-export const listRoles = async () => {
-  const response = await axiosInstance.get("/admin/roles/");
-  return response.data;
-};
-
-export const listRolePermissions = async (roleId) => {
-  const response = await axiosInstance.get(
-    `/admin/roles/${roleId}/permissions/`,
   );
   return response.data;
 };

@@ -166,6 +166,18 @@ class SessionResponse(BaseModel):
 # ── Helper Functions ──────────────────────────────────────────────────────────
 
 
+def _role_label(user: User) -> str:
+    """The labels of the account's live RBAC roles, for display only."""
+    from ccure_platform.rbac import administration as rbac_admin
+    from sqlalchemy.orm import object_session
+
+    db = object_session(user)
+    if db is None:
+        return "N/A"
+    labels = rbac_admin.role_labels(db, [user.id]).get(str(user.id), [])
+    return ", ".join(labels) or "N/A"
+
+
 def _serialize_profile(user: User) -> UserProfileResponse:
     """Convert User model to ProfileResponse."""
     return UserProfileResponse(
@@ -174,7 +186,7 @@ def _serialize_profile(user: User) -> UserProfileResponse:
         email=user.email,
         full_name=user.full_name,
         organization_name=user.organization.name if user.organization else "N/A",
-        role_name=user.role.name if user.role else "N/A",
+        role_name=_role_label(user),
         is_active=user.is_active,
         last_login_at=user.last_login_at,
         created_at=user.created_at,

@@ -13,8 +13,6 @@ import re
 import pytest
 
 from ccure_platform import composition
-from ccure_platform.administration import roles as roles_router
-from ccure_platform.rbac import authority as au
 from ccure_platform.rbac import legacy_map
 from ccure_platform.rbac.catalogue import sync
 from config import AppConfig
@@ -32,7 +30,7 @@ from testpaths import BACKEND_ROOT
 ADMIN_FILES = (
     "ccure_platform/administration/users.py",
     "ccure_platform/administration/organizations.py",
-    "ccure_platform/administration/roles.py",
+    "ccure_platform/administration/rbac_admin.py",
     "ccure_platform/audit_log/router.py",
 )
 
@@ -65,15 +63,14 @@ def test_every_key_a_platform_admin_route_names_exists_in_the_catalogue():
 
 @pytest.fixture
 def w(rbac_db, monkeypatch):
-    au.set_migrated_paths(None)
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "off")
     sync(rbac_db, composition.load_permission_sources(), audit=False)
     w = type("W", (), {})()
     w.db, w.a = rbac_db, make_org(rbac_db)
 
     def person(legacy_role, rbac_role=None, name=None):
         u = make_user(rbac_db, w.a)
-        u.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
+        if legacy_role:
+            u.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
         rbac_db.flush()
         rbac_db.refresh(u)
         if rbac_role:
@@ -84,31 +81,18 @@ def w(rbac_db, monkeypatch):
     return w
 
 
-def test_assignable_roles_in_the_legacy_role_list_come_from_the_backend(w):
-    admin = w.person("org_admin")
-    rows = roles_router.list_roles(organization_id=None, db=w.db, current_user=admin)[
-        "roles"
-    ]
-    by = {r["name"]: r["assignable"] for r in rows}
-    assert by["analyst"] is True and by["superadmin"] is False
-    sa = w.person("superadmin")
-    rows = roles_router.list_roles(organization_id=None, db=w.db, current_user=sa)[
-        "roles"
-    ]
-    assert all(r["assignable"] for r in rows)
-
-
 def test_the_compliance_emergency_bypass_needs_the_approval_permission(w, monkeypatch):
     approve = lambda u: compliance._may_bypass_maker_checker(w.db, u)  # noqa: E731
-    assert approve(w.person("superadmin")) and approve(w.person("org_admin"))
-    assert not approve(w.person("analyst")) and not approve(w.person("viewer"))
-    # a legacy role *called* compliance officer holds nothing it was not given
-    assert not approve(w.person("scanner"))
+    assert approve(w.person(None, "platform.superadmin"))
+    assert approve(w.person(None, "platform.org_admin"))
+    assert not approve(w.person(None, "platform.analyst"))
+    assert not approve(w.person(None, "platform.viewer"))
+    assert not approve(w.person(None, "platform.scanner"))
+    # no assignment, whatever the (deprecated) legacy column says, holds nothing
+    assert not approve(w.person("superadmin"))
 
 
 def test_the_bypass_follows_grants_not_names_when_the_new_model_decides(w, monkeypatch):
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "enforce")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "*")
     spoof = w.person("org_admin", "platform.viewer")  # legacy name says admin, no grant
     real = w.person("analyst", "platform.org_admin")
     assert compliance._may_bypass_maker_checker(w.db, spoof) is False
@@ -124,8 +108,6 @@ def test_the_directory_and_audit_scope_helpers_use_cross_organisation_reach(
     from ccure_platform.administration import users as users_mod
     from ccure_platform.audit_log import router as audit_mod
 
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "enforce")
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_PATHS", "*")
     spoof = w.person("superadmin", "platform.viewer")
     real = w.person("viewer", "platform.superadmin")
     for helper in (users_mod._is_superadmin, audit_mod._is_superadmin):
@@ -135,10 +117,10 @@ def test_the_directory_and_audit_scope_helpers_use_cross_organisation_reach(
 def test_a_user_directory_query_is_confined_to_the_organisation_without_reach(w):
     from ccure_platform.administration import users as users_mod
 
-    admin = w.person("org_admin")
+    admin = w.person(None, "platform.org_admin")
     q = users_mod._scoped_users_query(w.db, admin)
     assert "org_id" in str(q.statement.compile())
-    sa = w.person("superadmin")
+    sa = w.person(None, "platform.superadmin")
     assert "org_id" not in str(
         users_mod._scoped_users_query(w.db, sa).statement.compile()
     ).split("WHERE")[-1].replace("users.org_id AS", "")

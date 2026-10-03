@@ -28,13 +28,11 @@ const payload = (active, keys, canSwitch = true) => ({
   role: { name: "Anything", permissions: [] },
   authorization: {
     contract: 1,
-    source: "platform",
     home_org_id: "org_a",
     active_org_id: active,
     permissions: { platform: [], organization: keys },
     can_switch_organisation: canSwitch,
     assignments: [],
-    atoms: {},
   },
 });
 
@@ -156,14 +154,15 @@ describe("switching is a backend operation", () => {
     expect(screen.getByTestId("version")).toHaveTextContent("0");
   });
 
-  it("an authorization payload the UI does not understand grants nothing", async () => {
+  it("an authorization payload the UI does not understand signs nobody in", async () => {
     const bad = payload("org_a", ["audit.scan.read"]);
     bad.authorization.contract = 7;
     api.getCurrentUser.mockResolvedValueOnce(bad);
     mount();
     await waitFor(() =>
-      expect(screen.getByTestId("state")).toHaveTextContent("authenticated"),
+      expect(screen.getByTestId("state")).toHaveTextContent("incompatible"),
     );
+    expect(ctx.user).toBeNull();
     expect(screen.getByTestId("read")).toHaveTextContent("false");
   });
 });

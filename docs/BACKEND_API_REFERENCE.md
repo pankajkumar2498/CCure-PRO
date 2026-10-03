@@ -96,7 +96,7 @@ array. Rate-limit rejections use `error_code: "RATE_LIMIT_EXCEEDED"` with status
 
 Five routers register both the bare and the trailing-slash form of their
 collection routes, so `/admin/users` and `/admin/users/` are both valid:
-`/admin/organizations`, `/admin/roles`, `/admin/users`, `/admin/audit-logs`,
+`/admin/organizations`, `/admin/users`, `/admin/audit-logs`,
 `/assets`, `/findings`, plus the parameterised admin sub-routes
 (`/admin/users/{user_id}/`, `/admin/organizations/{org_id}/status/`, etc.).
 The frontend's `api/admin.js` sends the trailing-slash form.
@@ -1969,20 +1969,13 @@ every admin-created account out of its own login.
 > **NOTE:** `restore` and `purge` are gated on `users:delete`, not a separate
 > restore permission — the delete atom governs the whole soft-delete lifecycle.
 
-### Roles — `/admin/roles` (2 operations)
+### Roles — removed (RBAC-8)
 
-Source: `Backend/routers/admin_rbac.py`. Both require `roles:read`.
-
-| Method | Path                                 | Returns                                          |
-| ------ | ------------------------------------ | ------------------------------------------------ |
-| GET    | `/admin/roles`                       | All roles with descriptions and `is_system_role` |
-| GET    | `/admin/roles/{role_id}/permissions` | Permission atoms for one role (`role_id: int`)   |
-
-> **IMPORTANT:** This router is **read-only**. The `roles:create`,
-> `roles:update` and `roles:delete` permission atoms are defined and granted to
-> superadmin, but **no endpoint consumes them** — the five system roles are
-> seeded by `db/migrate_production_schema.py` and cannot be modified through the
-> API.
+The legacy read-only `/admin/roles` routes (`routers/admin_rbac.py`) were **removed** with the
+legacy authorization model. Roles, permissions and assignments are administered through
+Platform RBAC — `/platform/rbac/*` (`ccure_platform/administration/rbac_admin.py`), documented
+in [`architecture/RBAC_ADMINISTRATION.md`](architecture/RBAC_ADMINISTRATION.md). User create /
+change-role take an `rbac_role_id`.
 
 ### Organizations — `/admin/organizations` (8 operations)
 

@@ -73,7 +73,7 @@ export default function WebDashboard() {
   const { user } = useAuth();
   // Launching sends active attack traffic at the target; the API requires
   // scans:execute, so the control is not offered to a role that lacks it.
-  const canLaunch = can(user, "scans", "execute");
+  const canLaunch = can(user, "audit.scan.run");
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
   const [scorecard, setScorecard] = useState(null);

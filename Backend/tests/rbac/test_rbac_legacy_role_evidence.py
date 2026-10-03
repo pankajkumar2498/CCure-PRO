@@ -34,12 +34,14 @@ def test_the_evidence_lists_every_site_the_ratchet_counts(evidence):
     per_file = {}
     for s in evidence["sites"]:
         per_file.setdefault(s["file"], Counter())[s["kind"]] += 1
-    assert {
-        f: dict(sorted(c.items())) for f, c in sorted(per_file.items())
-    } == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
+    assert (
+        {f: dict(sorted(c.items())) for f, c in sorted(per_file.items())}
+        == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
+        == {}
+    )
     assert (
         len(evidence["sites"])
-        == 6
+        == 0
         == sum(sum(v.values()) for v in rg.measure_legacy().values())
     )
 
@@ -48,7 +50,7 @@ def test_the_evidence_and_the_code_agree_file_by_file(evidence):
     assert {s["file"] for s in evidence["sites"]} == set(rg.measure_legacy())
 
 
-def test_every_site_has_a_known_category_a_replacement_and_a_phase(evidence):
+def test_every_recorded_site_has_a_known_category_a_replacement_and_a_phase(evidence):
     for s in evidence["sites"]:
         assert s["category"] in evidence["categories"], s
         assert s["rbac4_replacement"].strip() and s["deferred_to"] in (
@@ -58,11 +60,9 @@ def test_every_site_has_a_known_category_a_replacement_and_a_phase(evidence):
     assert set(evidence["categories"]) >= {s["category"] for s in evidence["sites"]}
 
 
-def test_the_remaining_sites_all_name_a_later_phase_and_a_reason(evidence):
-    """RBAC-5 left 9 sites: the legacy rollback rule, provisioning/bootstrap/default
-    role (RBAC-8) and platform-administration visibility (RBAC-7)."""
-    assert {s["deferred_to"] for s in evidence["sites"]} <= {"RBAC-8"}
-    assert len(evidence["sites"]) == 6
+def test_no_site_remains_and_the_evidence_says_the_programme_is_closed(evidence):
+    assert evidence["sites"] == []
+    assert evidence["status"] == "closed-rbac8"
 
 
 def test_the_thirteen_migrated_guards_are_gone_from_the_code_and_recorded():
@@ -86,9 +86,10 @@ def test_the_thirteen_migrated_guards_are_gone_from_the_code_and_recorded():
     # RBAC-5 gave every one of those 27 a final status
     final = Counter(d["rbac5"]["status"] for d in deferred)
     assert final == {"migrated": 20, "intentionally_deferred": 7}
-    # RBAC-7 resolved three of those seven; four remain, each RBAC-8
+    # RBAC-7 resolved three of those seven; RBAC-8 the other four
     seven = [d for d in deferred if d["rbac5"]["status"] == "intentionally_deferred"]
     assert sum(1 for d in seven if d.get("rbac7", {}).get("status") == "migrated") == 3
+    assert sum(1 for d in seven if d.get("rbac8", {}).get("status") == "migrated") == 4
     assert all(d["rbac5"]["reason"].strip() for d in deferred)
 
 
@@ -106,12 +107,8 @@ def test_no_route_is_guarded_by_a_role_name_any_more():
     assert guarded == []
 
 
-def test_the_ratchet_baseline_fell_from_forty_to_six():
-    assert rg.measure_legacy() == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES
-    assert (
-        sum(sum(v.values()) for v in rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES.values()) == 6
-    )
-    assert len(rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES) == 5
+def test_the_ratchet_baseline_fell_from_forty_to_zero():
+    assert rg.measure_legacy() == rg.KNOWN_LEGACY_ROLE_IDENTITY_SITES == {}
     assert rg.measure_new() == []
 
 

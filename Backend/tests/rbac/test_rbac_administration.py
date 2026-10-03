@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from ccure_platform import composition
 from ccure_platform.identity import reauth
 from ccure_platform.identity.dependencies import get_current_user
-from ccure_platform.rbac import authority as au
 from ccure_platform.rbac import scope
 from ccure_platform.rbac.authorization_view import build_authorization
 from ccure_platform.rbac.catalogue import sync
@@ -33,11 +32,8 @@ from rbac_testing import (
 
 @pytest.fixture(autouse=True)
 def clean(monkeypatch):
-    au.set_migrated_paths(None)
-    monkeypatch.setattr(AppConfig, "RBAC_AUTHORITY_MODE", "off")
     monkeypatch.setattr(AppConfig, "RBAC_REAUTH_MODE", "off")
     yield
-    au.set_migrated_paths(None)
 
 
 @pytest.fixture

@@ -356,7 +356,7 @@ const byIndex = (_row, index) => index;
 export default function Phase2Results() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canExecuteScans = can(user, "scans", "execute");
+  const canExecuteScans = can(user, "audit.scan.run");
   const {
     phase1Hosts,
     phase2Results,

@@ -101,7 +101,7 @@ def test_report_download_requires_reports_read_permission(client, db_session):
             f"/reports/download/{scan.id}", headers=_auth_headers(user)
         )
         assert response.status_code == 403
-        assert "reports:read" in response.json()["detail"]
+        assert "audit.report.read" in response.json()["detail"]
     finally:
         if scan.report_executive_path and os.path.exists(scan.report_executive_path):
             os.remove(scan.report_executive_path)
@@ -228,7 +228,7 @@ def test_report_delete_requires_reports_delete_permission(client, db_session):
     try:
         response = client.delete(f"/reports/{scan.id}", headers=_auth_headers(user))
         assert response.status_code == 403
-        assert "reports:delete" in response.json()["detail"]
+        assert "audit.report.delete" in response.json()["detail"]
     finally:
         if os.path.exists(report_path):
             os.remove(report_path)

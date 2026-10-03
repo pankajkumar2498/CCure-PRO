@@ -813,7 +813,7 @@ export default function NewScan() {
   const location = useLocation();
   const { scanId: urlScanId } = useParams();
   const { user } = useAuth();
-  const canExecuteScans = can(user, "scans", "execute");
+  const canExecuteScans = can(user, "audit.scan.run");
 
   const {
     target,

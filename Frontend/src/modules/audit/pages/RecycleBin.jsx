@@ -89,8 +89,8 @@ const fmtDur = (sec) =>
 export default function RecycleBin() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canRestoreScans = can(user, "scans", "restore");
-  const canPurgeScans = can(user, "scans", "purge");
+  const canRestoreScans = can(user, "audit.scan.lifecycle");
+  const canPurgeScans = can(user, "audit.scan.purge");
 
   const [scans, setScans] = useState([]);
   const [total, setTotal] = useState(0);

@@ -16,7 +16,7 @@ from ccure_platform.rbac.dependencies import require_authorized
 from ccure_platform.rbac.scope import acts_across_organisations
 from ccure_platform.audit_log.writer import log_audit_event
 from db.base import gen_org_id, gen_user_id, get_db, utcnow
-from db.models import Organization, RefreshTokenSession, Role, User
+from db.models import Organization, RefreshTokenSession, User
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
@@ -184,13 +184,6 @@ def create_organization(
                 status_code=400, detail=f"Admin email '{admin_email}' is already in use"
             )
 
-        org_admin_role = db.query(Role).filter(Role.name == "org_admin").first()
-        if not org_admin_role:
-            raise HTTPException(
-                status_code=500,
-                detail="The 'org_admin' role does not exist in the system.",
-            )
-
     try:
         new_org = Organization(
             id=gen_org_id(org_data.slug),  # e.g. org_acme_corp
@@ -232,7 +225,6 @@ def create_organization(
                 email=admin_email,
                 full_name=org_data.admin_full_name,
                 password_hash=hash_password(org_data.admin_password),
-                role_id=org_admin_role.id,
                 org_id=new_org.id,
                 is_active=True,
                 is_verified=True,
@@ -241,6 +233,26 @@ def create_organization(
             )
             db.add(new_admin)
             db.flush()
+            # The administrator's role is an RBAC assignment made through the governed
+            # API by the actor creating the organisation (RBAC-8): if that actor may
+            # not hand it out, the whole organisation rolls back — never a half-
+            # provisioned administrator, and nothing privileged granted by default.
+            from ccure_platform.rbac.governance import GovernanceError
+            from ccure_platform.rbac.audit import emit as _emit_rbac
+            from ccure_platform.rbac.provisioning import provision_organisation_admin
+
+            try:
+                with db.begin_nested():
+                    rbac_events = provision_organisation_admin(
+                        db, current_user, str(new_admin.id)
+                    )
+            except GovernanceError as error:
+                raise HTTPException(
+                    status_code=403,
+                    detail="The organisation administrator could not be provisioned: "
+                    + ", ".join(sorted({v.code for v in error.violations})),
+                ) from None
+            _emit_rbac(db, rbac_events, actor=current_user, request=request)
             log_audit_event(
                 db,
                 current_user,
@@ -255,6 +267,9 @@ def create_organization(
         db.refresh(new_org)
 
         return {"id": str(new_org.id), "slug": new_org.slug}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to create organization: {e}")

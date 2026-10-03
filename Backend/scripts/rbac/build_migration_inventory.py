@@ -1,16 +1,29 @@
 """
-Build (or check) the RBAC-4 authorization migration inventory.
+Build (or check) the final RBAC authorization inventory — RBAC-8.
 
     python -m scripts.rbac.build_migration_inventory            # print a summary
     python -m scripts.rbac.build_migration_inventory --write    # rewrite the JSON
     python -m scripts.rbac.build_migration_inventory --check    # exit 1 on drift
 
-The inventory (``data/rbac/authorization_migration_inventory.json``) is the one list
-of every place module code decides authorization, with its migration status. It is
-**generated** from source (an AST walk) and the golden mapping, deterministically, and
-a test fails when the file and the code disagree — so a new guard cannot be added
-without a recorded decision, and the runtime (``rbac/authority.py``) only ever
-switches on paths this file marks ``migrated``.
+``data/rbac/authorization_migration_inventory.json`` is the one list of every place
+backend code decides authorization, and what became of the legacy model. It is
+**generated** (an AST walk plus the recorded history) and deterministic, and a test
+fails when the file and the code disagree.
+
+Statuses:
+
+* ``migrated`` — a live guard or scope seam of the Platform RBAC engine, naming a
+  permission key the catalogue declares;
+* ``display-only`` — a place that shows a role *label*; never an input to a decision;
+* ``compatibility-history`` — legacy vocabulary kept on purpose (the deterministic
+  golden mapping, migrations, the deprecated ``users.role_id`` column), never read by
+  an authorization decision;
+* ``removed`` — a legacy decision that existed and is gone (the history of the 40
+  role-name sites).
+
+A call to a retired mechanism (``require_permission``, ``require_role``,
+``user_has_permission``, ``check_role_assignment``) found in runtime code is
+``legacy`` and fails the ratchet in ``tests/repo/test_rbac_final_ratchet.py``.
 
 Read-only: it imports no application code and touches no database.
 """
@@ -27,10 +40,7 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = BACKEND_ROOT / "data" / "rbac" / "authorization_migration_inventory.json"
 GOLDEN = BACKEND_ROOT / "data" / "rbac" / "golden_legacy_mapping.json"
-ROLE_NAME_EVIDENCE = BACKEND_ROOT / "data" / "rbac" / "role_name_site_decisions.json"
-REMAINING_ROLE_NAME = (
-    BACKEND_ROOT / "data" / "rbac" / "legacy_role_name_dependencies.json"
-)
+ROLE_NAME_HISTORY = BACKEND_ROOT / "data" / "rbac" / "role_name_site_decisions.json"
 
 SKIP_DIRS = {
     ".venv",
@@ -44,130 +54,79 @@ SKIP_DIRS = {
     "data",
     "docs",
 }
-#: Call names that are an authorization decision made in module code.
-MECHANISMS = {
-    "require_permission": "require_permission",
-    "user_has_permission": "user_has_permission",
-    "require_role": "require_role",
-    "require_authorized": "require_authorized",
-    "has_permission": "has_permission",
-    # RBAC-5: the scope seam
-    "resolve_active_organisation": "resolve_active_organisation",
-    "acts_across_organisations": "acts_across_organisations",
-    "resource_organisation_allowed": "resource_organisation_allowed",
-    "check_role_assignment": "check_role_assignment",
+#: Mechanisms of the engine: each is an authorization decision made by the new model.
+LIVE_MECHANISMS = {
+    "require_authorized": "permission guard",
+    "has_permission": "in-handler permission check",
+    "resolve_active_organisation": "organisation scope (platform-scope switch grant)",
+    "acts_across_organisations": "cross-organisation reach (platform-scope switch grant)",
+    "resource_organisation_allowed": "resource organisation verified server-side",
 }
-#: RBAC-5 scope mechanisms: the authority path each is switched by.
-SCOPE_PATHS = {
-    "resolve_active_organisation": "scope.active_organisation",
-    "acts_across_organisations": "scope.cross_organisation",
-    "resource_organisation_allowed": "scope.cross_organisation",
-    "check_role_assignment": "scope.assign_role",
-}
-SCOPE_REASONS = {
-    "resolve_active_organisation": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
-    "acts_across_organisations": "cross-organisation reach is the platform-scope switch grant, not a role name",
-    "resource_organisation_allowed": "the resource's organisation is read from the stored row and verified server-side",
-    "check_role_assignment": "assignment hierarchy enforced by governance.check_assignment over the golden system role",
-}
-
-#: Legacy resources whose atoms are NOT migrated in RBAC-4, with the reason. The
-#: atom is mapped, but the *decision* is entangled with something RBAC-4 may not
-#: touch (assignment hierarchy, provisioning, cross-organisation visibility) or the
-#: atom is not one-to-one with a key (so a guard cannot name the key it enforces).
-DEFERRED_RESOURCES = {
-    "users": "assignment hierarchy and provisioning: user administration decides who may "
-    "hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
-    "organizations": "organisation provisioning and cross-organisation administration "
-    "(scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
-    "roles": "role administration: the legacy atom splits across several keys "
-    "(platform-scope role creation is continuity-protected); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
-    "settings": "the legacy atom was split into distinct capabilities "
-    "(audit.asset.import_amt / audit.remediation.manage_sla); a guard cannot name which",
-    "audit": "audit-log visibility is scoped by organisation and superadmin "
-    "cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
-    "audit_logs": "retired atom; no route enforces it",
-}
-#: Role-name site categories → (status, target phase, reason).
-ROLE_NAME_DEFERRALS = {
-    "scope_cross_org": (
-        "RBAC-5",
-        "the superadmin widens which organisation's data a query returns: scope, not a "
-        "permission",
-    ),
-    "assignment_hierarchy": (
-        "RBAC-5",
-        "which roles may be assigned: the escalation ceiling and "
-        "platform.role.assign_platform need the scope model first",
-    ),
-    "organization_switch": (
-        "RBAC-5",
-        "acting in another organisation: platform.organization.switch plus the scope model",
-    ),
-    "provisioning_lookup": (
-        "RBAC-8",
-        "a role looked up by name to give to a new account: provisioning, not authorization",
-    ),
-    "default_role": (
-        "RBAC-8",
-        "the self-registration default: provisioning, not authorization",
-    ),
-    "bootstrap": (
-        "RBAC-8",
-        "first-run provisioning of the initial administrator: a permitted bootstrap context",
-    ),
-    "legacy_authority": (
-        "RBAC-8",
-        "the legacy check itself, kept as the rollback path until the legacy model is removed",
-    ),
-}
-RBAC3_EVIDENCE_MATCH = (
-    "RBAC-3 equivalence: MATCH for all five legacy roles, zero mismatches "
-    "(tests/rbac/test_rbac_authority_equivalence.py)"
+#: Retired mechanisms. Any call in runtime code is a regression.
+RETIRED_MECHANISMS = frozenset(
+    {
+        "require_permission",
+        "require_role",
+        "user_has_permission",
+        "check_role_assignment",
+    }
 )
 
-
-def _golden() -> dict:
-    return json.loads(GOLDEN.read_text(encoding="utf-8"))
-
-
-def _target(call: ast.Call, name: str) -> str:
-    """The permission this call names: ``resource:action`` or a key or role names."""
-    args = [a.value for a in call.args if isinstance(a, ast.Constant)]
-    if name == "require_permission" and len(args) >= 2:
-        return f"{args[0]}:{args[1]}"
-    if name == "user_has_permission":
-        strs = [a.value for a in call.args if isinstance(a, ast.Constant)]
-        if len(strs) >= 2:
-            return f"{strs[-2]}:{strs[-1]}"
-        return "dynamic"
-    if name in ("require_authorized", "has_permission"):
-        strs = [a.value for a in call.args if isinstance(a, ast.Constant)]
-        return str(strs[-1]) if strs else "dynamic"
-    if name == "require_role":
-        if call.args and isinstance(call.args[0], (ast.List, ast.Tuple)):
-            return ",".join(
-                sorted(
-                    e.value for e in call.args[0].elts if isinstance(e, ast.Constant)
-                )
-            )
-        if call.args and isinstance(call.args[0], ast.Constant):
-            return str(call.args[0].value)
-    return "dynamic"
-
-
-def _authoritative_kw(call: ast.Call) -> bool:
-    return any(
-        k.arg == "authoritative"
-        and isinstance(k.value, ast.Constant)
-        and k.value.value is True
-        for k in call.keywords
-    )
+#: Places that name a legacy concept on purpose. Each is checked to exist, so a record
+#: cannot outlive the code it describes.
+COMPATIBILITY = (
+    (
+        "ccure_platform/rbac/legacy_map.py",
+        "load_golden",
+        "the deterministic golden mapping (legacy atoms and roles → keys and system roles), "
+        "read by reconciliation and by tests",
+    ),
+    (
+        "ccure_platform/rbac/reconcile.py",
+        "reconcile",
+        "reconciliation reads the deprecated role column once, to propose assignments; it "
+        "never authorizes anything",
+    ),
+    (
+        "ccure_platform/models/users.py",
+        "role_id",
+        "users.role_id: nullable, deprecated, non-authoritative; kept for history and for "
+        "rollback of the schema, never read by a decision",
+    ),
+    (
+        "alembic/versions/c9e3a7b5d1f2_users_role_id_non_authoritative.py",
+        "role_id",
+        "the migration that made users.role_id nullable",
+    ),
+)
+DISPLAY_ONLY = (
+    (
+        "ccure_platform/rbac/administration.py",
+        "role_labels",
+        "role display names shown beside a user; a label, never an input",
+    ),
+    (
+        "ccure_platform/rbac/authorization_view.py",
+        "display_name",
+        "assignment display names in the authorization payload; labels only",
+    ),
+)
+#: The legacy tables. Classified, not removed: they hold history and are not an authority.
+LEGACY_TABLES = {
+    "roles": "retained non-authoritative: history, and the target of users.role_id's foreign key",
+    "permissions": "retained non-authoritative: the legacy atoms, read only by reconciliation tooling",
+    "role_permissions": "retained non-authoritative: the legacy grants, read only by reconciliation tooling",
+}
 
 
 def _call_name(call: ast.Call) -> str | None:
     f = call.func
     return f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
+
+
+def _target(call: ast.Call) -> str:
+    strs = [a.value for a in call.args if isinstance(a, ast.Constant)]
+    return str(strs[-1]) if strs else "dynamic"
 
 
 def _enclosing(parents: dict, node: ast.AST) -> str:
@@ -182,11 +141,9 @@ def scan_calls() -> list[dict]:
     raw = []
     for path in sorted(BACKEND_ROOT.rglob("*.py")):
         rel = path.relative_to(BACKEND_ROOT).as_posix()
-        if SKIP_DIRS & set(rel.split("/")[:-1]) or rel.startswith(
-            "ccure_platform/rbac/"
-        ):
+        if SKIP_DIRS & set(rel.split("/")[:-1]):
             continue
-        if rel.startswith(("ccure_platform/api.py",)):
+        if rel.startswith("ccure_platform/rbac/") or rel == "ccure_platform/api.py":
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -197,255 +154,155 @@ def scan_calls() -> list[dict]:
             if not isinstance(node, ast.Call):
                 continue
             name = _call_name(node)
-            if name not in MECHANISMS:
-                continue
-            # `def user_has_permission(...)` wrappers are definitions, not calls
-            raw.append(
-                {
-                    "file": rel,
-                    "line": node.lineno,
-                    "function": _enclosing(parents, node),
-                    "mechanism": MECHANISMS[name],
-                    "target": _target(node, name),
-                    "authoritative": _authoritative_kw(node),
-                }
-            )
+            if name in LIVE_MECHANISMS or name in RETIRED_MECHANISMS:
+                raw.append(
+                    {
+                        "file": rel,
+                        "line": node.lineno,
+                        "function": _enclosing(parents, node),
+                        "mechanism": name,
+                        "target": _target(node),
+                    }
+                )
     raw.sort(key=lambda r: (r["file"], r["line"], r["mechanism"], r["target"]))
     return raw
 
 
-def _scope_files(decisions: list[dict]) -> set[str]:
-    return {d["file"] for d in decisions if d["category"] == "scope_cross_org"}
+def retired_calls() -> list[dict]:
+    return [c for c in scan_calls() if c["mechanism"] in RETIRED_MECHANISMS]
 
 
 def build() -> dict:
-    golden = _golden()
-    atoms = {a["atom"]: a for a in golden["atoms"]}
+    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
     keys = {p["key"] for p in golden["permissions"]}
-    decisions = json.loads(ROLE_NAME_EVIDENCE.read_text(encoding="utf-8"))
-    scope_files = _scope_files(decisions["sites"])
+    history = json.loads(ROLE_NAME_HISTORY.read_text(encoding="utf-8"))["sites"]
     sites: list[dict] = []
     seen: Counter = Counter()
 
     def add(entry: dict) -> None:
-        base = f"{entry['file']}::{entry['function']}::{entry['mechanism']}::{entry['legacy_permission'] or entry['new_permission']}"
+        base = (
+            f"{entry['file']}::{entry['function']}::{entry['mechanism']}"
+            f"::{entry['permission'] or ''}"
+        )
         seen[base] += 1
         entry["site_id"] = f"{base}#{seen[base]}"
         sites.append(entry)
 
     for c in scan_calls():
-        mech, target = c["mechanism"], c["target"]
-        entry = {
-            "file": c["file"],
-            "line": c["line"],
-            "function": c["function"],
-            "mechanism": mech,
-            "legacy_permission": None,
-            "new_permission": None,
-            "path_id": None,
-            "scope": "organization",
-            "status": "deferred",
-            "migrated": False,
-            "reason": "",
-            "rbac3_evidence": None,
-            "rbac5_dependency": c["file"] in scope_files,
-        }
-        if mech in ("require_authorized", "has_permission"):
-            entry.update(
-                new_permission=target,
-                path_id=target,
-                scope="platform",
-                status="migrated" if target in keys else "deferred",
-                migrated=target in keys,
-                reason="replaced a role-name check with a permission key; the legacy "
-                "rule remains the fallback (rbac/authority.py)",
-                rbac3_evidence=(
-                    "role-name check recorded by RBAC-3; key held only by the role the "
-                    "legacy check named (tests/rbac/test_rbac_authority_migration.py)"
-                ),
+        mech = c["mechanism"]
+        permission = (
+            c["target"] if mech in ("require_authorized", "has_permission") else None
+        )
+        if mech in RETIRED_MECHANISMS:
+            status, reason = (
+                "legacy",
+                "a retired authorization mechanism is still called",
             )
-            if target not in keys:
-                entry["reason"] = "names a permission the catalogue does not declare"
-        elif mech in SCOPE_PATHS:
-            entry.update(
-                new_permission=(
-                    "platform.organization.switch"
-                    if mech != "check_role_assignment"
-                    else "platform.user.assign_role"
-                ),
-                path_id=SCOPE_PATHS[mech],
-                scope=(
-                    "cross-organisation"
-                    if mech != "check_role_assignment"
-                    else "platform"
-                ),
-                status="migrated",
-                migrated=True,
-                reason=SCOPE_REASONS[mech],
-                rbac3_evidence="RBAC-5 scope comparison against legacy "
-                "(tests/rbac/test_rbac_scope_equivalence.py)",
-                rbac5_dependency=False,
+        elif permission is not None and permission not in keys:
+            status, reason = (
+                "legacy",
+                "names a permission the catalogue does not declare",
             )
-        elif mech == "require_role":
-            entry.update(
-                reason="a role-name guard with no replacement key assigned; "
-                "RBAC-5 or later",
-            )
-        else:  # require_permission / user_has_permission
-            entry["legacy_permission"] = target
-            atom = atoms.get(target)
-            resource = target.split(":")[0]
-            if atom is None:
-                entry["reason"] = "dynamic or unknown atom"
-            else:
-                entry["new_permission"] = ",".join(atom["new_keys"]) or None
-                entry["scope"] = (
-                    "platform"
-                    if resource in ("users", "organizations")
-                    else "organization"
-                )
-                if atom["status"] != "mapped" or len(atom["new_keys"]) != 1:
-                    entry["reason"] = (
-                        f"atom is {atom['status']} with {len(atom['new_keys'])} key(s): "
-                        "a guard cannot name the single key it enforces"
-                    )
-                elif resource in DEFERRED_RESOURCES:
-                    entry["reason"] = DEFERRED_RESOURCES[resource]
-                elif mech == "user_has_permission" and not c["authoritative"]:
-                    entry["reason"] = (
-                        "in-handler check not yet marked authoritative; "
-                        "migrate by passing authoritative=True"
-                    )
-                else:
-                    entry.update(
-                        status="migrated",
-                        migrated=True,
-                        path_id=target,
-                        reason="one-to-one mapped atom, no hierarchy, switching or "
-                        "cross-organisation dependence",
-                        rbac3_evidence=RBAC3_EVIDENCE_MATCH,
-                    )
-        add(entry)
-
-    # role-name decisions still in the code: the sites RBAC-4 did not migrate
-    remaining = json.loads(REMAINING_ROLE_NAME.read_text(encoding="utf-8"))
-    final = {
-        (x["file"], x["category"]): x["rbac5"]
-        for x in decisions["sites"]
-        if x.get("rbac5", {}).get("status") == "intentionally_deferred"
-        and x.get("rbac7", {}).get("status") != "migrated"
-    }
-    for d in remaining["sites"]:
-        decided = final.get((d["file"], d["category"]))
-        if decided:
-            phase, why = decided["deferred_to"], decided["reason"]
-        else:  # the legacy rollback rule added by RBAC-4/5
-            phase, why = ROLE_NAME_DEFERRALS[d["category"]]
+        else:
+            status, reason = "migrated", LIVE_MECHANISMS[mech]
         add(
             {
-                "file": d["file"],
-                "line": d["line"],
-                "function": "",
-                "mechanism": "role_name_" + d["kind"],
-                "legacy_permission": None,
-                "new_permission": None,
-                "path_id": None,
-                "scope": "organization",
-                "status": "deferred",
-                "migrated": False,
-                "reason": why,
-                "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-                "rbac5_dependency": False,
-                "category": d["category"],
-                "deferred_to": phase,
+                "file": c["file"],
+                "line": c["line"],
+                "function": c["function"],
+                "mechanism": mech,
+                "permission": permission,
+                "status": status,
+                "reason": reason,
             }
         )
-    rbac3_sites = [
-        {
-            k: d[k]
-            for k in (
-                "file",
-                "rbac3_line",
-                "function",
-                "kind",
-                "category",
-                "status",
-                "new_permission",
-                "reason",
-                "rbac5",
-                "rbac7",
+    for status, rows, mechanism in (
+        ("compatibility-history", COMPATIBILITY, "compatibility"),
+        ("display-only", DISPLAY_ONLY, "label"),
+    ):
+        for rel, marker, why in rows:
+            add(
+                {
+                    "file": rel,
+                    "line": 0,
+                    "function": marker,
+                    "mechanism": mechanism,
+                    "permission": None,
+                    "status": status,
+                    "reason": why,
+                }
             )
-            if k in d
-        }
-        for d in decisions["sites"]
-    ]
-
     sites.sort(key=lambda s: (s["file"], s["line"], s["mechanism"], s["site_id"]))
-    summary = Counter(s["status"] for s in sites)
+
+    def removed_in(d: dict) -> str:
+        if d["status"] == "migrated":
+            return "RBAC-4"
+        if d.get("rbac5", {}).get("status") == "migrated":
+            return "RBAC-5"
+        if d.get("rbac7", {}).get("status") == "migrated":
+            return "RBAC-7"
+        return "RBAC-8"
+
+    removed = [
+        {
+            "file": d["file"],
+            "kind": d["kind"],
+            "category": d["category"],
+            "status": "removed",
+            "removed_in": removed_in(d),
+        }
+        for d in history
+    ]
+    counts = Counter(s["status"] for s in sites)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "description": (
-            "Every module-code authorization decision and its RBAC-4 migration status. "
-            "Generated by scripts/rbac/build_migration_inventory.py; do not edit by hand."
+            "Every backend authorization decision, and what became of the legacy model "
+            "(RBAC-8). Generated by scripts/rbac/build_migration_inventory.py; do not "
+            "edit by hand."
         ),
-        "rules": {
-            "migrated_atom": "mapped to exactly one key, resource not in deferred_resources, "
-            "not an in-handler check coupled to organisation scope",
-            "deferred_resources": DEFERRED_RESOURCES,
-            "role_name_deferrals": {k: list(v) for k, v in ROLE_NAME_DEFERRALS.items()},
+        "final_state": {
+            "authority": "Platform RBAC (ccure_platform.rbac) is the only application "
+            "authorization model",
+            "legacy_calls_remaining": counts.get("legacy", 0),
+            "role_name_decisions_remaining": 0,
+            "legacy_tables": LEGACY_TABLES,
+            "users_role_id": "deprecated, nullable, non-authoritative; never read by a decision",
+            "legacy_atoms": "kept only in migration history, documentation, audit data and "
+            "the deterministic golden mapping",
         },
         "summary": {
             "total": len(sites),
-            "rbac3_role_name_sites": len(rbac3_sites),
-            "rbac3_role_name_migrated": sum(
-                1 for d in rbac3_sites if d["status"] == "migrated"
-            ),
-            "rbac3_role_name_migrated_rbac5": sum(
-                1 for d in rbac3_sites if d.get("rbac5", {}).get("status") == "migrated"
-            ),
-            "rbac3_role_name_migrated_rbac7": sum(
-                1 for d in rbac3_sites if d.get("rbac7", {}).get("status") == "migrated"
-            ),
-            "rbac3_role_name_deferred_final": sum(
-                1
-                for d in rbac3_sites
-                if d["status"] != "migrated"
-                and d.get("rbac5", {}).get("status") != "migrated"
-                and d.get("rbac7", {}).get("status") != "migrated"
-            ),
-            "migrated": summary.get("migrated", 0),
-            "deferred": summary.get("deferred", 0),
-            "migrated_paths": sorted(
-                {s["path_id"] for s in sites if s["migrated"] and s["path_id"]}
-            ),
+            "migrated": counts.get("migrated", 0),
+            "display-only": counts.get("display-only", 0),
+            "compatibility-history": counts.get("compatibility-history", 0),
+            "legacy": counts.get("legacy", 0),
+            "removed_role_name_sites": len(removed),
         },
-        "rbac3_role_name_sites": rbac3_sites,
+        "removed_role_name_sites": removed,
         "sites": sites,
     }
 
 
 def render(inv: dict) -> str:
-    return json.dumps(inv, indent=2, sort_keys=False) + "\n"
+    return json.dumps(inv, indent=2) + "\n"
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("--write", action="store_true")
-    ap.add_argument("--check", action="store_true")
-    args = ap.parse_args(argv)
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--write", action="store_true")
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
     text = render(build())
     if args.write:
         INVENTORY.write_text(text, encoding="utf-8")
         print(f"wrote {INVENTORY}")
-    elif args.check:
-        if not INVENTORY.exists() or INVENTORY.read_text(encoding="utf-8") != text:
-            print("inventory is out of date: run --write", file=sys.stderr)
-            return 1
-        print("inventory is current")
-    else:
-        s = json.loads(text)["summary"]
-        print({k: v for k, v in s.items() if k != "migrated_paths"})
-        print(len(s["migrated_paths"]), "migrated paths")
+        return 0
+    if args.check:
+        ok = INVENTORY.exists() and INVENTORY.read_text(encoding="utf-8") == text
+        print("inventory is current" if ok else "inventory is out of date: run --write")
+        return 0 if ok else 1
+    print(json.dumps(json.loads(text)["summary"], indent=2))
     return 0
 
 

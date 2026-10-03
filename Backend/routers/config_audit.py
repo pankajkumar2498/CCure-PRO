@@ -41,7 +41,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from core.config_audit import (
     CHECK_TYPES,
     COMPARISON_OPERATORS,
@@ -155,7 +155,7 @@ def list_checks(
     platform: Optional[str] = Query(None),
     check_type: Optional[str] = Query(None),
     domain: Optional[str] = Query(None),
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     The configuration checks this build can run.
@@ -179,7 +179,7 @@ def list_checks(
 def capabilities(
     request: Request,
     response: Response,
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Which check types actually have a collector, per platform.
@@ -210,7 +210,7 @@ def get_check(
     request: Request,
     response: Response,
     check_id: str,
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     check = builtin_checks_by_id().get(check_id)
     if check is None:
@@ -224,7 +224,7 @@ def validate_rule(
     request: Request,
     response: Response,
     body: ConfigAuditValidateIn,
-    user: CurrentUser = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Check that a rule definition is executable, without contacting any target.

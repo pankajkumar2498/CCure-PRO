@@ -741,14 +741,14 @@ export default function ComplianceWorkspace() {
      `manage_schedules` is analyst and above, `approve_exception` is org_admin
      and above — deciding that the organisation will carry a compliance gap is
      a narrower authorisation than configuring a recurring scan. */
-  const canManageSchedules = canPermission(user, {
-    resource: "compliance",
-    action: "manage_schedules",
-  });
-  const canApproveException = canPermission(user, {
-    resource: "compliance",
-    action: "approve_exception",
-  });
+  const canManageSchedules = canPermission(
+    user,
+    "audit.compliance.manage_schedules",
+  );
+  const canApproveException = canPermission(
+    user,
+    "audit.compliance.approve_exception",
+  );
   const [decidingException, setDecidingException] = useState(false);
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 

@@ -5,7 +5,7 @@ Security Dashboard aggregated analytics endpoints.
 All queries are org-scoped. Superadmin can pass ?org_id= to view any org.
 
 All imports verified against actual codebase files:
-  - auth/rbac.py        → require_permission(resource, action)
+  - ccure_platform.api  → require_authorized(permission key)
   - db/base.py          → get_db, utcnow
   - db/models/*.py      → exact model + field names
   - core/vuln_intel.py  → compute_priority(cvss_score, epss_score, in_kev, has_exploit)
@@ -24,7 +24,7 @@ from typing import Optional
 
 from ccure_platform.api import (
     CurrentUser,
-    require_permission,
+    require_authorized,
     resolve_active_organisation,
 )
 from core.vuln_intel import compute_priority
@@ -68,7 +68,7 @@ def _now() -> datetime:
 def get_dashboard_summary(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """
     8 top metric cards. Data sources:
@@ -275,7 +275,7 @@ def get_dashboard_summary(
 def get_risk_breakdown(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -392,7 +392,7 @@ def get_vuln_trends(
     days: int = Query(30, ge=7, le=90),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
     since = _now() - timedelta(days=days)
@@ -446,7 +446,7 @@ def get_top_assets(
     limit: int = Query(10, ge=1, le=50),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
     assets = (
@@ -493,7 +493,7 @@ def get_top_cves(
     severity: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -567,7 +567,7 @@ def get_top_cves(
 def get_services_exposure(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
     HIGH_RISK_PORTS = {21, 23, 69, 110, 111, 139, 445, 512, 513, 514, 3389, 5900, 5985}
@@ -608,7 +608,7 @@ def get_services_exposure(
 def get_tls_health(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
     now = _now()
@@ -668,7 +668,7 @@ def get_tls_health(
 def get_http_headers(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -725,7 +725,7 @@ def get_http_headers(
 def get_compliance(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -898,7 +898,7 @@ def get_compliance(
 def get_asset_breakdown(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -952,7 +952,7 @@ def get_scan_activity(
     limit: int = Query(8, ge=1, le=20),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -1014,7 +1014,7 @@ def get_scan_activity(
 def get_insights(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     org = _resolve_org(user, org_id)
     now = _now()
@@ -1169,7 +1169,7 @@ def get_insights(
 def get_web_scan_summary(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """
     Aggregate statistics for web application scans.
@@ -1345,7 +1345,7 @@ def get_web_scan_summary(
 def get_web_owasp_scorecard(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """
     OWASP Top 10 (2021) coverage from web scan findings.
@@ -1407,7 +1407,7 @@ def get_web_scan_trends(
     days: int = Query(30, ge=7, le=90),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """
     Web scan finding trends over time — similar to /vuln-trends but for DAST.
@@ -1488,7 +1488,7 @@ def get_web_findings_drilldown(
     page: int = Query(1, ge=1),
     per_page: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """Org-wide web findings with the same filters the dashboard counts use."""
     from datetime import datetime
@@ -1568,7 +1568,7 @@ def get_web_endpoints_drilldown(
     page: int = Query(1, ge=1),
     per_page: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission("dashboard", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.dashboard.read")),
 ):
     """Org-wide discovered endpoints — backs the 'Total Endpoints Discovered' card."""
     from db.models.web_scans import WebAsset, WebScan

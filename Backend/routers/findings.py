@@ -23,7 +23,11 @@ the frontend keys its badge classes on "Critical"/"High"/...
 import logging
 from typing import Any, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from engines.credentialed.vuln_matcher import compare_distro_versions
 from ccure_platform.api import log_audit_event
 from core.vuln_intel import compute_priority
@@ -41,16 +45,10 @@ log = logging.getLogger("ccure.findings")
 router = APIRouter(prefix="/findings", tags=["Findings"])
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _priority_label_sql():

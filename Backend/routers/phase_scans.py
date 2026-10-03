@@ -12,7 +12,11 @@ Endpoints
 
 from typing import List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from core.quota import check_scan_quota, get_quota_status
 from core.tasks import (
     run_asset_discovery_task,
@@ -47,16 +51,10 @@ router = APIRouter(tags=["Phase-Selective Scans"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _org_scope(db: Session, org_id: str):

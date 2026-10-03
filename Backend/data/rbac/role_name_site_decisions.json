@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Final RBAC-4 decision for each of the 40 role-name sites RBAC-3 recorded. line is the RBAC-3 (commit 3b08e87) line number; the code has since moved.",
+  "description": "Final RBAC-4 decision for each of the 40 role-name sites RBAC-3 recorded. line is the RBAC-3 (commit 3b08e87) line number; the code has since moved. RBAC-5 adds the rbac5 block to each site RBAC-4 deferred.",
   "sites": [
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -14,7 +14,11 @@
       "line": 61,
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -28,7 +32,11 @@
       "line": 166,
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -42,7 +50,11 @@
       "line": 212,
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -56,7 +68,11 @@
       "line": 249,
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -70,7 +86,11 @@
       "line": 287,
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -84,7 +104,11 @@
       "line": 364,
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -98,7 +122,11 @@
       "line": 411,
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/organizations.py",
@@ -112,7 +140,12 @@
       "line": 189,
       "status": "deferred",
       "new_permission": null,
-      "reason": "a role looked up by name to give to a new account: provisioning, not authorization"
+      "reason": "a role looked up by name to give to a new account: provisioning, not authorization",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -126,7 +159,12 @@
       "line": 47,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -140,7 +178,12 @@
       "line": 308,
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -154,7 +197,12 @@
       "line": 308,
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -168,7 +216,12 @@
       "line": 532,
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -182,7 +235,12 @@
       "line": 532,
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/audit_log/router.py",
@@ -196,7 +254,12 @@
       "line": 84,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "ccure_platform/audit_log/router.py",
@@ -210,7 +273,11 @@
       "line": 861,
       "status": "migrated",
       "new_permission": "platform.audit_log.retention",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/identity/router.py",
@@ -224,7 +291,12 @@
       "line": 636,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the self-registration default: provisioning, not authorization"
+      "reason": "the self-registration default: provisioning, not authorization",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "ccure_platform/rbac/dependencies.py",
@@ -238,7 +310,12 @@
       "line": 158,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed"
+      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "main.py",
@@ -252,7 +329,12 @@
       "line": 276,
       "status": "deferred",
       "new_permission": null,
-      "reason": "first-run provisioning of the initial administrator: a permitted bootstrap context"
+      "reason": "first-run provisioning of the initial administrator: a permitted bootstrap context",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "routers/admin_nvd.py",
@@ -266,7 +348,11 @@
       "line": 59,
       "status": "migrated",
       "new_permission": "audit.vuln_feed.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/assets.py",
@@ -280,7 +366,12 @@
       "line": 61,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/compliance.py",
@@ -294,7 +385,12 @@
       "line": 281,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "not a scope decision: an emergency maker-checker bypass keyed on role names; it needs its own permission decision",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "routers/compliance.py",
@@ -308,7 +404,11 @@
       "line": 890,
       "status": "migrated",
       "new_permission": "audit.compliance.manage_shared_rules",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -322,7 +422,12 @@
       "line": 43,
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -336,7 +441,12 @@
       "line": 202,
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -350,7 +460,12 @@
       "line": 287,
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentials.py",
@@ -364,7 +479,12 @@
       "line": 156,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/dashboard.py",
@@ -378,7 +498,12 @@
       "line": 51,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/findings.py",
@@ -392,7 +517,12 @@
       "line": 45,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/phase_scans.py",
@@ -406,7 +536,12 @@
       "line": 51,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/remediation.py",
@@ -420,7 +555,12 @@
       "line": 110,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -434,7 +574,11 @@
       "line": 365,
       "status": "migrated",
       "new_permission": "audit.report.read",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -448,7 +592,11 @@
       "line": 386,
       "status": "migrated",
       "new_permission": "audit.report.delete",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -462,7 +610,12 @@
       "line": 404,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_history.py",
@@ -476,7 +629,11 @@
       "line": 393,
       "status": "migrated",
       "new_permission": "audit.scan.read",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/scan_history.py",
@@ -490,7 +647,12 @@
       "line": 556,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_policies.py",
@@ -504,7 +666,12 @@
       "line": 95,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_schedules.py",
@@ -518,7 +685,12 @@
       "line": 87,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/web_scans.py",
@@ -532,7 +704,12 @@
       "line": 65,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/web_scans.py",
@@ -546,7 +723,12 @@
       "line": 1286,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "scans/scan_access.py",
@@ -560,7 +742,12 @@
       "line": 20,
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     }
   ]
 }

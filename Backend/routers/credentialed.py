@@ -12,7 +12,11 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from db.base import SessionLocal
 from db.models import ComplianceCredential
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
@@ -38,10 +42,7 @@ def _enforce_credentialed_scan_scope(
     """
     from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
-    role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-    target_org_id = (
-        org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-    )
+    target_org_id = resolve_active_organisation(user, org_id)
 
     db = SessionLocal()
     try:
@@ -197,10 +198,7 @@ async def scan_credentialed(
         # Verify stored credential exists and fetch its port
         db = SessionLocal()
         try:
-            role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-            target_org_id = (
-                org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-            )
+            target_org_id = resolve_active_organisation(user, org_id)
             cred = (
                 db.query(ComplianceCredential)
                 .filter(
@@ -282,10 +280,7 @@ async def scan_credentialed(
 
     db = SessionLocal()
     try:
-        role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-        target_org_id = (
-            org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-        )
+        target_org_id = resolve_active_organisation(user, org_id)
         scan = create_scan(
             db=db,
             user_id=str(user.id),

@@ -4,11 +4,11 @@
   "rules": {
     "migrated_atom": "mapped to exactly one key, resource not in deferred_resources, not an in-handler check coupled to organisation scope",
     "deferred_resources": {
-      "users": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); RBAC-5",
-      "organizations": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
-      "roles": "role administration: the legacy atom splits across several keys (platform-scope role creation is continuity-protected); RBAC-5",
+      "users": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
+      "organizations": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
+      "roles": "role administration: the legacy atom splits across several keys (platform-scope role creation is continuity-protected); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "settings": "the legacy atom was split into distinct capabilities (audit.asset.import_amt / audit.remediation.manage_sla); a guard cannot name which",
-      "audit": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); RBAC-5",
+      "audit": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "audit_logs": "retired atom; no route enforces it"
     },
     "role_name_deferrals": {
@@ -46,8 +46,10 @@
     "total": 231,
     "rbac3_role_name_sites": 40,
     "rbac3_role_name_migrated": 13,
-    "migrated": 176,
-    "deferred": 55,
+    "rbac3_role_name_migrated_rbac5": 20,
+    "rbac3_role_name_deferred_final": 7,
+    "migrated": 197,
+    "deferred": 34,
     "migrated_paths": [
       "assets:read",
       "assets:update",
@@ -90,8 +92,12 @@
       "scans:execute",
       "scans:purge",
       "scans:read",
+      "scans:read_all",
       "scans:recycle",
-      "scans:restore"
+      "scans:restore",
+      "scope.active_organisation",
+      "scope.assign_role",
+      "scope.cross_organisation"
     ]
   },
   "rbac3_role_name_sites": [
@@ -103,7 +109,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -113,7 +123,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -123,7 +137,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -133,7 +151,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.read",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -143,7 +165,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -153,7 +179,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/email_domains.py",
@@ -163,7 +193,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.email_domain.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/administration/organizations.py",
@@ -173,7 +207,12 @@
       "category": "provisioning_lookup",
       "status": "deferred",
       "new_permission": null,
-      "reason": "a role looked up by name to give to a new account: provisioning, not authorization"
+      "reason": "a role looked up by name to give to a new account: provisioning, not authorization",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -183,7 +222,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -193,7 +237,12 @@
       "category": "assignment_hierarchy",
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -203,7 +252,12 @@
       "category": "assignment_hierarchy",
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -213,7 +267,12 @@
       "category": "assignment_hierarchy",
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/administration/users.py",
@@ -223,7 +282,12 @@
       "category": "assignment_hierarchy",
       "status": "deferred",
       "new_permission": null,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first"
+      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.check_role_assignment",
+        "reason": "organisation boundary, permission and scope ceilings, system-role restriction and self-assignment are enforced by governance.check_assignment over the golden system role when path scope.assign_role is on"
+      }
     },
     {
       "file": "ccure_platform/audit_log/router.py",
@@ -233,7 +297,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "ccure_platform/audit_log/router.py",
@@ -243,7 +312,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "platform.audit_log.retention",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "ccure_platform/identity/router.py",
@@ -253,7 +326,12 @@
       "category": "default_role",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the self-registration default: provisioning, not authorization"
+      "reason": "the self-registration default: provisioning, not authorization",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "ccure_platform/rbac/dependencies.py",
@@ -263,7 +341,12 @@
       "category": "legacy_authority",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed"
+      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "main.py",
@@ -273,7 +356,12 @@
       "category": "bootstrap",
       "status": "deferred",
       "new_permission": null,
-      "reason": "first-run provisioning of the initial administrator: a permitted bootstrap context"
+      "reason": "first-run provisioning of the initial administrator: a permitted bootstrap context",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "provisioning, default role, bootstrap or the legacy check itself",
+        "deferred_to": "RBAC-8"
+      }
     },
     {
       "file": "routers/admin_nvd.py",
@@ -283,7 +371,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "audit.vuln_feed.manage",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/assets.py",
@@ -293,7 +385,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/compliance.py",
@@ -303,7 +400,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "intentionally_deferred",
+        "reason": "not a scope decision: an emergency maker-checker bypass keyed on role names; it needs its own permission decision",
+        "deferred_to": "RBAC-7"
+      }
     },
     {
       "file": "routers/compliance.py",
@@ -313,7 +415,11 @@
       "category": "permission_guard",
       "status": "migrated",
       "new_permission": "audit.compliance.manage_shared_rules",
-      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback"
+      "reason": "replaced by a permission-key guard; legacy role-name rule is the rollback",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -323,7 +429,12 @@
       "category": "organization_switch",
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -333,7 +444,12 @@
       "category": "organization_switch",
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentialed.py",
@@ -343,7 +459,12 @@
       "category": "organization_switch",
       "status": "deferred",
       "new_permission": null,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model"
+      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope.resolve_active_organisation",
+        "reason": "a named organisation is honoured only with the platform-scope switch grant, an existing active target, and an audit event"
+      }
     },
     {
       "file": "routers/credentials.py",
@@ -353,7 +474,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/dashboard.py",
@@ -363,7 +489,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/findings.py",
@@ -373,7 +504,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/phase_scans.py",
@@ -383,7 +519,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/remediation.py",
@@ -393,7 +534,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -403,7 +549,11 @@
       "category": "permission_bypass",
       "status": "migrated",
       "new_permission": "audit.report.read",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -413,7 +563,11 @@
       "category": "permission_bypass",
       "status": "migrated",
       "new_permission": "audit.report.delete",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/reports.py",
@@ -423,7 +577,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_history.py",
@@ -433,7 +592,11 @@
       "category": "permission_bypass",
       "status": "migrated",
       "new_permission": "audit.scan.read",
-      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively"
+      "reason": "superadmin name shortcut removed; the superadmin role holds the permission through grants and user_has_permission answers authoritatively",
+      "rbac5": {
+        "status": "not_applicable",
+        "reason": "migrated in RBAC-4"
+      }
     },
     {
       "file": "routers/scan_history.py",
@@ -443,7 +606,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_policies.py",
@@ -453,7 +621,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/scan_schedules.py",
@@ -463,7 +636,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/web_scans.py",
@@ -473,7 +651,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "routers/web_scans.py",
@@ -483,7 +666,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     },
     {
       "file": "scans/scan_access.py",
@@ -493,7 +681,12 @@
       "category": "scope_cross_org",
       "status": "deferred",
       "new_permission": null,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission"
+      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "rbac5": {
+        "status": "migrated",
+        "replacement": "rbac/scope: resolve_active_organisation / acts_across_organisations / resource_organisation_allowed",
+        "reason": "the superadmin-by-name widening is expressed as cross-organisation reach (the platform-scope switch grant), with the resource organisation resolved server-side"
+      }
     }
   ],
   "sites": [
@@ -620,7 +813,7 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
+      "reason": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": false,
       "site_id": "ccure_platform/administration/organizations.py::list_organizations::require_permission::organizations:read#1"
@@ -636,7 +829,7 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
+      "reason": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": false,
       "site_id": "ccure_platform/administration/organizations.py::create_organization::require_permission::organizations:create#1"
@@ -652,7 +845,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "a role looked up by name to give to a new account: provisioning, not authorization",
+      "reason": "provisioning, default role, bootstrap or the legacy check itself",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
       "rbac5_dependency": false,
       "category": "provisioning_lookup",
@@ -670,7 +863,7 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
+      "reason": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": false,
       "site_id": "ccure_platform/administration/organizations.py::update_organization::require_permission::organizations:update#1"
@@ -686,7 +879,7 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
+      "reason": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": false,
       "site_id": "ccure_platform/administration/organizations.py::change_organization_status::require_permission::organizations:update#1"
@@ -702,7 +895,7 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "organisation provisioning and cross-organisation administration (scope model); RBAC-5",
+      "reason": "organisation provisioning and cross-organisation administration (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": false,
       "site_id": "ccure_platform/administration/organizations.py::get_scan_scope::require_permission::organizations:read#1"
@@ -741,7 +934,23 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 47,
+      "line": 52,
+      "function": "_enforce_assignment_hierarchy",
+      "mechanism": "check_role_assignment",
+      "legacy_permission": null,
+      "new_permission": "platform.user.assign_role",
+      "path_id": "scope.assign_role",
+      "scope": "platform",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "assignment hierarchy enforced by governance.check_assignment over the golden system role",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "ccure_platform/administration/users.py::_enforce_assignment_hierarchy::check_role_assignment::platform.user.assign_role#1"
+    },
+    {
+      "file": "ccure_platform/administration/users.py",
+      "line": 66,
       "function": "",
       "mechanism": "role_name_role_identity_compare",
       "legacy_permission": null,
@@ -750,16 +959,16 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
+      "rbac5_dependency": false,
       "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
+      "deferred_to": "RBAC-7",
       "site_id": "ccure_platform/administration/users.py::::role_name_role_identity_compare::None#1"
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 235,
+      "line": 254,
       "function": "list_users",
       "mechanism": "require_permission",
       "legacy_permission": "users:read",
@@ -768,14 +977,14 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); RBAC-5",
+      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/administration/users.py::list_users::require_permission::users:read#1"
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 276,
+      "line": 295,
       "function": "create_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:create",
@@ -784,50 +993,14 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); RBAC-5",
+      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/administration/users.py::create_user::require_permission::users:create#1"
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 308,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
-      "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "assignment_hierarchy",
-      "deferred_to": "RBAC-5",
-      "site_id": "ccure_platform/administration/users.py::::role_name_role_identity_compare::None#2"
-    },
-    {
-      "file": "ccure_platform/administration/users.py",
-      "line": 308,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
-      "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "assignment_hierarchy",
-      "deferred_to": "RBAC-5",
-      "site_id": "ccure_platform/administration/users.py::::role_name_role_identity_compare::None#3"
-    },
-    {
-      "file": "ccure_platform/administration/users.py",
-      "line": 378,
+      "line": 399,
       "function": "move_user_to_organization",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -843,7 +1016,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 474,
+      "line": 495,
       "function": "update_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -859,7 +1032,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 517,
+      "line": 538,
       "function": "change_role",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -875,43 +1048,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 532,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
-      "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "assignment_hierarchy",
-      "deferred_to": "RBAC-5",
-      "site_id": "ccure_platform/administration/users.py::::role_name_role_identity_compare::None#4"
-    },
-    {
-      "file": "ccure_platform/administration/users.py",
-      "line": 532,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
-      "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "which roles may be assigned: the escalation ceiling and platform.role.assign_platform need the scope model first",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "assignment_hierarchy",
-      "deferred_to": "RBAC-5",
-      "site_id": "ccure_platform/administration/users.py::::role_name_role_identity_compare::None#5"
-    },
-    {
-      "file": "ccure_platform/administration/users.py",
-      "line": 551,
+      "line": 577,
       "function": "change_status",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -927,7 +1064,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 608,
+      "line": 634,
       "function": "list_pending_users",
       "mechanism": "require_permission",
       "legacy_permission": "users:read",
@@ -936,14 +1073,14 @@
       "scope": "platform",
       "status": "deferred",
       "migrated": false,
-      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); RBAC-5",
+      "reason": "assignment hierarchy and provisioning: user administration decides who may hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/administration/users.py::list_pending_users::require_permission::users:read#1"
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 702,
+      "line": 728,
       "function": "approve_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -959,7 +1096,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 849,
+      "line": 875,
       "function": "delete_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:delete",
@@ -975,7 +1112,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 913,
+      "line": 939,
       "function": "restore_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:delete",
@@ -991,7 +1128,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 963,
+      "line": 989,
       "function": "purge_user",
       "mechanism": "require_permission",
       "legacy_permission": "users:delete",
@@ -1007,7 +1144,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 999,
+      "line": 1025,
       "function": "reset_password",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -1023,7 +1160,7 @@
     },
     {
       "file": "ccure_platform/administration/users.py",
-      "line": 1043,
+      "line": 1069,
       "function": "reset_mfa",
       "mechanism": "require_permission",
       "legacy_permission": "users:update",
@@ -1048,11 +1185,11 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "reason": "platform-administration visibility (audit log, user directory) is out of RBAC-5 by the phase brief; the same cross-organisation primitive applies when those atoms migrate",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
+      "rbac5_dependency": false,
       "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
+      "deferred_to": "RBAC-7",
       "site_id": "ccure_platform/audit_log/router.py::::role_name_role_identity_compare::None#1"
     },
     {
@@ -1066,7 +1203,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); RBAC-5",
+      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/audit_log/router.py::list_audit_logs::require_permission::audit:read#1"
@@ -1082,7 +1219,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); RBAC-5",
+      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/audit_log/router.py::export_audit_logs::require_permission::audit:export#1"
@@ -1114,7 +1251,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); RBAC-5",
+      "reason": "audit-log visibility is scoped by organisation and superadmin cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
       "rbac3_evidence": null,
       "rbac5_dependency": true,
       "site_id": "ccure_platform/audit_log/router.py::get_audit_log::require_permission::audit:read#1"
@@ -1130,7 +1267,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "the self-registration default: provisioning, not authorization",
+      "reason": "provisioning, default role, bootstrap or the legacy check itself",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
       "rbac5_dependency": false,
       "category": "default_role",
@@ -1148,12 +1285,48 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed",
+      "reason": "provisioning, default role, bootstrap or the legacy check itself",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
       "rbac5_dependency": false,
       "category": "legacy_authority",
       "deferred_to": "RBAC-8",
       "site_id": "ccure_platform/rbac/dependencies.py::::role_name_role_identity_compare::None#1"
+    },
+    {
+      "file": "ccure_platform/rbac/legacy_scope.py",
+      "line": 16,
+      "function": "",
+      "mechanism": "role_name_role_identity_compare",
+      "legacy_permission": null,
+      "new_permission": null,
+      "path_id": null,
+      "scope": "organization",
+      "status": "deferred",
+      "migrated": false,
+      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed",
+      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
+      "rbac5_dependency": false,
+      "category": "legacy_authority",
+      "deferred_to": "RBAC-8",
+      "site_id": "ccure_platform/rbac/legacy_scope.py::::role_name_role_identity_compare::None#2"
+    },
+    {
+      "file": "ccure_platform/rbac/legacy_scope.py",
+      "line": 21,
+      "function": "",
+      "mechanism": "role_name_role_identity_compare",
+      "legacy_permission": null,
+      "new_permission": null,
+      "path_id": null,
+      "scope": "organization",
+      "status": "deferred",
+      "migrated": false,
+      "reason": "the legacy check itself, kept as the rollback path until the legacy model is removed",
+      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
+      "rbac5_dependency": false,
+      "category": "legacy_authority",
+      "deferred_to": "RBAC-8",
+      "site_id": "ccure_platform/rbac/legacy_scope.py::::role_name_role_identity_compare::None#1"
     },
     {
       "file": "main.py",
@@ -1166,7 +1339,7 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "first-run provisioning of the initial administrator: a permitted bootstrap context",
+      "reason": "provisioning, default role, bootstrap or the legacy check itself",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
       "rbac5_dependency": false,
       "category": "bootstrap",
@@ -1191,25 +1364,23 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 61,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 63,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/assets.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/assets.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/assets.py",
-      "line": 195,
+      "line": 189,
       "function": "list_assets",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1225,7 +1396,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 302,
+      "line": 296,
       "function": "debug_reconcile",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1241,7 +1412,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 371,
+      "line": 365,
       "function": "list_global_certificates",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1257,7 +1428,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 487,
+      "line": 481,
       "function": "list_global_services",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1273,7 +1444,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 585,
+      "line": 579,
       "function": "list_service_assets",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1289,7 +1460,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 649,
+      "line": 643,
       "function": "get_coverage_stats",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1305,7 +1476,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 758,
+      "line": 752,
       "function": "get_reconciliation_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1321,7 +1492,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1044,
+      "line": 1038,
       "function": "get_asset",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1337,7 +1508,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1071,
+      "line": 1065,
       "function": "get_asset_services",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1353,7 +1524,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1140,
+      "line": 1134,
       "function": "get_asset_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -1369,7 +1540,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1208,
+      "line": 1202,
       "function": "get_asset_changelog",
       "mechanism": "require_permission",
       "legacy_permission": "assets:read",
@@ -1385,7 +1556,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1323,
+      "line": 1317,
       "function": "update_asset",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1401,7 +1572,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1374,
+      "line": 1368,
       "function": "add_tag",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1417,7 +1588,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1399,
+      "line": 1393,
       "function": "remove_tag",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1433,7 +1604,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1428,
+      "line": 1422,
       "function": "add_note",
       "mechanism": "require_permission",
       "legacy_permission": "assets:update",
@@ -1449,7 +1620,7 @@
     },
     {
       "file": "routers/assets.py",
-      "line": 1555,
+      "line": 1549,
       "function": "import_amt_inventory",
       "mechanism": "require_permission",
       "legacy_permission": "settings:update",
@@ -1474,11 +1645,11 @@
       "scope": "organization",
       "status": "deferred",
       "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
+      "reason": "not a scope decision: an emergency maker-checker bypass keyed on role names; it needs its own permission decision",
       "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
+      "rbac5_dependency": false,
       "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
+      "deferred_to": "RBAC-7",
       "site_id": "routers/compliance.py::::role_name_role_identity_compare::None#1"
     },
     {
@@ -2315,25 +2486,23 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 43,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 41,
+      "function": "_enforce_credentialed_scan_scope",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "organization_switch",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/credentialed.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/credentialed.py::_enforce_credentialed_scan_scope::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/credentialed.py",
-      "line": 166,
+      "line": 163,
       "function": "scan_credentialed",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -2349,61 +2518,55 @@
     },
     {
       "file": "routers/credentialed.py",
-      "line": 202,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 197,
+      "function": "scan_credentialed",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "organization_switch",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/credentialed.py::::role_name_role_identity_compare::None#3"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/credentialed.py::scan_credentialed::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/credentialed.py",
-      "line": 287,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 279,
+      "function": "scan_credentialed",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "acting in another organisation: platform.organization.switch plus the scope model",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "organization_switch",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/credentialed.py::::role_name_role_identity_compare::None#2"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/credentialed.py::scan_credentialed::resolve_active_organisation::platform.organization.switch#2"
     },
     {
       "file": "routers/credentials.py",
-      "line": 156,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 158,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/credentials.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/credentials.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/credentials.py",
-      "line": 344,
+      "line": 338,
       "function": "credential_types",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2419,7 +2582,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 438,
+      "line": 432,
       "function": "list_credentials",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2435,7 +2598,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 456,
+      "line": 450,
       "function": "create_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:create",
@@ -2451,7 +2614,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 537,
+      "line": 531,
       "function": "get_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:read",
@@ -2467,7 +2630,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 551,
+      "line": 545,
       "function": "update_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:update",
@@ -2483,7 +2646,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 634,
+      "line": 628,
       "function": "validate_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:validate",
@@ -2499,7 +2662,7 @@
     },
     {
       "file": "routers/credentials.py",
-      "line": 760,
+      "line": 754,
       "function": "delete_credential",
       "mechanism": "require_permission",
       "legacy_permission": "credentials:delete",
@@ -2515,25 +2678,23 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 51,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 53,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/dashboard.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/dashboard.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/dashboard.py",
-      "line": 73,
+      "line": 67,
       "function": "get_dashboard_summary",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2549,7 +2710,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 280,
+      "line": 274,
       "function": "get_risk_breakdown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2565,7 +2726,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 397,
+      "line": 391,
       "function": "get_vuln_trends",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2581,7 +2742,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 451,
+      "line": 445,
       "function": "get_top_assets",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2597,7 +2758,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 498,
+      "line": 492,
       "function": "get_top_cves",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2613,7 +2774,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 572,
+      "line": 566,
       "function": "get_services_exposure",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2629,7 +2790,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 613,
+      "line": 607,
       "function": "get_tls_health",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2645,7 +2806,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 673,
+      "line": 667,
       "function": "get_http_headers",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2661,7 +2822,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 730,
+      "line": 724,
       "function": "get_compliance",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2677,7 +2838,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 903,
+      "line": 897,
       "function": "get_asset_breakdown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2693,7 +2854,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 957,
+      "line": 951,
       "function": "get_scan_activity",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2709,7 +2870,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1019,
+      "line": 1013,
       "function": "get_insights",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2725,7 +2886,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1174,
+      "line": 1168,
       "function": "get_web_scan_summary",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2741,7 +2902,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1350,
+      "line": 1344,
       "function": "get_web_owasp_scorecard",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2757,7 +2918,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1412,
+      "line": 1406,
       "function": "get_web_scan_trends",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2773,7 +2934,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1493,
+      "line": 1487,
       "function": "get_web_findings_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2789,7 +2950,7 @@
     },
     {
       "file": "routers/dashboard.py",
-      "line": 1573,
+      "line": 1567,
       "function": "get_web_endpoints_drilldown",
       "mechanism": "require_permission",
       "legacy_permission": "dashboard:read",
@@ -2805,25 +2966,23 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 45,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 47,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/findings.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/findings.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/findings.py",
-      "line": 104,
+      "line": 98,
       "function": "list_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -2839,7 +2998,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 301,
+      "line": 295,
       "function": "list_findings_grouped",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -2855,7 +3014,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 451,
+      "line": 445,
       "function": "get_finding",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -2871,7 +3030,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 628,
+      "line": 622,
       "function": "update_finding_status",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -2887,7 +3046,7 @@
     },
     {
       "file": "routers/findings.py",
-      "line": 801,
+      "line": 795,
       "function": "update_finding_notes",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -2903,25 +3062,23 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 51,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 53,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/phase_scans.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/phase_scans.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 161,
+      "line": 155,
       "function": "get_scan_quota",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -2937,7 +3094,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 430,
+      "line": 424,
       "function": "scan_host_discovery",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -2953,7 +3110,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 618,
+      "line": 612,
       "function": "scan_asset_discovery",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -2969,7 +3126,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 689,
+      "line": 683,
       "function": "scan_vulnerability_audit",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -2985,7 +3142,7 @@
     },
     {
       "file": "routers/phase_scans.py",
-      "line": 744,
+      "line": 738,
       "function": "scan_phases",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3001,25 +3158,23 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 110,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 112,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/remediation.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/remediation.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/remediation.py",
-      "line": 280,
+      "line": 274,
       "function": "remediation_summary",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3035,7 +3190,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 405,
+      "line": 399,
       "function": "overdue_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3051,7 +3206,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 433,
+      "line": 427,
       "function": "pending_verification",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3067,7 +3222,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 462,
+      "line": 456,
       "function": "finding_remediation",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3083,7 +3238,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 478,
+      "line": 472,
       "function": "finding_history",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3099,7 +3254,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 544,
+      "line": 538,
       "function": "get_sla_policy",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -3115,7 +3270,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 563,
+      "line": 557,
       "function": "set_sla_policy",
       "mechanism": "require_permission",
       "legacy_permission": "settings:update",
@@ -3131,7 +3286,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 633,
+      "line": 627,
       "function": "assign",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3147,7 +3302,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 709,
+      "line": 703,
       "function": "set_state",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3163,7 +3318,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 766,
+      "line": 760,
       "function": "append_note",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -3179,7 +3334,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 800,
+      "line": 794,
       "function": "accept_finding_risk",
       "mechanism": "require_permission",
       "legacy_permission": "findings:accept_risk",
@@ -3195,7 +3350,7 @@
     },
     {
       "file": "routers/remediation.py",
-      "line": 862,
+      "line": 856,
       "function": "withdraw_finding_acceptance",
       "mechanism": "require_permission",
       "legacy_permission": "findings:accept_risk",
@@ -3211,7 +3366,7 @@
     },
     {
       "file": "routers/reports.py",
-      "line": 370,
+      "line": 371,
       "function": "_require_reports_read",
       "mechanism": "user_has_permission",
       "legacy_permission": "reports:read",
@@ -3227,7 +3382,7 @@
     },
     {
       "file": "routers/reports.py",
-      "line": 389,
+      "line": 390,
       "function": "_require_reports_delete",
       "mechanism": "user_has_permission",
       "legacy_permission": "reports:delete",
@@ -3243,41 +3398,55 @@
     },
     {
       "file": "routers/reports.py",
-      "line": 401,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
-      "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/reports.py::::role_name_role_identity_compare::None#1"
-    },
-    {
-      "file": "routers/reports.py",
-      "line": 407,
+      "line": 406,
       "function": "_can_read_all_org_scans",
       "mechanism": "user_has_permission",
       "legacy_permission": "scans:read_all",
       "new_permission": "audit.scan.read_all",
-      "path_id": null,
+      "path_id": "scans:read_all",
       "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "in-handler check coupled to organisation-scope visibility (per-user versus organisation-wide reads); RBAC-5",
-      "rbac3_evidence": null,
+      "status": "migrated",
+      "migrated": true,
+      "reason": "one-to-one mapped atom, no hierarchy, switching or cross-organisation dependence",
+      "rbac3_evidence": "RBAC-3 equivalence: MATCH for all five legacy roles, zero mismatches (tests/rbac/test_rbac_authority_equivalence.py)",
       "rbac5_dependency": true,
       "site_id": "routers/reports.py::_can_read_all_org_scans::user_has_permission::scans:read_all#1"
     },
     {
+      "file": "routers/reports.py",
+      "line": 656,
+      "function": "_scan_for_user",
+      "mechanism": "acts_across_organisations",
+      "legacy_permission": null,
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.cross_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "cross-organisation reach is the platform-scope switch grant, not a role name",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/reports.py::_scan_for_user::acts_across_organisations::platform.organization.switch#1"
+    },
+    {
+      "file": "routers/reports.py",
+      "line": 670,
+      "function": "_scan_for_user",
+      "mechanism": "resource_organisation_allowed",
+      "legacy_permission": null,
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.cross_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "the resource's organisation is read from the stored row and verified server-side",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/reports.py::_scan_for_user::resource_organisation_allowed::platform.organization.switch#1"
+    },
+    {
       "file": "routers/scan_history.py",
-      "line": 394,
+      "line": 393,
       "function": "_get_websocket_user",
       "mechanism": "user_has_permission",
       "legacy_permission": "scans:read",
@@ -3293,7 +3462,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 434,
+      "line": 433,
       "function": "list_scans",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3309,7 +3478,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 474,
+      "line": 473,
       "function": "stream_scan_history",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3325,25 +3494,23 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 557,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 556,
+      "function": "scan_progress_ws",
+      "mechanism": "acts_across_organisations",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/scan_history.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.cross_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "cross-organisation reach is the platform-scope switch grant, not a role name",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/scan_history.py::scan_progress_ws::acts_across_organisations::platform.organization.switch#1"
     },
     {
       "file": "routers/scan_history.py",
-      "line": 649,
+      "line": 648,
       "function": "get_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3359,7 +3526,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 667,
+      "line": 666,
       "function": "scan_policy_record",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3375,7 +3542,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 788,
+      "line": 787,
       "function": "compare_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -3391,7 +3558,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 848,
+      "line": 847,
       "function": "archive_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:archive",
@@ -3407,7 +3574,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 878,
+      "line": 877,
       "function": "stop_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3423,7 +3590,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 961,
+      "line": 960,
       "function": "restore_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:restore",
@@ -3439,7 +3606,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1002,
+      "line": 1001,
       "function": "delete_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:recycle",
@@ -3455,7 +3622,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1028,
+      "line": 1027,
       "function": "purge_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:purge",
@@ -3471,25 +3638,23 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 95,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 98,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/scan_policies.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/scan_policies.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 311,
+      "line": 305,
       "function": "list_policies",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3505,7 +3670,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 338,
+      "line": 332,
       "function": "policy_settings",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3521,7 +3686,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 362,
+      "line": 356,
       "function": "validate_policy_body",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3537,7 +3702,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 383,
+      "line": 377,
       "function": "create_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:create",
@@ -3553,7 +3718,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 450,
+      "line": 444,
       "function": "get_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3569,7 +3734,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 465,
+      "line": 459,
       "function": "update_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3585,7 +3750,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 555,
+      "line": 549,
       "function": "enable_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3601,7 +3766,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 610,
+      "line": 604,
       "function": "set_policy_status",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:update",
@@ -3617,7 +3782,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 682,
+      "line": 676,
       "function": "new_policy_version",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:create",
@@ -3633,7 +3798,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 786,
+      "line": 780,
       "function": "policy_usage",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:read",
@@ -3649,7 +3814,7 @@
     },
     {
       "file": "routers/scan_policies.py",
-      "line": 836,
+      "line": 830,
       "function": "delete_policy",
       "mechanism": "require_permission",
       "legacy_permission": "scan_policies:delete",
@@ -3681,25 +3846,23 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 87,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 96,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/scan_schedules.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/scan_schedules.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 461,
+      "line": 455,
       "function": "list_timezones",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3715,7 +3878,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 480,
+      "line": 474,
       "function": "list_selectable_credentials",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3731,7 +3894,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 527,
+      "line": 521,
       "function": "list_schedules",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3747,7 +3910,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 547,
+      "line": 541,
       "function": "create_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:create",
@@ -3763,7 +3926,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 630,
+      "line": 624,
       "function": "get_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3779,7 +3942,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 645,
+      "line": 639,
       "function": "update_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:update",
@@ -3795,7 +3958,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 747,
+      "line": 741,
       "function": "set_enabled",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:update",
@@ -3811,7 +3974,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 787,
+      "line": 781,
       "function": "run_now",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:execute",
@@ -3827,7 +3990,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 835,
+      "line": 829,
       "function": "list_runs",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:read",
@@ -3843,7 +4006,7 @@
     },
     {
       "file": "routers/scan_schedules.py",
-      "line": 860,
+      "line": 854,
       "function": "delete_schedule",
       "mechanism": "require_permission",
       "legacy_permission": "scan_schedules:delete",
@@ -3955,25 +4118,23 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 65,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 67,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/web_scans.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/web_scans.py::_resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "routers/web_scans.py",
-      "line": 457,
+      "line": 451,
       "function": "start_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -3989,7 +4150,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 614,
+      "line": 608,
       "function": "list_web_scans",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4005,7 +4166,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 651,
+      "line": 645,
       "function": "get_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4021,7 +4182,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 702,
+      "line": 696,
       "function": "get_web_scan_findings",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -4037,7 +4198,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 750,
+      "line": 744,
       "function": "get_web_scan_assets",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4053,7 +4214,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 789,
+      "line": 783,
       "function": "get_web_scan_parameters",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4069,7 +4230,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 872,
+      "line": 866,
       "function": "get_web_scan_forms",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4085,7 +4246,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 920,
+      "line": 914,
       "function": "get_web_scan_api_operations",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4101,7 +4262,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 973,
+      "line": 967,
       "function": "cancel_web_scan",
       "mechanism": "require_permission",
       "legacy_permission": "scans:execute",
@@ -4117,7 +4278,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1043,
+      "line": 1037,
       "function": "triage_finding",
       "mechanism": "require_permission",
       "legacy_permission": "findings:update",
@@ -4133,7 +4294,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1079,
+      "line": 1073,
       "function": "triage_finding",
       "mechanism": "user_has_permission",
       "legacy_permission": "findings:accept_risk",
@@ -4149,7 +4310,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1136,
+      "line": 1130,
       "function": "get_finding_screenshot",
       "mechanism": "require_permission",
       "legacy_permission": "findings:read",
@@ -4165,7 +4326,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1178,
+      "line": 1172,
       "function": "download_web_scan_report",
       "mechanism": "require_permission",
       "legacy_permission": "scans:read",
@@ -4181,21 +4342,19 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1286,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "line": 1279,
+      "function": "web_scan_progress_ws",
+      "mechanism": "acts_across_organisations",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "routers/web_scans.py::::role_name_role_identity_compare::None#2"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.cross_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "cross-organisation reach is the platform-scope switch grant, not a role name",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "routers/web_scans.py::web_scan_progress_ws::acts_across_organisations::platform.organization.switch#1"
     },
     {
       "file": "scans/progress.py",
@@ -4204,46 +4363,44 @@
       "mechanism": "user_has_permission",
       "legacy_permission": "scans:read_all",
       "new_permission": "audit.scan.read_all",
-      "path_id": null,
+      "path_id": "scans:read_all",
       "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "in-handler check coupled to organisation-scope visibility (per-user versus organisation-wide reads); RBAC-5",
-      "rbac3_evidence": null,
-      "rbac5_dependency": true,
+      "status": "migrated",
+      "migrated": true,
+      "reason": "one-to-one mapped atom, no hierarchy, switching or cross-organisation dependence",
+      "rbac3_evidence": "RBAC-3 equivalence: MATCH for all five legacy roles, zero mismatches (tests/rbac/test_rbac_authority_equivalence.py)",
+      "rbac5_dependency": false,
       "site_id": "scans/progress.py::_can_read_scan::user_has_permission::scans:read_all#1"
     },
     {
       "file": "scans/scan_access.py",
       "line": 20,
-      "function": "",
-      "mechanism": "role_name_role_identity_compare",
+      "function": "resolve_org",
+      "mechanism": "resolve_active_organisation",
       "legacy_permission": null,
-      "new_permission": null,
-      "path_id": null,
-      "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "the superadmin widens which organisation's data a query returns: scope, not a permission",
-      "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-      "rbac5_dependency": true,
-      "category": "scope_cross_org",
-      "deferred_to": "RBAC-5",
-      "site_id": "scans/scan_access.py::::role_name_role_identity_compare::None#1"
+      "new_permission": "platform.organization.switch",
+      "path_id": "scope.active_organisation",
+      "scope": "cross-organisation",
+      "status": "migrated",
+      "migrated": true,
+      "reason": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+      "rbac3_evidence": "RBAC-5 scope comparison against legacy (tests/rbac/test_rbac_scope_equivalence.py)",
+      "rbac5_dependency": false,
+      "site_id": "scans/scan_access.py::resolve_org::resolve_active_organisation::platform.organization.switch#1"
     },
     {
       "file": "scans/scan_access.py",
-      "line": 32,
+      "line": 28,
       "function": "user_can_read_all_scans",
       "mechanism": "user_has_permission",
       "legacy_permission": "scans:read_all",
       "new_permission": "audit.scan.read_all",
-      "path_id": null,
+      "path_id": "scans:read_all",
       "scope": "organization",
-      "status": "deferred",
-      "migrated": false,
-      "reason": "in-handler check coupled to organisation-scope visibility (per-user versus organisation-wide reads); RBAC-5",
-      "rbac3_evidence": null,
+      "status": "migrated",
+      "migrated": true,
+      "reason": "one-to-one mapped atom, no hierarchy, switching or cross-organisation dependence",
+      "rbac3_evidence": "RBAC-3 equivalence: MATCH for all five legacy roles, zero mismatches (tests/rbac/test_rbac_authority_equivalence.py)",
       "rbac5_dependency": true,
       "site_id": "scans/scan_access.py::user_can_read_all_scans::user_has_permission::scans:read_all#1"
     }

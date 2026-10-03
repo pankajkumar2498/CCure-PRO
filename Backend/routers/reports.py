@@ -16,6 +16,7 @@ from ccure_platform.api import CurrentUser, current_user_flexible
 from ccure_platform.api import log_audit_event
 from db.base import get_db
 from ccure_platform import api as platform_api
+from ccure_platform.api import acts_across_organisations, resource_organisation_allowed
 from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from scan_helpers import limiter
@@ -397,14 +398,14 @@ def _require_reports_delete(user: CurrentUser, db: Session) -> None:
         )
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _can_read_all_org_scans(user: CurrentUser, db: Session) -> bool:
-    return platform_api.user_has_permission(db, user, "scans", "read_all")
+def _can_read_all_org_scans(
+    user: CurrentUser, db: Session, org_id: str | None = None
+) -> bool:
+    # read_all is organisation-wide visibility *within one organisation*: the
+    # permission is evaluated for the scan's own organisation (RBAC-5).
+    return platform_api.user_has_permission(
+        db, user, "scans", "read_all", authoritative=True, org_id=org_id
+    )
 
 
 def _audit_report_download(
@@ -476,15 +477,7 @@ def download_report(
         )
     fmt = resolved
 
-    query = db.query(Scan).filter(Scan.id == scan_id)
-    if not _is_superadmin(user):
-        query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+    scan = _scan_for_user(db, user, scan_id)
 
     fmt_upper = fmt.upper()
     type_upper = (type or "").upper()
@@ -660,17 +653,26 @@ def _scan_for_user(
     404 rather than 403 for a scan in another organisation, deliberately — a
     403 would confirm the id exists.
     """
+    reach = acts_across_organisations(user)
     query = db.query(Scan).filter(Scan.id == scan_id)
-    if _is_superadmin(user):
+    if reach:
         if org_id:
             query = query.filter(Scan.org_id == org_id)
     else:
         query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
 
     scan = query.first()
-    if not scan:
+    # The scan's own organisation, read from the stored row, decides the rest: the
+    # account must be allowed to act there, and holds read_all for it or started
+    # the scan (RBAC-5; a client-supplied organisation id proves nothing).
+    if (
+        not scan
+        or not resource_organisation_allowed(user, scan.org_id)
+        or (
+            str(scan.created_by) != str(user.id)
+            and not _can_read_all_org_scans(user, db, scan.org_id)
+        )
+    ):
         raise HTTPException(status_code=404, detail="Scan not found.")
     return scan
 
@@ -986,15 +988,7 @@ def delete_report(
 ):
     _require_reports_delete(user, db)
 
-    query = db.query(Scan).filter(Scan.id == scan_id)
-    if not _is_superadmin(user):
-        query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+    scan = _scan_for_user(db, user, scan_id)
 
     deleted_files = 0
     for path_attr in (

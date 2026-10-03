@@ -19,7 +19,13 @@ import logging
 from datetime import timedelta
 from typing import Dict, List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission, user_has_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    user_has_permission,
+    resolve_active_organisation,
+    acts_across_organisations,
+)
 from auth.jwt_handler import decode_token
 from ccure_platform.api import log_audit_event
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
@@ -61,16 +67,10 @@ router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 IDEMPOTENCY_WINDOW = timedelta(minutes=10)
@@ -1282,10 +1282,7 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
             WebScan.id == scan_id,
             WebScan.is_deleted == False,
         )
-        if (
-            getattr(getattr(current_user, "role", None), "name", "").lower()
-            != "superadmin"
-        ):
+        if not acts_across_organisations(current_user):
             query = query.filter(WebScan.org_id == str(current_user.org_id))
         scan = query.first()
 

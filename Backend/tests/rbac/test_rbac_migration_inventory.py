@@ -78,22 +78,29 @@ def test_all_forty_rbac3_sites_are_still_tracked(inv):
     assert sum(1 for s in sites if s["status"] == "migrated") == 13
     assert all(s["reason"].strip() for s in sites)
     remaining = [s for s in inv["sites"] if s["mechanism"].startswith("role_name_")]
-    assert len(remaining) == 27
-    assert len(remaining) + 13 == 40
+    # 13 migrated in RBAC-4, 20 in RBAC-5; 9 sites remain in the code (7 original
+    # plus the legacy rollback rule's two helpers)
+    assert len(remaining) == 9
 
 
-def test_scope_sites_are_deferred_to_rbac_5(inv):
+def test_every_scope_site_has_a_final_rbac5_status(inv):
     scope = [
         s for s in inv["rbac3_role_name_sites"] if s["category"] == "scope_cross_org"
     ]
-    assert len(scope) == 16 and all(s["status"] == "deferred" for s in scope)
-    for s in inv["sites"]:
-        if s.get("category") in (
-            "scope_cross_org",
-            "organization_switch",
-            "assignment_hierarchy",
-        ):
-            assert not s["migrated"] and s["rbac5_dependency"], s
+    assert len(scope) == 16
+    for s in inv["rbac3_role_name_sites"]:
+        if s["status"] == "migrated":
+            continue
+        final = s["rbac5"]
+        assert final["status"] in ("migrated", "intentionally_deferred"), s
+        assert final["reason"].strip(), s
+    # nothing is silently dropped: 13 + 20 migrated, 7 deferred
+    statuses = [
+        "rbac4" if s["status"] == "migrated" else s["rbac5"]["status"]
+        for s in inv["rbac3_role_name_sites"]
+    ]
+    assert (statuses.count("rbac4"), statuses.count("migrated")) == (13, 20)
+    assert statuses.count("intentionally_deferred") == 7
 
 
 def test_only_one_to_one_mapped_atoms_outside_the_deferred_resources_migrate(inv):
@@ -111,14 +118,26 @@ def test_only_one_to_one_mapped_atoms_outside_the_deferred_resources_migrate(inv
             assert s["reason"]
 
 
-def test_in_handler_scope_checks_are_not_migrated(inv):
-    deferred = [
+def test_read_all_checks_are_now_authoritative_and_organisation_aware(inv):
+    reads = [s for s in inv["sites"] if s["legacy_permission"] == "scans:read_all"]
+    assert reads and all(s["migrated"] for s in reads)
+
+
+def test_scope_mechanisms_are_all_migrated_through_scope_paths(inv):
+    scope = [
         s
         for s in inv["sites"]
-        if s["mechanism"] == "user_has_permission" and not s["migrated"]
+        if s["mechanism"]
+        in (
+            "resolve_active_organisation",
+            "acts_across_organisations",
+            "resource_organisation_allowed",
+            "check_role_assignment",
+        )
     ]
-    assert {s["legacy_permission"] for s in deferred} == {"scans:read_all"}
-    assert all(s["rbac5_dependency"] for s in deferred)
+    assert scope and all(
+        s["migrated"] and s["path_id"].startswith("scope.") for s in scope
+    )
 
 
 def test_key_paths_name_permissions_the_catalogue_declares(inv):
@@ -142,4 +161,4 @@ def test_the_runtime_switches_only_what_the_inventory_marks_migrated(inv):
 def test_no_module_code_decides_by_role_name_except_the_recorded_sites():
     from scripts.architecture import rbac_guardrails as rg
 
-    assert sum(sum(v.values()) for v in rg.measure_legacy().values()) == 27
+    assert sum(sum(v.values()) for v in rg.measure_legacy().values()) == 9

@@ -412,3 +412,15 @@ def sync_legacy_map(
             system_actor=None if actor is not None else SYNC_ACTOR,
         ).total
     return report
+
+
+def system_role_key_for_legacy(legacy_role_name: str | None) -> str | None:
+    """The system role key the golden mapping gives a legacy role, or None for a
+    legacy role it does not name. The only place a legacy role identity is translated
+    to the new model."""
+    if not legacy_role_name:
+        return None
+    for entry in load_golden()["roles"]:
+        if entry["legacy_role"] == str(legacy_role_name).lower():
+            return entry["role_key"]
+    return None

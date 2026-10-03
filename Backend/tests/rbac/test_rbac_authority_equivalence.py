@@ -90,7 +90,7 @@ def test_every_migrated_atom_agrees_for_every_role(rbac_db, people):
 
 
 def test_every_migrated_key_agrees_for_every_role(rbac_db, people):
-    keys = [p for p in migrated_paths() if ":" not in p]
+    keys = [p for p in migrated_paths() if ":" not in p and not p.startswith("scope.")]
     assert set(keys) >= REPLACED_KEYS
     for key in keys:
         for name, user in people.items():

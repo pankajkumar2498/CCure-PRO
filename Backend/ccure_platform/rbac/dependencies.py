@@ -177,6 +177,7 @@ def user_has_permission(
     *,
     operation: str | None = None,
     authoritative: bool = False,
+    org_id: str | None = None,
 ) -> bool:
     """
     Whether ``user``'s role holds the (resource, action) permission atom.
@@ -201,8 +202,15 @@ def user_has_permission(
     if authoritative:
         from ccure_platform.rbac import authority
 
+        # ``org_id`` (RBAC-5) makes the question "in this organisation": the
+        # permission is evaluated for that organisation, never assumed to reach it.
+        if org_id is not None and not authority.enabled_for(f"{resource}:{action}"):
+            # legacy: the atom answers for the account's own organisation only
+            if str(org_id) != str(getattr(user, "org_id", "")):
+                return allowed and legacy_acts_across_organisations(user)
+            return allowed
         return authority.decide_atom(
-            db, user, resource, action, allowed, operation=operation
+            db, user, resource, action, allowed, operation=operation, org_id=org_id
         ).allowed
     return allowed
 
@@ -329,3 +337,10 @@ def require_authorized(key: str):
         return user
 
     return _guard
+
+
+# RBAC-5: the legacy scope rules live in ``legacy_scope`` (re-exported here).
+from ccure_platform.rbac.legacy_scope import (  # noqa: E402,F401
+    legacy_acts_across_organisations,
+    legacy_assignment_allowed,
+)

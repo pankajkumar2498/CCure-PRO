@@ -195,7 +195,14 @@ def _from_comparison(
 
 
 def decide_atom(
-    db, user, resource: str, action: str, legacy_allowed: bool, *, operation=None
+    db,
+    user,
+    resource: str,
+    action: str,
+    legacy_allowed: bool,
+    *,
+    operation=None,
+    org_id: str | None = None,
 ) -> Outcome:
     """The decision for a legacy ``resource:action`` check. Never raises: anything
     unexpected is a legacy decision."""
@@ -203,8 +210,28 @@ def decide_atom(
     if not enabled_for(path):
         return _legacy(path, legacy_allowed, "authority_off")
     try:
+        scope = None
+        if org_id is not None:
+            # RBAC-5: the check is about one organisation. The legacy answer for it
+            # is the atom *and* the legacy reach into another organisation.
+            from ccure_platform.rbac.legacy_scope import (
+                legacy_acts_across_organisations,
+            )
+
+            if str(org_id) != str(getattr(user, "org_id", "")):
+                legacy_allowed = bool(
+                    legacy_allowed
+                ) and legacy_acts_across_organisations(user)
+            scope = c.ScopeContext(requested_org_id=str(org_id))
         r = shadow.shadow_compare(
-            db, user, resource, action, bool(legacy_allowed), operation=operation
+            db,
+            user,
+            resource,
+            action,
+            bool(legacy_allowed),
+            scope=scope,
+            operation=operation,
+            scope_aware=org_id is not None,
         )
         out = _from_comparison(path, legacy_allowed, r)
     except Exception:  # noqa: BLE001 - fall back to the legacy authority

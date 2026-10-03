@@ -113,6 +113,12 @@ PLATFORM_API_SURFACE = frozenset(
         # RBAC-4: permission-key guards that replaced role-name checks
         "require_authorized",
         "has_permission",
+        # RBAC-5: scope
+        "resolve_active_organisation",
+        "acts_across_organisations",
+        "resource_organisation_allowed",
+        "check_role_assignment",
+        "AssignmentVerdict",
         "user_display_names",
         "users_holding_permission",
         "organisation",

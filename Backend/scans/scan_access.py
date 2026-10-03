@@ -16,20 +16,18 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 
-def is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    return platform_api.resolve_active_organisation(user, requested_org)
 
 
-def user_can_read_all_scans(user: CurrentUser, db: Session) -> bool:
-    return platform_api.user_has_permission(db, user, "scans", "read_all")
+def user_can_read_all_scans(
+    user: CurrentUser, db: Session, org_id: str | None = None
+) -> bool:
+    """``scans:read_all`` is organisation-wide visibility within one organisation —
+    the organisation the request acts in — never visibility across organisations."""
+    return platform_api.user_has_permission(
+        db, user, "scans", "read_all", authoritative=True, org_id=org_id
+    )
 
 
 def get_scan_or_404(
@@ -41,7 +39,7 @@ def get_scan_or_404(
         .options(joinedload(Scan.created_by_user))
         .filter(Scan.id == scan_id, Scan.org_id == target_org_id)
     )
-    if not user_can_read_all_scans(user, db):
+    if not user_can_read_all_scans(user, db, target_org_id):
         query = query.filter(Scan.created_by == str(user.id))
 
     scan = query.first()

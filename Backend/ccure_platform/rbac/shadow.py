@@ -319,10 +319,15 @@ def compare_decision(
     scope: c.ScopeContext | None = None,
     operation: str | None = None,
     legacy_role: str | None = None,
+    scope_aware: bool = False,
 ) -> ShadowResult:
     """
     Compare the new engine's answer with the legacy one. Pure: everything arrives as
     an argument, so it needs no database and can be tested as a truth table.
+
+    ``scope_aware`` (RBAC-5): the caller has folded the legacy scope rule into
+    ``legacy_allowed`` (the legacy answer *for the target organisation*), so a
+    scope-driven denial is a real comparison, not a deferral.
     """
     scope = scope or c.ScopeContext()
     base = dict(
@@ -385,7 +390,11 @@ def compare_decision(
     new_allowed = all(d.allowed for d in decisions)
     extra = dict(new_decision=new_allowed, key_decisions=tuple(decisions))
 
-    if scope.resource_org_id and scope.resource_org_id != principal.home_org_id:
+    if (
+        not scope_aware
+        and scope.resource_org_id
+        and scope.resource_org_id != principal.home_org_id
+    ):
         return result(
             NOT_COMPARABLE,
             SCOPE_DEFERRED,
@@ -396,7 +405,7 @@ def compare_decision(
     denied_for_scope = [
         d for d in decisions if not d.allowed and d.reason in SCOPE_REASONS
     ]
-    if denied_for_scope and legacy_allowed:
+    if denied_for_scope and legacy_allowed and not scope_aware:
         return result(
             NOT_COMPARABLE,
             SCOPE_DEFERRED,
@@ -466,6 +475,7 @@ def shadow_compare(
     operation: str | None = None,
     index: Mapping[str, MappingEntry] | None = None,
     recorder: "ShadowRecorder | None" = None,
+    scope_aware: bool = False,
 ) -> ShadowResult:
     """
     Evaluate the new engine for the question the legacy check answered, and report
@@ -523,6 +533,7 @@ def shadow_compare(
                 scope=scope,
                 operation=operation,
                 legacy_role=label,
+                scope_aware=scope_aware,
             )
     except MappingUnavailable as exc:
         result = _error(

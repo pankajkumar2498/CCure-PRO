@@ -43,6 +43,25 @@ router = APIRouter(prefix="/admin/users", tags=["User Management"])
 log = logging.getLogger(__name__)
 
 
+def _enforce_assignment_hierarchy(
+    db, actor, role, *, target_user_id: str | None, target_org_id: str
+) -> None:
+    """403 unless ``actor`` may hand ``role`` to an account in ``target_org_id``."""
+    from ccure_platform.rbac.scope import check_role_assignment
+
+    verdict = check_role_assignment(
+        actor, role, target_user_id=target_user_id, target_org_id=target_org_id
+    )
+    if verdict.allowed:
+        return
+    if verdict.source == "legacy":
+        raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
+    raise HTTPException(
+        status_code=403,
+        detail="Role assignment refused: " + ", ".join(verdict.violations),
+    )
+
+
 def _is_superadmin(user: User) -> bool:
     return (
         getattr(getattr(user, "role", None), "name", "") or ""
@@ -304,9 +323,11 @@ def create_user(
     if not role:
         raise HTTPException(status_code=400, detail="Invalid role_id")
 
-    # Enforce hierarchy: org_admin cannot create superadmin
-    if role.name == "superadmin" and current_user.role.name != "superadmin":
-        raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
+    # Assignment hierarchy (RBAC-5): decided by rbac/scope.py — the legacy rule while
+    # the new model is off, the RBAC governance rules once it is switched on.
+    _enforce_assignment_hierarchy(
+        db, current_user, role, target_user_id=None, target_org_id=str(target_org_id)
+    )
 
     # Resolve org slug for readable ID generation
     org = db.query(Organization).filter(Organization.id == target_org_id).first()
@@ -529,8 +550,13 @@ def change_role(
     if not role:
         raise HTTPException(status_code=400, detail="Invalid role_id")
 
-    if role.name == "superadmin" and current_user.role.name != "superadmin":
-        raise HTTPException(status_code=403, detail="Cannot assign superadmin role")
+    _enforce_assignment_hierarchy(
+        db,
+        current_user,
+        role,
+        target_user_id=str(user.id),
+        target_org_id=str(user.org_id),
+    )
 
     changes = {"role_id": {"old": user.role_id, "new": role.id}}
     user.role_id = role.id

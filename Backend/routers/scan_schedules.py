@@ -41,7 +41,11 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from ccure_platform.api import log_audit_event
 from core.scheduling.dispatcher import advance_schedule, dispatch_schedule
 from core.scheduling.recurrence import (
@@ -83,12 +87,6 @@ router = APIRouter(prefix="/scan-schedules", tags=["Scan Schedules"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
 def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     """
     The organisation this request acts on.
@@ -97,9 +95,9 @@ def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     parameter is otherwise ignored rather than rejected, so a client that sends
     its own org id redundantly still works.
     """
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _validate_policy(

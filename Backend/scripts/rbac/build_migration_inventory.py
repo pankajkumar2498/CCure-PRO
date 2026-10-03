@@ -51,6 +51,24 @@ MECHANISMS = {
     "require_role": "require_role",
     "require_authorized": "require_authorized",
     "has_permission": "has_permission",
+    # RBAC-5: the scope seam
+    "resolve_active_organisation": "resolve_active_organisation",
+    "acts_across_organisations": "acts_across_organisations",
+    "resource_organisation_allowed": "resource_organisation_allowed",
+    "check_role_assignment": "check_role_assignment",
+}
+#: RBAC-5 scope mechanisms: the authority path each is switched by.
+SCOPE_PATHS = {
+    "resolve_active_organisation": "scope.active_organisation",
+    "acts_across_organisations": "scope.cross_organisation",
+    "resource_organisation_allowed": "scope.cross_organisation",
+    "check_role_assignment": "scope.assign_role",
+}
+SCOPE_REASONS = {
+    "resolve_active_organisation": "a client-named organisation is a request: honoured only with the platform-scope switch grant, an existing active target, and an audit event",
+    "acts_across_organisations": "cross-organisation reach is the platform-scope switch grant, not a role name",
+    "resource_organisation_allowed": "the resource's organisation is read from the stored row and verified server-side",
+    "check_role_assignment": "assignment hierarchy enforced by governance.check_assignment over the golden system role",
 }
 
 #: Legacy resources whose atoms are NOT migrated in RBAC-4, with the reason. The
@@ -59,15 +77,15 @@ MECHANISMS = {
 #: atom is not one-to-one with a key (so a guard cannot name the key it enforces).
 DEFERRED_RESOURCES = {
     "users": "assignment hierarchy and provisioning: user administration decides who may "
-    "hand out which role (escalation ceiling, continuity); RBAC-5",
+    "hand out which role (escalation ceiling, continuity); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
     "organizations": "organisation provisioning and cross-organisation administration "
-    "(scope model); RBAC-5",
+    "(scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
     "roles": "role administration: the legacy atom splits across several keys "
-    "(platform-scope role creation is continuity-protected); RBAC-5",
+    "(platform-scope role creation is continuity-protected); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
     "settings": "the legacy atom was split into distinct capabilities "
     "(audit.asset.import_amt / audit.remediation.manage_sla); a guard cannot name which",
     "audit": "audit-log visibility is scoped by organisation and superadmin "
-    "cross-organisation reads (scope model); RBAC-5",
+    "cross-organisation reads (scope model); platform administration (out of RBAC-5 by the phase brief), RBAC-7",
     "audit_logs": "retired atom; no route enforces it",
 }
 #: Role-name site categories → (status, target phase, reason).
@@ -248,6 +266,26 @@ def build() -> dict:
             )
             if target not in keys:
                 entry["reason"] = "names a permission the catalogue does not declare"
+        elif mech in SCOPE_PATHS:
+            entry.update(
+                new_permission=(
+                    "platform.organization.switch"
+                    if mech != "check_role_assignment"
+                    else "platform.user.assign_role"
+                ),
+                path_id=SCOPE_PATHS[mech],
+                scope=(
+                    "cross-organisation"
+                    if mech != "check_role_assignment"
+                    else "platform"
+                ),
+                status="migrated",
+                migrated=True,
+                reason=SCOPE_REASONS[mech],
+                rbac3_evidence="RBAC-5 scope comparison against legacy "
+                "(tests/rbac/test_rbac_scope_equivalence.py)",
+                rbac5_dependency=False,
+            )
         elif mech == "require_role":
             entry.update(
                 reason="a role-name guard with no replacement key assigned; "
@@ -275,10 +313,9 @@ def build() -> dict:
                     entry["reason"] = DEFERRED_RESOURCES[resource]
                 elif mech == "user_has_permission" and not c["authoritative"]:
                     entry["reason"] = (
-                        "in-handler check coupled to organisation-scope visibility "
-                        "(per-user versus organisation-wide reads); RBAC-5"
+                        "in-handler check not yet marked authoritative; "
+                        "migrate by passing authoritative=True"
                     )
-                    entry["rbac5_dependency"] = True
                 else:
                     entry.update(
                         status="migrated",
@@ -292,8 +329,17 @@ def build() -> dict:
 
     # role-name decisions still in the code: the sites RBAC-4 did not migrate
     remaining = json.loads(REMAINING_ROLE_NAME.read_text(encoding="utf-8"))
+    final = {
+        (x["file"], x["category"]): x["rbac5"]
+        for x in decisions["sites"]
+        if x.get("rbac5", {}).get("status") == "intentionally_deferred"
+    }
     for d in remaining["sites"]:
-        phase, why = ROLE_NAME_DEFERRALS[d["category"]]
+        decided = final.get((d["file"], d["category"]))
+        if decided:
+            phase, why = decided["deferred_to"], decided["reason"]
+        else:  # the legacy rollback rule added by RBAC-4/5
+            phase, why = ROLE_NAME_DEFERRALS[d["category"]]
         add(
             {
                 "file": d["file"],
@@ -308,8 +354,7 @@ def build() -> dict:
                 "migrated": False,
                 "reason": why,
                 "rbac3_evidence": "recorded by RBAC-3 (legacy_role_name_dependencies.json)",
-                "rbac5_dependency": d["category"]
-                in ("scope_cross_org", "assignment_hierarchy", "organization_switch"),
+                "rbac5_dependency": False,
                 "category": d["category"],
                 "deferred_to": phase,
             }
@@ -326,7 +371,9 @@ def build() -> dict:
                 "status",
                 "new_permission",
                 "reason",
+                "rbac5",
             )
+            if k in d
         }
         for d in decisions["sites"]
     ]
@@ -350,6 +397,15 @@ def build() -> dict:
             "rbac3_role_name_sites": len(rbac3_sites),
             "rbac3_role_name_migrated": sum(
                 1 for d in rbac3_sites if d["status"] == "migrated"
+            ),
+            "rbac3_role_name_migrated_rbac5": sum(
+                1 for d in rbac3_sites if d.get("rbac5", {}).get("status") == "migrated"
+            ),
+            "rbac3_role_name_deferred_final": sum(
+                1
+                for d in rbac3_sites
+                if d["status"] != "migrated"
+                and d.get("rbac5", {}).get("status") != "migrated"
             ),
             "migrated": summary.get("migrated", 0),
             "deferred": summary.get("deferred", 0),

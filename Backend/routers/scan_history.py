@@ -36,7 +36,6 @@ from scan_helpers import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
 from scans.scan_access import (  # noqa: F401  (the old private names stay)
     get_scan_or_404 as _get_scan_or_404,
-    is_superadmin as _is_superadmin,
     resolve_org as _resolve_org,
     user_can_read_all_scans as _user_can_read_all_scans,
 )
@@ -222,14 +221,14 @@ def _build_scans_query(
     if created_by:
         if created_by == "me":
             query = query.filter(Scan.created_by == str(user.id))
-        elif _user_can_read_all_scans(user, db):
+        elif _user_can_read_all_scans(user, db, org_id):
             query = query.filter(Scan.created_by == created_by)
         else:
             raise HTTPException(
                 status_code=403,
                 detail="Insufficient privileges to view other users' scans.",
             )
-    elif not _user_can_read_all_scans(user, db):
+    elif not _user_can_read_all_scans(user, db, org_id):
         query = query.filter(Scan.created_by == str(user.id))
 
     if scope == "active":
@@ -554,9 +553,9 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     db = SessionLocal()
     try:
         query = db.query(Scan).filter(Scan.id == scan_id)
-        if getattr(current_user.role, "name", "").lower() != "superadmin":
+        if not platform_api.acts_across_organisations(current_user):
             query = query.filter(Scan.org_id == current_user.org_id)
-            if not _user_can_read_all_scans(current_user, db):
+            if not _user_can_read_all_scans(current_user, db, current_user.org_id):
                 query = query.filter(Scan.created_by == str(current_user.id))
 
         scan = query.first()

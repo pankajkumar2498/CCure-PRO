@@ -90,6 +90,13 @@ from ccure_platform.rbac.contract import (
     Principal,
     ScopeContext,
 )
+from ccure_platform.rbac.scope import (
+    AssignmentVerdict,
+    acts_across_organisations,
+    check_role_assignment,
+    resolve_active_organisation,
+    resource_organisation_allowed,
+)
 from ccure_platform.rbac.dependencies import (
     has_permission,
     require_authorized,
@@ -124,6 +131,12 @@ __all__ = (
     # RBAC-4: permission-key guards that replaced role-name checks
     "require_authorized",
     "has_permission",
+    # RBAC-5: where a principal may act (scope), kept apart from what it may do
+    "resolve_active_organisation",
+    "acts_across_organisations",
+    "resource_organisation_allowed",
+    "check_role_assignment",
+    "AssignmentVerdict",
     # RBAC capability (RBAC-1): declared and consumable, used by no live route
     "PermissionDecl",
     "ScopeContext",
@@ -192,6 +205,7 @@ def user_has_permission(
     action: str,
     *,
     authoritative: bool = False,
+    org_id: str | None = None,
 ) -> bool:
     """
     Whether the account's role holds the ``resource:action`` permission atom.
@@ -208,7 +222,7 @@ def user_has_permission(
         if account is None:
             return False
     return _role_holds_permission(
-        db, account, resource, action, authoritative=authoritative
+        db, account, resource, action, authoritative=authoritative, org_id=org_id
     )
 
 

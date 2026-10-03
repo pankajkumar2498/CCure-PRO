@@ -504,6 +504,18 @@ assignment or registration flow uses the new tables. Do not describe RBAC as liv
   provisioning, RBAC-5/8). `scripts/rbac/reconcile_assignments.py` reports legacy-vs-RBAC
   gaps and applies only in a named, non-live database. Record:
   `docs/architecture/RBAC_AUTHORITY_MIGRATION.md`.
+- **RBAC-5 = scope, OFF by default** (`rbac/scope.py`, `docs/architecture/RBAC_SCOPE.md`).
+  Permission is WHAT, scope is WHERE. Acting outside the home organisation is the
+  platform-scope grant of `platform.organization.switch` (superadmin holds it through grants,
+  no shortcut); an organisation administrator never crosses. Module code asks
+  `ccure_platform.api`: `resolve_active_organisation` (replaced every `_resolve_org` /
+  `role == superadmin` copy), `acts_across_organisations`, `resource_organisation_allowed`
+  (resource organisation read from the stored row), `check_role_assignment`, and
+  `user_has_permission(..., org_id=)` for `read_all` (organisation-wide, never
+  cross-organisation). Switch, denied scope and refused escalation are audited
+  (`rbac.org_switch.entered`, `rbac.scope.denied`, `rbac.escalation.refused`). Missing,
+  inactive or unknown organisations fail closed. Paths `scope.active_organisation`,
+  `scope.cross_organisation`, `scope.assign_role`. 9 role-name sites remain (RBAC-7/8).
 - **Audit attribution: an event says who owns it, and nothing is ever attributed to an
   invented organisation.** `audit_logs` is tenant-bound (`org_id` NOT NULL). An event with an
   owning organisation (an organisation role; an organisation-scope assignment; a

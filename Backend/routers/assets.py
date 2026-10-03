@@ -13,7 +13,11 @@ import json
 import logging
 from typing import Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from ccure_platform.api import log_audit_event
 from core.upload_guard import (
     UploadTooLarge,
@@ -57,16 +61,10 @@ def _display_json_value(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _asset_or_404(db: Session, asset_id: str, org_id: str) -> Asset:

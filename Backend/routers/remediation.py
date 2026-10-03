@@ -60,7 +60,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from ccure_platform.api import log_audit_event
 from core.remediation import (
     ACTIVE_STATES,
@@ -106,16 +110,10 @@ router = APIRouter(prefix="/remediation", tags=["Remediation"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
 def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _get_finding(db: Session, finding_id: str, org_id: str) -> AssetVulnerability:

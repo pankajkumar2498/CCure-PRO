@@ -71,6 +71,7 @@ EVENT_SEVERITIES: dict[str, str] = {
     "rbac.escalation.refused": HIGH,
     "rbac.authz.denied_privileged": MEDIUM,
     "rbac.org_switch.entered": MEDIUM,
+    "rbac.scope.denied": MEDIUM,
     "rbac.continuity.violated": CRITICAL,
     # configuration
     "rbac.default_role.changed": HIGH,

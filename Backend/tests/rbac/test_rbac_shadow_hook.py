@@ -126,6 +126,7 @@ def test_the_legacy_guards_are_the_same_objects_as_before():
         "action",
         "operation",
         "authoritative",  # RBAC-4: off unless a migrated path asks for it
+        "org_id",  # RBAC-5: the organisation the question is about
     ]
     assert (
         inspect.signature(legacy.user_has_permission).parameters["operation"].kind

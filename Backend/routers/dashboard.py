@@ -22,7 +22,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
 from db.models.assets import Asset, AssetChangeLog
@@ -47,16 +51,10 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
 def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _now() -> datetime:

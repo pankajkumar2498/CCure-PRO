@@ -47,7 +47,11 @@ ticket. The four WinRM error classes map to four different messages and a
 import logging
 from typing import Any, Dict, List, Optional
 
-from ccure_platform.api import CurrentUser, require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_permission,
+    resolve_active_organisation,
+)
 from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
@@ -152,16 +156,10 @@ def _database_drivers() -> Dict[str, bool]:
     return available_engines()
 
 
-def _is_superadmin(user: CurrentUser) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
 def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _get(db: Session, credential_id: str, org_id: str) -> ComplianceCredential:

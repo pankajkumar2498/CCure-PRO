@@ -199,4 +199,11 @@ def _can_read_scan(db: Session, scan: Scan, user_id: str) -> bool:
     if not user or str(user.org_id) != str(scan.org_id):
         return False
     # Superadmin holds everything, as it always did here.
-    return platform_api.user_has_permission(db, user.id, "scans", "read_all")
+    return platform_api.user_has_permission(
+        db,
+        user.id,
+        "scans",
+        "read_all",
+        authoritative=True,
+        org_id=str(scan.org_id),
+    )

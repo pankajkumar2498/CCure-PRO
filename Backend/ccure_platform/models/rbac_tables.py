@@ -1,9 +1,7 @@
 """
 ccure_platform/models/rbac_tables.py — the tables of the new RBAC capability.
 
-RBAC-1 of the RBAC programme (design frozen in RBAC-0). Seven platform-owned
-tables, all prefixed ``rbac_`` so they sit beside the legacy ``roles``,
-``permissions`` and ``role_permissions`` until RBAC-8 retires those:
+RBAC-1 of the RBAC programme (design frozen in RBAC-0). Six platform-owned tables, all prefixed ``rbac_``:
 
     rbac_permissions       the catalogue: written only by catalogue sync
     rbac_roles             role identity (id, key, display_name) and lifecycle
@@ -11,10 +9,8 @@ tables, all prefixed ``rbac_`` so they sit beside the legacy ``roles``,
     rbac_role_permissions  role → permission grants
     rbac_user_roles        user → role assignments, never deleted by the API
     rbac_default_roles     which role a purpose (self-registration) assigns
-    rbac_legacy_map        temporary: legacy roles and atoms → new identities
 
-**RBAC-1 is dark.** Nothing reads these tables on a request path; the legacy
-``users.role_id`` and ``roles`` remain the authorization authority.
+These tables are the sole authorization authority.
 
 Two things this file does that the other models do not, and why:
 
@@ -410,87 +406,6 @@ class RbacDefaultRole(Base):
     )
     updated_by = Column(String(150), nullable=True)
     updated_at = Column(TIMESTAMPTZ, nullable=False, server_default=_NOW)
-
-
-class RbacLegacyMap(Base):
-    """
-    TEMPORARY (removed in RBAC-8). Maps the legacy authorization vocabulary onto
-    the new one for shadow evaluation: ``kind='role'`` rows map a legacy
-    ``roles.name`` to a role key; ``kind='permission'`` rows map a legacy
-    ``resource:action`` atom to a permission key. One atom may map to several
-    keys (a split) and several atoms to one key (a merge).
-
-    **Every legacy atom has exactly one status** (RBAC-2) and none is dropped
-    silently: ``mapped`` (the same capability under a new key), ``replaced`` (the
-    capability is now expressed differently — a name check or a governance
-    permission) or ``retired`` (nothing enforces it, so there is no new key; the
-    row exists so the atom is accounted for, with the reason).
-    """
-
-    __tablename__ = "rbac_legacy_map"
-    __table_args__ = (
-        CheckConstraint(
-            "kind IN ('role', 'permission')", name="ck_rbac_legacy_map_kind"
-        ),
-        CheckConstraint(
-            "status IN ('mapped', 'replaced', 'retired')",
-            name="ck_rbac_legacy_map_status",
-        ),
-        CheckConstraint(
-            "(kind = 'role' AND legacy_role_name IS NOT NULL AND role_key IS NOT NULL "
-            "AND legacy_resource IS NULL AND legacy_action IS NULL AND permission_key IS NULL "
-            "AND status = 'mapped') "
-            "OR (kind = 'permission' AND legacy_resource IS NOT NULL "
-            "AND legacy_action IS NOT NULL AND legacy_role_name IS NULL AND role_key IS NULL "
-            "AND ((status = 'retired' AND permission_key IS NULL) "
-            "OR (status IN ('mapped', 'replaced') AND permission_key IS NOT NULL)))",
-            name="ck_rbac_legacy_map_shape",
-        ),
-        Index(
-            "uq_rbac_legacy_map_role",
-            "legacy_role_name",
-            unique=True,
-            postgresql_where=text("kind = 'role'"),
-        ),
-        Index(
-            "uq_rbac_legacy_map_permission",
-            "legacy_resource",
-            "legacy_action",
-            "permission_key",
-            unique=True,
-            postgresql_where=text("kind = 'permission'"),
-        ),
-        # A retired atom has no permission key, and NULLs are distinct in a unique
-        # index, so it needs its own: one retired row per atom.
-        Index(
-            "uq_rbac_legacy_map_retired",
-            "legacy_resource",
-            "legacy_action",
-            unique=True,
-            postgresql_where=text("kind = 'permission' AND permission_key IS NULL"),
-        ),
-    )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    kind = Column(String(20), nullable=False)
-    legacy_role_name = Column(String(50), nullable=True)
-    legacy_resource = Column(String(100), nullable=True)
-    legacy_action = Column(String(50), nullable=True)
-    role_key = Column(
-        String(200), ForeignKey("rbac_roles.key", ondelete="RESTRICT"), nullable=True
-    )
-    permission_key = Column(
-        String(120),
-        ForeignKey("rbac_permissions.key", ondelete="RESTRICT"),
-        nullable=True,
-    )
-    status = Column(String(20), nullable=False, server_default="mapped")
-    #: Why the atom is mapped, replaced or retired.
-    reason = Column(Text, nullable=True)
-    #: A behaviour change this mapping introduces, described. Anything here has
-    #: to be approved; the equivalence matrix refuses an unlisted difference.
-    behaviour_change = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMPTZ, nullable=False, server_default=_NOW)
 
 
 # ── trigger SQL ───────────────────────────────────────────────────────────────

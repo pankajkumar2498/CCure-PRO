@@ -18,6 +18,8 @@ rem.verify.reappeared, rem.verify.scope_mismatch, rem.verify.no_self_attest,
 rem.exc.grant, rem.exc.expiry, rem.exc.audit, rem.rec.history, rem.rec.notes.
 """
 
+from native_rbac import system_role, create_user
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -93,17 +95,17 @@ def other_user(db_session: Session, test_org: Organization) -> User:
     """
     from auth.jwt_handler import hash_password
     from db.base import gen_user_id, utcnow
-    from db.models import Role
 
-    role = db_session.query(Role).filter(Role.name == "analyst").first()
-    row = User(
+    role = system_role(db_session, "platform.analyst")
+    row = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "remowner"),
         username=f"remowner-{uuid.uuid4().hex[:6]}",
         email=f"remowner-{uuid.uuid4().hex[:6]}@test.com",
         full_name="Remediation Owner",
         password_hash=hash_password("remediationpassword123"),
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

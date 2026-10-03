@@ -385,203 +385,11 @@ except (AttributeError, KeyError):
 
 from auth.jwt_handler import hash_password
 from db.base import Base, SessionLocal, engine, get_db
-from db.models.rbac import Organization, Role, RolePermission
+from db.models.rbac import Organization
+from ccure_platform.models.rbac_tables import RbacRole
 from db.models.users import User
 
-# ── RBAC provisioning for fixture-created accounts ───────────────────────────────────
-#
-# After the RBAC-8 cutover an account holds only what its ``rbac_user_roles`` rows grant.
-# Production gets those rows from the cutover's reconciliation (``scripts/rbac/cutover.py``,
-# the golden legacy-role → system-role mapping); the application itself assigns them when
-# it creates an account. The suite's fixtures create ``User`` rows directly with a
-# ``role_id``, so this listener does for them what the reconciliation does for a
-# production account — the same mapping, nothing else — and keeps the assignment in step
-# when a test changes ``role_id``. It is test-only and is the *only* place the suite maps a
-# legacy role to RBAC.
-from sqlalchemy import event as _sa_event
-from sqlalchemy import inspect as _sa_inspect
-
-
-def _golden_role_scopes() -> dict:
-    from ccure_platform.rbac import legacy_map
-
-    return {
-        r["legacy_role"]: (r["role_key"], r["assignable_scope"])
-        for r in legacy_map.load_golden()["roles"]
-    }
-
-
-_GOLDEN_ROLES = _golden_role_scopes()
-
-
-_GOLDEN_ATOM_KEYS = None
-
-
-def _atom_keys() -> dict:
-    global _GOLDEN_ATOM_KEYS
-    if _GOLDEN_ATOM_KEYS is None:
-        from ccure_platform.rbac import legacy_map
-
-        _GOLDEN_ATOM_KEYS = {
-            a["atom"]: tuple(a["new_keys"]) for a in legacy_map.load_golden()["atoms"]
-        }
-    return _GOLDEN_ATOM_KEYS
-
-
-def _legacy_role_keys(connection, role_id) -> frozenset:
-    """The RBAC keys the golden mapping gives the atoms a legacy role holds."""
-    atoms = connection.execute(
-        text(
-            "SELECT p.resource || ':' || p.action FROM role_permissions rp "
-            "JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = :r"
-        ),
-        {"r": role_id},
-    ).scalars()
-    table = _atom_keys()
-    return frozenset(k for a in atoms for k in table.get(a, ()))
-
-
-def _keyset_role_id(connection, keys: frozenset):
-    """A platform custom role holding exactly ``keys`` (created once, by key)."""
-    import hashlib
-
-    from sqlalchemy.orm import Session
-
-    key = (
-        "custom.platform.legacytest_"
-        + hashlib.sha1(",".join(sorted(keys)).encode()).hexdigest()[:16]
-    )
-    found = connection.execute(
-        text("SELECT id FROM rbac_roles WHERE key = :k"), {"k": key}
-    ).scalar()
-    if found is not None:
-        return found
-    from ccure_platform.rbac.model import RbacRole, append_revision
-    from rbac_testing import grant
-
-    session = Session(bind=connection, expire_on_commit=False)
-    row = RbacRole(
-        key=key,
-        display_name="Legacy test " + key[-8:],
-        kind="custom",
-        assignable_scope="platform",
-        managed_by="admin",
-    )
-    session.add(row)
-    session.flush()
-    append_revision(session, row, "created")
-    grant(session, row, *sorted(keys))
-    return row.id
-
-
-def _insert_assignment(connection, user, role_id, scope, org):
-    connection.execute(
-        text(
-            "INSERT INTO rbac_user_roles "
-            "(id, user_id, role_id, scope_type, scope_org_id, granted_by) "
-            "SELECT gen_random_uuid(), :u, r.id, :s, :o, 'test:legacy-reconciliation' "
-            "FROM rbac_roles r WHERE r.id = :r AND r.state = 'active' "
-            "AND NOT EXISTS (SELECT 1 FROM rbac_user_roles x WHERE x.user_id = :u "
-            "AND x.role_id = r.id AND x.revoked_at IS NULL)"
-        ),
-        {"u": user.id, "s": scope, "o": org, "r": role_id},
-    )
-
-
-def _assign_from_legacy_role(connection, user) -> None:
-    if user.role_id is None or connection.info.get("rbac_no_provision"):
-        return
-    name = connection.execute(
-        text("SELECT name FROM roles WHERE id = :i"), {"i": user.role_id}
-    ).scalar()
-    mapped = _GOLDEN_ROLES.get(name)
-    held: set = set()
-    if mapped is not None:
-        key, scope = mapped
-        connection.execute(
-            text(
-                "INSERT INTO rbac_user_roles "
-                "(id, user_id, role_id, scope_type, scope_org_id, granted_by) "
-                "SELECT gen_random_uuid(), :u, r.id, :s, :o, 'test:legacy-reconciliation' "
-                "FROM rbac_roles r WHERE r.key = :k AND r.state = 'active' "
-                "AND NOT EXISTS (SELECT 1 FROM rbac_user_roles x WHERE x.user_id = :u "
-                "AND x.role_id = r.id AND x.revoked_at IS NULL)"
-            ),
-            {
-                "u": user.id,
-                "s": scope,
-                "o": user.org_id if scope == "organization" else None,
-                "k": key,
-            },
-        )
-        held = set(
-            connection.execute(
-                text(
-                    "SELECT rp.permission_key FROM rbac_role_permissions rp "
-                    "JOIN rbac_roles r ON r.id = rp.role_id WHERE r.key = :k"
-                ),
-                {"k": key},
-            ).scalars()
-        )
-    # atoms a test granted the legacy role beyond what its system role holds
-    extra = _legacy_role_keys(connection, user.role_id) - held
-    if extra:
-        _insert_assignment(
-            connection,
-            user,
-            _keyset_role_id(connection, frozenset(extra)),
-            "platform",
-            None,
-        )
-
-
-def _revoke_test_assignments(connection, user_id) -> None:
-    connection.execute(
-        text(
-            "UPDATE rbac_user_roles SET revoked_at = now(), revoke_reason = 'migrated' "
-            "WHERE user_id = :u AND revoked_at IS NULL "
-            "AND granted_by = 'test:legacy-reconciliation'"
-        ),
-        {"u": user_id},
-    )
-
-
-@_sa_event.listens_for(RolePermission, "after_insert")
-def _reprovision_on_legacy_grant(mapper, connection, target):
-    if connection.info.get("rbac_no_provision"):
-        return
-    users = connection.execute(
-        text("SELECT id, org_id, role_id FROM users WHERE role_id = :r"),
-        {"r": target.role_id},
-    ).all()
-    for uid, org_id, role_id in users:
-        _revoke_test_assignments(connection, uid)
-        _assign_from_legacy_role(
-            connection,
-            type("U", (), {"id": uid, "org_id": org_id, "role_id": role_id})(),
-        )
-
-
-@_sa_event.listens_for(User, "after_insert")
-def _provision_rbac_on_insert(mapper, connection, target):
-    _assign_from_legacy_role(connection, target)
-
-
-@_sa_event.listens_for(User, "after_update")
-def _provision_rbac_on_role_change(mapper, connection, target):
-    if connection.info.get("rbac_no_provision"):
-        return
-    if not _sa_inspect(target).attrs.role_id.history.has_changes():
-        return
-    connection.execute(
-        text(
-            "UPDATE rbac_user_roles SET revoked_at = now(), revoke_reason = 'migrated' "
-            "WHERE user_id = :u AND revoked_at IS NULL "
-            "AND granted_by = 'test:legacy-reconciliation'"
-        ),
-        {"u": target.id},
-    )
-    _assign_from_legacy_role(connection, target)
+from native_rbac import create_user, system_role
 
 
 from sqlalchemy.ext.compiler import compiles
@@ -772,7 +580,7 @@ def _build_test_schema():
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
-    from db.migrate_production_schema import create_partitions, seed_rbac
+    from db.migrate_production_schema import create_partitions
 
     # The guards above vet DATABASE_URL when this file loads, but test modules
     # are imported *afterwards*, during collection, and a module-level
@@ -828,7 +636,6 @@ def seed_system_roles():
                 )
             )
         create_partitions(conn)
-        seed_rbac(conn)
 
         # audit_logs' append-only enforcement is triggers and grants, which
         # SQLAlchemy metadata cannot express — so the create_all bootstrap
@@ -1123,9 +930,6 @@ _BASELINE_FRAMEWORK_IDS: set[str] = set()
 #: which point it becomes an order-dependent failure.
 _BASELINE_CONTROL_IDS: set[str] = set()
 
-#: Roles seeded by seed_rbac(); anything else is test-created.
-_SYSTEM_ROLES = ("superadmin", "org_admin", "analyst", "viewer", "scanner")
-
 
 def _purge_test_data():
     """
@@ -1213,11 +1017,6 @@ def _purge_test_data():
                     text("DELETE FROM compliance_controls WHERE id <> ALL(:keep)"),
                     {"keep": list(_BASELINE_CONTROL_IDS)},
                 )
-
-        conn.execute(
-            text("DELETE FROM roles WHERE name <> ALL(:system_roles)"),
-            {"system_roles": list(_SYSTEM_ROLES)},
-        )
 
         _purge_synthetic_catalogue_rows(conn)
 
@@ -1456,18 +1255,18 @@ def self_registration_enabled(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def test_role_admin(db_session: Session) -> Role:
-    return db_session.query(Role).filter(Role.name == "org_admin").first()
+def test_role_admin(db_session: Session) -> RbacRole:
+    return system_role(db_session, "platform.org_admin")
 
 
 @pytest.fixture(scope="function")
-def test_role_viewer(db_session: Session) -> Role:
-    return db_session.query(Role).filter(Role.name == "viewer").first()
+def test_role_viewer(db_session: Session) -> RbacRole:
+    return system_role(db_session, "platform.viewer")
 
 
 @pytest.fixture(scope="function")
 def test_user(
-    db_session: Session, test_org: Organization, test_role_admin: Role
+    db_session: Session, test_org: Organization, test_role_admin: RbacRole
 ) -> User:
     """
     A standard authenticated user with admin rights.
@@ -1479,14 +1278,15 @@ def test_user(
     """
     from db.base import gen_user_id, utcnow
 
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "testadmin"),
         username="testadmin",
         email="admin@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=test_role_admin.id,
+        role=test_role_admin,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

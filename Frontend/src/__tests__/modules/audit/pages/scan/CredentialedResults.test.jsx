@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * CredentialedResults (`/scan/credentialed/results`) — Checkpoint 3C batch 23
  * baseline.
@@ -53,7 +54,13 @@ import { SRC, AUDIT_SRC } from "../../../../testPaths";
  * assert nothing about the controls.
  */
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
+  useAuth: () => ({
+    user: {
+      id: "u1",
+      role: { name: "superadmin" },
+      authorization: everything(),
+    },
+  }),
 }));
 
 vi.mock("@shell/api/axiosInstance", () => ({

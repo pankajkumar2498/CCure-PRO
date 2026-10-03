@@ -94,12 +94,14 @@ vi.mock("@shell/auth/AuthContext", () => ({
 const EXECUTOR = {
   id: 1,
   username: "operator",
-  role: { name: "analyst", permissions: ["scans:read", "scans:execute"] },
+  role: { name: "analyst" },
+  permissionKeys: ["audit.scan.read", "audit.scan.run"],
 };
 const VIEWER = {
   id: 2,
   username: "viewer",
-  role: { name: "viewer", permissions: ["scans:read"] },
+  role: { name: "viewer" },
+  permissionKeys: ["audit.scan.read"],
 };
 
 /* Field names are the page's reads, checked against the host-discovery phase

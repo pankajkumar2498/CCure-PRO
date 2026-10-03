@@ -19,6 +19,8 @@ Two things about how these are written:
   what they do to the *response*.
 """
 
+from native_rbac import system_role, create_user
+
 import hashlib
 import logging
 from contextlib import contextmanager
@@ -27,7 +29,7 @@ from unittest.mock import patch
 
 import pytest
 from db.base import gen_user_id, utcnow
-from db.models import Organization, PasswordResetToken, Role, User
+from db.models import Organization, PasswordResetToken, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -192,14 +194,15 @@ def reset_user(db_session: Session) -> User:
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
-    user = User(
+    role = system_role(db_session, "platform.analyst")
+    user = create_user(
+        db_session,
         id=gen_user_id(org.slug, "resetuser"),
         username="resetuser",
         email="resetuser@test.com",
         password_hash="oldhash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

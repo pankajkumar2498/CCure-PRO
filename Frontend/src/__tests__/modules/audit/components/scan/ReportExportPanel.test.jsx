@@ -28,7 +28,7 @@ import userEvent from "@testing-library/user-event";
 
 import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
 import api from "@shell/api/axiosInstance";
-import { atomSetHolds } from "../../../../fixtures/authorization";
+import { keySetHolds } from "../../../../fixtures/authorization";
 import { personaFrom } from "../../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
@@ -49,7 +49,7 @@ vi.mock("../../../../../design-system", async (importOriginal) => {
 let currentUser = {
   id: "u1",
   role: { name: "analyst" },
-  permissions: [{ resource: "reports", action: "read" }],
+  permissions: ["audit.report.read"],
 };
 vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
@@ -57,9 +57,7 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 vi.mock("@shell/auth/permissions", () => ({
   can: (user, key) =>
-    (user?.permissions || []).some((p) =>
-      atomSetHolds(new Set([`${p.resource}:${p.action}`]), key),
-    ),
+    (user?.permissions || []).some((p) => keySetHolds(new Set([p]), key)),
   denyMessage: "You do not have permission to do that.",
 }));
 
@@ -83,7 +81,7 @@ beforeEach(() => {
   currentUser = {
     id: "u1",
     role: { name: "analyst" },
-    permissions: [{ resource: "reports", action: "read" }],
+    permissions: ["audit.report.read"],
   };
   // jsdom implements neither; the component only needs them not to throw.
   global.URL.createObjectURL = vi.fn(() => "blob:mock");
@@ -386,7 +384,7 @@ describe("ReportExportPanel — permissions", () => {
     currentUser = {
       id: "u1",
       role: { name: "viewer" },
-      permissions: [{ resource: "scans", action: "read" }],
+      permissions: ["audit.scan.read"],
     };
     renderPanel();
     expect(screen.queryByRole("button", { name: "Export" })).toBeNull();

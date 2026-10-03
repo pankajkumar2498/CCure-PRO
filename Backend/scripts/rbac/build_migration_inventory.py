@@ -15,8 +15,7 @@ Statuses:
 * ``migrated`` — a live guard or scope seam of the Platform RBAC engine, naming a
   permission key the catalogue declares;
 * ``display-only`` — a place that shows a role *label*; never an input to a decision;
-* ``compatibility-history`` — legacy vocabulary kept on purpose (the deterministic
-  golden mapping, migrations, the deprecated ``users.role_id`` column), never read by
+* ``compatibility-history`` — historical migrations retained unchanged, never read by
   an authorization decision;
 * ``removed`` — a legacy decision that existed and is gone (the history of the 40
   role-name sites).
@@ -39,7 +38,6 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = BACKEND_ROOT / "data" / "rbac" / "authorization_migration_inventory.json"
-GOLDEN = BACKEND_ROOT / "data" / "rbac" / "golden_legacy_mapping.json"
 ROLE_NAME_HISTORY = BACKEND_ROOT / "data" / "rbac" / "role_name_site_decisions.json"
 
 SKIP_DIRS = {
@@ -74,30 +72,16 @@ RETIRED_MECHANISMS = frozenset(
 
 #: Places that name a legacy concept on purpose. Each is checked to exist, so a record
 #: cannot outlive the code it describes.
-COMPATIBILITY = (
+COMPATIBILITY = tuple(
     (
-        "ccure_platform/rbac/legacy_map.py",
-        "load_golden",
-        "the deterministic golden mapping (legacy atoms and roles → keys and system roles), "
-        "read by reconciliation and by tests",
-    ),
-    (
-        "ccure_platform/rbac/reconcile.py",
-        "reconcile",
-        "reconciliation reads the deprecated role column once, to propose assignments; it "
-        "never authorizes anything",
-    ),
-    (
-        "ccure_platform/models/users.py",
-        "role_id",
-        "users.role_id: nullable, deprecated, non-authoritative; kept for history and for "
-        "rollback of the schema, never read by a decision",
-    ),
-    (
-        "alembic/versions/c9e3a7b5d1f2_users_role_id_non_authoritative.py",
-        "role_id",
-        "the migration that made users.role_id nullable",
-    ),
+        f"alembic/versions/{name}",
+        marker,
+        "Historical migration retained unchanged; no runtime legacy model.",
+    )
+    for name, marker in (
+        ("a7c1e5b3d9f2_rbac_foundation.py", "rbac_legacy_map"),
+        ("c9e3a7b5d1f2_users_role_id_non_authoritative.py", "role_id"),
+    )
 )
 DISPLAY_ONLY = (
     (
@@ -111,12 +95,26 @@ DISPLAY_ONLY = (
         "assignment display names in the authorization payload; labels only",
     ),
 )
-#: The legacy tables. Classified, not removed: they hold history and are not an authority.
+#: Runtime metadata excludes these tables; the next focused commit removes their live schema.
 LEGACY_TABLES = {
-    "roles": "retained non-authoritative: history, and the target of users.role_id's foreign key",
-    "permissions": "retained non-authoritative: the legacy atoms, read only by reconciliation tooling",
-    "role_permissions": "retained non-authoritative: the legacy grants, read only by reconciliation tooling",
+    name: "absent from runtime metadata; forward schema removal pending"
+    for name in ("roles", "permissions", "role_permissions", "rbac_legacy_map")
 }
+
+
+def declared_keys() -> set[str]:
+    keys = set()
+    for rel in ("ccure_platform/permissions.py", "ccure_audit/permissions.py"):
+        for node in ast.walk(
+            ast.parse((BACKEND_ROOT / rel).read_text(encoding="utf-8"))
+        ):
+            if (
+                isinstance(node, ast.keyword)
+                and node.arg == "key"
+                and isinstance(node.value, ast.Constant)
+            ):
+                keys.add(node.value.value)
+    return keys
 
 
 def _call_name(call: ast.Call) -> str | None:
@@ -173,8 +171,7 @@ def retired_calls() -> list[dict]:
 
 
 def build() -> dict:
-    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    keys = {p["key"] for p in golden["permissions"]}
+    keys = declared_keys()
     history = json.loads(ROLE_NAME_HISTORY.read_text(encoding="utf-8"))["sites"]
     sites: list[dict] = []
     seen: Counter = Counter()
@@ -267,9 +264,9 @@ def build() -> dict:
             "legacy_calls_remaining": counts.get("legacy", 0),
             "role_name_decisions_remaining": 0,
             "legacy_tables": LEGACY_TABLES,
-            "users_role_id": "deprecated, nullable, non-authoritative; never read by a decision",
+            "users_role_id": "absent from runtime model; forward schema removal pending",
             "legacy_atoms": "kept only in migration history, documentation, audit data and "
-            "the deterministic golden mapping",
+            "historical migrations",
         },
         "summary": {
             "total": len(sites),

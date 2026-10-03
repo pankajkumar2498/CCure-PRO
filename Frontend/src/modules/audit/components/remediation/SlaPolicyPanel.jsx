@@ -1,7 +1,7 @@
 /**
  * This organisation's remediation deadlines.
  *
- * Reading them takes `findings:read`; setting them takes `settings:update`,
+ * Reading them takes `findings:read`; setting them takes `Manage remediation SLA policy`,
  * which on the live grants is org_admin and superadmin only. That split is the
  * backend's and it is deliberate — an analyst works the queue, an
  * administrator decides what "late" means — so the form is read-only rather
@@ -144,7 +144,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
       {!canEdit ? (
         <CcureAlert variant="info">
           These deadlines are shown read-only. Changing them needs the
-          <strong> settings:update</strong> permission.
+          <strong> Manage remediation SLA policy</strong> permission.
         </CcureAlert>
       ) : null}
 

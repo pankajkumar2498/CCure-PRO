@@ -261,13 +261,14 @@ function makeStream(url, init) {
 const user = (...permissions) => ({
   id: ME,
   username: "operator",
-  role: { name: "analyst", permissions },
+  role: { name: "analyst" },
+  permissionKeys: permissions,
 });
 const FULL = user(
-  "scans:read",
-  "scans:execute",
-  "scans:archive",
-  "scans:recycle",
+  "audit.scan.read",
+  "audit.scan.run",
+  "audit.scan.lifecycle",
+  "audit.scan.lifecycle",
 );
 
 let listReply;
@@ -1145,7 +1146,7 @@ describe("ScanHistory — contract", () => {
 
   describe("permissions", () => {
     it("offers each action only with its permission", async () => {
-      await loaded("/history", { as: user("scans:read") });
+      await loaded("/history", { as: user("audit.scan.read") });
       expect(inRow(1012, "View")).toBeEnabled();
       const names = within(rowFor(1012))
         .getAllByRole("button")
@@ -1155,7 +1156,11 @@ describe("ScanHistory — contract", () => {
 
     it("without scans:read there is no View", async () => {
       await loaded("/history", {
-        as: user("scans:execute", "scans:archive", "scans:recycle"),
+        as: user(
+          "audit.scan.run",
+          "audit.scan.lifecycle",
+          "audit.scan.lifecycle",
+        ),
       });
       const names = within(rowFor(1012))
         .getAllByRole("button")
@@ -1165,7 +1170,7 @@ describe("ScanHistory — contract", () => {
     });
 
     it("Stop is shown without scans:execute, and confirming it is refused without a request", async () => {
-      await loaded("/monitor", { as: user("scans:read") });
+      await loaded("/monitor", { as: user("audit.scan.read") });
       fireEvent.click(screen.getAllByRole("button", { name: /^Stop Scan/ })[0]);
       await flush();
       fireEvent.click(

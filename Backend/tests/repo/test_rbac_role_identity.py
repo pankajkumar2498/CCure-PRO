@@ -156,8 +156,9 @@ def test_legacy_role_identity_sites_only_fall():
     added, removed = [], []
     for path in sorted(set(measured) | set(known)):
         for kind in sorted(set(measured.get(path, {})) | set(known.get(path, {}))):
-            now, was = measured.get(path, {}).get(kind, 0), known.get(path, {}).get(
-                kind, 0
+            now, was = (
+                measured.get(path, {}).get(kind, 0),
+                known.get(path, {}).get(kind, 0),
             )
             if now > was:
                 added.append(f"{path} [{kind}]: {was} -> {now}")
@@ -183,7 +184,7 @@ def test_the_legacy_baseline_is_empty_and_stays_empty():
 
 def test_seed_migration_tooling_and_test_contexts_are_exempt_by_design():
     assert {"alembic", "tests", "scripts"} <= rg.EXEMPT_DIRS
-    assert "db/migrate_production_schema.py" in rg.EXEMPT_FILES
+    assert "db/migrate_production_schema.py" not in rg.EXEMPT_FILES
     assert "ccure_platform/rbac/contract.py" in rg.RBAC_SEED_FILES
 
 

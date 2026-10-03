@@ -46,7 +46,8 @@ def world(db_session):
     assigned with an owner, overdue, risk-accepted, verified fixed, reopened,
     and a configuration check.
     """
-    from db.models import Organization, Role, User
+    from native_rbac import create_user, system_role
+    from db.models import Organization
     from db.models.assets import Asset
     from db.models.findings import AssetVulnerability, VulnerabilityDefinition
     from db.models.scans import Scan
@@ -59,10 +60,11 @@ def world(db_session):
     db_session.flush()
     user_id = f"usr_fread_{suffix}"
     db_session.add(
-        User(
+        create_user(
+            db_session,
             id=user_id,
             org_id=org_id,
-            role_id=db_session.query(Role.id).filter(Role.name == "viewer").scalar(),
+            role=system_role(db_session, "platform.viewer"),
             username=f"owner_{suffix}",
             email=f"owner_{suffix}@test.com",
             password_hash="x",

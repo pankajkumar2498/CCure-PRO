@@ -9,13 +9,14 @@ reaches the *existing* scan tasks with the right arguments, not that Nmap
 works, which the scan suites already cover.
 """
 
+from native_rbac import system_role, create_user
+
 import uuid
-from datetime import datetime, timedelta, timezone
 
 import pytest
 from db.base import gen_scan_schedule_id
-from db.models import ComplianceCredential, Organization, Role, User
-from db.models.scan_schedules import ScanSchedule, ScanScheduleRun
+from db.models import ComplianceCredential, Organization
+from db.models.scan_schedules import ScanSchedule
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -319,17 +320,18 @@ def test_a_viewer_may_read_but_not_create_or_delete(
     from auth.jwt_handler import hash_password
     from db.base import gen_user_id, utcnow
 
-    viewer_role = db_session.query(Role).filter(Role.name == "viewer").first()
+    viewer_role = system_role(db_session, "platform.viewer")
     assert viewer_role is not None, "viewer role must be seeded"
 
-    viewer = User(
+    viewer = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "viewer1"),
         username="viewer1",
         email="viewer1@test.com",
         full_name="Read Only",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=viewer_role.id,
+        role=viewer_role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

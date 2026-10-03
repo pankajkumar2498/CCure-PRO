@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * Scan Comparison against a **real** API response.
  *
@@ -27,7 +28,13 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
+  useAuth: () => ({
+    user: {
+      id: "u1",
+      role: { name: "superadmin" },
+      authorization: everything(),
+    },
+  }),
 }));
 
 beforeEach(() => {

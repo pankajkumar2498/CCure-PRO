@@ -187,7 +187,8 @@ const page = () => screen.queryByTestId("page")?.textContent ?? null;
 const signedIn = (permissions = []) => ({
   user: personaFrom({
     username: "analyst",
-    role: { name: "analyst", permissions },
+    role: { name: "analyst" },
+    permissionKeys: permissions,
   }),
   loading: false,
   authState: "authenticated",
@@ -195,11 +196,11 @@ const signedIn = (permissions = []) => ({
   logout: vi.fn(),
 });
 const ANALYST = [
-  "dashboard:read",
-  "scans:execute",
-  "scans:read",
-  "reports:read",
-  "assets:read",
+  "audit.dashboard.read",
+  "audit.scan.run",
+  "audit.scan.read",
+  "audit.report.read",
+  "audit.asset.read",
 ];
 
 const visit = (path) =>
@@ -472,11 +473,11 @@ const platformSidebarLists = () =>
 
 describe("a denied platform route stays in the Platform Shell", () => {
   const ADMIN_ROUTES = [
-    ["/admin/users", ["users:read"]],
-    ["/admin/users/deleted", ["users:read"]],
-    ["/admin/roles", ["roles:read"]],
-    ["/admin/organizations", ["organizations:read"]],
-    ["/admin/audit-logs", ["audit:read"]],
+    ["/admin/users", ["platform.user.read"]],
+    ["/admin/users/deleted", ["platform.user.read"]],
+    ["/admin/roles", ["platform.permission.read", "platform.role.read"]],
+    ["/admin/organizations", ["platform.organization.read"]],
+    ["/admin/audit-logs", ["platform.audit_log.read"]],
   ];
 
   it.each(ADMIN_ROUTES)("%s: an authorised user opens it", (path, perms) => {
@@ -501,10 +502,11 @@ describe("a denied platform route stays in the Platform Shell", () => {
 
   it("email-domain rules need the platform-wide key: an account without it is refused in place", () => {
     auth = {
-      ...signedIn([...ANALYST, "users:read"]),
+      ...signedIn([...ANALYST, "platform.user.read"]),
       user: personaFrom({
         username: "oa",
-        role: { name: "org_admin", permissions: [...ANALYST, "users:read"] },
+        role: { name: "org_admin" },
+        permissionKeys: [...ANALYST, "platform.user.read"],
       }),
     };
     visit("/admin/email-domains");
@@ -542,14 +544,18 @@ describe("Audit's refusals are unchanged: they still fall back to an Audit page"
 
 describe("AMT Integration: the route and the sidebar share one permission", () => {
   it("settings:update opens the page", () => {
-    auth = signedIn([...ANALYST, "settings:update"]);
+    auth = signedIn([
+      ...ANALYST,
+      "audit.asset.import_amt",
+      "audit.remediation.manage_sla",
+    ]);
     visit("/admin/amt");
     expect(where().pathname).toBe("/admin/amt");
     expect(page()).toBe("AMTIntegration");
   });
 
   it("assets:update alone — what the route used to ask — does not", () => {
-    auth = signedIn([...ANALYST, "assets:update"]);
+    auth = signedIn([...ANALYST, "audit.asset.update"]);
     visit("/admin/amt");
     expect(where().pathname).toBe("/audit-dashboard");
     expect(page()).not.toBe("AMTIntegration");

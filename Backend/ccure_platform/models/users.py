@@ -30,7 +30,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    SmallInteger,
     String,
     Text,
     inspect,
@@ -71,18 +70,6 @@ class User(Base):
         nullable=False,
         index=True,
     )
-    # DEPRECATED and NON-AUTHORITATIVE (RBAC-8). Authorization is the RBAC engine over
-    # ``rbac_user_roles``; nothing reads this column to decide what an account may do. It
-    # is kept, nullable, as historical/reporting data (and the source the cutover's
-    # reconciliation maps from). New accounts leave it NULL.
-    role_id = Column(
-        SmallInteger,
-        ForeignKey("roles.id", ondelete="RESTRICT"),
-        nullable=True,
-        index=True,
-        comment="DEPRECATED, non-authoritative: authorization is rbac_user_roles (RBAC-8)",
-    )
-
     # ── Identity ──────────────────────────────────────────────────────────────
     username = Column(String(100), nullable=False, unique=True, index=True)
     email = Column(String(320), nullable=False, unique=True, index=True)
@@ -160,7 +147,6 @@ class User(Base):
 
     # ── Relationships ─────────────────────────────────────────────────────────
     organization = relationship("Organization", back_populates="users")
-    role = relationship("Role", back_populates="users")
     refresh_tokens = relationship(
         "RefreshTokenSession", back_populates="user", cascade="all, delete-orphan"
     )

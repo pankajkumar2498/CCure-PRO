@@ -5,6 +5,8 @@ Unit tests for the Dual-Channel MFA system (TOTP setup, verification, email
 OTP fallback, backup codes, and session revocation).
 """
 
+from native_rbac import system_role, create_user
+
 import pyotp
 from auth.jwt_handler import hash_password
 from auth.router import decrypt_secret
@@ -191,14 +193,7 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     from datetime import datetime, timedelta, timezone
 
     from auth.jwt_handler import create_access_token
-    from db.models import (
-        Organization,
-        Permission,
-        RefreshTokenSession,
-        Role,
-        RolePermission,
-        User,
-    )
+    from db.models import Organization, RefreshTokenSession
 
     org = Organization(
         name="MFA Reset Org",
@@ -209,51 +204,28 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     )
     db_session.add(org)
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    # Grant permissions
-    permission = (
-        db_session.query(Permission)
-        .filter(Permission.resource == "users", Permission.action == "update")
-        .first()
-    )
-    if not permission:
-        permission = Permission(
-            resource="users", action="update", description="users:update"
-        )
-        db_session.add(permission)
-        db_session.flush()
-
-    # Check if role-permission mapping already exists
-    role_permission = (
-        db_session.query(RolePermission)
-        .filter_by(role_id=superadmin_role.id, permission_id=permission.id)
-        .first()
-    )
-    if not role_permission:
-        db_session.add(
-            RolePermission(role_id=superadmin_role.id, permission_id=permission.id)
-        )
-        db_session.flush()
-
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         id="usr_sa_mfa_admin",
         username="sa-mfa-admin",
         email="sa-mfa-admin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    target_user = User(
+    target_user = create_user(
+        db_session,
         id="usr_sa_mfa_target",
         username="sa-mfa-target",
         email="sa-mfa-target@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=analyst_role.id,
+        role=analyst_role,
         is_active=True,
         is_verified=True,
         mfa_enabled=True,
@@ -285,7 +257,6 @@ def test_admin_reset_mfa_success(client: TestClient, db_session: Session):
     token = create_access_token(
         superadmin.id,
         superadmin.username,
-        role=superadmin_role.name,
         org_id=superadmin.org_id,
     )
     headers = {"Authorization": f"Bearer {token}"}

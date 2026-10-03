@@ -77,9 +77,7 @@ def _claims(user=None, kind="access", **overrides):
         "exp": int((now + timedelta(minutes=5)).timestamp()),
     }
     if user is not None and kind in ("access", "mfa_challenge"):
-        claims.update(
-            role=user.role.name, org_id=str(user.org_id), username=user.username
-        )
+        claims.update(org_id=str(user.org_id), username=user.username)
     for name, value in overrides.items():
         if value is None:
             claims.pop(name, None)
@@ -132,7 +130,7 @@ def legacy_issuance(monkeypatch):
 def test_legacy_hs256_tokens_still_verify_with_a_keyset_loaded(
     keyset, legacy_issuance, db_session, test_user, kind
 ):
-    role = test_user.role.name
+    role = "forged-role-claim"
     token = {
         "access": lambda: jwt_handler.create_access_token(
             test_user.id, test_user.username, role=role, org_id=test_user.org_id

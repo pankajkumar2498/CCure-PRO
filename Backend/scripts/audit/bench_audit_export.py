@@ -149,39 +149,28 @@ def _seed(db, first: int, last: int) -> None:
 
 
 def _principal(db):
-    """A superadmin, so the export is not additionally narrowed by tenancy.
+    """A transient native administrator, removed with the benchmark rollback."""
+    from ccure_platform.rbac.provisioning import grant_platform_administrator
+    from db.base import utcnow
+    from db.models import User
 
-    Created here if the database has none — the test database is truncated
-    between runs, so it usually does not. Like everything else this script
-    writes, the row disappears with the ROLLBACK; it is a real ``User`` rather
-    than a stand-in because ``_scoped_query`` reads the ``role`` relationship,
-    and a shim that answered those two attributes would be measuring a
-    different query from the one the endpoint runs.
-    """
-    from db.models import Role, User
-
-    user = (
-        db.query(User).join(User.role).filter(User.role.has(name="superadmin")).first()
+    user = db.get(User, "usr_bench_superadmin")
+    if user is None:
+        user = User(
+            id="usr_bench_superadmin",
+            username="bench_superadmin",
+            email="bench_superadmin@benchmark.invalid",
+            password_hash="not-a-usable-hash",
+            org_id=BENCH_ORG,
+            is_active=True,
+            is_verified=True,
+            approved_at=utcnow(),
+        )
+        db.add(user)
+        db.flush()
+    grant_platform_administrator(
+        db, user.id, reason="disposable export benchmark", allow_additional=True
     )
-    if user is not None:
-        return user
-
-    role = db.query(Role).filter(Role.name == "superadmin").first()
-    if role is None:
-        raise SystemExit("no superadmin role in this database; run the RBAC seed first")
-    user = User(
-        id="usr_bench_superadmin",
-        username="bench_superadmin",
-        email="bench_superadmin@benchmark.invalid",
-        password_hash="not-a-usable-hash",
-        org_id=BENCH_ORG,
-        role_id=role.id,
-        is_active=True,
-        is_verified=True,
-    )
-    db.add(user)
-    db.flush()
-    print("  created a transient superadmin (removed by the rollback)")
     return user
 
 

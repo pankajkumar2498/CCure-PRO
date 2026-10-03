@@ -30,7 +30,7 @@ import path from "node:path";
 import SecurityDashboard from "@audit/pages/SecurityDashboard";
 import axiosInstance from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
-import { atomSetHolds } from "../../../fixtures/authorization";
+import { keySetHolds } from "../../../fixtures/authorization";
 import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
@@ -72,8 +72,8 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 let permissions;
 vi.mock("@shell/auth/permissions", () => ({
-  canPermission: (_u, p) => atomSetHolds(permissions, p),
-  can: (_u, r, a) => atomSetHolds(permissions, r, a),
+  canPermission: (_u, p) => keySetHolds(permissions, p),
+  can: (_u, r, a) => keySetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -279,10 +279,10 @@ const callsTo = (p) =>
   axiosInstance.get.mock.calls.filter((c) => String(c[0]) === p);
 
 const ANALYST = [
-  "dashboard:read",
-  "assets:read",
-  "findings:read",
-  "reports:read",
+  "audit.dashboard.read",
+  "audit.asset.read",
+  "audit.finding.read",
+  "audit.report.read",
 ];
 
 const renderPage = async ({ ready = "Chrome use-after-free" } = {}) => {
@@ -390,7 +390,7 @@ describe("SecurityDashboard — contract", () => {
   });
 
   it("sends a user without dashboard:read to /scan", async () => {
-    permissions = new Set(["scans:read"]);
+    permissions = new Set(["audit.scan.read"]);
     render(<SecurityDashboard />);
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith("/scan", { replace: true }),
@@ -408,7 +408,7 @@ describe("SecurityDashboard — contract", () => {
     ]);
     all.unmount();
 
-    permissions = new Set(["dashboard:read"]);
+    permissions = new Set(["audit.dashboard.read"]);
     const restricted = render(<SecurityDashboard />);
     await screen.findByText("Informational only");
     expect(tabNames(restricted.container)).toEqual(["Overview", "Scans"]);
@@ -427,7 +427,7 @@ describe("SecurityDashboard — contract", () => {
   });
 
   it("reads the audit timeline when the user holds audit:read", async () => {
-    permissions = new Set([...ANALYST, "audit:read"]);
+    permissions = new Set([...ANALYST, "platform.audit_log.read"]);
     const { container } = await renderPage();
     await screen.findByText(/scan started/);
     expect(callsTo("/admin/audit-logs")[0][1]).toEqual({

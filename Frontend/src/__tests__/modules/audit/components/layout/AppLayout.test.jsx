@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * AppLayout — Checkpoint 3C batch 12 baseline.
  *
@@ -94,48 +95,48 @@ vi.mock("@shell/preferences/PreferencesContext", () => ({
 }));
 
 /* ── Personas (real permissions module) ───────────────────────────────────── */
-const perm = (resource, action) => ({ resource, action });
 const SUPERADMIN_RAW = {
   id: 1,
   username: "root",
   email: "root@example.test",
   org_id: "o-1",
   role: { name: "superadmin", permissions: [] },
+  authorization: everything(),
 };
 const ORG_ADMIN_RAW = {
   id: 2,
   username: "orgadmin",
   email: "oa@example.test",
   org_id: "o-1",
-  role: {
-    name: "org_admin",
-    permissions: [
-      perm("dashboard", "read"),
-      perm("reports", "read"),
-      perm("scans", "execute"),
-      perm("scans", "read"),
-      perm("scan_schedules", "read"),
-      perm("credentials", "read"),
-      perm("assets", "read"),
-      perm("findings", "read"),
-      perm("users", "read"),
-      perm("users", "update"),
-      perm("organizations", "read"),
-      perm("roles", "read"),
-      perm("audit", "read"),
-      perm("compliance", "read"),
-    ],
-  },
+  role: { name: "org_admin" },
+  permissionKeys: [
+    "audit.dashboard.read",
+    "audit.report.read",
+    "audit.scan.run",
+    "audit.scan.read",
+    "audit.scan_schedule.read",
+    "audit.credential.read",
+    "audit.asset.read",
+    "audit.finding.read",
+    "platform.user.read",
+    "platform.user.approve",
+    "platform.user.assign_role",
+    "platform.user.reset_credentials",
+    "platform.user.update",
+    "platform.organization.read",
+    "platform.permission.read",
+    "platform.role.read",
+    "platform.audit_log.read",
+    "audit.compliance.read",
+  ],
 };
 const VIEWER_RAW = {
   id: 3,
   username: "viewer",
   email: "v@example.test",
   org_id: "o-1",
-  role: {
-    name: "viewer",
-    permissions: [perm("dashboard", "read"), perm("assets", "read")],
-  },
+  role: { name: "viewer" },
+  permissionKeys: ["audit.dashboard.read", "audit.asset.read"],
 };
 const SUPERADMIN = personaFrom(SUPERADMIN_RAW);
 const ORG_ADMIN = personaFrom(ORG_ADMIN_RAW);
@@ -605,6 +606,7 @@ describe("AppLayout — organisation switcher (backend-authorized)", () => {
       id: 9,
       org_id: "o-1",
       role: { name: "superadmin", permissions: [] },
+      authorization: everything(),
     });
     user.authorization.can_switch_organisation = false;
     await renderShell();

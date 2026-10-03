@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * Scan policy management.
  *
@@ -36,7 +37,11 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
 
-let currentUser = { id: "u1", role: { name: "superadmin" } };
+let currentUser = {
+  id: "u1",
+  role: { name: "superadmin" },
+  authorization: everything(),
+};
 vi.mock("@shell/auth/AuthContext", async () => {
   const { personaFrom } = await import("../../../../fixtures/authorization");
   return { useAuth: () => ({ user: personaFrom(currentUser) }) };
@@ -94,7 +99,11 @@ function wire({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  currentUser = { id: "u1", role: { name: "superadmin" } };
+  currentUser = {
+    id: "u1",
+    role: { name: "superadmin" },
+    authorization: everything(),
+  };
 });
 
 const open = async () => {
@@ -382,7 +391,7 @@ describe("ScanPolicies — deletion", () => {
 
 describe("ScanPolicies — RBAC", () => {
   it("refuses the page without scan_policies:read", async () => {
-    currentUser = { id: "u1", role: { name: "nobody", permissions: [] } };
+    currentUser = { id: "u1", role: { name: "nobody" }, permissionKeys: [] };
     render(<ScanPolicies />);
     expect(
       await screen.findByText(/Scan policies unavailable/),
@@ -395,14 +404,12 @@ describe("ScanPolicies — RBAC", () => {
     // `can()` reads user.role.permissions — not a top-level list.
     currentUser = {
       id: "u1",
-      role: {
-        name: "analyst",
-        permissions: [
-          { resource: "scan_policies", action: "read" },
-          { resource: "scan_policies", action: "create" },
-          { resource: "scan_policies", action: "update" },
-        ],
-      },
+      role: { name: "analyst" },
+      permissionKeys: [
+        "audit.scan_policy.read",
+        "audit.scan_policy.manage",
+        "audit.scan_policy.manage",
+      ],
     };
     wire();
     const user = userEvent.setup();
@@ -417,10 +424,8 @@ describe("ScanPolicies — RBAC", () => {
   it("hides create from a read-only role", async () => {
     currentUser = {
       id: "u1",
-      role: {
-        name: "viewer",
-        permissions: [{ resource: "scan_policies", action: "read" }],
-      },
+      role: { name: "viewer" },
+      permissionKeys: ["audit.scan_policy.read"],
     };
     wire();
     await open();

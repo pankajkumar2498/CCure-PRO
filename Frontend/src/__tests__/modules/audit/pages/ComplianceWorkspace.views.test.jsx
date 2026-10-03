@@ -59,7 +59,8 @@ vi.mock("@shell/auth/AuthContext", () => ({
     user: {
       id: 1,
       username: "analyst",
-      role: { name: "analyst", permissions: ["compliance:read"] },
+      role: { name: "analyst" },
+      permissionKeys: ["audit.compliance.read"],
     },
   }),
 }));

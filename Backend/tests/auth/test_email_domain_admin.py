@@ -10,11 +10,14 @@ different tenant's customers, or open the door for them. That is a
 tenant-isolation boundary, not a nicety, and it is asserted rather than assumed.
 """
 
+from native_rbac import system_role, create_user
+
+
 import pytest
 from auth.email_domain_guard import MODE_ENFORCE, evaluate_email, invalidate_cache
 from auth.jwt_handler import create_access_token
-from db.models import Organization, Role, User
-from db.models.email_security import VERDICT_ALLOW, VERDICT_DENY, EmailDomainRule
+from db.models import Organization, User
+from db.models.email_security import EmailDomainRule
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -25,7 +28,6 @@ def _headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -46,14 +48,15 @@ def _make_user(db_session: Session, role_name: str, username: str) -> User:
         db_session.add(org)
         db_session.flush()
 
-    role = db_session.query(Role).filter(Role.name == role_name).first()
-    user = User(
+    role = system_role(db_session, role_name)
+    user = create_user(
+        db_session,
         id=gen_user_id(org.slug, username),
         username=username,
         email=f"{username}@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -67,12 +70,12 @@ def _make_user(db_session: Session, role_name: str, username: str) -> User:
 
 @pytest.fixture
 def superadmin(db_session: Session) -> User:
-    return _make_user(db_session, "superadmin", "rules-super")
+    return _make_user(db_session, "platform.superadmin", "rules-super")
 
 
 @pytest.fixture
 def org_admin(db_session: Session) -> User:
-    return _make_user(db_session, "org_admin", "rules-orgadmin")
+    return _make_user(db_session, "platform.org_admin", "rules-orgadmin")
 
 
 @pytest.fixture

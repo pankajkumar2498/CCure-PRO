@@ -13,13 +13,16 @@ rem.exc.audit, rem.rec.history, rem.rec.notes, rem.rec.report_exec,
 rem.rec.report_tech, rem.verify.no_self_attest.
 """
 
+from ccure_platform.models.rbac_tables import RbacPermission, RbacRolePermission
+from native_rbac import system_role, create_user
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from auth.jwt_handler import hash_password
 from db.base import gen_user_id, utcnow
-from db.models import AuditLog, Organization, Role, User
+from db.models import AuditLog, Organization, User
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition
 from db.models.scans import Scan
@@ -94,18 +97,19 @@ def finding(db_session: Session, test_org: Organization, test_user: User):
 @pytest.fixture
 def viewer_headers(client: TestClient, db_session: Session, test_org: Organization):
     """A viewer: findings:read only — no update, no accept_risk."""
-    role = db_session.query(Role).filter(Role.name == "viewer").first()
+    role = system_role(db_session, "platform.viewer")
     password = "viewerpassword123"
     email = f"remviewer-{uuid.uuid4().hex[:6]}@test.com"
     db_session.add(
-        User(
+        create_user(
+            db_session,
             id=gen_user_id(test_org.slug, "remviewer"),
             username=f"remviewer-{uuid.uuid4().hex[:6]}",
             email=email,
             full_name="Remediation Viewer",
             password_hash=hash_password(password),
             org_id=test_org.id,
-            role_id=role.id,
+            role=role,
             is_active=True,
             is_verified=True,
             approved_at=utcnow(),
@@ -218,15 +222,16 @@ def test_an_owner_from_another_organisation_is_refused(
     )
     db_session.add(other_org)
     db_session.flush()
-    role = db_session.query(Role).filter(Role.name == "viewer").first()
-    stranger = User(
+    role = system_role(db_session, "platform.viewer")
+    stranger = create_user(
+        db_session,
         id=gen_user_id(other_org.slug, "stranger"),
         username=f"stranger-{uuid.uuid4().hex[:6]}",
         email=f"stranger-{uuid.uuid4().hex[:6]}@example.com",
         full_name="Stranger",
         password_hash=hash_password("strangerpassword123"),
         org_id=other_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -496,21 +501,20 @@ def test_accepting_risk_needs_its_own_permission(
     Without the split anyone who can edit a finding could clear their own
     overdue list by accepting everything on it.
     """
-    from db.models.rbac import Permission, RolePermission
 
     atom = (
-        db_session.query(Permission)
-        .filter(Permission.resource == "findings", Permission.action == "accept_risk")
+        db_session.query(RbacPermission)
+        .filter(RbacPermission.key == "audit.finding.accept_risk")
         .first()
     )
     assert atom is not None, "findings:accept_risk must exist as its own atom"
 
-    viewer = db_session.query(Role).filter(Role.name == "viewer").first()
+    viewer = system_role(db_session, "platform.viewer")
     held = (
-        db_session.query(RolePermission)
+        db_session.query(RbacRolePermission)
         .filter(
-            RolePermission.role_id == viewer.id,
-            RolePermission.permission_id == atom.id,
+            RbacRolePermission.role_id == viewer.id,
+            RbacRolePermission.permission_key == atom.key,
         )
         .first()
     )

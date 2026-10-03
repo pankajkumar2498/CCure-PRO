@@ -21,6 +21,9 @@ meaningful if those six states survive the trip.
 
 from __future__ import annotations
 
+from native_rbac import system_role, create_user, fixture_role
+
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -704,19 +707,19 @@ class TestFindingExport:
         self, db_session, world, finding
     ):
         # exp.find.owner
-        from db.models import Role, User
 
-        role = db_session.query(Role).filter_by(name="analyst").first() or Role(
-            name=f"r_{uuid.uuid4().hex[:6]}", description="t", is_system_role=False
+        role = system_role(db_session, "platform.analyst") or fixture_role(
+            db_session, f"r_{uuid.uuid4().hex[:6]}"
         )
         db_session.add(role)
         db_session.flush()
-        owner = User(
+        owner = create_user(
+            db_session,
             username=f"owner-{uuid.uuid4().hex[:6]}",
             email="owner@export.test",
             password_hash="hash",
             org_id=world["org_id"],
-            role_id=role.id,
+            role=role,
             is_active=True,
             is_verified=True,
         )

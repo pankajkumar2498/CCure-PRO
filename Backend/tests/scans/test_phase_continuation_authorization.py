@@ -16,6 +16,9 @@ TestClient with a login, which commits pending fixture rows (CLAUDE.md, "Scan
 comparison and finding lifecycle").
 """
 
+from native_rbac import grant_permissions, system_role, create_user, fixture_role
+
+
 import asyncio
 import uuid
 
@@ -25,7 +28,7 @@ from starlette.requests import Request
 
 from ccure_platform.rbac.dependencies import has_permission
 from db.base import gen_user_id, utcnow
-from db.models import Organization, Permission, Role, RolePermission, Scan, User
+from db.models import Organization, Scan, User
 from routers import phase_scans
 from routers.phase_scans import (
     AssetDiscoveryRequest,
@@ -114,15 +117,16 @@ def _other_org_with_user(db) -> tuple[Organization, User]:
     )
     db.add(org)
     db.commit()
-    role = db.query(Role).filter(Role.name == "analyst").first()
-    user = User(
+    role = system_role(db, "platform.analyst")
+    user = create_user(
+        db,
         id=gen_user_id(org.slug, f"other{uid}"),
         username=f"other{uid}",
         email=f"other{uid}@test.com",
         full_name="Other",
         password_hash="x",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -198,29 +202,24 @@ def test_a_colleagues_scan_is_hidden_without_read_all(
     db_session, test_org, dispatched, created_scans
 ):
     # A role that may run and read scans but not everyone's scans. The seeded
-    # analyst role holds scans:read_all here, so it cannot exercise this path.
-    role = Role(name=f"own_scans_{uuid.uuid4().hex[:10]}", is_system_role=False)
+    # analyst role holds audit.scan.read_all, so it cannot exercise this path.
+    role = fixture_role(db_session, f"own_scans_{uuid.uuid4().hex[:10]}")
     db_session.add(role)
     db_session.flush()
-    for resource, action in (("scans", "execute"), ("scans", "read")):
-        perm = (
-            db_session.query(Permission)
-            .filter(Permission.resource == resource, Permission.action == action)
-            .first()
-        )
-        db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+    grant_permissions(db_session, role, "audit.scan.run", "audit.scan.read")
     db_session.commit()
 
     def _member(label):
         uid = uuid.uuid4().hex[:8]
-        user = User(
+        user = create_user(
+            db_session,
             id=gen_user_id(test_org.slug, f"{label}{uid}"),
             username=f"{label}{uid}",
             email=f"{label}{uid}@test.com",
             full_name=label,
             password_hash="x",
             org_id=test_org.id,
-            role_id=role.id,
+            role=role,
             is_active=True,
             is_verified=True,
             approved_at=utcnow(),

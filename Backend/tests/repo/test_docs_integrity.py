@@ -11,15 +11,13 @@ from testpaths import BACKEND_ROOT, REPO_ROOT
 
 import os
 import sys
-import pytest
 
 # Ensure Backend directory is in path
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from main import app
 from db.base import Base
-import db.models
-from db.migrate_production_schema import ROLE_PERMISSIONS
+from ccure_platform import composition
 
 
 REPO_ROOT = str(REPO_ROOT)
@@ -70,12 +68,11 @@ def test_database_tables_documented():
 
 def test_rbac_permissions_documented():
     """Verify that all RBAC permissions are documented in RBAC_Management_Permissions.md."""
-    doc_content = read_doc_file("RBAC_Management_Permissions.md")
+    doc_content = read_doc_file("architecture/RBAC_PERMISSION_CATALOG.md")
 
-    all_perms = set()
-    for role, perms in ROLE_PERMISSIONS.items():
-        for p in perms:
-            all_perms.add(p)
+    all_perms = {
+        p.key for s in composition.load_permission_sources() for p in s.permissions
+    }
 
     missing_perms = [p for p in sorted(all_perms) if p not in doc_content]
     assert (

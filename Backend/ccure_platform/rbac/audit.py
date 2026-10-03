@@ -69,7 +69,6 @@ EVENT_SEVERITIES: dict[str, str] = {
     "rbac.reauth.failed": MEDIUM,
     "rbac.bootstrap.administrator": CRITICAL,
     "rbac.recovery.administrator": CRITICAL,
-    "rbac.provisioning.applied": HIGH,
     "rbac.role.revoked_without_replacement": HIGH,
     "rbac.platform_role.assigned": CRITICAL,
     "rbac.platform_role.revoked": CRITICAL,
@@ -89,7 +88,6 @@ EVENT_SEVERITIES: dict[str, str] = {
     "rbac.catalogue.sync_failed": CRITICAL,
     "rbac.system_role.synced": MEDIUM,
     "rbac.system_role.sync_skipped_retired": LOW,
-    "rbac.legacy_map.synced": LOW,
 }
 
 _registered = False

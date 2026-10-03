@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import random
 import statistics
 import sys
 import time
@@ -120,14 +119,36 @@ def build_schema(engine) -> None:
     and row width is part of what is being measured. ``audit_logs`` is created
     by hand only because ``create_all`` cannot express ``PARTITION BY HASH``.
     """
-    from db.models import Organization, Role, User
+    from db.models import Organization, User
+    from ccure_platform.models.rbac_tables import (
+        RbacPermission,
+        RbacRole,
+        RbacRolePermission,
+        RbacRoleRevision,
+        RbacUserRole,
+        RbacDefaultRole,
+    )
+    from ccure_platform.models.platform_audit import PlatformAuditEvent
+    from db.base import Base
 
+    native_tables = [
+        RbacPermission.__table__,
+        RbacRole.__table__,
+        RbacRolePermission.__table__,
+        RbacRoleRevision.__table__,
+        RbacUserRole.__table__,
+        RbacDefaultRole.__table__,
+        PlatformAuditEvent.__table__,
+    ]
     with engine.begin() as c:
         c.execute(text("DROP TABLE IF EXISTS audit_logs CASCADE"))
-    for table in (User.__table__, Role.__table__, Organization.__table__):
+    for table in reversed(native_tables):
         table.drop(engine, checkfirst=True)
-    for table in (Organization.__table__, Role.__table__, User.__table__):
-        table.create(engine, checkfirst=True)
+    for table in (User.__table__, Organization.__table__):
+        table.drop(engine, checkfirst=True)
+    Base.metadata.create_all(
+        engine, tables=[Organization.__table__, User.__table__, *native_tables]
+    )
 
     with engine.begin() as c:
         # Same declaration as db/models/users.py: HASH partitioned on org_id,
@@ -148,6 +169,10 @@ def build_schema(engine) -> None:
                     status        VARCHAR(20) NOT NULL DEFAULT 'success',
                     severity      VARCHAR(20) NOT NULL DEFAULT 'medium',
                     request_id    VARCHAR(64),
+                    actor_user_id VARCHAR(150),
+                    actor_username VARCHAR(100),
+                    prev_hash     VARCHAR(64),
+                    record_hash   VARCHAR(64),
                     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
                     PRIMARY KEY (id, org_id)
                 ) PARTITION BY HASH (org_id)
@@ -176,16 +201,12 @@ def seed(engine, rows: int) -> None:
     # INSERTs here meant guessing which columns are NOT NULL, and getting it
     # wrong is a failed run rather than a wrong measurement — but it is still
     # wasted time.
-    from db.models import Organization, Role, User
+    from db.models import Organization, User
 
     with Session(engine) as db:
-        if not db.get(Role, 1):
-            db.add(
-                Role(
-                    id=1, name="bench_admin", description="bench", is_system_role=False
-                )
-            )
-            db.flush()
+        from ccure_platform import composition
+
+        composition.sync_permission_catalogue(db)
         for org_id in _ORGS:
             if not db.get(Organization, org_id):
                 db.add(
@@ -211,9 +232,9 @@ def seed(engine, rows: int) -> None:
                             full_name=f"User {n}",
                             password_hash="x",
                             org_id=org_id,
-                            role_id=1,
                             is_active=True,
                             is_verified=True,
+                            approved_at=datetime.now(timezone.utc),
                         )
                     )
         db.commit()
@@ -285,23 +306,18 @@ def seed(engine, rows: int) -> None:
 # ─── The queries under test, built from the router's own helpers ─────────────
 
 
-class _FakeRole:
-    def __init__(self, name):
-        self.name = name
-
-
-class _FakeUser:
-    def __init__(self, org_id, role):
-        self.org_id = org_id
-        self.role = _FakeRole(role)
-
-
 def query_shapes(db: Session):
     """(label, sqlalchemy_query) for every access pattern the API exposes."""
     from ccure_platform.audit_log.router import _apply_filters, _scoped_query
 
-    tenant = _FakeUser(_ORGS[0], "org_admin")
-    root = _FakeUser(_ORGS[0], "superadmin")
+    from db.models import User
+    from ccure_platform.rbac.provisioning import grant_platform_administrator
+
+    root = db.get(User, f"usr_{_ORGS[0]}_0")
+    tenant = db.get(User, f"usr_{_ORGS[0]}_1")
+    grant_platform_administrator(
+        db, root.id, reason="disposable query benchmark", allow_additional=True
+    )
     since = datetime.now(timezone.utc) - timedelta(days=7)
 
     def build(user, *, q=None, **filters):
@@ -442,52 +458,56 @@ def main() -> None:
         ensure_database(url)
 
     engine = create_engine(url)
-    if args.setup:
-        build_schema(engine)
-        seed(engine, args.rows)
+    try:
+        if args.setup:
+            build_schema(engine)
+            seed(engine, args.rows)
 
-    with Session(engine) as db:
-        actual = db.execute(text("SELECT count(*) FROM audit_logs")).scalar()
-        # A partitioned parent stores nothing itself, so
-        # pg_total_relation_size('audit_logs') is 0. Sum the leaves.
-        size = db.execute(
-            text(
-                """
-                SELECT pg_size_pretty(sum(pg_total_relation_size(inhrelid)))
-                  FROM pg_inherits WHERE inhparent = 'audit_logs'::regclass
-                """
-            )
-        ).scalar()
-        print(
-            f"\nrows={actual:,}  total relation size={size}"
-            f"{'  [' + args.label + ']' if args.label else ''}\n"
-        )
-
-        print(
-            f"{'QUERY':<38} {'MEDIAN':>9} {'MIN':>8} {'MAX':>8} "
-            f"{'SEQ':>4} {'READ':>8}  PLAN"
-        )
-        print("-" * 135)
-        results = []
-        for label, q in query_shapes(db):
-            r = explain(db, q, label, repeats=args.repeats)
-            results.append(r)
+        with Session(engine) as db:
+            actual = db.execute(text("SELECT count(*) FROM audit_logs")).scalar()
+            # A partitioned parent stores nothing itself, so
+            # pg_total_relation_size('audit_logs') is 0. Sum the leaves.
+            size = db.execute(
+                text(
+                    """
+                    SELECT pg_size_pretty(sum(pg_total_relation_size(inhrelid)))
+                      FROM pg_inherits WHERE inhparent = 'audit_logs'::regclass
+                    """
+                )
+            ).scalar()
             print(
-                f"{r['label']:<38} {r['median_ms']:>8.1f}ms {r['min_ms']:>7.1f}ms "
-                f"{r['max_ms']:>7.1f}ms {r['seq_scans']:>4} {r['shared_read']:>8} "
-                f" {r['scan_summary'][:60]}"
+                f"\nrows={actual:,}  total relation size={size}"
+                f"{'  [' + args.label + ']' if args.label else ''}\n"
             )
-            if args.plans:
-                print("\n" + r["plan"] + "\n")
 
-        slow = [r for r in results if r["median_ms"] > 200]
-        print("\n" + "=" * 135)
-        print(f"queries slower than 200ms: {len(slow)}")
-        for r in sorted(slow, key=lambda x: -x["median_ms"]):
             print(
-                f"  {r['median_ms']:>8.1f}ms  {r['label']}  "
-                f"[{r['scan_summary'][:70]}]"
+                f"{'QUERY':<38} {'MEDIAN':>9} {'MIN':>8} {'MAX':>8} "
+                f"{'SEQ':>4} {'READ':>8}  PLAN"
             )
+            print("-" * 135)
+            results = []
+            for label, q in query_shapes(db):
+                r = explain(db, q, label, repeats=args.repeats)
+                results.append(r)
+                print(
+                    f"{r['label']:<38} {r['median_ms']:>8.1f}ms {r['min_ms']:>7.1f}ms "
+                    f"{r['max_ms']:>7.1f}ms {r['seq_scans']:>4} {r['shared_read']:>8} "
+                    f" {r['scan_summary'][:60]}"
+                )
+                if args.plans:
+                    print("\n" + r["plan"] + "\n")
+
+            slow = [r for r in results if r["median_ms"] > 200]
+            print("\n" + "=" * 135)
+            print(f"queries slower than 200ms: {len(slow)}")
+            for r in sorted(slow, key=lambda x: -x["median_ms"]):
+                print(
+                    f"  {r['median_ms']:>8.1f}ms  {r['label']}  "
+                    f"[{r['scan_summary'][:70]}]"
+                )
+
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":

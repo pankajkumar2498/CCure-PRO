@@ -1,3 +1,4 @@
+import { everything } from "../../../fixtures/authorization";
 /**
  * AuditLogs — Checkpoint 3C batch 10 migration coverage.
  *
@@ -45,7 +46,12 @@ vi.mock("@shell/layout/ProductFrame", () => ({
   default: ({ children }) => <div data-testid="app-layout">{children}</div>,
 }));
 
-let currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
+let currentUser = {
+  username: "root",
+  id: 1,
+  role: { name: "superadmin" },
+  authorization: everything(),
+};
 vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
@@ -122,7 +128,12 @@ const listCalls = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   superadmin = true;
-  currentUser = { username: "root", id: 1, role: { name: "superadmin" } };
+  currentUser = {
+    username: "root",
+    id: 1,
+    role: { name: "superadmin" },
+    authorization: everything(),
+  };
   axiosInstance.get.mockImplementation(routeGet);
 });
 

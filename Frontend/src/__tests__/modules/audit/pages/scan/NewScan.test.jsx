@@ -36,7 +36,8 @@ const TARGET_PLACEHOLDER = /10\.180\.6\.0\/24/i;
 
 describe("NewScan Component", () => {
   const userWithPermission = {
-    role: { name: "admin", permissions: ["scans:execute"] },
+    role: { name: "admin" },
+    permissionKeys: ["audit.scan.run"],
   };
 
   const renderComponent = (user = userWithPermission) => {
@@ -98,7 +99,10 @@ describe("NewScan Component", () => {
   });
 
   it("prevents execution if user lacks permission", () => {
-    const userWithoutPermission = { role: { name: "viewer", permissions: [] } };
+    const userWithoutPermission = {
+      role: { name: "viewer" },
+      permissionKeys: [],
+    };
     renderComponent(userWithoutPermission);
 
     const input = screen.getByPlaceholderText(TARGET_PLACEHOLDER);

@@ -1011,7 +1011,10 @@ describe("AMTIntegration — contract", () => {
           value={{
             loading: false,
             authState: "authenticated",
-            user: personaFrom({ role: { name: "analyst", permissions } }),
+            user: personaFrom({
+              role: { name: "analyst" },
+              permissionKeys: permissions,
+            }),
           }}
         >
           {/* As App.jsx composes it: Audit names the fallback pages. */}
@@ -1036,14 +1039,18 @@ describe("AMTIntegration — contract", () => {
 
     it("without settings:update the page never mounts and nothing is requested", async () => {
       // assets:update — what the route used to ask — is not enough
-      guarded(["assets:read", "assets:update", "scans:execute"]);
+      guarded(["audit.asset.read", "audit.asset.update", "audit.scan.run"]);
       await settle();
       expect(screen.getByText("Fallback page")).toBeInTheDocument();
       expect(api.get).not.toHaveBeenCalled();
     });
 
     it("with settings:update the page mounts and loads its statistics", async () => {
-      guarded(["assets:read", "settings:update"]);
+      guarded([
+        "audit.asset.read",
+        "audit.asset.import_amt",
+        "audit.remediation.manage_sla",
+      ]);
       await settle();
       expect(screen.queryByText("Fallback page")).toBeNull();
       expect(statsCalls()).toHaveLength(1);

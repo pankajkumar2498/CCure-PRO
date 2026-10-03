@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from auth.jwt_handler import decode_token
 from ccure_platform.api import CurrentUser, require_authorized
@@ -380,12 +379,7 @@ def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
 
     db = SessionLocal()
     try:
-        user = (
-            db.query(User)
-            .options(joinedload(User.role))
-            .filter(User.id == str(user_id))
-            .first()
-        )
+        user = db.query(User).filter(User.id == str(user_id)).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
 

@@ -15,12 +15,9 @@ import { configure } from "@testing-library/react";
 // with a less useful message.
 configure({ asyncUtilTimeout: 5000 });
 
-// RBAC-8. The application reads one thing from a user: the backend's
-// `authorization` payload (there is no older-backend fallback). Many component
-// tests still build a user in the older shape (`role.permissions` atoms), so the
-// provider they render through hands components the payload `personaFrom` derives
-// for them; a user that already carries an `authorization` is passed through
-// untouched. This is test scaffolding: production code never derives a payload.
+// Test providers attach payloads from explicit native permissionKeys and platformReach.
+// Existing authorization payloads are passed through unchanged.
+// Production code never derives permissions from these fixture fields.
 //
 // It is installed in `beforeEach`, not at setup time: importing AuthContext here
 // would load its real dependencies before a test file's own `vi.mock` calls apply.

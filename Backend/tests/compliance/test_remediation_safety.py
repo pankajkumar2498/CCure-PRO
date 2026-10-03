@@ -4,13 +4,16 @@ Purpose: Tests the Maker-Checker self-approval validation rules for compliance r
 Author:  pair/Senior Full-Stack Engineer
 """
 
+from native_rbac import create_user, fixture_role, grant_permissions
+
+
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 from auth.jwt_handler import create_access_token
 from db.base import gen_org_id, gen_user_id
-from db.models import Organization, Role, User
+from db.models import Organization, User
 from db.models.compliance import (
     ComplianceControl,
     ComplianceFinding,
@@ -30,34 +33,9 @@ def _auth_headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
-
-
-def _grant_permission(db: Session, role: Role, resource: str, action: str):
-    """Binds a role to a permission atom directly in the database."""
-    from db.models import Permission, RolePermission
-
-    permission = (
-        db.query(Permission).filter_by(resource=resource, action=action).first()
-    )
-    if not permission:
-        permission = Permission(
-            resource=resource, action=action, description=f"{resource}:{action}"
-        )
-        db.add(permission)
-        db.flush()
-
-    exists = (
-        db.query(RolePermission)
-        .filter_by(role_id=role.id, permission_id=permission.id)
-        .first()
-    )
-    if not exists:
-        db.add(RolePermission(role_id=role.id, permission_id=permission.id))
-        db.flush()
 
 
 def test_maker_checker_self_approval_block(client: TestClient, db_session: Session):
@@ -79,37 +57,35 @@ def test_maker_checker_self_approval_block(client: TestClient, db_session: Sessi
     db_session.add(org)
     db_session.flush()
 
-    role = Role(
-        name=f"compliance_officer_{suffix}",
-        description="Compliance Officer",
-        is_system_role=True,
-    )
+    role = fixture_role(db_session, f"compliance_officer_{suffix}")
     db_session.add(role)
     db_session.flush()
 
     # Grant necessary permissions to the compliance officer
-    _grant_permission(db_session, role, "compliance", "read")
-    _grant_permission(db_session, role, "compliance", "remediate")
-    _grant_permission(db_session, role, "compliance", "approve_exception")
+    grant_permissions(db_session, role, "audit.compliance.read")
+    grant_permissions(db_session, role, "audit.compliance.remediate")
+    grant_permissions(db_session, role, "audit.compliance.approve_exception")
 
     # 2. Create the Maker and Checker users
-    maker = User(
+    maker = create_user(
+        db_session,
         id=gen_user_id(org.slug, f"maker-user-{suffix}"),
         username=f"maker-user-{suffix}",
         email=f"maker-{suffix}@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
     )
-    checker = User(
+    checker = create_user(
+        db_session,
         id=gen_user_id(org.slug, f"checker-user-{suffix}"),
         username=f"checker-user-{suffix}",
         email=f"checker-{suffix}@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
     )

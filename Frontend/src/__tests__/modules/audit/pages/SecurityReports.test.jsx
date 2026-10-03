@@ -32,7 +32,7 @@ import userEvent from "@testing-library/user-event";
 
 import SecurityReports from "@audit/pages/SecurityReports";
 import axiosInstance from "@shell/api/axiosInstance";
-import { atomSetHolds } from "../../../fixtures/authorization";
+import { keySetHolds } from "../../../fixtures/authorization";
 import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
@@ -64,9 +64,9 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
-let permissions = new Set(["reports:read", "reports:delete"]);
+let permissions = new Set(["audit.report.read", "audit.report.delete"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_u, r, a) => atomSetHolds(permissions, r, a),
+  can: (_u, r, a) => keySetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -182,7 +182,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
   currentUser = { username: "operator", id: 1 };
-  permissions = new Set(["reports:read", "reports:delete"]);
+  permissions = new Set(["audit.report.read", "audit.report.delete"]);
   axiosInstance.get.mockImplementation(routeGet);
   axiosInstance.delete.mockResolvedValue({ data: {} });
   // jsdom implements neither of these; the download path uses both.
@@ -426,7 +426,7 @@ describe("SecurityReports — delete contract", () => {
   });
 
   it("dispatches no delete without reports:delete", async () => {
-    permissions = new Set(["reports:read"]);
+    permissions = new Set(["audit.report.read"]);
     const user = userEvent.setup();
     await renderPage();
     const card = await cardFor("10.180.5.10");
@@ -448,7 +448,7 @@ describe("SecurityReports — delete contract", () => {
        the delete unless something re-renders in between. The second check is
        defence in depth across a re-render, not protection against a mid-dialog
        revocation, and this test deliberately claims only the former. */
-    permissions = new Set(["reports:read"]);
+    permissions = new Set(["audit.report.read"]);
     const { container } = await renderPage();
     const card = await cardFor("10.180.5.10");
     expect(delBtn(card)).toBeUndefined();
@@ -492,7 +492,7 @@ describe("SecurityReports — accessibility", () => {
     /* It renders as a bare 🗑️ with only a `title`. `title` is not a reliable
        accessible name — it is skipped by several readers and unavailable on
        touch — and this is the control that destroys a report. */
-    permissions = new Set(["reports:read", "reports:delete"]);
+    permissions = new Set(["audit.report.read", "audit.report.delete"]);
     const card = await (async () => {
       await renderPage();
       return cardFor("10.180.5.10");

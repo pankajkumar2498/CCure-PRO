@@ -69,7 +69,7 @@ export default function NewWebScan() {
   const navigate = useNavigate();
   const { user } = useAuth();
   // Launching sends active attack traffic at the target; the API requires
-  // scans:execute, so the control is not offered to a role that lacks it.
+  // Run scans, so the control is not offered to a role that lacks it.
   const canLaunch = can(user, "audit.scan.run");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -166,7 +166,7 @@ export default function NewWebScan() {
           <CcureAlert variant="info" className="wsp-form-message">
             Your role cannot launch web scans. A web scan sends active test
             traffic (SQL injection, fuzzing and template probes) at the target,
-            so it requires the <code>scans:execute</code> permission. Ask an
+            so it requires the <code>Run scans</code> permission. Ask an
             organisation administrator if you need it.
           </CcureAlert>
         </div>

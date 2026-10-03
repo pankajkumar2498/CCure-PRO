@@ -12,6 +12,8 @@ Phase 12.1 — ``GET /platform/modules``, CCure Home's product list.
 
 from __future__ import annotations
 
+from native_rbac import create_user
+
 import pytest
 
 from ccure_platform.modules import TILE_STATES, products
@@ -73,16 +75,16 @@ def test_a_signed_in_caller_receives_the_registrys_four_products(client, auth_he
 def viewer_headers(client, db_session, test_org, test_role_viewer):
     from auth.jwt_handler import hash_password
     from db.base import gen_user_id, utcnow
-    from db.models import User
 
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "hubviewer"),
         username="hubviewer",
         email="hubviewer@test.com",
         full_name="Hub Viewer",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=test_role_viewer.id,
+        role=test_role_viewer,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

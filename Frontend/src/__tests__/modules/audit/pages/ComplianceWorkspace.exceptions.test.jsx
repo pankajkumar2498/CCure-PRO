@@ -62,15 +62,14 @@ vi.mock("@shell/auth/AuthContext", () => ({
 const ANALYST = {
   id: 1,
   username: "analyst",
-  role: { name: "analyst", permissions: ["compliance:read"] },
+  role: { name: "analyst" },
+  permissionKeys: ["audit.compliance.read"],
 };
 const ORG_ADMIN = {
   id: 2,
   username: "admin",
-  role: {
-    name: "Org Admin",
-    permissions: ["compliance:read", "compliance:attest"],
-  },
+  role: { name: "Org Admin" },
+  permissionKeys: ["audit.compliance.read", "audit.compliance.attest"],
 };
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */

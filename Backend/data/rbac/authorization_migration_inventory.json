@@ -6,18 +6,19 @@
     "legacy_calls_remaining": 0,
     "role_name_decisions_remaining": 0,
     "legacy_tables": {
-      "roles": "retained non-authoritative: history, and the target of users.role_id's foreign key",
-      "permissions": "retained non-authoritative: the legacy atoms, read only by reconciliation tooling",
-      "role_permissions": "retained non-authoritative: the legacy grants, read only by reconciliation tooling"
+      "roles": "absent from runtime metadata; forward schema removal pending",
+      "permissions": "absent from runtime metadata; forward schema removal pending",
+      "role_permissions": "absent from runtime metadata; forward schema removal pending",
+      "rbac_legacy_map": "absent from runtime metadata; forward schema removal pending"
     },
-    "users_role_id": "deprecated, nullable, non-authoritative; never read by a decision",
-    "legacy_atoms": "kept only in migration history, documentation, audit data and the deterministic golden mapping"
+    "users_role_id": "absent from runtime model; forward schema removal pending",
+    "legacy_atoms": "kept only in migration history, documentation, audit data and historical migrations"
   },
   "summary": {
-    "total": 235,
+    "total": 233,
     "migrated": 229,
     "display-only": 2,
-    "compatibility-history": 4,
+    "compatibility-history": 2,
     "legacy": 0,
     "removed_role_name_sites": 40
   },
@@ -305,13 +306,23 @@
   ],
   "sites": [
     {
+      "file": "alembic/versions/a7c1e5b3d9f2_rbac_foundation.py",
+      "line": 0,
+      "function": "rbac_legacy_map",
+      "mechanism": "compatibility",
+      "permission": null,
+      "status": "compatibility-history",
+      "reason": "Historical migration retained unchanged; no runtime legacy model.",
+      "site_id": "alembic/versions/a7c1e5b3d9f2_rbac_foundation.py::rbac_legacy_map::compatibility::#1"
+    },
+    {
       "file": "alembic/versions/c9e3a7b5d1f2_users_role_id_non_authoritative.py",
       "line": 0,
       "function": "role_id",
       "mechanism": "compatibility",
       "permission": null,
       "status": "compatibility-history",
-      "reason": "the migration that made users.role_id nullable",
+      "reason": "Historical migration retained unchanged; no runtime legacy model.",
       "site_id": "alembic/versions/c9e3a7b5d1f2_users_role_id_non_authoritative.py::role_id::compatibility::#1"
     },
     {
@@ -695,16 +706,6 @@
       "site_id": "ccure_platform/identity/router.py::_authorization_for::resolve_active_organisation::#1"
     },
     {
-      "file": "ccure_platform/models/users.py",
-      "line": 0,
-      "function": "role_id",
-      "mechanism": "compatibility",
-      "permission": null,
-      "status": "compatibility-history",
-      "reason": "users.role_id: nullable, deprecated, non-authoritative; kept for history and for rollback of the schema, never read by a decision",
-      "site_id": "ccure_platform/models/users.py::role_id::compatibility::#1"
-    },
-    {
       "file": "ccure_platform/rbac/administration.py",
       "line": 0,
       "function": "role_labels",
@@ -725,28 +726,8 @@
       "site_id": "ccure_platform/rbac/authorization_view.py::display_name::label::#1"
     },
     {
-      "file": "ccure_platform/rbac/legacy_map.py",
-      "line": 0,
-      "function": "load_golden",
-      "mechanism": "compatibility",
-      "permission": null,
-      "status": "compatibility-history",
-      "reason": "the deterministic golden mapping (legacy atoms and roles \u2192 keys and system roles), read by reconciliation and by tests",
-      "site_id": "ccure_platform/rbac/legacy_map.py::load_golden::compatibility::#1"
-    },
-    {
-      "file": "ccure_platform/rbac/reconcile.py",
-      "line": 0,
-      "function": "reconcile",
-      "mechanism": "compatibility",
-      "permission": null,
-      "status": "compatibility-history",
-      "reason": "reconciliation reads the deprecated role column once, to propose assignments; it never authorizes anything",
-      "site_id": "ccure_platform/rbac/reconcile.py::reconcile::compatibility::#1"
-    },
-    {
       "file": "routers/admin_nvd.py",
-      "line": 59,
+      "line": 31,
       "function": "<module>",
       "mechanism": "require_authorized",
       "permission": "audit.vuln_feed.manage",
@@ -2056,7 +2037,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 392,
+      "line": 386,
       "function": "_get_websocket_user",
       "mechanism": "has_permission",
       "permission": "audit.scan.read",
@@ -2066,7 +2047,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 430,
+      "line": 424,
       "function": "list_scans",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2076,7 +2057,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 470,
+      "line": 464,
       "function": "stream_scan_history",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2086,7 +2067,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 553,
+      "line": 547,
       "function": "scan_progress_ws",
       "mechanism": "acts_across_organisations",
       "permission": null,
@@ -2096,7 +2077,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 645,
+      "line": 639,
       "function": "get_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2106,7 +2087,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 663,
+      "line": 657,
       "function": "scan_policy_record",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2116,7 +2097,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 784,
+      "line": 778,
       "function": "compare_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2126,7 +2107,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 844,
+      "line": 838,
       "function": "archive_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2136,7 +2117,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 874,
+      "line": 868,
       "function": "stop_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2146,7 +2127,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 957,
+      "line": 951,
       "function": "restore_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2156,7 +2137,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 998,
+      "line": 992,
       "function": "delete_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.lifecycle",
@@ -2166,7 +2147,7 @@
     },
     {
       "file": "routers/scan_history.py",
-      "line": 1024,
+      "line": 1018,
       "function": "purge_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.purge",
@@ -2476,7 +2457,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 73,
+      "line": 72,
       "function": "_resolve_org",
       "mechanism": "resolve_active_organisation",
       "permission": null,
@@ -2486,7 +2467,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 457,
+      "line": 456,
       "function": "start_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2496,7 +2477,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 614,
+      "line": 613,
       "function": "list_web_scans",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2506,7 +2487,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 651,
+      "line": 650,
       "function": "get_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2516,7 +2497,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 702,
+      "line": 701,
       "function": "get_web_scan_findings",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -2526,7 +2507,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 750,
+      "line": 749,
       "function": "get_web_scan_assets",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2536,7 +2517,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 789,
+      "line": 788,
       "function": "get_web_scan_parameters",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2546,7 +2527,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 872,
+      "line": 871,
       "function": "get_web_scan_forms",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2556,7 +2537,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 920,
+      "line": 919,
       "function": "get_web_scan_api_operations",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2566,7 +2547,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 973,
+      "line": 972,
       "function": "cancel_web_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.run",
@@ -2576,7 +2557,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1043,
+      "line": 1042,
       "function": "triage_finding",
       "mechanism": "require_authorized",
       "permission": "audit.finding.update",
@@ -2586,7 +2567,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1079,
+      "line": 1078,
       "function": "triage_finding",
       "mechanism": "has_permission",
       "permission": "audit.finding.accept_risk",
@@ -2596,7 +2577,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1136,
+      "line": 1135,
       "function": "get_finding_screenshot",
       "mechanism": "require_authorized",
       "permission": "audit.finding.read",
@@ -2606,7 +2587,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1178,
+      "line": 1177,
       "function": "download_web_scan_report",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2616,7 +2597,7 @@
     },
     {
       "file": "routers/web_scans.py",
-      "line": 1285,
+      "line": 1284,
       "function": "web_scan_progress_ws",
       "mechanism": "acts_across_organisations",
       "permission": null,

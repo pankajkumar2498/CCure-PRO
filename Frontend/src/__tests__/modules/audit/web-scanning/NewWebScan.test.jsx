@@ -51,19 +51,18 @@ vi.mock("@shell/api/axiosInstance", () => ({
    holding all of them unless it swaps `authState.user` — the deny-path tests
    at the end of this file do, and restore it afterwards. */
 const FULL_PERMISSION_USER = {
-  role: {
-    name: "analyst",
-    permissions: [
-      "scans:read",
-      "scans:execute",
-      "findings:read",
-      "findings:update",
-      "findings:accept_risk",
-    ],
-  },
+  role: { name: "analyst" },
+  permissionKeys: [
+    "audit.scan.read",
+    "audit.scan.run",
+    "audit.finding.read",
+    "audit.finding.update",
+    "audit.finding.accept_risk",
+  ],
 };
 const VIEWER_USER = {
-  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+  role: { name: "viewer" },
+  permissionKeys: ["audit.scan.read", "audit.finding.read"],
 };
 const authState = vi.hoisted(() => ({ user: null }));
 vi.mock("@shell/auth/AuthContext", () => ({
@@ -965,7 +964,7 @@ describe("NewWebScan — permission (F2)", () => {
     authState.user = VIEWER_USER;
     const { container } = render(<NewWebScan />);
     expect(screen.getByText(/cannot launch web scans/i)).toBeInTheDocument();
-    expect(screen.getByText("scans:execute")).toBeInTheDocument();
+    expect(screen.getByText("Run scans")).toBeInTheDocument();
     expect(container.querySelector("input[type='url']")).toBeNull();
     expect(axiosInstance.post).not.toHaveBeenCalled();
   });

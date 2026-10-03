@@ -15,6 +15,11 @@ logging in commits, and in this suite that commits every pending fixture row
 with it (CLAUDE.md, "Scan comparison and finding lifecycle").
 """
 
+from ccure_platform.models.rbac_tables import RbacRole
+
+from native_rbac import system_role, create_user, fixture_role
+
+
 import inspect
 import json
 import uuid
@@ -26,7 +31,7 @@ from starlette.requests import Request
 
 from ccure_platform.rbac.dependencies import has_permission, require_authorized
 from db.base import gen_user_id, utcnow
-from db.models import Permission, Role, RolePermission, User
+from db.models import User
 from db.models.users import AuditLog
 from db.models.web_scans import WebFinding, WebScan
 from routers import web_scans as web_scans_router
@@ -90,16 +95,17 @@ def _request(method: str = "POST") -> Request:
     )
 
 
-def _user_with_role(db, org, role: Role, label: str) -> User:
+def _user_with_role(db, org, role: RbacRole, label: str) -> User:
     uid = uuid.uuid4().hex[:8]
-    user = User(
+    user = create_user(
+        db,
         id=gen_user_id(org.slug, f"{label}{uid}"),
         username=f"{label}{uid}",
         email=f"{label}{uid}@test.com",
         full_name=label,
         password_hash="x",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -111,28 +117,16 @@ def _user_with_role(db, org, role: Role, label: str) -> User:
     return user
 
 
-def _role(db, name: str) -> Role:
-    role = db.query(Role).filter(Role.name == name).first()
+def _role(db, name: str) -> RbacRole:
+    role = system_role(db, name)
     assert role is not None, f"seeded role {name!r} missing from the test database"
     return role
 
 
-def _custom_role(db, atoms: list[tuple[str, str]]) -> Role:
-    """A role holding exactly `atoms` — the seeded roles cannot express
-    'may update findings but may not accept risk'."""
-    role = Role(name=f"authz_{uuid.uuid4().hex[:10]}", is_system_role=False)
-    db.add(role)
-    db.flush()
-    for resource, action in atoms:
-        perm = (
-            db.query(Permission)
-            .filter(Permission.resource == resource, Permission.action == action)
-            .first()
-        )
-        assert perm is not None, f"permission {resource}:{action} not seeded"
-        db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+def _custom_role(db, keys: list[str]) -> RbacRole:
+    """A role holding exactly the specified native permission keys."""
+    role = fixture_role(db, f"authz_{uuid.uuid4().hex[:10]}", keys=keys)
     db.commit()
-    db.refresh(role)
     return role
 
 
@@ -213,7 +207,7 @@ def test_every_web_scan_route_requires_its_permission_atom():
 
 def test_viewer_cannot_launch_or_cancel_a_web_scan(db_session, test_org):
     viewer = _user_with_role(
-        db_session, test_org, _role(db_session, "viewer"), "viewer"
+        db_session, test_org, _role(db_session, "platform.viewer"), "viewer"
     )
     guard = require_authorized("audit.scan.run")
     with pytest.raises(HTTPException) as exc:
@@ -223,7 +217,7 @@ def test_viewer_cannot_launch_or_cancel_a_web_scan(db_session, test_org):
 
 def test_analyst_can_launch_a_web_scan(db_session, test_org):
     analyst = _user_with_role(
-        db_session, test_org, _role(db_session, "analyst"), "analyst"
+        db_session, test_org, _role(db_session, "platform.analyst"), "analyst"
     )
     guard = require_authorized("audit.scan.run")
     assert guard(user=analyst, db=db_session) is analyst
@@ -231,7 +225,7 @@ def test_analyst_can_launch_a_web_scan(db_session, test_org):
 
 def test_has_permission_edges(db_session, test_org):
     superadmin = _user_with_role(
-        db_session, test_org, _role(db_session, "superadmin"), "super"
+        db_session, test_org, _role(db_session, "platform.superadmin"), "super"
     )
     assert has_permission(db_session, superadmin, "audit.scan.run") is True
     # a key nobody declared is held by nobody — superadmin included
@@ -240,7 +234,9 @@ def test_has_permission_edges(db_session, test_org):
     roleless = User(id="roleless", org_id=test_org.id)
     assert has_permission(db_session, roleless, "audit.scan.read") is False
 
-    viewer = _user_with_role(db_session, test_org, _role(db_session, "viewer"), "vw")
+    viewer = _user_with_role(
+        db_session, test_org, _role(db_session, "platform.viewer"), "vw"
+    )
     assert has_permission(db_session, viewer, "audit.scan.read") is True
     assert has_permission(db_session, viewer, "audit.scan.run") is False
 
@@ -251,7 +247,7 @@ def test_has_permission_edges(db_session, test_org):
 def test_accepting_risk_on_a_web_finding_needs_accept_risk(
     db_session, test_org, cleanup_web_rows
 ):
-    role = _custom_role(db_session, [("findings", "update"), ("findings", "read")])
+    role = _custom_role(db_session, ["audit.finding.update", "audit.finding.read"])
     triager = _user_with_role(db_session, test_org, role, "triager")
     scan = _web_scan(db_session, test_org.id)
     finding = _web_finding(db_session, scan)
@@ -287,7 +283,9 @@ def test_every_triage_status_has_an_audit_action():
 
 
 def test_triage_writes_an_audit_event(db_session, test_org, cleanup_web_rows):
-    analyst = _user_with_role(db_session, test_org, _role(db_session, "analyst"), "tri")
+    analyst = _user_with_role(
+        db_session, test_org, _role(db_session, "platform.analyst"), "tri"
+    )
     scan = _web_scan(db_session, test_org.id)
     finding = _web_finding(db_session, scan)
 
@@ -316,7 +314,9 @@ def test_triage_writes_an_audit_event(db_session, test_org, cleanup_web_rows):
 
 
 def test_cancel_writes_an_audit_event(db_session, test_org, cleanup_web_rows):
-    analyst = _user_with_role(db_session, test_org, _role(db_session, "analyst"), "can")
+    analyst = _user_with_role(
+        db_session, test_org, _role(db_session, "platform.analyst"), "can"
+    )
     scan = _web_scan(db_session, test_org.id, status="running")
 
     cancel_web_scan(
@@ -335,7 +335,9 @@ def test_cancel_writes_an_audit_event(db_session, test_org, cleanup_web_rows):
 def test_launch_is_audited_without_leaking_auth_secrets(
     db_session, test_org, cleanup_web_rows, monkeypatch
 ):
-    analyst = _user_with_role(db_session, test_org, _role(db_session, "analyst"), "lau")
+    analyst = _user_with_role(
+        db_session, test_org, _role(db_session, "platform.analyst"), "lau"
+    )
 
     class _Task:
         id = "task-authz-test"

@@ -27,7 +27,7 @@ import userEvent from "@testing-library/user-event";
 
 import RecycleBin from "@audit/pages/RecycleBin";
 import { getScans, restoreScan, purgeScan } from "@audit/api/scans";
-import { atomSetHolds } from "../../../fixtures/authorization";
+import { keySetHolds } from "../../../fixtures/authorization";
 import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
@@ -56,9 +56,9 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
-let permissions = new Set(["scans:restore", "scans:purge"]);
+let permissions = new Set(["audit.scan.lifecycle", "audit.scan.purge"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_user, resource, action) => atomSetHolds(permissions, resource, action),
+  can: (_user, resource, action) => keySetHolds(permissions, resource, action),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -158,7 +158,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
   currentUser = { username: "operator", id: 1 };
-  permissions = new Set(["scans:restore", "scans:purge"]);
+  permissions = new Set(["audit.scan.lifecycle", "audit.scan.purge"]);
   getScans.mockImplementation(() => ok());
   restoreScan.mockResolvedValue({});
   purgeScan.mockResolvedValue({});
@@ -364,7 +364,7 @@ describe("RecycleBin — security", () => {
   });
 
   it("hides restore from a user without scans:restore", async () => {
-    permissions = new Set(["scans:purge"]);
+    permissions = new Set(["audit.scan.purge"]);
     await renderPage();
     await screen.findByText("SCAN-0021");
     expect(
@@ -373,7 +373,7 @@ describe("RecycleBin — security", () => {
   });
 
   it("hides purge from a user without scans:purge", async () => {
-    permissions = new Set(["scans:restore"]);
+    permissions = new Set(["audit.scan.lifecycle"]);
     await renderPage();
     await screen.findByText("SCAN-0021");
     expect(
@@ -382,7 +382,7 @@ describe("RecycleBin — security", () => {
   });
 
   it("treats restore and purge as separate permissions", async () => {
-    permissions = new Set(["scans:restore"]);
+    permissions = new Set(["audit.scan.lifecycle"]);
     await renderPage();
     await screen.findByText("SCAN-0021");
     expect(screen.getAllByRole("button", { name: /restore/i }).length).toBe(5);

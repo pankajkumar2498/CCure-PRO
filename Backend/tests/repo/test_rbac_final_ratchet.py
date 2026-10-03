@@ -11,7 +11,6 @@ from source.
 from __future__ import annotations
 
 import ast
-import re
 
 import pytest
 
@@ -89,16 +88,35 @@ def test_the_retired_rbac_modules_are_gone():
         assert not (rbac / f"{name}.py").exists(), name
     assert not (BACKEND_ROOT / "auth" / "rbac.py").exists()
     assert not (BACKEND_ROOT / "routers" / "admin_rbac.py").exists()
+    for relative in (
+        "ccure_platform/rbac/legacy_map.py",
+        "ccure_platform/rbac/reconcile.py",
+        "scripts/rbac/cutover.py",
+        "scripts/rbac/reconcile_assignments.py",
+        "data/rbac/golden_legacy_mapping.json",
+    ):
+        assert not (BACKEND_ROOT / relative).exists(), relative
+
+
+def test_native_identity_metadata_and_exports_have_no_legacy_rbac():
+    from db.base import Base
+    import db.models as models
+    from db.models.users import User
+
+    assert not {"roles", "permissions", "role_permissions", "rbac_legacy_map"} & set(
+        Base.metadata.tables
+    )
+    assert "role_id" not in User.__table__.columns
+    assert not hasattr(User, "role")
+    for name in ("Role", "Permission", "RolePermission", "RbacLegacyMap"):
+        assert not hasattr(models, name)
+    with pytest.raises(TypeError):
+        User(role_id=1)
 
 
 _ACCOUNT_NAMES = {"user", "current_user", "actor", "account", "u"}
-#: Where the deprecated column may be named: its model, and the reconciliation that reads
-#: it once to propose assignments.
-ROLE_COLUMN_ALLOWED = {
-    "ccure_platform/models/users.py",
-    "ccure_platform/rbac/reconcile.py",
-    "ccure_platform/rbac/legacy_map.py",
-}
+#: Runtime code has no exception for the removed legacy account column.
+ROLE_COLUMN_ALLOWED = set()
 
 
 def test_users_role_id_and_the_role_object_are_not_read_by_runtime_code():

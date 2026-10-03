@@ -61,6 +61,7 @@ IDENTITY_MODELS = frozenset(
         "PasswordResetToken",
         "EmailVerificationToken",
         "Organization",
+        # Retired names remain forbidden so old ORM imports cannot return.
         "Role",
         "Permission",
         "RolePermission",
@@ -490,10 +491,7 @@ KNOWN_IDENTITY_QUERIES: dict[str, dict[str, int]] = {
 
 #: module -> {identity model: joins and eager loads}. 8 in 4 modules. The
 #: proposal's count (query() and select() only) did not look for these.
-KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {
-    "routers.scan_history": {"User": 1},
-    "routers.web_scans": {"User": 1},
-}
+KNOWN_IDENTITY_JOINS: dict[str, dict[str, int]] = {}
 
 #: module -> {plan field: mentions} in module code. Measured 29 Sep 2026 when
 #: step 8.4 made the plan platform-owned: the four seams read the columns

@@ -7,7 +7,7 @@ is permissions and scope. This file measures two things, and
 ``tests/repo/test_rbac_role_identity.py`` turns them into tests:
 
 **1. The new RBAC implementation — zero tolerance.**
-Everything under ``ccure_platform/rbac/`` except the legacy ``dependencies.py``.
+Every runtime file under ``ccure_platform/rbac/``.
 In it:
 
 * no string literal may be one of the five legacy role names or the five new
@@ -26,8 +26,7 @@ disappears also fails until the baseline is lowered, so a removed check cannot
 quietly come back.
 
 Seed and migration contexts are exempt from the ratchet by design: ``alembic/``,
-``tests/``, ``scripts/`` (operator tooling and bootstrap), and the legacy seed
-``db/migrate_production_schema.py``.
+``tests/`` and ``scripts/`` (operator tooling and bootstrap).
 
 Nothing is imported; every file is parsed with ``ast``. Run from ``Backend/``::
 
@@ -46,7 +45,7 @@ from pathlib import Path
 
 from scripts.architecture.import_graph import BACKEND_ROOT
 
-#: The five original role names — seed and legacy-map data, never a decision.
+#: The five original role names — retired names blocked by the ratchet, never a decision.
 LEGACY_ROLE_NAMES = frozenset(
     {"superadmin", "org_admin", "analyst", "viewer", "scanner"}
 )
@@ -85,7 +84,6 @@ EXEMPT_DIRS = frozenset(
 )
 EXEMPT_FILES = frozenset(
     {
-        "db/migrate_production_schema.py",  # the legacy role seed
         "ccure_platform/models/rbac_tables.py",
     }
 )

@@ -26,7 +26,7 @@ import userEvent from "@testing-library/user-event";
 
 import CredentialedScan from "@audit/pages/scan/CredentialedScan";
 import axiosInstance from "@shell/api/axiosInstance";
-import { atomSetHolds } from "../../../../fixtures/authorization";
+import { keySetHolds } from "../../../../fixtures/authorization";
 import { personaFrom } from "../../../../fixtures/authorization";
 
 const navigate = vi.fn();
@@ -63,9 +63,9 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
-let permissions = new Set(["scans:execute"]);
+let permissions = new Set(["audit.scan.run"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_u, r, a) => atomSetHolds(permissions, r, a),
+  can: (_u, r, a) => keySetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -102,7 +102,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
   currentUser = { username: "operator", id: 1 };
-  permissions = new Set(["scans:execute"]);
+  permissions = new Set(["audit.scan.run"]);
   axiosInstance.get.mockResolvedValue({ data: { credentials: [] } });
   axiosInstance.post.mockResolvedValue(OK);
 });

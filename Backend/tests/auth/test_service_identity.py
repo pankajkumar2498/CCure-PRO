@@ -605,7 +605,6 @@ def test_a_human_token_cannot_authenticate_as_a_service(client, services, test_u
         jwt_handler.create_access_token(
             test_user.id,
             test_user.username,
-            role=test_user.role.name,
             org_id=test_user.org_id,
         ),
         jwt_handler.create_download_ticket(test_user.id, test_user.username),

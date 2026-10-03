@@ -351,7 +351,8 @@ const TOPOLOGY = {
 /* ── Harness ─────────────────────────────────────────────────────────────── */
 const ANALYST = {
   id: 7,
-  role: { name: "analyst", permissions: ["scans:read", "assets:read"] },
+  role: { name: "analyst" },
+  permissionKeys: ["audit.scan.read", "audit.asset.read"],
 };
 
 let reply;
@@ -1470,7 +1471,11 @@ describe("NetworkMap — contract", () => {
           },
         });
       await loaded("/topology", {
-        user: { id: 8, role: { name: "viewer", permissions: ["assets:read"] } },
+        user: {
+          id: 8,
+          role: { name: "viewer" },
+          permissionKeys: ["audit.asset.read"],
+        },
       });
       expect(topologyUrls()).toEqual([
         "/topology/map?subnet_mask=24&active_within_days=30",

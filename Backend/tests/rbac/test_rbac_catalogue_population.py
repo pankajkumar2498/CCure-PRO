@@ -5,7 +5,7 @@ The platform declares ``platform.*``, Audit declares ``audit.*``, both as data
 through the module registration seam; Policy Pro, Rank and IR declare nothing and
 keep their namespaces reserved. These tests hold the catalogue's shape — every key
 valid, owned, documented — and that syncing it produces exactly the roles and grants
-the golden mapping says.
+the frozen mapping says.
 
 **RBAC-2 is prepared, not live**: nothing here touches a legacy table or a route.
 """
@@ -19,14 +19,14 @@ import pytest
 from ccure_platform import composition
 from ccure_platform.modules import registry
 from ccure_platform.rbac import contract as c
-from ccure_platform.rbac import legacy_map
+import json
+from pathlib import Path
 from ccure_platform.rbac.catalogue import (
-    CatalogueError,
     declaration_problems,
     sync,
     validate_declarations,
 )
-from ccure_platform.rbac.model import RbacPermission, RbacRole, RbacRolePermission
+from ccure_platform.rbac.model import RbacPermission, RbacRolePermission
 from rbac_testing import rbac_db_fixture, role, source  # noqa: F401
 from testpaths import BACKEND_ROOT, REPO_ROOT
 
@@ -45,8 +45,10 @@ def decls(sources):
 
 
 @pytest.fixture(scope="module")
-def golden():
-    return legacy_map.load_golden()
+def frozen():
+    return json.loads(
+        (Path(__file__).parents[1] / "fixtures/rbac_catalogue.json").read_text()
+    )
 
 
 # ── every declaration loads and is valid ─────────────────────────────────────
@@ -300,8 +302,8 @@ def test_every_stored_grant_is_of_a_declared_permission(rbac_db, sources, decls)
 # ── every key is documented ──────────────────────────────────────────────────
 
 
-def test_every_key_has_an_owner_and_a_documented_reason(decls, golden):
-    entries = {p["key"]: p for p in golden["permissions"]}
+def test_every_key_has_an_owner_and_a_documented_reason(decls, frozen):
+    entries = {p["key"]: p for p in frozen["permissions"]}
     for d in decls:
         entry = entries[d.key]
         assert entry["owner"] == d.key.split(".")[0]
@@ -312,4 +314,4 @@ def test_the_catalogue_document_lists_every_key_with_its_owner_and_scope(decls):
     text = DOC.read_text(encoding="utf-8")
     for d in decls:
         assert f"`{d.key}`" in text, f"{d.key} is missing from {DOC.name}"
-    assert "67" in text and "legacy authorization remains authoritative" in text.lower()
+    assert "67" in text and "native rbac is authoritative" in text.lower()

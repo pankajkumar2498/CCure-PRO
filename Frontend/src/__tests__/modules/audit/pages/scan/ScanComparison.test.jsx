@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * Scan Comparison.
  *
@@ -40,7 +41,13 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 }));
 
 vi.mock("@shell/auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", role: { name: "superadmin" } } }),
+  useAuth: () => ({
+    user: {
+      id: "u1",
+      role: { name: "superadmin" },
+      authorization: everything(),
+    },
+  }),
 }));
 
 /** Shaped exactly as GET /scans/{id}/comparison answers. */

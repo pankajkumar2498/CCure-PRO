@@ -1,28 +1,10 @@
-"""
-ccure_platform/rbac/readiness.py — is this database ready to run with RBAC as the only
-authorization model? (RBAC-8)
-
-Read-only. Used by the cutover script (``scripts/rbac/cutover.py plan|verify``) and logged at
-start-up, so an installation that is not ready says so loudly instead of denying everybody
-in silence. It answers with *blockers* (the system would be unmanageable or an account would
-lose access it is entitled to) and *notes* (worth knowing, not blocking).
-
-Blockers:
-* the permission catalogue is not applied, or a system role is missing;
-* nobody holds ``platform.role.assign_platform`` — the platform cannot be administered;
-* an active account whose legacy role maps to a system role has no live RBAC assignment (it
-  would be locked out), or holds the wrong one;
-* an active organisation has nobody able to assign roles in it.
-
-Notes: accounts with no role at all (they hold nothing, by policy), accounts whose legacy
-role has no mapping (never assigned by guesswork), the default role being unset or invalid.
-"""
+"""Read-only native catalogue, administrator and continuity checks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ccure_platform.rbac import governance, reconcile, resolver
+from ccure_platform.rbac import governance, resolver
 from ccure_platform.rbac.model import RbacRole, RbacUserRole
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -79,32 +61,6 @@ def assess(db: Session, sources=None) -> Readiness:
             "administered (bootstrap the first administrator)"
         )
 
-    report = reconcile.reconcile(db)
-    if report.missing:
-        blockers.append(
-            f"{len(report.missing)} active account(s) with a mapped legacy role have no RBAC assignment"
-        )
-    if report.incorrect:
-        blockers.append(
-            f"{len(report.incorrect)} account(s) hold an RBAC assignment that does not match their legacy role"
-        )
-    if report.duplicate:
-        blockers.append(
-            f"{len(report.duplicate)} account(s) hold conflicting RBAC assignments"
-        )
-    if report.unmapped_legacy:
-        notes.append(
-            f"{len(report.unmapped_legacy)} account(s) have a legacy role with no mapping: they hold nothing until an administrator assigns a role"
-        )
-    if report.no_legacy_role:
-        notes.append(
-            f"{len(report.no_legacy_role)} active account(s) have no role at all and hold nothing"
-        )
-    if report.revoked_but_assigned:
-        notes.append(
-            f"{len(report.revoked_but_assigned)} disabled/deleted account(s) still hold a live assignment (it grants nothing: the account is inactive)"
-        )
-
     continuity = governance.continuity_report(db)
     if continuity.status == "violated":
         blockers.append(
@@ -116,7 +72,6 @@ def assess(db: Session, sources=None) -> Readiness:
         )
 
     counts = {
-        **report.counts(),
         "administrators": len(admins),
         "permissions": len(catalogue),
         "live_assignments": db.execute(

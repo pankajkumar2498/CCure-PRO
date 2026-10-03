@@ -22,7 +22,6 @@ from ccure_platform.models.rbac_tables import (  # noqa: F401  (re-exported)
     TRIGGER_FUNCTIONS,
     TRIGGER_SQL,
     RbacDefaultRole,
-    RbacLegacyMap,
     RbacPermission,
     RbacRole,
     RbacRolePermission,

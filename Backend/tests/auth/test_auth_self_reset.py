@@ -4,12 +4,14 @@ tests/test_auth_self_reset.py
 Integration tests for self-service password reset.
 """
 
+from native_rbac import system_role, create_user
+
 import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from auth.jwt_handler import verify_password
-from db.models import Organization, PasswordResetToken, RefreshTokenSession, Role, User
+from db.models import Organization, PasswordResetToken, RefreshTokenSession
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -37,15 +39,16 @@ def test_forgot_password_registered_email_success(
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
+    role = system_role(db_session, "platform.analyst")
 
-    user = User(
+    user = create_user(
+        db_session,
         id="usr_test_user_123",
         username="testuser",
         email="testuser@test.com",
         password_hash="oldhash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
     )
     db_session.add(user)
@@ -93,15 +96,16 @@ def test_reset_password_success_and_revokes_sessions(
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
+    role = system_role(db_session, "platform.analyst")
 
-    user = User(
+    user = create_user(
+        db_session,
         id="usr_test_user_456",
         username="resetuser",
         email="resetuser@test.com",
         password_hash="oldhash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
     )
     db_session.add(user)
@@ -167,15 +171,16 @@ def test_reset_password_token_invalidation_on_first_use(
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
+    role = system_role(db_session, "platform.analyst")
 
-    user = User(
+    user = create_user(
+        db_session,
         id="usr_test_user_789",
         username="reuseuser",
         email="reuseuser@test.com",
         password_hash="oldhash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
     )
     db_session.add(user)

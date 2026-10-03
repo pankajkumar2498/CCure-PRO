@@ -18,6 +18,8 @@ The boundary is therefore explicit rather than inferred:
   this is legacy" is a stored fact rather than a guess about timestamps.
 """
 
+from native_rbac import system_role, create_user
+
 import pytest
 from audit_chain_support import (
     expect_refused,
@@ -85,14 +87,14 @@ def test_legacy_rows_are_reported_separately_not_as_verified(
     total and never call them breaks.
     """
     # Add chained events on top, so both populations coexist.
-    from db.models import User
 
-    member = User(
+    member = create_user(
+        db_session,
         username=f"legacy_member_{gen_uuid()[:6]}",
         email=f"legacy.{gen_uuid()[:6]}@test.com",
         password_hash="hash",
         org_id=org_with_legacy.id,
-        role_id=test_user.role_id,
+        role=system_role(db_session, "platform.org_admin"),
         is_active=True,
         is_verified=True,
     )
@@ -117,14 +119,14 @@ def test_the_chain_starts_cleanly_above_legacy_history(
     The first chained event is a genesis — `prev_hash IS NULL` — even though
     older events exist. It cannot link to them: they have no hash to link to.
     """
-    from db.models import User
 
-    member = User(
+    member = create_user(
+        db_session,
         username=f"legacy_first_{gen_uuid()[:6]}",
         email=f"first.{gen_uuid()[:6]}@test.com",
         password_hash="hash",
         org_id=org_with_legacy.id,
-        role_id=test_user.role_id,
+        role=system_role(db_session, "platform.org_admin"),
         is_active=True,
         is_verified=True,
     )
@@ -153,14 +155,14 @@ def test_genesis_is_recorded_rather_than_inferred_from_timestamps(
     adjustment, make "oldest by timestamp" ambiguous. The boundary is therefore
     read from `genesis_event_id`, never derived by sorting.
     """
-    from db.models import User
 
-    member = User(
+    member = create_user(
+        db_session,
         username=f"legacy_gen_{gen_uuid()[:6]}",
         email=f"gen.{gen_uuid()[:6]}@test.com",
         password_hash="hash",
         org_id=org_with_legacy.id,
-        role_id=test_user.role_id,
+        role=system_role(db_session, "platform.org_admin"),
         is_active=True,
         is_verified=True,
     )
@@ -189,7 +191,6 @@ def test_a_legacy_row_cannot_be_promoted_by_writing_a_hash_into_it(
     that no one ever witnessed. The append-only trigger refuses the write, so
     the boundary cannot be laundered away through any application path.
     """
-    from sqlalchemy.exc import DatabaseError
 
     target = db_session.execute(
         text(
@@ -232,14 +233,14 @@ def test_legacy_rows_never_inflate_the_chained_event_count(
     first write starts at zero chained events, counts only what it chains, and
     leaves `legacy_event_count` alone.
     """
-    from db.models import User
 
-    member = User(
+    member = create_user(
+        db_session,
         username=f"legacy_count_{gen_uuid()[:6]}",
         email=f"count.{gen_uuid()[:6]}@test.com",
         password_hash="hash",
         org_id=org_with_legacy.id,
-        role_id=test_user.role_id,
+        role=system_role(db_session, "platform.org_admin"),
         is_active=True,
         is_verified=True,
     )

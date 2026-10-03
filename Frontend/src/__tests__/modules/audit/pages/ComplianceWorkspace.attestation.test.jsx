@@ -66,10 +66,14 @@ vi.mock("@shell/auth/AuthContext", () => ({
 const person = (roleName, permissions, id = 1) => ({
   id,
   username: `user-${id}`,
-  role: { name: roleName, permissions },
+  role: { name: roleName },
+  permissionKeys: permissions,
 });
-const ANALYST = person("analyst", ["compliance:read", "compliance:attest"]);
-const VIEWER = person("viewer", ["compliance:read"], 2);
+const ANALYST = person("analyst", [
+  "audit.compliance.read",
+  "audit.compliance.attest",
+]);
+const VIEWER = person("viewer", ["audit.compliance.read"], 2);
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 const CONTROLS = {

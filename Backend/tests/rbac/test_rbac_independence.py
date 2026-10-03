@@ -58,7 +58,7 @@ POISON = textwrap.dedent(
     sys.meta_path.insert(0, Poison())
 
     from ccure_platform.rbac import (
-        audit, catalogue, contract, engine, governance, legacy_map, model, offboarding,
+        audit, catalogue, contract, engine, governance, model, offboarding,
         resolver,
     )
     from ccure_platform.rbac import contract as c

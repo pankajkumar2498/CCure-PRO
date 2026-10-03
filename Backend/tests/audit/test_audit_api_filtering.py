@@ -17,6 +17,8 @@ Two properties are asserted throughout and are easy to lose:
     of bug that only shows up as a wrong pager at scale.
 """
 
+from native_rbac import system_role, create_user
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -393,16 +395,16 @@ def test_total_is_correct_for_a_superadmin_with_no_filters(
     keeps the FROM alive.
     """
     from auth.jwt_handler import create_access_token
-    from db.models import Role, User
 
-    superadmin_role = db_session.query(Role).filter(Role.name == "superadmin").first()
-    admin = User(
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    admin = create_user(
+        db_session,
         id=f"usr_super_{gen_uuid()[:8]}",
         username=f"super_{gen_uuid()[:6]}",
         email=f"super_{gen_uuid()[:6]}@test.com",
         password_hash="x",
         org_id=test_org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )

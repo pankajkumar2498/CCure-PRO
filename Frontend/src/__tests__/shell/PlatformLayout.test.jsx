@@ -1,3 +1,4 @@
+import { everything } from "../fixtures/authorization";
 /**
  * The platform header (PlatformLayout) — the shared CCure Platform navigation a
  * person sees the moment they sign in, before entering any product.
@@ -75,11 +76,18 @@ const persona = (roleName, permissions = []) =>
     username: "pat",
     email: "pat@example.test",
     org_id: "o-1",
-    role: { name: roleName, permissions },
+    role: { name: roleName },
+    permissionKeys: permissions,
   });
-const SUPERADMIN = persona("superadmin");
-const ORG_ADMIN = persona("org_admin", ["users:read", "audit:read"]);
-const VIEWER = persona("viewer", ["dashboard:read"]);
+const SUPERADMIN = {
+  ...persona("superadmin"),
+  authorization: everything({ home: "o-1", active: "o-1" }),
+};
+const ORG_ADMIN = persona("org_admin", [
+  "platform.user.read",
+  "platform.audit_log.read",
+]);
+const VIEWER = persona("viewer", ["audit.dashboard.read"]);
 
 const renderLayout = () =>
   render(

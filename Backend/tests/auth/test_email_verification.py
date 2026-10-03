@@ -13,13 +13,15 @@ So the assertions to keep are the negative ones. A test that only checks the
 happy path would still pass if the tokens came back.
 """
 
+from native_rbac import system_role, create_user
+
 import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
 from db.base import utcnow
-from db.models import EmailVerificationToken, Organization, Role, User
+from db.models import EmailVerificationToken, Organization, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from rbac_testing import system_role_id
@@ -489,16 +491,17 @@ def test_org_creation_admin_can_actually_log_in(
     """
     from auth.jwt_handler import create_access_token
     from db.base import utcnow
-    from db.models import Organization, Role
+    from db.models import Organization
 
-    superadmin_role = db_session.query(Role).filter(Role.name == "superadmin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
     host_org = db_session.query(Organization).first()
-    sa = User(
+    sa = create_user(
+        db_session,
         username="orgmaker",
         email="orgmaker@test.com",
         password_hash="x",
         org_id=host_org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -544,7 +547,7 @@ def test_admin_created_users_are_verified_and_approved(
     Admin provisioning is itself the approval. Without this the new gates would
     have locked every admin-created account out of its own login.
     """
-    role = db_session.query(Role).filter(Role.name == "viewer").first()
+    role = system_role(db_session, "platform.viewer")
     res = client.post(
         "/admin/users",
         headers=auth_headers,
@@ -553,7 +556,7 @@ def test_admin_created_users_are_verified_and_approved(
             "email": "provisioned@test.com",
             "password": "StrongP@ssw0rd!",
             "full_name": "Provisioned User",
-            "rbac_role_id": system_role_id(db_session, "viewer"),
+            "rbac_role_id": system_role_id(db_session, "platform.viewer"),
             "organization_id": test_org.id,
         },
     )

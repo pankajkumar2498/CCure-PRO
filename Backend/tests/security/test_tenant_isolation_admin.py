@@ -1,40 +1,15 @@
+from native_rbac import system_role, create_user, grant_permissions
+
 from auth.jwt_handler import create_access_token
 from core.audit import log_audit_event
-from db.models import AuditLog, Organization, Permission, Role, RolePermission, User
+from db.models import AuditLog, Organization, User
 from rbac_testing import system_role_id
-
-
-def _grant_permission(db_session, role: Role, resource: str, action: str) -> None:
-    permission = (
-        db_session.query(Permission)
-        .filter(Permission.resource == resource, Permission.action == action)
-        .first()
-    )
-    if permission is None:
-        permission = Permission(
-            resource=resource, action=action, description=f"{resource}:{action}"
-        )
-        db_session.add(permission)
-        db_session.flush()
-
-    exists = (
-        db_session.query(RolePermission)
-        .filter(
-            RolePermission.role_id == role.id,
-            RolePermission.permission_id == permission.id,
-        )
-        .first()
-    )
-    if exists is None:
-        db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
-        db_session.flush()
 
 
 def _auth_headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -49,36 +24,39 @@ def test_org_admin_user_listing_is_tenant_scoped(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
     for role in (superadmin_role, org_admin_role):
-        _grant_permission(db_session, role, "users", "read")
+        grant_permissions(db_session, role, "platform.user.read")
 
-    org_admin_a = User(
+    org_admin_a = create_user(
+        db_session,
         username="orgadmin-a",
         email="orgadmin-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_a = User(
+    user_a = create_user(
+        db_session,
         username="user-a",
         email="user-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_b = User(
+    user_b = create_user(
+        db_session,
         username="user-b",
         email="user-b@test.com",
         password_hash="hash",
         org_id=org_b.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -104,35 +82,38 @@ def test_superadmin_user_listing_can_see_all_users(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
-    _grant_permission(db_session, superadmin_role, "users", "read")
+    grant_permissions(db_session, superadmin_role, "platform.user.read")
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         username="superadmin",
         email="superadmin@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    user_a = User(
+    user_a = create_user(
+        db_session,
         username="tenant-a-user",
         email="tenant-a-user@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_b = User(
+    user_b = create_user(
+        db_session,
         username="tenant-b-user",
         email="tenant-b-user@test.com",
         password_hash="hash",
         org_id=org_b.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -164,36 +145,39 @@ def test_org_admin_audit_logs_are_tenant_scoped(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
     for role in (superadmin_role, org_admin_role):
-        _grant_permission(db_session, role, "audit", "read")
+        grant_permissions(db_session, role, "platform.audit_log.read")
 
-    org_admin_a = User(
+    org_admin_a = create_user(
+        db_session,
         username="audit-admin-a",
         email="audit-admin-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_a = User(
+    user_a = create_user(
+        db_session,
         username="audit-user-a",
         email="audit-user-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_b = User(
+    user_b = create_user(
+        db_session,
         username="audit-user-b",
         email="audit-user-b@test.com",
         password_hash="hash",
         org_id=org_b.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -233,35 +217,38 @@ def test_superadmin_audit_logs_can_see_all_tenants(client, db_session):
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
-    _grant_permission(db_session, superadmin_role, "audit", "read")
+    grant_permissions(db_session, superadmin_role, "platform.audit_log.read")
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         username="audit-superadmin",
         email="audit-superadmin@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    user_a = User(
+    user_a = create_user(
+        db_session,
         username="audit-sa-user-a",
         email="audit-sa-user-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_b = User(
+    user_b = create_user(
+        db_session,
         username="audit-sa-user-b",
         email="audit-sa-user-b@test.com",
         password_hash="hash",
         org_id=org_b.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -286,16 +273,17 @@ def test_access_token_contains_org_and_role_claims(client, db_session):
     org = Organization(
         name="Token Org", slug="token-org", max_assets=100, max_users=10, is_active=True
     )
-    role = db_session.query(Role).filter_by(name="org_admin").first()
+    role = system_role(db_session, "platform.org_admin")
     db_session.add(org)
     db_session.flush()
 
-    user = User(
+    user = create_user(
+        db_session,
         username="token-user",
         email="token-user@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
     )
@@ -303,7 +291,7 @@ def test_access_token_contains_org_and_role_claims(client, db_session):
     db_session.commit()
     db_session.refresh(user)
 
-    token = create_access_token(user.id, user.username, role=role.name, org_id=org.id)
+    token = create_access_token(user.id, user.username, org_id=org.id)
 
     from auth.jwt_handler import decode_token
 
@@ -323,17 +311,18 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
     )
     db_session.add(org)
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, superadmin_role, "users", "create")
+    grant_permissions(db_session, superadmin_role, "platform.user.create")
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         username="creator-superadmin",
         email="creator-superadmin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
@@ -348,7 +337,7 @@ def test_superadmin_create_user_requires_explicit_organization(client, db_sessio
             "username": "missing-org-user",
             "email": "missing-org-user@test.com",
             "password": "SecurePass123!",
-            "rbac_role_id": system_role_id(db_session, "analyst"),
+            "rbac_role_id": system_role_id(db_session, "platform.analyst"),
         },
     )
 
@@ -376,17 +365,18 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
     )
     db_session.add_all([org_a, org_b])
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, superadmin_role, "users", "create")
+    grant_permissions(db_session, superadmin_role, "platform.user.create")
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         username="assign-superadmin",
         email="assign-superadmin@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
@@ -401,7 +391,7 @@ def test_superadmin_create_user_assigns_selected_organization(client, db_session
             "username": "assigned-user",
             "email": "assigned-user@test.com",
             "password": "SecurePass123!",
-            "rbac_role_id": system_role_id(db_session, "analyst"),
+            "rbac_role_id": system_role_id(db_session, "platform.analyst"),
             "organization_id": str(org_b.id),
         },
     )
@@ -431,17 +421,18 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
     )
     db_session.add_all([org_a, org_b])
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    analyst_role = db_session.query(Role).filter(Role.name == "analyst").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, org_admin_role, "users", "create")
+    grant_permissions(db_session, org_admin_role, "platform.user.create")
 
-    org_admin = User(
+    org_admin = create_user(
+        db_session,
         username="forced-org-admin",
         email="forced-org-admin@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -456,7 +447,7 @@ def test_org_admin_create_user_is_forced_into_own_organization(client, db_sessio
             "username": "forced-org-user",
             "email": "forced-org-user@test.com",
             "password": "SecurePass123!",
-            "rbac_role_id": system_role_id(db_session, "analyst"),
+            "rbac_role_id": system_role_id(db_session, "platform.analyst"),
             "organization_id": str(org_b.id),
         },
     )
@@ -481,35 +472,40 @@ def test_list_users_excludes_deleted_by_default_and_deleted_scope_returns_them(
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
-    _grant_permission(db_session, org_admin_role, "users", "read")
-    _grant_permission(db_session, org_admin_role, "users", "delete")
+    grant_permissions(db_session, org_admin_role, "platform.user.read")
+    grant_permissions(
+        db_session, org_admin_role, "platform.user.delete", "platform.user.purge"
+    )
 
-    admin = User(
+    admin = create_user(
+        db_session,
         username="deleted-scope-admin",
         email="deleted-scope-admin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    active_user = User(
+    active_user = create_user(
+        db_session,
         username="active-user",
         email="active-user@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    deleted_user = User(
+    deleted_user = create_user(
+        db_session,
         username="deleted-user",
         email="deleted-user@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=False,
         is_deleted=True,
         is_verified=True,
@@ -544,26 +540,30 @@ def test_soft_delete_restore_and_purge_user_flow(client, db_session):
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
-    _grant_permission(db_session, org_admin_role, "users", "read")
-    _grant_permission(db_session, org_admin_role, "users", "delete")
+    grant_permissions(db_session, org_admin_role, "platform.user.read")
+    grant_permissions(
+        db_session, org_admin_role, "platform.user.delete", "platform.user.purge"
+    )
 
-    admin = User(
+    admin = create_user(
+        db_session,
         username="lifecycle-admin",
         email="lifecycle-admin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    target = User(
+    target = create_user(
+        db_session,
         username="lifecycle-target",
         email="lifecycle-target@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -615,25 +615,29 @@ def test_purge_user_preserves_audit_logs_by_nulling_user_reference(client, db_se
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
 
-    _grant_permission(db_session, org_admin_role, "users", "delete")
+    grant_permissions(
+        db_session, org_admin_role, "platform.user.delete", "platform.user.purge"
+    )
 
-    admin = User(
+    admin = create_user(
+        db_session,
         username="purge-admin",
         email="purge-admin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    target = User(
+    target = create_user(
+        db_session,
         username="purge-target",
         email="purge-target@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=False,
         is_deleted=True,
         is_verified=True,
@@ -667,19 +671,20 @@ def test_deleted_user_cannot_log_in(client, db_session):
         max_users=10,
         is_active=True,
     )
-    role = db_session.query(Role).filter_by(name="org_admin").first()
+    role = system_role(db_session, "platform.org_admin")
     db_session.add(org)
     db_session.flush()
 
     from auth.jwt_handler import hash_password
     from db.base import utcnow
 
-    deleted_user = User(
+    deleted_user = create_user(
+        db_session,
         username="deleted-login-user",
         email="deleted-login-user@test.com",
         password_hash=hash_password("CorrectHorse1!"),
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=False,
         is_deleted=True,
         is_verified=True,

@@ -19,8 +19,7 @@ import ccure_platform.api as api
 from ccure_platform import composition
 from ccure_platform.rbac import scope
 from ccure_platform.rbac.catalogue import sync
-from config import AppConfig
-from db.models import AuditLog, Organization, Role
+from db.models import AuditLog
 from rbac_testing import (
     assign,
     custom_org_role,
@@ -51,9 +50,8 @@ def w(rbac_db):
     w.dead.is_active = False
     rbac_db.flush()
 
-    def person(org, legacy_role, rbac_role=None):
+    def person(org, rbac_role=None):
         user = make_user(rbac_db, org)
-        user.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
         rbac_db.flush()
         rbac_db.refresh(user)
         if rbac_role:
@@ -61,9 +59,9 @@ def w(rbac_db):
         return user
 
     w.person = person
-    w.superadmin = person(w.a, "superadmin", "platform.superadmin")
-    w.admin_a = person(w.a, "org_admin", "platform.org_admin")
-    w.analyst_a = person(w.a, "analyst", "platform.analyst")
+    w.superadmin = person(w.a, "platform.superadmin")
+    w.admin_a = person(w.a, "platform.org_admin")
+    w.analyst_a = person(w.a, "platform.analyst")
     return w
 
 
@@ -134,7 +132,7 @@ def test_missing_and_inactive_organisations_fail_closed(w, monkeypatch):
 
 def test_an_account_in_an_inactive_home_organisation_acts_nowhere(w, monkeypatch):
     on(monkeypatch)
-    u = w.person(w.dead, "analyst", "platform.analyst")
+    u = w.person(w.dead, "platform.analyst")
     with scope.use_audit_session(w.db):
         with pytest.raises(HTTPException) as e:
             api.resolve_active_organisation(u, None)
@@ -143,7 +141,7 @@ def test_an_account_in_an_inactive_home_organisation_acts_nowhere(w, monkeypatch
 
 def test_the_switch_needs_the_grant_not_the_legacy_name(w, monkeypatch):
     on(monkeypatch)
-    spoof = w.person(w.a, "superadmin", "platform.viewer")  # legacy name, no grant
+    spoof = w.person(w.a, "platform.viewer")  # legacy name, no grant
     with scope.use_audit_session(w.db):
         assert api.resolve_active_organisation(spoof, w.b.id) == w.a.id
     assert api.acts_across_organisations(spoof) is False
@@ -155,7 +153,7 @@ def test_a_display_name_never_confers_reach(w, monkeypatch):
     w.db.flush()
     role(w.db, "platform.viewer").display_name = "Superadmin"
     w.db.flush()
-    viewer = w.person(w.a, "viewer", "platform.viewer")
+    viewer = w.person(w.a, "platform.viewer")
     assert api.acts_across_organisations(viewer) is False
     assert api.acts_across_organisations(w.superadmin) is True  # renamed, same grants
 
@@ -177,7 +175,7 @@ def test_a_revoked_or_retired_role_loses_reach_immediately(w, monkeypatch):
     carrier = platform_custom_role(
         w.db, "carrier", "Carrier", "platform.organization.switch"
     )
-    u = w.person(w.a, "analyst")
+    u = w.person(w.a)
     assign(w.db, u, carrier)
     assert api.acts_across_organisations(u) is True
     force_state(w.db, carrier, "retiring")
@@ -222,14 +220,14 @@ def test_read_all_is_evaluated_for_the_target_organisation(w, monkeypatch):
     assert has(w.admin_a, w.b.id) is False  # holding it does not reach another tenant
     assert has(w.analyst_a, w.b.id) is False
     assert has(w.superadmin, w.b.id) is True  # platform grant + switch
-    scanner = w.person(w.a, "scanner", "platform.scanner")
+    scanner = w.person(w.a, "platform.scanner")
     assert has(scanner, w.a.id) is False  # the scanner role never held it
 
 
 def test_read_all_from_a_custom_role_applies_in_its_organisation_only(w, monkeypatch):
     on(monkeypatch)
     custom = custom_org_role(w.db, w.a, "reader", "Reader", "audit.scan.read_all")
-    scanner = w.person(w.a, "scanner")
+    scanner = w.person(w.a)
     assign(w.db, scanner, custom)
     got = lambda org: api.has_permission(  # noqa: E731
         w.db, scanner, "audit.scan.read_all", org_id=org
@@ -239,22 +237,12 @@ def test_read_all_from_a_custom_role_applies_in_its_organisation_only(w, monkeyp
 
 def test_multiple_roles_union_for_read_all(w, monkeypatch):
     on(monkeypatch)
-    scanner = w.person(w.a, "scanner", "platform.scanner")
+    scanner = w.person(w.a, "platform.scanner")
     assign(w.db, scanner, custom_org_role(w.db, w.a, "r2", "R2", "audit.scan.read_all"))
     assert api.has_permission(w.db, scanner, "audit.scan.read_all", org_id=w.a.id)
 
 
 # ── assignment hierarchy ─────────────────────────────────────────────────────
-
-
-def target_role(db, name):
-    return db.query(Role).filter(Role.name == name).one()
-
-
-def verdict(w, actor, legacy_role, target, org):
-    return api.check_role_assignment(
-        actor, target_role(w.db, legacy_role), target_user_id=target, target_org_id=org
-    )
 
 
 def test_custom_role_governance_is_intact_across_organisations(w):

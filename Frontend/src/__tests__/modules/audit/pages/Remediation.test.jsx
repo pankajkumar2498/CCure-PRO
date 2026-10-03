@@ -29,21 +29,22 @@ vi.mock("@audit/components/layout/AppLayout", () => ({
 }));
 
 const ROLE_PERMS = {
-  viewer: [{ resource: "findings", action: "read" }],
+  viewer: ["audit.finding.read"],
   analyst: [
-    { resource: "findings", action: "read" },
-    { resource: "findings", action: "update" },
-    { resource: "findings", action: "accept_risk" },
-    { resource: "assets", action: "read" },
+    "audit.finding.read",
+    "audit.finding.update",
+    "audit.finding.accept_risk",
+    "audit.asset.read",
   ],
   org_admin: [
-    { resource: "findings", action: "read" },
-    { resource: "findings", action: "update" },
-    { resource: "findings", action: "accept_risk" },
-    { resource: "settings", action: "update" },
-    { resource: "users", action: "read" },
+    "audit.finding.read",
+    "audit.finding.update",
+    "audit.finding.accept_risk",
+    "audit.asset.import_amt",
+    "audit.remediation.manage_sla",
+    "platform.user.read",
   ],
-  scanner: [{ resource: "scans", action: "execute" }],
+  scanner: ["audit.scan.run"],
 };
 
 let currentUser = null;
@@ -55,7 +56,8 @@ const asRole = (name) => {
   currentUser = personaFrom({
     id: "usr_me",
     organization_id: "org_default",
-    role: { name, permissions: ROLE_PERMS[name] || [] },
+    role: { name },
+    permissionKeys: ROLE_PERMS[name] || [],
   });
 };
 
@@ -293,7 +295,9 @@ describe("the SLA policy section", () => {
     mount();
     await screen.findByLabelText("Critical");
     expect(screen.getByLabelText("Critical")).toBeDisabled();
-    expect(screen.getByText("settings:update")).toBeInTheDocument();
+    expect(
+      screen.getByText("Manage remediation SLA policy"),
+    ).toBeInTheDocument();
   });
 
   it("falls back to an id field when the caller cannot list people", async () => {

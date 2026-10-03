@@ -17,7 +17,6 @@ import asyncio
 import json
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional
 
 from ccure_platform.api import (
     CurrentUser,
@@ -57,7 +56,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, field_validator
 from scan_helpers import limiter
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.routers.web_scans")
 
@@ -1353,12 +1352,7 @@ def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
 
     db = SessionLocal()
     try:
-        user = (
-            db.query(User)
-            .options(joinedload(User.role))
-            .filter(User.id == str(payload["sub"]))
-            .first()
-        )
+        user = db.query(User).filter(User.id == str(payload["sub"])).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):

@@ -1,19 +1,4 @@
-"""
-ccure_audit/permissions.py — CCure Audit's permission catalogue (RBAC-2).
-
-Audit declares what Audit's own capabilities need, as **data**, with the one
-platform type (``PermissionDecl`` from ``ccure_platform.api``). It names no RBAC
-table, engine or role check; the platform's composition root loads this module by
-the name ``ccure_audit/manifest.toml`` declares and hands it to RBAC.
-
-Capability-level, not endpoint-level: the 17 dashboard routes are one permission,
-and legacy atoms that every role held together are merged. Every key records its
-reason in ``docs/architecture/RBAC_PERMISSION_CATALOG.md`` and its legacy source
-in ``Backend/data/rbac/golden_legacy_mapping.json``.
-
-**RBAC-2: prepared, not live.** Legacy authorization is still the authority.
-``default_grants`` is derived from what each legacy role holds today.
-"""
+"""Native permission declarations and frozen code-managed system grants."""
 
 from ccure_platform.api import PermissionDecl
 

@@ -49,14 +49,13 @@ from .findings import (
     VulnerabilityDefinition,
 )
 from .notifications import Notification
-from .rbac import Organization, Permission, Role, RolePermission
+from .rbac import Organization
 
-# The new RBAC capability's tables (RBAC-1, dark): defined in the platform's
+# The new RBAC capability's tables (native authorization): defined in the platform's
 # models and registered here so every process that builds metadata sees them.
 from ccure_platform.models.platform_audit import PlatformAuditEvent  # noqa: E402
 from ccure_platform.models.rbac_tables import (  # noqa: E402
     RbacDefaultRole,
-    RbacLegacyMap,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
@@ -80,17 +79,13 @@ from .web_scans import WebAsset, WebFinding, WebScan
 __all__ = [
     # RBAC
     "Organization",
-    "Role",
-    "Permission",
-    "RolePermission",
-    # RBAC capability tables (RBAC-1, dark)
+    # RBAC capability tables (native authorization)
     "RbacPermission",
     "RbacRole",
     "RbacRoleRevision",
     "RbacRolePermission",
     "RbacUserRole",
     "RbacDefaultRole",
-    "RbacLegacyMap",
     "PlatformAuditEvent",
     # Users & Auth
     "User",

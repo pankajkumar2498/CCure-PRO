@@ -30,10 +30,7 @@ tables:
   disposable_domains: {owner: platform, capability: identity}
   # ── platform: tenancy and RBAC ───────────────────────────────────────────
   organizations: {owner: platform, capability: tenancy}
-  roles: {owner: platform, capability: rbac}
-  permissions: {owner: platform, capability: rbac}
-  role_permissions: {owner: platform, capability: rbac}
-  # The new RBAC capability (RBAC-1, dark). Platform-owned; modules never read
+  # Native RBAC. Platform-owned; modules never read
   # them — they ask ccure_platform.api (layer rule rbac-tables-are-private).
   rbac_permissions: {owner: platform, capability: rbac}
   rbac_roles: {owner: platform, capability: rbac}
@@ -41,7 +38,6 @@ tables:
   rbac_role_permissions: {owner: platform, capability: rbac}
   rbac_user_roles: {owner: platform, capability: rbac}
   rbac_default_roles: {owner: platform, capability: rbac}
-  rbac_legacy_map: {owner: platform, capability: rbac}
   # ── platform: cross-cutting services ─────────────────────────────────────
   audit_logs: {owner: platform, capability: audit_log}
   # Events no organisation owns (RBAC-2): audit_logs is tenant-bound and cannot hold them

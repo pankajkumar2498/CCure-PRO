@@ -101,7 +101,7 @@ describe("permission", () => {
     await mount({ canManage: false });
     expect(screen.queryByRole("button", { name: "New schedule" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
-    expect(screen.getByText("compliance:manage_schedules")).toBeInTheDocument();
+    expect(screen.getByText("Manage compliance schedules")).toBeInTheDocument();
   });
 
   it("offers them with it", async () => {

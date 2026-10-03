@@ -15,9 +15,11 @@ simply stops invoking them, which is what makes the change reversible and
 low-risk.
 """
 
+from native_rbac import system_role, create_user
+
 import pytest
 from auth.jwt_handler import create_access_token
-from db.models import AuditLog, Organization, Role, User
+from db.models import AuditLog, Organization, User
 
 pytestmark = pytest.mark.usefixtures("db_session")
 
@@ -37,7 +39,6 @@ def _headers(user: User) -> dict:
         + create_access_token(
             user.id,
             user.username,
-            role=getattr(user.role, "name", None),
             org_id=user.org_id,
         )
     }
@@ -55,14 +56,15 @@ def other_org(db_session, test_org):
 
 @pytest.fixture
 def superadmin(db_session, test_org):
-    role = db_session.query(Role).filter_by(name="superadmin").first()
+    role = system_role(db_session, "platform.superadmin")
     assert role is not None, "superadmin role must be seeded"
-    user = User(
+    user = create_user(
+        db_session,
         username="archival_superadmin",
         email="archival.superadmin@test.com",
         password_hash="hash",
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
     )
@@ -74,13 +76,14 @@ def superadmin(db_session, test_org):
 
 @pytest.fixture
 def member(db_session, other_org):
-    role = db_session.query(Role).filter_by(name="org_admin").first()
-    user = User(
+    role = system_role(db_session, "platform.org_admin")
+    user = create_user(
+        db_session,
         username="tenant_member",
         email="tenant.member@test.com",
         password_hash="hash",
         org_id=other_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
     )

@@ -81,12 +81,12 @@ vi.mock("@shell/layout/ProductFrame", () => ({
    `authorization` payload (RBAC-6). The role object is a display label here — what a
    persona may do is only what its payload lists. */
 const ATOMS = {
-  "users:read": ["platform.user.read"],
-  "users:create": ["platform.user.create"],
-  "users:update": ["platform.user.update"],
-  "users:delete": ["platform.user.delete"],
-  "roles:read": ["platform.role.read"],
-  "organizations:read": ["platform.organization.read"],
+  "platform.user.read": ["platform.user.read"],
+  "platform.user.create": ["platform.user.create"],
+  "platform.user.approve": ["platform.user.update"],
+  "platform.user.delete": ["platform.user.delete"],
+  "platform.permission.read": ["platform.role.read"],
+  "platform.organization.read": ["platform.organization.read"],
 };
 const authz = (atoms, reach = false) => ({
   contract: 1,
@@ -114,10 +114,14 @@ const ORG_ADMIN = {
   org_id: 7,
   role: { name: "org_admin", permissions: [] },
   authorization: authz([
-    "users:read",
-    "users:create",
-    "users:update",
-    "users:delete",
+    "platform.user.read",
+    "platform.user.create",
+    "platform.user.approve",
+    "platform.user.assign_role",
+    "platform.user.reset_credentials",
+    "platform.user.update",
+    "platform.user.delete",
+    "platform.user.purge",
   ]),
 };
 const VIEWER = {
@@ -125,7 +129,7 @@ const VIEWER = {
   username: "viewer",
   org_id: 7,
   role: { name: "viewer", permissions: [] },
-  authorization: authz(["users:read"]),
+  authorization: authz(["platform.user.read"]),
 };
 
 let currentUser = SUPERADMIN;

@@ -68,7 +68,7 @@ const RESPONSE_LIMIT = 2000;
 export default function FindingsExplorer() {
   const { id } = useParams();
   const { user } = useAuth();
-  // The API requires findings:update to triage, and findings:accept_risk
+  // The API requires Update findings to triage, and findings:accept_risk
   // on top of it to accept a risk — the same split as network findings.
   const canTriage = can(user, "audit.finding.update");
   const canAcceptRisk = can(user, "audit.finding.accept_risk");
@@ -325,7 +325,7 @@ export default function FindingsExplorer() {
                       )?.label ?? selectedFinding.status}
                     </strong>
                     . Your role can view this finding but not change its status,
-                    which requires <code>findings:update</code>.
+                    which requires <code>Update findings</code>.
                   </p>
                 )}
 

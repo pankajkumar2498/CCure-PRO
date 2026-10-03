@@ -15,8 +15,6 @@ from fastapi import HTTPException
 from ccure_platform import composition
 from ccure_platform.rbac import scope
 from ccure_platform.rbac.catalogue import sync
-from config import AppConfig
-from db.models import Role
 from db.models.scans import Scan
 from rbac_testing import (
     assign,
@@ -36,9 +34,8 @@ def w(rbac_db, monkeypatch):
     w = type("W", (), {})()
     w.db, w.a, w.b = rbac_db, make_org(rbac_db), make_org(rbac_db)
 
-    def person(org, legacy_role, rbac_role=None):
+    def person(org, rbac_role=None):
         u = make_user(rbac_db, org)
-        u.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
         rbac_db.flush()
         rbac_db.refresh(u)
         if rbac_role:
@@ -59,10 +56,10 @@ def w(rbac_db, monkeypatch):
         return s
 
     w.person, w.make_scan = person, make_scan
-    w.admin_a = person(w.a, "org_admin", "platform.org_admin")
-    w.analyst_a = person(w.a, "analyst", "platform.analyst")
-    w.superadmin = person(w.a, "superadmin", "platform.superadmin")
-    w.admin_b = person(w.b, "org_admin", "platform.org_admin")
+    w.admin_a = person(w.a, "platform.org_admin")
+    w.analyst_a = person(w.a, "platform.analyst")
+    w.superadmin = person(w.a, "platform.superadmin")
+    w.admin_b = person(w.b, "platform.org_admin")
     w.scan_a = make_scan(w.a, w.analyst_a)
     w.scan_b = make_scan(w.b, w.admin_b)
     yield w
@@ -96,7 +93,7 @@ def test_a_superadmin_reads_across_organisations_only_by_naming_one(w):
 
 
 def test_a_user_without_read_all_sees_only_their_own_scans(w):
-    scanner = w.person(w.a, "scanner", "platform.scanner")
+    scanner = w.person(w.a, "platform.scanner")
     mine = w.make_scan(w.a, scanner)
     assert get(w, scanner, mine).id == mine.id
     with pytest.raises(HTTPException):
@@ -129,7 +126,7 @@ def test_export_lookup_resolves_the_scan_organisation_server_side(w):
 
 
 def test_export_lookup_applies_read_all_per_scans_own_organisation(w):
-    scanner = w.person(w.a, "scanner", "platform.scanner")
+    scanner = w.person(w.a, "platform.scanner")
     with scope.use_audit_session(w.db):
         with pytest.raises(HTTPException):
             reports._scan_for_user(w.db, scanner, w.scan_a.id)

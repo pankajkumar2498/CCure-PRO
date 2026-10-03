@@ -6,6 +6,7 @@ escalation, the governed administration service) against a rolled-back database.
 
 from __future__ import annotations
 
+
 from datetime import datetime, timezone
 
 import pytest
@@ -16,7 +17,6 @@ from ccure_platform.rbac import provisioning
 from ccure_platform.rbac.catalogue import sync
 from ccure_platform.rbac.dependencies import has_permission
 from ccure_platform.rbac.governance import GovernanceError
-from db.models import Role
 from rbac_testing import (
     assign,
     custom_org_role,
@@ -55,10 +55,10 @@ def test_a_user_with_no_role_holds_nothing(w):
     assert not has_permission(w.db, nobody, SWITCH)
 
 
-def test_the_legacy_role_column_is_not_an_authority(w):
+def test_the_account_has_no_legacy_role_column_or_relationship(w):
     user = person(w, w.a)
-    user.role_id = w.db.query(Role).filter(Role.name == "superadmin").one().id
-    w.db.flush()
+    assert "role_id" not in user.__table__.columns
+    assert not hasattr(type(user), "role")
     assert not has_permission(w.db, user, SCAN_READ)
     assert not has_permission(w.db, user, SWITCH)
 

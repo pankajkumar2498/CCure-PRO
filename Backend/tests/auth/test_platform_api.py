@@ -8,6 +8,8 @@ answer for a missing id, and no ORM object crossing the boundary.
 
 from __future__ import annotations
 
+from native_rbac import system_role
+
 import dataclasses
 from datetime import datetime, timezone
 
@@ -15,18 +17,20 @@ import pytest
 
 from ccure_platform import api
 from db.base import gen_user_id
-from db.models import Role, User
+from native_rbac import create_user
+from db.models import User
 
 
 def _add_user(db, org, role, name, **extra):
-    row = User(
+    row = create_user(
+        db,
         id=gen_user_id(org.slug, name),
         username=name,
         email=f"{name}@test.com",
         full_name=name.title(),
         password_hash="x",
         org_id=org.id,
-        role_id=role.id if role is not None else None,
+        role=role,
         is_active=extra.pop("is_active", True),
         is_verified=True,
         approved_at=datetime.now(timezone.utc),
@@ -144,7 +148,7 @@ def test_users_holding_permission_matches_the_fan_out_query(
 
 def test_has_permission_is_the_engines_rule(db_session, test_org, test_role_viewer):
     viewer = _add_user(db_session, test_org, test_role_viewer, "viewer2")
-    superadmin_role = db_session.query(Role).filter(Role.name == "superadmin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
     boss = _add_user(db_session, test_org, superadmin_role, "boss")
     nobody = _add_user(db_session, test_org, None, "norole")  # no role at all
 

@@ -12,11 +12,9 @@ import pytest
 
 from ccure_platform import composition
 from ccure_platform.identity import router as identity
-from ccure_platform.rbac import legacy_map, scope
+from ccure_platform.rbac import scope
 from ccure_platform.rbac.authorization_view import CONTRACT_VERSION, build_authorization
 from ccure_platform.rbac.catalogue import sync
-from config import AppConfig
-from db.models import Role
 from rbac_testing import (
     assign,
     custom_org_role,
@@ -34,9 +32,8 @@ def w(rbac_db, monkeypatch):
     w = type("W", (), {})()
     w.db, w.a, w.b = rbac_db, make_org(rbac_db), make_org(rbac_db)
 
-    def person(org, legacy_role, rbac_role=None):
+    def person(org, rbac_role=None):
         u = make_user(rbac_db, org)
-        u.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
         rbac_db.flush()
         rbac_db.refresh(u)
         if rbac_role:
@@ -52,7 +49,7 @@ def keys(a):
 
 
 def test_shape_is_stable_and_exposes_no_structure(w):
-    u = w.person(w.a, "analyst", "platform.analyst")
+    u = w.person(w.a, "platform.analyst")
     a = build_authorization(w.db, u)
     assert set(a) == {
         "contract",
@@ -71,12 +68,12 @@ def test_shape_is_stable_and_exposes_no_structure(w):
 
 
 def test_platform_source_is_the_engines_answer_split_by_scope(w):
-    sa = w.person(w.a, "superadmin", "platform.superadmin")
+    sa = w.person(w.a, "platform.superadmin")
     a = build_authorization(w.db, sa)
     assert a["can_switch_organisation"] is True
     assert "platform.organization.switch" in a["permissions"]["platform"]
     assert "audit.scan.read" in a["permissions"]["organization"]
-    admin = build_authorization(w.db, w.person(w.a, "org_admin", "platform.org_admin"))
+    admin = build_authorization(w.db, w.person(w.a, "platform.org_admin"))
     assert admin["can_switch_organisation"] is False
     assert not keys(admin) & {
         "platform.organization.switch",
@@ -85,7 +82,7 @@ def test_platform_source_is_the_engines_answer_split_by_scope(w):
 
 
 def test_a_role_rename_changes_nothing_and_a_display_name_grants_nothing(w):
-    u = w.person(w.a, "viewer", "platform.viewer")
+    u = w.person(w.a, "platform.viewer")
     before = keys(build_authorization(w.db, u))
     role(w.db, "platform.superadmin").display_name = "Chief"
     w.db.flush()
@@ -101,7 +98,7 @@ def test_multiple_roles_union_and_revocation_or_retirement_removes(w):
 
     from ccure_platform.rbac.model import RbacUserRole
 
-    u = w.person(w.a, "scanner", "platform.scanner")
+    u = w.person(w.a, "platform.scanner")
     extra = custom_org_role(w.db, w.a, "x", "X", "audit.scan.read_all")
     row = assign(w.db, u, extra)
     assert "audit.scan.read_all" in keys(build_authorization(w.db, u))
@@ -118,18 +115,17 @@ def test_multiple_roles_union_and_revocation_or_retirement_removes(w):
 
 
 def test_active_organisation_comes_from_the_backend_not_the_request(w, monkeypatch):
-    admin = w.person(w.a, "org_admin", "platform.org_admin")
+    admin = w.person(w.a, "platform.org_admin")
     got = identity._authorization_for(w.db, admin, w.b.id)
     assert got["active_org_id"] == w.a.id  # a forged id is not honoured
-    sa = w.person(w.a, "superadmin", "platform.superadmin")
+    sa = w.person(w.a, "platform.superadmin")
     with scope.use_audit_session(w.db):
         assert identity._authorization_for(w.db, sa, w.b.id)["active_org_id"] == w.b.id
         assert identity._authorization_for(w.db, sa, None)["active_org_id"] == w.a.id
 
 
-def test_an_account_with_no_assignment_holds_nothing_whatever_its_legacy_role(w):
+def test_an_account_with_no_assignment_holds_nothing_without_any_native_assignment(w):
     """RBAC-8: ``users.role_id`` is not an input; an unprovisioned account is empty."""
-    for legacy_name in ("superadmin", "org_admin", "analyst", "viewer", "scanner"):
-        a = build_authorization(w.db, w.person(w.a, legacy_name))
-        assert keys(a) == set() and a["can_switch_organisation"] is False
-        assert a["assignments"] == []
+    a = build_authorization(w.db, w.person(w.a))
+    assert keys(a) == set() and a["can_switch_organisation"] is False
+    assert a["assignments"] == []

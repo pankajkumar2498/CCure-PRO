@@ -31,8 +31,8 @@ RBAC_TABLES = (
     "rbac_role_permissions",
     "rbac_user_roles",
     "rbac_default_roles",
-    "rbac_legacy_map",
 )
+FORBIDDEN_TABLES = (*RBAC_TABLES, "rbac_legacy_map")
 RBAC_MODELS = (
     "RbacPermission",
     "RbacRole",
@@ -59,7 +59,7 @@ def module_code():
 
 
 def test_no_module_code_names_an_rbac_table():
-    pattern = re.compile(r"\b(" + "|".join(RBAC_TABLES) + r")\b")
+    pattern = re.compile(r"\b(" + "|".join(FORBIDDEN_TABLES) + r")\b")
     offenders = []
     for path in module_code():
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):

@@ -18,7 +18,8 @@ import ccure_platform.api as api
 from ccure_platform import composition
 from ccure_platform.rbac import contract as c
 from ccure_platform.rbac import governance as g
-from ccure_platform.rbac import legacy_map as lm
+import json
+from pathlib import Path
 from ccure_platform.rbac import resolver
 from ccure_platform.rbac.catalogue import (
     ensure_default_roles,
@@ -34,7 +35,6 @@ from ccure_platform.rbac.model import (
 )
 from rbac_testing import (
     assign,
-    force_state,
     make_org,
     make_user,
     platform_custom_role,
@@ -42,7 +42,9 @@ from rbac_testing import (
     role,
 )
 
-GOLDEN = lm.load_golden()
+FROZEN = json.loads(
+    (Path(__file__).parents[1] / "fixtures/rbac_catalogue.json").read_text()
+)
 ORG_ROLES = (
     "platform.org_admin",
     "platform.analyst",
@@ -89,7 +91,7 @@ def keys_of(world, user, org=None):
 
 def test_the_five_system_roles_have_stable_keys_labels_and_scopes(world):
     rows = {r.key: r for r in world.db.query(RbacRole).filter_by(kind="system")}
-    assert set(rows) == set(c.LEGACY_ROLE_NAMES.values())
+    assert set(rows) == set((s.key for s in c.SYSTEM_ROLE_SEEDS))
     assert rows["platform.superadmin"].assignable_scope == "platform"
     for key in ORG_ROLES:
         assert rows[key].assignable_scope == "organization" and rows[key].org_id is None
@@ -110,9 +112,9 @@ def test_superadmin_holds_every_active_permission_as_rows_and_there_is_no_wildca
     assert role(world.db, "platform.superadmin").auto_grant_new_permissions is True
 
 
-def test_each_organisation_role_holds_exactly_the_golden_set(world):
+def test_each_organisation_role_holds_exactly_the_frozen_set(world):
     for key in ORG_ROLES:
-        assert held(world.db, key) == set(GOLDEN["role_grants"][key]), key
+        assert held(world.db, key) == set(FROZEN["role_grants"][key]), key
 
 
 def test_the_role_hierarchy_is_the_one_the_legacy_roles_had(world):
@@ -127,7 +129,7 @@ def test_the_role_hierarchy_is_the_one_the_legacy_roles_had(world):
     )
     assert sc < an < oa and vw < an
     assert not (sc | vw | an | oa) & {
-        p["key"] for p in GOLDEN["permissions"] if p["scope_kind"] == "platform"
+        p["key"] for p in FROZEN["permissions"] if p["scope_kind"] == "platform"
     }
 
 
@@ -189,7 +191,7 @@ def test_scanner_remains_the_existing_human_role_and_is_not_a_service_identity(w
         "organization",
         "code",
     )
-    assert keys_of(world, world.sc_a) == set(GOLDEN["role_grants"]["platform.scanner"])
+    assert keys_of(world, world.sc_a) == set(FROZEN["role_grants"]["platform.scanner"])
     # a service identity resolves from token scopes, never from a role
     svc = c.Principal(kind="service", principal_id="svc:x", home_org_id=world.a.id)
     cat = resolver.load_catalogue(world.db)
@@ -247,7 +249,7 @@ def test_superadmin_holds_platform_scope_permissions_and_reaches_other_organisat
     assert not out.allowed and out.reason == c.ORG_SWITCH_REQUIRED
 
 
-def test_every_organisation_role_decision_matches_its_golden_set_for_every_permission(
+def test_every_organisation_role_decision_matches_its_frozen_set_for_every_permission(
     world,
 ):
     perms = [p.key for p in world.db.query(RbacPermission)]
@@ -257,7 +259,7 @@ def test_every_organisation_role_decision_matches_its_golden_set_for_every_permi
         ("platform.viewer", world.vw_a),
         ("platform.scanner", world.sc_a),
     ):
-        expected = set(GOLDEN["role_grants"][key])
+        expected = set(FROZEN["role_grants"][key])
         for permission in perms:
             assert api.can(world.db, user, permission) == (permission in expected), (
                 key,
@@ -356,7 +358,7 @@ def test_renaming_the_roles_to_arbitrary_labels_changes_no_grant_and_no_effectiv
         world.db.flush()
         assert snapshot(world) == before, pool
     # keys and ids never moved
-    assert {r.key for r in roles} == set(c.LEGACY_ROLE_NAMES.values())
+    assert {r.key for r in roles} == set((s.key for s in c.SYSTEM_ROLE_SEEDS))
 
 
 def test_the_roles_named_ciso_and_manager_are_the_same_roles_with_the_same_authority(

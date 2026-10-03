@@ -7,6 +7,8 @@ the defects these tests pin only appear when a PostgreSQL MACADDR column or a
 real unique constraint is involved.
 """
 
+from native_rbac import system_role, create_user
+
 import uuid
 from unittest.mock import patch
 
@@ -619,7 +621,6 @@ def test_sync_host_discovery_mac_first_and_ip_hijack(db_session, test_org):
 
 def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, test_org):
     from core.tasks import _sync_credentialed_asset_identity
-    from db.models import Role, User
 
     asset_a = Asset(
         id=f"ast_{test_org.slug}_192_168_1_5",
@@ -638,14 +639,15 @@ def test_sync_credentialed_asset_identity_mac_first_and_ip_hijack(db_session, te
         discovery_method="credentialed",
     )
     uid = uuid.uuid4().hex[:8]
-    role = db_session.query(Role).filter_by(name="org_admin").first()
-    user = User(
+    role = system_role(db_session, "platform.org_admin")
+    user = create_user(
+        db_session,
         id=f"scanner-user-{uid}",
         org_id=test_org.id,
         email=f"scanner-{uid}@ccurepro.com",
         username=f"scanner-{uid}",
         password_hash="...",
-        role_id=role.id,
+        role=role,
     )
     db_session.add_all([asset_a, asset_b, user])
     db_session.commit()

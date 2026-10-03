@@ -4,6 +4,8 @@ tests/test_auth.py
 Integration tests for authentication flows (login, refresh, logout) and RBAC.
 """
 
+from native_rbac import create_user
+
 from auth.jwt_handler import hash_password
 from db.models.users import User
 from fastapi.testclient import TestClient
@@ -242,12 +244,13 @@ def test_rbac_denies_unauthorized_role(
     # refusing the scan endpoint, not about the account gates refusing login.
     from db.base import utcnow
 
-    viewer = User(
+    viewer = create_user(
+        db_session,
         username="viewer",
         email="viewer@test.com",
         password_hash=hash_password("password123"),
         org_id=test_org.id,
-        role_id=test_role_viewer.id,
+        role=test_role_viewer,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

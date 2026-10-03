@@ -235,21 +235,19 @@ async def lifespan(app: FastAPI):
         # We no longer raise RuntimeError to allow the container to start.
         # The app will likely fail on requests, but the container stays alive for debugging/migration.
 
-    # 1. Ensure basic roles and default organization exist (Data Seeding)
+    # 1. Ensure the default organization exists (Data Seeding)
     # This assumes Alembic migrations have already run.
     from db.migrate_production_schema import (
         DEFAULT_ORG_SLUG,
         seed_default_org,
-        seed_rbac,
     )
 
     try:
         with engine.begin() as conn:
-            seed_rbac(conn)
             seed_default_org(conn)
     except Exception as e:
         log.warning(
-            f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}"
+            f"Skipping default organization seeding (schema may not be fully migrated yet): {e}"
         )
 
     # 1.5b. The RBAC catalogue and system roles (idempotent). RBAC is the only

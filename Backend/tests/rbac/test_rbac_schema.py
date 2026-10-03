@@ -21,13 +21,11 @@ from sqlalchemy.exc import DBAPIError
 from ccure_platform.models import rbac_tables
 from ccure_platform.rbac import contract as c
 from ccure_platform.rbac.catalogue import (
-    ensure_default_roles,
     ensure_system_roles,
     sync,
 )
 from ccure_platform.rbac.model import (
     RbacDefaultRole,
-    RbacLegacyMap,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
@@ -42,7 +40,6 @@ from rbac_testing import (
     grant,
     make_org,
     make_user,
-    platform_custom_role,
     rbac_db_fixture,  # noqa: F401  (registers the rbac_db fixture)
     role,
     source,
@@ -56,7 +53,6 @@ TABLES = (
     "rbac_role_permissions",
     "rbac_user_roles",
     "rbac_default_roles",
-    "rbac_legacy_map",
 )
 NOW = lambda: datetime.now(timezone.utc)  # noqa: E731
 
@@ -125,7 +121,7 @@ def test_every_foreign_key_is_on_delete_restrict(rbac_db):
             "WHERE contype = 'f' AND conrelid::regclass::text LIKE 'rbac_%'"
         )
     ).all()
-    assert len(rows) >= 12
+    assert len(rows) == 10  # the two temporary legacy-map foreign keys are gone
     assert {r[2] for r in rows} == {"r"}, rows
 
 
@@ -821,93 +817,6 @@ def test_only_a_known_purpose_can_be_configured(rbac_db):
 # ── the temporary legacy map ─────────────────────────────────────────────────
 
 
-def test_legacy_map_shapes_are_enforced(rbac_db):
-    role(rbac_db, "platform.viewer")
-    sync(rbac_db, [source("example", decl("example.a.read"))])
-    rbac_db.query(RbacLegacyMap).delete()
-    rbac_db.flush()
-    rbac_db.add(
-        RbacLegacyMap(
-            kind="role", legacy_role_name="viewer", role_key="platform.viewer"
-        )
-    )
-    rbac_db.add(
-        RbacLegacyMap(
-            kind="permission",
-            legacy_resource="scans",
-            legacy_action="read",
-            permission_key="example.a.read",
-            behaviour_change="none",
-        )
-    )
-    rbac_db.flush()
-    refused(
-        rbac_db,
-        lambda: rbac_db.add(RbacLegacyMap(kind="role", legacy_role_name="viewer")),
-    )
-    refused(
-        rbac_db,
-        lambda: rbac_db.add(
-            RbacLegacyMap(
-                kind="permission", legacy_resource="scans", legacy_action="read"
-            )
-        ),
-    )
-    refused(
-        rbac_db,
-        lambda: rbac_db.add(
-            RbacLegacyMap(
-                kind="role",
-                legacy_role_name="x",
-                role_key="platform.viewer",
-                permission_key="example.a.read",
-            )
-        ),
-    )
-    refused(
-        rbac_db,
-        lambda: rbac_db.add(
-            RbacLegacyMap(
-                kind="role", legacy_role_name="viewer", role_key="platform.viewer"
-            )
-        ),
-    )
-    refused(
-        rbac_db,
-        lambda: rbac_db.add(
-            RbacLegacyMap(
-                kind="role", legacy_role_name="q", role_key="platform.missing"
-            )
-        ),
-    )
-
-
-def test_one_legacy_atom_may_map_to_several_keys_and_several_atoms_to_one(rbac_db):
-    sync(rbac_db, [source("example", decl("example.a.read"), decl("example.a.write"))])
-    rbac_db.query(RbacLegacyMap).delete()
-    rbac_db.flush()
-    for key in ("example.a.read", "example.a.write"):
-        rbac_db.add(
-            RbacLegacyMap(
-                kind="permission",
-                legacy_resource="x",
-                legacy_action="split",
-                permission_key=key,
-            )
-        )
-    for action in ("create", "execute"):
-        rbac_db.add(
-            RbacLegacyMap(
-                kind="permission",
-                legacy_resource="y",
-                legacy_action=action,
-                permission_key="example.a.read",
-            )
-        )
-    rbac_db.flush()
-    assert rbac_db.query(RbacLegacyMap).count() == 4
-
-
 # ── the migration describes the same schema as the models ────────────────────
 
 
@@ -1000,7 +909,6 @@ def test_the_migration_seeds_match_the_contract():
         (s.key, s.display_name, s.assignable_scope, s.auto_grant_new_permissions)
         for s in c.SYSTEM_ROLE_SEEDS
     ]
-    assert dict(migration.LEGACY_ROLE_NAMES) == dict(c.LEGACY_ROLE_NAMES)
     assert migration.EMPTY_SET_HASH == __import__("hashlib").sha256(b"").hexdigest()
 
 

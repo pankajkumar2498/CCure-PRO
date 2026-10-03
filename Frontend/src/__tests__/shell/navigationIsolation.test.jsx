@@ -1,3 +1,4 @@
+import { everything } from "../fixtures/authorization";
 /**
  * Platform navigation and product navigation are separate levels, decided by
  * the route tree — not by hiding one of two rendered menus.
@@ -36,6 +37,7 @@ vi.mock("@shell/auth/AuthContext", async () => {
     email: "root@example.test",
     org_id: "o-1",
     role: { name: "superadmin", permissions: [] },
+    authorization: everything(),
   });
   return {
     default: null,

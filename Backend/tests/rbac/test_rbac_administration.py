@@ -19,7 +19,7 @@ from ccure_platform.rbac.model import RbacRole, RbacUserRole
 from ccure_platform.administration.rbac_admin import router
 from config import AppConfig
 from db.base import get_db
-from db.models import AuditLog, Role
+from db.models import AuditLog
 from rbac_testing import (
     assign,
     custom_org_role,
@@ -49,9 +49,8 @@ def w(rbac_db):
     app.dependency_overrides[get_db] = lambda: rbac_db
     w.client = TestClient(app)
 
-    def person(org, legacy_role, rbac_role=None):
+    def person(org, rbac_role=None):
         u = make_user(rbac_db, org)
-        u.role_id = rbac_db.query(Role).filter(Role.name == legacy_role).one().id
         rbac_db.flush()
         rbac_db.refresh(u)
         if rbac_role:
@@ -59,9 +58,9 @@ def w(rbac_db):
         return u
 
     w.person = person
-    w.sa = person(w.a, "superadmin", "platform.superadmin")
-    w.admin = person(w.a, "org_admin", "platform.org_admin")
-    w.analyst = person(w.a, "analyst", "platform.analyst")
+    w.sa = person(w.a, "platform.superadmin")
+    w.admin = person(w.a, "platform.org_admin")
+    w.analyst = person(w.a, "platform.analyst")
 
     def call(user, method, path, **kw):
         w.cur["u"] = user
@@ -93,7 +92,7 @@ def role_id(db, key):
 
 
 def test_an_account_without_an_rbac_assignment_administers_nothing(w):
-    legacy_only = w.person(w.a, "superadmin")
+    legacy_only = w.person(w.a)
     r = w.call(legacy_only, "GET", "/platform/rbac/roles")
     assert r.status_code == 403 and "RBAC role assignment" in r.json()["detail"]
 
@@ -187,7 +186,7 @@ def test_the_delegation_ceiling_bounds_what_a_creator_can_grant(w):
     lead = custom_org_role(
         w.db, w.a, "lead", "Lead", "platform.role.create", "audit.scan.read"
     )
-    actor = w.person(w.a, "analyst")
+    actor = w.person(w.a)
     assign(w.db, actor, lead)
     ok = w.call(
         actor,
@@ -270,7 +269,7 @@ def test_nobody_adds_permissions_to_a_role_they_hold(w):
     mine = custom_org_role(
         w.db, w.a, "mine2", "Mine2", "platform.role.update", "audit.scan.read"
     )
-    actor = w.person(w.a, "analyst")
+    actor = w.person(w.a)
     assign(w.db, actor, mine)
     r = w.call(
         actor,
@@ -350,7 +349,7 @@ def test_a_role_named_superadmin_gains_nothing(w):
         json={"display_name": "Superadmin"},
     )
     assert r.status_code == 200
-    v = w.person(w.a, "viewer", "platform.viewer")
+    v = w.person(w.a, "platform.viewer")
     assert "platform.organization.switch" not in keys(build_authorization(w.db, v))
 
 
@@ -400,7 +399,7 @@ def test_a_system_role_identity_cannot_be_changed_through_the_api(w):
 def test_retirement_needs_the_role_to_be_empty_and_replacement_migrates_users(w):
     old = custom_org_role(w.db, w.a, "old", "Old", "audit.scan.read")
     new = custom_org_role(w.db, w.a, "new", "New", "audit.scan.read")
-    u1, u2 = w.person(w.a, "viewer"), w.person(w.a, "viewer")
+    u1, u2 = w.person(w.a), w.person(w.a)
     assign(w.db, u1, old)
     assign(w.db, u2, old)
     blocked = w.call(
@@ -501,7 +500,7 @@ def assign_call(w, actor, target, key):
 
 
 def test_an_org_admin_assigns_within_its_organisation(w):
-    target = w.person(w.a, "viewer")
+    target = w.person(w.a)
     r = assign_call(w, w.admin, target, "platform.analyst")
     assert r.status_code == 201
     a = r.json()["assignments"][0]
@@ -514,7 +513,7 @@ def test_an_org_admin_assigns_within_its_organisation(w):
 
 
 def test_an_org_admin_cannot_assign_the_superadmin_role(w):
-    target = w.person(w.a, "viewer")
+    target = w.person(w.a)
     r = assign_call(w, w.admin, target, "platform.superadmin")
     assert r.status_code == 403
     assert {"missing_authority", "escalation_ceiling"} & {
@@ -530,14 +529,14 @@ def test_nobody_assigns_themselves_a_role(w):
 
 
 def test_organisation_a_cannot_assign_in_organisation_b(w):
-    outsider = w.person(w.b, "viewer")
+    outsider = w.person(w.b)
     r = assign_call(w, w.admin, outsider, "platform.viewer")
     assert r.status_code == 403
     assert events(w.db, "rbac.assignment.denied") or events(
         w.db, "rbac.escalation.refused"
     )
     foreign = custom_org_role(w.db, w.b, "fr", "FR", "audit.scan.read")
-    mine = w.person(w.a, "viewer")
+    mine = w.person(w.a)
     r2 = w.call(
         w.sa,
         "POST",
@@ -549,7 +548,7 @@ def test_organisation_a_cannot_assign_in_organisation_b(w):
 
 
 def test_a_second_live_assignment_of_the_same_role_is_refused(w):
-    target = w.person(w.a, "viewer")
+    target = w.person(w.a)
     assert assign_call(w, w.admin, target, "platform.viewer").status_code == 201
     r = assign_call(w, w.admin, target, "platform.viewer")
     assert r.status_code == 403 and "already_assigned" in {
@@ -558,7 +557,7 @@ def test_a_second_live_assignment_of_the_same_role_is_refused(w):
 
 
 def test_revoking_ends_the_assignment_and_keeps_history(w):
-    target = w.person(w.a, "viewer")
+    target = w.person(w.a)
     aid = assign_call(w, w.admin, target, "platform.viewer").json()["assignment_id"]
     r = w.call(w.admin, "DELETE", f"/platform/rbac/assignments/{aid}")
     assert r.status_code == 200
@@ -609,7 +608,7 @@ def test_assignable_roles_come_from_governance_not_a_label(w):
 
 def test_the_user_role_view_shows_labels_states_and_scope(w):
     custom = custom_org_role(w.db, w.a, "sv", "Shown", "audit.scan.read")
-    t = w.person(w.a, "viewer", "platform.viewer")
+    t = w.person(w.a, "platform.viewer")
     assign(w.db, t, custom)
     rows = w.call(w.admin, "GET", f"/platform/rbac/users/{t.id}/assignments").json()[
         "assignments"
@@ -620,7 +619,7 @@ def test_the_user_role_view_shows_labels_states_and_scope(w):
         w.call(
             w.admin,
             "GET",
-            f"/platform/rbac/users/{w.person(w.b, 'viewer').id}/assignments",
+            f"/platform/rbac/users/{w.person(w.b).id}/assignments",
         ).status_code
         == 404
     )

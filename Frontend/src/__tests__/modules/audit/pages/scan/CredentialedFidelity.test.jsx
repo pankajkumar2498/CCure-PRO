@@ -35,7 +35,7 @@ vi.mock("@shell/api/axiosInstance", () => ({
 
 vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({
-    user: { id: 1, role: { name: "analyst", permissions: [] } },
+    user: { id: 1, role: { name: "analyst" }, permissionKeys: [] },
   }),
 }));
 

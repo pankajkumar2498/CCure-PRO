@@ -26,7 +26,7 @@ import userEvent from "@testing-library/user-event";
 
 import ArchivedScans from "@audit/pages/ArchivedScans";
 import { getScans, restoreScan, deleteScan } from "@audit/api/scans";
-import { atomSetHolds } from "../../../fixtures/authorization";
+import { keySetHolds } from "../../../fixtures/authorization";
 import { personaFrom } from "../../../fixtures/authorization";
 
 const navigate = vi.fn();
@@ -58,9 +58,9 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
-let permissions = new Set(["scans:restore", "scans:recycle"]);
+let permissions = new Set(["audit.scan.lifecycle", "audit.scan.lifecycle"]);
 vi.mock("@shell/auth/permissions", () => ({
-  can: (_user, resource, action) => atomSetHolds(permissions, resource, action),
+  can: (_user, resource, action) => keySetHolds(permissions, resource, action),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -102,7 +102,7 @@ const loaded = async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   currentUser = { username: "operator", id: 1 };
-  permissions = new Set(["scans:restore", "scans:recycle"]);
+  permissions = new Set(["audit.scan.lifecycle", "audit.scan.lifecycle"]);
   getScans.mockImplementation(() => ok());
   restoreScan.mockResolvedValue({});
   deleteScan.mockResolvedValue({});
@@ -260,7 +260,7 @@ describe("ArchivedScans — authorization gating", () => {
     // The backend merged the old scans:archive / scans:restore / scans:recycle
     // atoms into one key; holding any of them is holding it, so both controls
     // appear together and neither can appear alone.
-    for (const atom of ["scans:restore", "scans:recycle"]) {
+    for (const atom of ["audit.scan.lifecycle", "audit.scan.lifecycle"]) {
       permissions = new Set([atom]);
       const { unmount } = renderPage();
       await loaded();

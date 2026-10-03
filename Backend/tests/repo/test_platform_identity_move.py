@@ -35,9 +35,6 @@ IDENTITY_TABLES = {
     "email_verification_tokens": "EmailVerificationToken",
     "audit_logs": "AuditLog",
     "organizations": "Organization",
-    "roles": "Role",
-    "permissions": "Permission",
-    "role_permissions": "RolePermission",
 }
 
 

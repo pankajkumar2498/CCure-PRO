@@ -66,7 +66,9 @@ describe("permission", () => {
     render(<SlaPolicyPanel canEdit={false} />);
     await screen.findByLabelText("Critical");
     expect(screen.getByLabelText("Critical")).toBeDisabled();
-    expect(screen.getByText("settings:update")).toBeInTheDocument();
+    expect(
+      screen.getByText("Manage remediation SLA policy"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /save deadlines/i }),
     ).toBeNull();

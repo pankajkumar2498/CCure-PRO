@@ -70,10 +70,10 @@ BASELINE: dict[str, tuple[int, str]] = {
         "the platform API's plan exports (ScanLimits, scan_scope, …): owner decision",
     ),
     "rbac/contract.py": (
-        4,
+        2,
         "persisted value (RBAC-1): the frozen RBAC-0 key and display name of the "
-        "legacy 'scanner' role (platform.scanner) and the legacy-name map shadow "
-        "evaluation reads. The word is the role's own name, not Audit logic; item 5's "
+        "system 'scanner' role (platform.scanner). The word is the role's own "
+        "name, not Audit logic; item 5's "
         "module-RBAC decision owns the atoms, this is only the role",
     ),
     "permissions.py": (

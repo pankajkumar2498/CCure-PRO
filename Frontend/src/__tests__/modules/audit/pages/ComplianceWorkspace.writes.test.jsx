@@ -67,13 +67,11 @@ const person = (roleName, id = 1) =>
   personaFrom({
     id,
     username: `user-${id}`,
-    role: {
-      name: roleName,
-      permissions:
-        roleName === "analyst"
-          ? ["compliance:read"]
-          : ["compliance:read", "compliance:manage_frameworks"],
-    },
+    role: { name: roleName },
+    permissionKeys:
+      roleName === "analyst"
+        ? ["audit.compliance.read"]
+        : ["audit.compliance.read", "audit.compliance.manage_frameworks"],
   });
 const ANALYST = person("analyst");
 const ORG_ADMIN = person("Org Admin", 2);

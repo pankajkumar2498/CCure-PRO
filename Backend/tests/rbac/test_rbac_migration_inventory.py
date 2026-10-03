@@ -10,7 +10,6 @@ import json
 
 import pytest
 
-from ccure_platform.rbac import legacy_map
 from scripts.rbac import build_migration_inventory as bi
 from testpaths import BACKEND_ROOT
 
@@ -60,7 +59,7 @@ def test_no_legacy_call_remains_anywhere(inv):
 
 
 def test_every_migrated_guard_names_a_declared_permission(inv):
-    keys = {p["key"] for p in legacy_map.load_golden()["permissions"]}
+    keys = bi.declared_keys()
     guards = [s for s in inv["sites"] if s["permission"]]
     assert guards
     assert all(s["status"] == "migrated" and s["permission"] in keys for s in guards)
@@ -87,8 +86,13 @@ def test_the_history_of_the_forty_role_name_sites_is_kept_as_removed(inv):
 
 def test_the_legacy_tables_are_classified_non_authoritative(inv):
     tables = inv["final_state"]["legacy_tables"]
-    assert set(tables) == {"roles", "permissions", "role_permissions"}
-    assert all(v.startswith("retained non-authoritative") for v in tables.values())
+    assert set(tables) == {
+        "roles",
+        "permissions",
+        "role_permissions",
+        "rbac_legacy_map",
+    }
+    assert all(v.startswith("absent from runtime metadata") for v in tables.values())
 
 
 def test_no_module_code_decides_by_role_name():

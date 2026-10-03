@@ -62,10 +62,11 @@ vi.mock("@shell/auth/AuthContext", () => ({
 const ADMIN = personaFrom({
   id: 7,
   username: "operator",
-  role: {
-    name: "Org Admin",
-    permissions: ["compliance:read", "compliance:manage_frameworks"],
-  },
+  role: { name: "Org Admin" },
+  permissionKeys: [
+    "audit.compliance.read",
+    "audit.compliance.manage_frameworks",
+  ],
 });
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */

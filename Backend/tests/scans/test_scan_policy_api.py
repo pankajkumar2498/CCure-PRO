@@ -14,12 +14,14 @@ pol.authz.audit, pol.lifecycle.version, pol.bind.validation,
 pol.bind.schedule.
 """
 
+from native_rbac import system_role, create_user
+
 import uuid
 
 import pytest
 from auth.jwt_handler import hash_password
 from db.base import gen_user_id, utcnow
-from db.models import AuditLog, Organization, Role, ScanPolicy, User
+from db.models import AuditLog, Organization, ScanPolicy
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -77,16 +79,17 @@ def other_org_policy(db_session: Session, other_org: Organization) -> ScanPolicy
 @pytest.fixture
 def viewer_headers(client: TestClient, db_session: Session, test_org: Organization):
     """A viewer: scan_policies:read only, no create/update/delete."""
-    role = db_session.query(Role).filter(Role.name == "viewer").first()
+    role = system_role(db_session, "platform.viewer")
     password = "viewerpassword123"
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "policyviewer"),
         username="policyviewer",
         email=f"viewer-{uuid.uuid4().hex[:6]}@test.com",
         full_name="Policy Viewer",
         password_hash=hash_password(password),
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

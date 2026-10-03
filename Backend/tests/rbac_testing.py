@@ -46,11 +46,9 @@ def rbac_db_fixture():
     connection = engine.connect()
     outer = connection.begin()
     # The suite seeds the catalogue and system roles once per session (committed).
-    # These tests exercise the seeding, sync and reconciliation themselves, so each
+    # These tests exercise the seeding and sync themselves, so each
     # starts from an empty RBAC schema; TRUNCATE is transactional, so the rollback
-    # below restores the seeded rows. The legacy-role provisioning listener in
-    # conftest is switched off for this connection: a test grants what it needs.
-    connection.info["rbac_no_provision"] = True
+    # below restores the seeded rows. Every fixture grants what its test needs explicitly.
     names = [
         r[0]
         for r in connection.execute(
@@ -71,8 +69,6 @@ def rbac_db_fixture():
     finally:
         session.close()
         outer.rollback()
-        # the flag lives on the pooled DBAPI connection: leave it clean for the next test
-        connection.info.pop("rbac_no_provision", None)
         connection.close()
 
 
@@ -107,8 +103,7 @@ def make_user(
     approved: bool = True,
     deleted: bool = False,
 ):
-    """A user in ``org`` holding no role at all: ``users.role_id`` is deprecated and
-    non-authoritative (RBAC-8), and a test grants what it needs with ``assign``."""
+    """An unassigned account. Tests explicitly grant what they need with ``assign``."""
     from db.base import gen_user_id, utcnow
     from db.models import User
 
@@ -230,10 +225,6 @@ def permission_rows(db: Session) -> dict[str, RbacPermission]:
     return {p.key: p for p in db.query(RbacPermission).all()}
 
 
-def system_role_id(db: Session, legacy_name: str) -> str:
-    """The id of the RBAC system role the golden mapping names for a legacy role name —
-    for tests that create accounts through the API (``rbac_role_id``)."""
-    from ccure_platform.rbac import legacy_map
-
-    key = legacy_map.system_role_key_for_legacy(legacy_name)
+def system_role_id(db: Session, key: str) -> str:
+    """Look up a system role by its full native key for API account creation."""
     return str(db.query(RbacRole).filter(RbacRole.key == key).one().id)

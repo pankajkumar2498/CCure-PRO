@@ -1,23 +1,4 @@
-"""
-ccure_platform/permissions.py — the platform's own permission catalogue (RBAC-2).
-
-Declared as **data** through the module registration seam: the composition root
-(``ccure_platform/composition.py``) loads this module by name and hands the
-declarations to RBAC, which validates and applies them. The platform owns every
-``platform.*`` key; nothing here belongs to a product.
-
-What is here is what the platform's administration routes actually gate today
-(users, roles, organisations, the audit log, email-domain rules) plus RBAC's own
-governance. Every key records its reason in
-``docs/architecture/RBAC_PERMISSION_CATALOG.md`` and its legacy source in
-``Backend/data/rbac/golden_legacy_mapping.json``.
-
-**RBAC-2: prepared, not live.** Legacy authorization is still the authority.
-``default_grants`` names the code-managed system roles that hold a key by
-default — derived from what each legacy role holds today, so the catalogue
-reproduces it. The superadmin role is not listed: it holds every active
-permission through materialised grants, never a wildcard.
-"""
+"""Native permission declarations and frozen code-managed system grants."""
 
 from ccure_platform.rbac.contract import PermissionDecl
 

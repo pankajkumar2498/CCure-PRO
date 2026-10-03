@@ -31,7 +31,7 @@ import userEvent from "@testing-library/user-event";
 import AssetRegistry from "@audit/pages/AssetRegistry";
 import axiosInstance from "@shell/api/axiosInstance";
 import { AUDIT_SRC } from "../../../testPaths";
-import { atomSetHolds } from "../../../fixtures/authorization";
+import { keySetHolds } from "../../../fixtures/authorization";
 import { personaFrom } from "../../../fixtures/authorization";
 
 vi.mock("@shell/api/axiosInstance", () => ({
@@ -70,10 +70,10 @@ vi.mock("@shell/auth/AuthContext", () => ({
   }),
 }));
 
-let permissions = new Set(["assets:update"]);
+let permissions = new Set(["audit.asset.update"]);
 vi.mock("@shell/auth/permissions", () => ({
-  canPermission: (_u, p) => atomSetHolds(permissions, p),
-  can: (_u, r, a) => atomSetHolds(permissions, r, a),
+  canPermission: (_u, p) => keySetHolds(permissions, p),
+  can: (_u, r, a) => keySetHolds(permissions, r, a),
   denyMessage: "You do not have permission to perform this action.",
 }));
 
@@ -198,7 +198,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
   params = new URLSearchParams("");
-  permissions = new Set(["assets:update"]);
+  permissions = new Set(["audit.asset.update"]);
   axiosInstance.get.mockImplementation(routeGet);
   axiosInstance.patch.mockResolvedValue({ data: {} });
 });

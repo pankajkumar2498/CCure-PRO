@@ -38,17 +38,16 @@ KINDS = ("access", "refresh", "ticket", "mfa_challenge")
 
 
 def _mint(user, kind, db):
-    role = getattr(user.role, "name", None)
     if kind == "access":
         return jwt_handler.create_access_token(
-            user.id, user.username, role=role, org_id=user.org_id
+            user.id, user.username, org_id=user.org_id
         )
     if kind == "refresh":
         return jwt_handler.create_refresh_token(user.id, db)
     if kind == "ticket":
         return jwt_handler.create_download_ticket(user.id, user.username)
     return jwt_handler.create_mfa_challenge_token(
-        user.id, user.username, role=role, org_id=user.org_id
+        user.id, user.username, org_id=user.org_id
     )
 
 

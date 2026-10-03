@@ -1,3 +1,4 @@
+import { everything } from "../../../fixtures/authorization";
 /**
  * DeletedUsers — Checkpoint 3C batch 5 migration coverage.
  *
@@ -59,21 +60,21 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
-let permissions = new Set(["users:delete"]);
+let permissions = new Set(["platform.user.delete", "platform.user.purge"]);
 // RBAC-7: the pages ask for permission keys; these tests list capabilities as the
 // legacy atoms they were written with, so a key is read as the atom it replaced.
 const KEY_ATOM = vi.hoisted(() => ({
-  "platform.user.read": "users:read",
-  "platform.user.create": "users:create",
-  "platform.user.update": "users:update",
-  "platform.user.delete": "users:delete",
-  "platform.role.read": "roles:read",
-  "platform.organization.read": "organizations:read",
-  "platform.organization.create": "organizations:create",
-  "platform.organization.update": "organizations:update",
-  "platform.organization.archive": "organizations:delete",
-  "platform.audit_log.read": "audit:read",
-  "platform.audit_log.export": "audit:export",
+  "platform.user.read": "platform.user.read",
+  "platform.user.create": "platform.user.create",
+  "platform.user.update": "platform.user.approve",
+  "platform.user.delete": "platform.user.delete",
+  "platform.role.read": "platform.permission.read",
+  "platform.organization.read": "platform.organization.read",
+  "platform.organization.create": "platform.organization.create",
+  "platform.organization.update": "platform.organization.update",
+  "platform.organization.archive": "platform.organization.archive",
+  "platform.audit_log.read": "platform.audit_log.read",
+  "platform.audit_log.export": "platform.audit_log.export",
 }));
 vi.mock("@shell/auth/permissions", () => ({
   canSwitchOrganisation: (user) => user?.reach === true,
@@ -139,7 +140,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigate.mockReset();
   currentUser = { username: "admin", id: 1, role: { name: "org_admin" } };
-  permissions = new Set(["users:delete"]);
+  permissions = new Set(["platform.user.delete", "platform.user.purge"]);
   listUsers.mockResolvedValue({ users: USERS });
   listOrganizations.mockResolvedValue({ organizations: ORGS });
   restoreUser.mockResolvedValue({});
@@ -170,6 +171,7 @@ describe("DeletedUsers — functional", () => {
       id: 1,
       role: { name: "superadmin" },
       reach: true,
+      authorization: everything(),
     };
     await renderPage();
     await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
@@ -202,6 +204,7 @@ describe("DeletedUsers — functional", () => {
       id: 1,
       role: { name: "superadmin" },
       reach: true,
+      authorization: everything(),
     };
     await renderPage();
     // Two of the three fixtures share org 7, so this must be scoped to a row.

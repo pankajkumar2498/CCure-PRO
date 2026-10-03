@@ -60,19 +60,18 @@ vi.mock("@audit/web-scanning/api/webScansApi", () => ({
    holding all of them unless it swaps `authState.user` — the deny-path tests
    at the end of this file do, and restore it afterwards. */
 const FULL_PERMISSION_USER = {
-  role: {
-    name: "analyst",
-    permissions: [
-      "scans:read",
-      "scans:execute",
-      "findings:read",
-      "findings:update",
-      "findings:accept_risk",
-    ],
-  },
+  role: { name: "analyst" },
+  permissionKeys: [
+    "audit.scan.read",
+    "audit.scan.run",
+    "audit.finding.read",
+    "audit.finding.update",
+    "audit.finding.accept_risk",
+  ],
 };
 const VIEWER_USER = {
-  role: { name: "viewer", permissions: ["scans:read", "findings:read"] },
+  role: { name: "viewer" },
+  permissionKeys: ["audit.scan.read", "audit.finding.read"],
 };
 const authState = vi.hoisted(() => ({ user: null }));
 vi.mock("@shell/auth/AuthContext", () => ({

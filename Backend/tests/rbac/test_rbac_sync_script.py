@@ -1,21 +1,15 @@
-"""
-RBAC-2 — the operator script that populates the catalogue.
+"""The native catalogue operator: transactional dry-run, apply and validation.
 
-``scripts/rbac/sync_catalogue.py`` is how the catalogue and the legacy mapping reach
-a database. It is a dry run unless told otherwise, validates before it writes, and is
-**not** run at start-up. These tests drive it against the suite's rolled-back session,
-never against a database anyone is using.
+Tests use the suite's rolled-back session and never a live database.
 """
 
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
 
 import db.base as db_base
 from ccure_platform import composition
-from ccure_platform.rbac import legacy_map as lm
-from ccure_platform.rbac.model import RbacLegacyMap, RbacPermission
+from ccure_platform.rbac.model import RbacPermission
 from rbac_testing import rbac_db_fixture  # noqa: F401
 from scripts.rbac import sync_catalogue
 
@@ -45,14 +39,6 @@ class Session:
 
 @pytest.fixture
 def run(rbac_db, monkeypatch, capsys):
-    # the suite's database has the seeded 65 atoms; the live one has a 66th
-    rbac_db.execute(
-        text(
-            "INSERT INTO permissions (resource, action, description) "
-            "SELECT 'audit_logs', 'read', 'live-only' WHERE NOT EXISTS "
-            "(SELECT 1 FROM permissions WHERE resource = 'audit_logs' AND action = 'read')"
-        )
-    )
     session = Session(rbac_db)
     monkeypatch.setattr(db_base, "SessionLocal", lambda: session)
 
@@ -73,7 +59,6 @@ def test_a_dry_run_reports_and_commits_nothing(run):
         and session.rolled_back
     )
     assert "permissions:               +67 registered" in out.out
-    assert "legacy atoms accounted for: 66 of 66" in out.out
 
 
 def test_apply_commits(run):
@@ -81,10 +66,6 @@ def test_apply_commits(run):
     code, out, session = go("--apply")
     assert code == 0 and session.committed and "applied." in out.out
     assert db.query(RbacPermission).count() == 67
-    assert (
-        db.query(RbacLegacyMap).filter_by(kind="permission", status="retired").count()
-        == 10
-    )
 
 
 def test_applying_twice_changes_nothing_the_second_time(run):
@@ -96,19 +77,6 @@ def test_applying_twice_changes_nothing_the_second_time(run):
         "permissions:               +0 registered, 0 updated, 0 deprecated" in out.out
     )
     assert "role grants:               +0 added, -0 removed" in out.out
-
-
-def test_it_stops_before_writing_when_a_legacy_atom_is_unaccounted_for(run):
-    db, go = run
-    db.execute(
-        text(
-            "INSERT INTO permissions (resource, action, description) VALUES ('widgets', 'frob', 'new')"
-        )
-    )
-    code, out, session = go("--apply")
-    assert code == 1 and not session.committed
-    assert "legacy atom 'widgets:frob' is not accounted for" in out.err
-    assert db.query(RbacPermission).count() == 0  # nothing was written
 
 
 def test_it_stops_on_an_invalid_declaration_with_every_problem_listed(run, monkeypatch):
@@ -137,13 +105,16 @@ def test_the_script_is_not_wired_into_start_up():
         assert (
             "sync_catalogue" not in text_ and "sync_permission_catalogue" not in text_
         ), name
-    import ast
 
+    allowed = {
+        "ccure_platform/composition.py",
+        "scripts/rbac/sync_catalogue.py",
+        "scripts/audit/bench_audit_queries.py",
+    }
     for path in BACKEND_ROOT.rglob("*.py"):
-        parts = path.relative_to(BACKEND_ROOT).parts
-        if parts[0] in {"tests", ".venv", "venv", "__pycache__", "alembic"}:
+        relative = path.relative_to(BACKEND_ROOT)
+        if relative.parts[0] in {"tests", ".venv", "venv", "__pycache__", "alembic"}:
             continue
-        if path.name in ("composition.py", "sync_catalogue.py"):
+        if relative.as_posix() in allowed:
             continue
-        source_text = path.read_text(encoding="utf-8")
-        assert "sync_permission_catalogue" not in source_text, path
+        assert "sync_permission_catalogue" not in path.read_text(encoding="utf-8"), path

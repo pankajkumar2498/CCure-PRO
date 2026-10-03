@@ -12,9 +12,11 @@ Tests verify that:
   6. Proper error responses with clear messaging
 """
 
+from native_rbac import system_role, create_user, fixture_role
+
+
 import pytest
-from db.base import SessionLocal
-from db.models import Organization, Role, User
+from db.models import Organization
 from fastapi.testclient import TestClient
 
 
@@ -26,13 +28,9 @@ def setup_org_and_users(db_session):
       - Test role
     """
     # Ensure test role exists
-    test_role = db_session.query(Role).filter(Role.name == "analyst").first()
+    test_role = system_role(db_session, "platform.analyst")
     if not test_role:
-        test_role = Role(
-            name="analyst",
-            description="Test analyst role",
-            is_system_role=False,
-        )
+        test_role = fixture_role(db_session, "analyst")
         db_session.add(test_role)
         db_session.flush()
 
@@ -54,22 +52,24 @@ def setup_org_and_users(db_session):
     from auth.jwt_handler import hash_password
     from db.base import utcnow
 
-    user1 = User(
+    user1 = create_user(
+        db_session,
         username="testuser1",
         email="user1@testorg.com",
         password_hash=hash_password("TestPassword123!"),
         org_id=org.id,
-        role_id=test_role.id,
+        role=test_role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
     )
-    user2 = User(
+    user2 = create_user(
+        db_session,
         username="testuser2",
         email="user2@testorg.com",
         password_hash=hash_password("TestPassword456!"),
         org_id=org.id,
-        role_id=test_role.id,
+        role=test_role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

@@ -24,8 +24,8 @@ Three rules the rest of the package keeps, and this file is where they start:
   materialised grants (``auto_grant_new_permissions`` is read by catalogue sync,
   never by the engine).
 
-The role keys that appear below (``SYSTEM_ROLE_SEEDS``, ``LEGACY_ROLE_NAMES``)
-are **seed and migration data**. They are the one place the five original role
+The role keys that appear below (``SYSTEM_ROLE_SEEDS``)
+are **seed data**. They are the one place the five original role
 names may be written, and the repository ratchet
 (``tests/repo/test_rbac_role_identity.py``) allows them nowhere else.
 
@@ -80,7 +80,6 @@ REVISION_KINDS = (
     "synced",
 )
 DEFAULT_ROLE_PURPOSES = ("self_registration",)
-LEGACY_MAP_KINDS = ("role", "permission")
 
 # ── grammars ──────────────────────────────────────────────────────────────────
 
@@ -200,15 +199,6 @@ SYSTEM_ROLE_SEEDS: tuple[SystemRoleSeed, ...] = (
 #: today's behaviour (self-registered accounts are viewers) is preserved.
 DEFAULT_ROLE_SEEDS: Mapping[str, str] = {"self_registration": "platform.viewer"}
 
-#: The legacy ``roles.name`` → the new role key. Temporary: it feeds
-#: ``rbac_legacy_map`` for shadow evaluation and is removed with it in RBAC-8.
-LEGACY_ROLE_NAMES: Mapping[str, str] = {
-    "superadmin": "platform.superadmin",
-    "org_admin": "platform.org_admin",
-    "analyst": "platform.analyst",
-    "viewer": "platform.viewer",
-    "scanner": "platform.scanner",
-}
 
 # ── decision reasons ──────────────────────────────────────────────────────────
 

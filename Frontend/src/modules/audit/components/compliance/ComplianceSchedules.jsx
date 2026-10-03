@@ -19,7 +19,7 @@
  *   vocabularies come from the API's own patterns.
  *
  * RBAC: listing needs `compliance:read`; every write needs
- * `compliance:manage_schedules`, which on the live grants is analyst and
+ * `Manage compliance schedules`, which on the live grants is analyst and
  * above. Without it the controls are absent rather than disabled — a row of
  * dead buttons tells nobody what they are missing.
  */
@@ -327,7 +327,7 @@ export default function ComplianceSchedules({
       ) : (
         <CcureAlert variant="info">
           Creating and changing schedules needs the
-          <strong> compliance:manage_schedules</strong> permission.
+          <strong> Manage compliance schedules</strong> permission.
         </CcureAlert>
       )}
 

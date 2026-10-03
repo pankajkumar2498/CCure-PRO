@@ -1,3 +1,4 @@
+import { everything } from "../../../fixtures/authorization";
 /**
  * OrganizationManagement — Checkpoint 3C batch 5 migration coverage.
  *
@@ -95,31 +96,32 @@ let currentUser = {
   id: 1,
   org_id: 7,
   role: { name: "superadmin" },
+  authorization: everything(),
 };
 vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ user: personaFrom(currentUser) }),
 }));
 
 let permissions = new Set([
-  "organizations:create",
-  "organizations:update",
-  "organizations:delete",
+  "platform.organization.create",
+  "platform.organization.update",
+  "platform.organization.archive",
 ]);
 let superadmin = true;
 // RBAC-7: the pages ask for permission keys; these tests list capabilities as the
 // legacy atoms they were written with, so a key is read as the atom it replaced.
 const KEY_ATOM = vi.hoisted(() => ({
-  "platform.user.read": "users:read",
-  "platform.user.create": "users:create",
-  "platform.user.update": "users:update",
-  "platform.user.delete": "users:delete",
-  "platform.role.read": "roles:read",
-  "platform.organization.read": "organizations:read",
-  "platform.organization.create": "organizations:create",
-  "platform.organization.update": "organizations:update",
-  "platform.organization.archive": "organizations:delete",
-  "platform.audit_log.read": "audit:read",
-  "platform.audit_log.export": "audit:export",
+  "platform.user.read": "platform.user.read",
+  "platform.user.create": "platform.user.create",
+  "platform.user.update": "platform.user.approve",
+  "platform.user.delete": "platform.user.delete",
+  "platform.role.read": "platform.permission.read",
+  "platform.organization.read": "platform.organization.read",
+  "platform.organization.create": "platform.organization.create",
+  "platform.organization.update": "platform.organization.update",
+  "platform.organization.archive": "platform.organization.archive",
+  "platform.audit_log.read": "platform.audit_log.read",
+  "platform.audit_log.export": "platform.audit_log.export",
 }));
 vi.mock("@shell/auth/permissions", () => ({
   can: (_user, key) => permissions.has(KEY_ATOM[key] || key),
@@ -165,11 +167,12 @@ beforeEach(() => {
     id: 1,
     org_id: 7,
     role: { name: "superadmin" },
+    authorization: everything(),
   };
   permissions = new Set([
-    "organizations:create",
-    "organizations:update",
-    "organizations:delete",
+    "platform.organization.create",
+    "platform.organization.update",
+    "platform.organization.archive",
   ]);
   superadmin = true;
   listOrganizations.mockResolvedValue({ organizations: ORGS });
@@ -325,7 +328,7 @@ describe("OrganizationManagement — functional", () => {
    ══════════════════════════════════════════════════════════════════════════ */
 describe("OrganizationManagement — security", () => {
   it("hides the create control without organizations:create", async () => {
-    permissions = new Set(["organizations:update"]);
+    permissions = new Set(["platform.organization.update"]);
     await renderPage();
     expect(
       screen.queryByRole("button", { name: /new organization/i }),
@@ -343,7 +346,10 @@ describe("OrganizationManagement — security", () => {
   });
 
   it("hides delete when superadmin lacks organizations:delete", async () => {
-    permissions = new Set(["organizations:create", "organizations:update"]);
+    permissions = new Set([
+      "platform.organization.create",
+      "platform.organization.update",
+    ]);
     await renderPage();
     expect(
       screen.queryByRole("button", { name: /delete/i }),
@@ -352,7 +358,7 @@ describe("OrganizationManagement — security", () => {
 
   it("lets an org_admin manage only their own organisation", async () => {
     superadmin = false;
-    permissions = new Set(["organizations:update"]);
+    permissions = new Set(["platform.organization.update"]);
     currentUser = { ...currentUser, org_id: 7, role: { name: "org_admin" } };
     await renderPage();
     const own = screen.getByText("Acme Corp").closest("tr");

@@ -1,3 +1,4 @@
+import { everything } from "../../../../fixtures/authorization";
 /**
  * ExportPanel — Checkpoint 3C batch 15.
  *
@@ -45,19 +46,23 @@ vi.mock("@shell/auth/AuthContext", () => ({
 
 const ANALYST = personaFrom({
   id: 1,
-  role: { name: "analyst", permissions: ["reports:read"] },
+  role: { name: "analyst" },
+  permissionKeys: ["audit.report.read"],
 });
 const MANAGER = personaFrom({
   id: 2,
-  role: { name: "org_admin", permissions: ["reports:read", "reports:delete"] },
+  role: { name: "org_admin" },
+  permissionKeys: ["audit.report.read", "audit.report.delete"],
 });
 const SUPERADMIN = personaFrom({
   id: 3,
   role: { name: "superadmin", permissions: [] },
+  authorization: everything(),
 });
 const VIEWER = personaFrom({
   id: 4,
-  role: { name: "viewer", permissions: ["scans:read", "assets:read"] },
+  role: { name: "viewer" },
+  permissionKeys: ["audit.scan.read", "audit.asset.read"],
 });
 
 /* ── Fixtures ─────────────────────────────────────────────────────────────── */

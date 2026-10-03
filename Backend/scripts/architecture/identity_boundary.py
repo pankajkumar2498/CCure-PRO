@@ -64,6 +64,15 @@ IDENTITY_MODELS = frozenset(
         "Role",
         "Permission",
         "RolePermission",
+        # the RBAC capability's tables (RBAC-1): private to ccure_platform, so a
+        # module importing one is an identity import and the ratchet counts it
+        "RbacPermission",
+        "RbacRole",
+        "RbacRoleRevision",
+        "RbacRolePermission",
+        "RbacUserRole",
+        "RbacDefaultRole",
+        "RbacLegacyMap",
     }
 )
 
@@ -135,6 +144,18 @@ PLATFORM_API_SURFACE = frozenset(
         "register_event_severities",
         # a product registers the schema of its own user-preference block
         "register_product_preferences",
+        # the RBAC capability (RBAC-1, dark): how a module declares a permission
+        # and the new authorization API. Used by no live route; the legacy
+        # require_permission / require_role stay authoritative until RBAC-3+.
+        "PermissionDecl",
+        "ScopeContext",
+        "Principal",
+        "AuthorizationDecision",
+        "EffectivePermissionSet",
+        "authorize",
+        "can",
+        "effective_permissions",
+        "require",
         # the offboarding contract: a module registers what it detaches from a
         # purged account, so the platform never touches the module's tables
         "register_user_purge_hook",

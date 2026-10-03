@@ -7,6 +7,10 @@ The platform's models — moved from ``db/models/`` in Phase 8.2, as they were.
 * ``rbac``: ``Organization`` (tenancy), ``Role``, ``Permission``,
   ``RolePermission`` (RBAC).
 
+* ``rbac_tables``: the new RBAC capability's seven ``rbac_*`` tables (RBAC-1).
+  New, not moved: legacy ``roles`` / ``permissions`` / ``role_permissions`` stay
+  in ``rbac`` until RBAC-8. Dark — no request path reads them yet.
+
 The files moved whole rather than split by capability: ``db.models.users`` and
 ``db.models.rbac`` must stay aliases of *one* module each, and a class may not be
 defined twice. ``db.models`` remains the registry every model is imported

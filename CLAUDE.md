@@ -156,7 +156,8 @@ Two corollaries worth stating, because both were violated:
 ## Test layout
 
 `Backend/tests/` is grouped by module: `auth/`, `security/`, `compliance/`,
-`scans/`, `assets/`, `topology/`, `credentialed/`, `web/`, `reports/`, `repo/`.
+`scans/`, `assets/`, `topology/`, `credentialed/`, `web/`, `reports/`, `repo/`,
+`rbac/`.
 [`Backend/tests/README.md`](Backend/tests/README.md) says what belongs where.
 
 Two rules the layout depends on, both of which fail loudly if broken:
@@ -422,6 +423,55 @@ each module's `README.md` is the guide its team works from.
   a real handle. Since Phase 12.5 it has a line per frontend module folder too
   (IR's goes to the project owner until an IR team is named). "Require review from Code Owners" stays off until they are
   replaced — `docs/ci/BRANCH_PROTECTION.md`, "Code owners".
+
+## RBAC capability (`ccure_platform/rbac/`) — RBAC-1, **dark**
+
+The new, independent RBAC capability. Record:
+[`docs/architecture/RBAC_FOUNDATION.md`](docs/architecture/RBAC_FOUNDATION.md).
+**RBAC-1 changed no live authorization.** `users.role_id`, `roles`, `permissions`,
+`role_permissions`, `require_permission`, `require_role` and `user_has_permission`
+are still the only authority; no route, `/auth/me` field, frontend behaviour,
+assignment or registration flow uses the new tables. Do not describe RBAC as live.
+
+- **A role is `id` + `key` + `display_name`, and none of them is an authorization
+  input** — not the name, not the key (`platform.viewer`), not a legacy role name.
+  `engine.decide` is handed *grants*, and `Grant` has no role field. A role is only a
+  join path the resolver walks to find permission keys. **Never write
+  `role.name == …`, `role.key == …` or `require_role(…)` in new code.**
+  `tests/repo/test_rbac_role_identity.py` fails on any new one; the 40 legacy sites
+  (22 files, `scripts/architecture/rbac_guardrails.py`) may only fall, and RBAC-4
+  removes them. Role keys may be written in `rbac/contract.py` (seed data), the
+  legacy map and migrations, bootstrap and tests only.
+- **RBAC does not know the modules.** It imports no product (`rbac-is-module-agnostic`),
+  does not read the registry and does not import `ccure_platform.api`. Modules
+  declare permissions as **data** (`PermissionDecl`, exported by `ccure_platform.api`)
+  in a module named by `permission_modules` in their `manifest.toml`; the composition
+  root (`ccure_platform/composition.py`) loads it by name and calls
+  `rbac.catalogue.sync`. A permission namespace (`audit`, `policy`, `rank`, `ir`,
+  `platform`) is platform-owned, in the registry. Modules reach RBAC through
+  `ccure_platform.api` only (`modules-use-rbac-api-only`) and never name an `rbac_*`
+  table (`rbac-tables-are-private`).
+- **Superadmin is permissions plus scope.** There is no wildcard and no
+  "if superadmin then allow": a role holding everything holds *materialised grant
+  rows* that catalogue sync inserts (`auto_grant_new_permissions`, which the engine
+  never reads).
+- **Display names are labels.** Renaming "Superadmin" to "CISO" changes nothing; a
+  fuzz test proves a role named `Superadmin` gains nothing. Names are unique among
+  live roles within a namespace, so a swap needs two steps.
+- **No hard delete.** Roles are retired (`active → retiring → retired`), never
+  deleted; role history is append-only; assignments are revoked, never rewritten.
+  Triggers enforce this, and the table SQL and trigger SQL in the migration are
+  tested equal to the models'.
+- **Continuity is capability-based and says "not assessable" rather than "ok"** when
+  nothing is declared.
+- **Tests never commit.** `tests/rbac/` uses `rbac_db` from `tests/rbac_testing.py`
+  (rolled back). The `rbac_*` tables are `ON DELETE RESTRICT` against `organizations`
+  and `users`, so a committed row would fail the suite's per-test purge in an
+  unrelated test. It is not a `conftest.py` because `test_schema_drift` does
+  `import conftest`.
+- **Open for RBAC-2:** register a user-purge hook before any assignment row exists
+  (`purge_user` hard-deletes; the FK is `RESTRICT`); decide which organisation
+  platform-wide audit events belong to.
 
 ## Backend platform extraction (backend alignment, steps 1–2)
 

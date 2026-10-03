@@ -36,6 +36,11 @@ _SCHEMA = re.compile(r"^[a-z][a-z0-9_]*$")
 _PREFIX = re.compile(r"^(/[a-z][a-z0-9-]*)?$")  # "" (Audit's legacy URLs) or "/name"
 _DOTTED = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _QUEUE = re.compile(r"^[a-z][a-z0-9_.-]*$")
+#: The first segment of every permission key a product declares (RBAC-1):
+#: ``audit.scan.run`` belongs to the namespace ``audit``. ``platform`` is the
+#: platform's own and no product may claim it.
+_PERMISSION_NAMESPACE = re.compile(r"^[a-z][a-z0-9_]*$")
+RESERVED_PERMISSION_NAMESPACES = ("platform",)
 #: A product's entry address on the frontend: one absolute path segment.
 _ENTRY_PATH = re.compile(r"^/[a-z][a-z0-9-]*$")
 
@@ -97,6 +102,17 @@ class ModuleManifest:
     #: process writes an audit event — the API, a Celery worker, a script — so a
     #: module's events are classified wherever they are emitted.
     audit_event_modules: tuple[str, ...] = ()
+    #: The first segment of every permission key the module declares
+    #: (``audit`` → ``audit.scan.run``). Platform-owned, like the rest of the
+    #: identity: a module cannot choose another module's namespace. Empty only
+    #: for a module that declares no permissions.
+    permission_namespace: str = ""
+    #: Dotted names of the modules that declare this module's permission
+    #: catalogue (RBAC-1). Each exports ``PERMISSIONS``, a tuple of
+    #: ``ccure_platform.api.PermissionDecl``. Loaded by name by the composition
+    #: root (``ccure_platform/composition.py``), never imported by the RBAC
+    #: engine, which learns them as data.
+    permission_modules: tuple[str, ...] = ()
     #: Celery queues this module declares (none until a module needs isolation).
     queues: tuple[str, ...] = ()
     #: ``"package.module:attribute"`` of each SQLAlchemy ``MetaData`` holding the
@@ -155,6 +171,25 @@ class ModuleManifest:
                 refuse(
                     f"audit-event module {module!r} is outside the module's package {self.package!r}"
                 )
+        for module in self.permission_modules:
+            if not _DOTTED.match(module):
+                refuse(f"permission module {module!r} is not a dotted module name")
+            if not self._inside(module):
+                refuse(
+                    f"permission module {module!r} is outside the module's package {self.package!r}"
+                )
+        if self.permission_namespace:
+            if not _PERMISSION_NAMESPACE.match(self.permission_namespace):
+                refuse(
+                    f"permission_namespace {self.permission_namespace!r} must be "
+                    "lower-case letters, digits and underscores"
+                )
+            if self.permission_namespace in RESERVED_PERMISSION_NAMESPACES:
+                refuse(
+                    f"permission_namespace {self.permission_namespace!r} is the platform's"
+                )
+        elif self.permission_modules:
+            refuse("permission_modules need a permission_namespace")
         for queue in self.queues:
             if not _QUEUE.match(queue):
                 refuse(f"queue {queue!r} is not a valid queue name")
@@ -181,11 +216,22 @@ class ServiceProduct:
     description: str
     entry_path: str
     tile_state: str = "not_yet_available"
+    #: The permission namespace reserved for the service (``ir`` → ``ir.*``).
+    #: It declares no permissions inside the core service; the namespace is held
+    #: so no module can claim it.
+    permission_namespace: str = ""
 
     def __post_init__(self) -> None:
         if not _KEY.match(self.key):
             raise ManifestError(
                 f"service {self.key!r}: key must be lower-case letters, digits and underscores"
+            )
+        if self.permission_namespace and not _PERMISSION_NAMESPACE.match(
+            self.permission_namespace
+        ):
+            raise ManifestError(
+                f"service {self.key!r}: permission_namespace "
+                f"{self.permission_namespace!r} is not a plain namespace"
             )
         for problem in _product_problems(
             self.title, self.description, self.entry_path, self.tile_state

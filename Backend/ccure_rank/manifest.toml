@@ -17,3 +17,7 @@ key = "rank"
 routers = []
 task_modules = []
 models = []
+# Where this module declares its RBAC permission catalogue (RBAC-1): dotted names of
+# modules exporting PERMISSIONS, a tuple of ccure_platform.api.PermissionDecl. The
+# permission namespace is the platform's, in the registry.
+permission_modules = []

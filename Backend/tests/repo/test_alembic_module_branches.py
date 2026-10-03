@@ -8,7 +8,7 @@ What is pinned:
   branch of its own, not a child of Audit's history;
 * with the branches activated (``scripts/db/alembic_module_branches.activate``,
   exactly what the live step applies), the history has three heads: Audit's
-  ``f3b5d7e9a1c4`` and the two module bases — and Audit's own lineage is
+  ``a7c1e5b3d9f2`` and the two module bases — and Audit's own lineage is
   unchanged;
 * Phase 11 creates **no Policy Pro or Rank table**: the base revisions create
   their schema and nothing else;
@@ -38,7 +38,7 @@ from scripts.architecture import module_boundaries as mb
 from scripts.db import alembic_module_branches as branches
 from testpaths import BACKEND_ROOT, REPO_ROOT
 
-AUDIT_HEAD = "f3b5d7e9a1c4"
+AUDIT_HEAD = "a7c1e5b3d9f2"
 MODULES = [m for m in registry.modules() if m.key != "audit"]
 EXAMPLE_MIGRATIONS = (
     BACKEND_ROOT

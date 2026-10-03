@@ -50,6 +50,18 @@ from .findings import (
 )
 from .notifications import Notification
 from .rbac import Organization, Permission, Role, RolePermission
+
+# The new RBAC capability's tables (RBAC-1, dark): defined in the platform's
+# models and registered here so every process that builds metadata sees them.
+from ccure_platform.models.rbac_tables import (  # noqa: E402
+    RbacDefaultRole,
+    RbacLegacyMap,
+    RbacPermission,
+    RbacRole,
+    RbacRolePermission,
+    RbacRoleRevision,
+    RbacUserRole,
+)
 from .scans import Scan, ScanPhase
 from .scan_reports import ScanReport
 from .scan_policies import ScanPolicy
@@ -70,6 +82,14 @@ __all__ = [
     "Role",
     "Permission",
     "RolePermission",
+    # RBAC capability tables (RBAC-1, dark)
+    "RbacPermission",
+    "RbacRole",
+    "RbacRoleRevision",
+    "RbacRolePermission",
+    "RbacUserRole",
+    "RbacDefaultRole",
+    "RbacLegacyMap",
     # Users & Auth
     "User",
     "RefreshTokenSession",

@@ -393,6 +393,85 @@ RULES: tuple[Rule, ...] = (
         forbidden=("routers", "orchestrator", "core.tasks", "main"),
         reason="Report renderers take a payload and return a document; they do not dispatch or serve.",
     ),
+    Rule(
+        name="rbac-is-module-agnostic",
+        importer=("ccure_platform.rbac",),
+        # The legacy dependency module still sits in the package and reaches the
+        # identity dependencies; it is the authority until RBAC-8 and is not the
+        # new capability.
+        exempt_importers=("ccure_platform.rbac.dependencies",),
+        forbidden=(
+            # every product and Audit's implementation
+            "ccure_audit",
+            "ccure_policy",
+            "ccure_rank",
+            "ccure_contracts",
+            "ccure_example",
+            "core",
+            "engines",
+            "scans",
+            "scan_helpers",
+            "orchestrator",
+            "reporting",
+            "routers",
+            "main",
+            "auth",
+            # RBAC does not know which modules exist: the composition root reads
+            # the registry and hands it data
+            "ccure_platform.modules",
+            "ccure_platform.composition",
+            # RBAC sits below the platform's other capabilities and its public
+            # API; it is consumed by them, never the reverse
+            "ccure_platform.api",
+            "ccure_platform.identity",
+            "ccure_platform.administration",
+            "ccure_platform.hub",
+            "ccure_platform.notifications",
+            "ccure_platform.plan",
+            "ccure_platform.service_identity",
+        ),
+        reason=(
+            "RBAC is an independently usable platform capability (RBAC-0, "
+            "frozen). It must be loadable and testable without Audit, Policy Pro, "
+            "Rank or IR, and it must not know which modules exist: modules "
+            "declare permissions as data and the composition root hands them over. "
+            "RBAC importing a product turns the platform's authorization into a "
+            "place that product's logic hides."
+        ),
+    ),
+    Rule(
+        name="modules-use-rbac-api-only",
+        importer=("",),
+        exempt_importers=("ccure_platform", "main", "db", "tests"),
+        forbidden=(
+            "ccure_platform.rbac.contract",
+            "ccure_platform.rbac.engine",
+            "ccure_platform.rbac.catalogue",
+            "ccure_platform.rbac.model",
+            "ccure_platform.rbac.resolver",
+            "ccure_platform.rbac.governance",
+            "ccure_platform.rbac.audit",
+            "ccure_platform.rbac.shadow",
+            "ccure_platform.composition",
+        ),
+        reason=(
+            "A module reaches RBAC through ccure_platform.api and nothing else. "
+            "Importing the engine, resolver or governance directly would let a "
+            "module build its own authorization path around the platform's and "
+            "couple itself to RBAC's internals (RBAC-0 §1)."
+        ),
+    ),
+    Rule(
+        name="rbac-tables-are-private",
+        importer=("",),
+        exempt_importers=("ccure_platform", "main", "db", "tests"),
+        forbidden=("ccure_platform.models.rbac_tables",),
+        reason=(
+            "The rbac_* tables are the platform's. A module that imported their "
+            "models could read roles and assignments directly and decide for "
+            "itself who may do what; it asks ccure_platform.api instead (RBAC-0 §1)."
+        ),
+    ),
     *module_isolation_rules(MODULE_PACKAGES),
 )
 

@@ -30,6 +30,15 @@ comments excluded — and each hit traced to what it is stored as and who sees i
 | 9   | `retro_scan_email_risk` / "retro-scan"                                                                                                                                                                                                                                                                                                                                                                                           | `identity/email_security_tasks.py`                                                                           | —                                                                               |     —      |    —     | task name `ccure.tasks.retro_scan_email_risk` |       —       | **Not Audit's**: it re-screens accounts for shared mailboxes. A name collision; the task name is an API.                      |
 | 10  | Docstrings and comments mentioning scans, assets, findings (e.g. `rbac/dependencies.py`, `notifications/router.py`)                                                                                                                                                                                                                                                                                                              | various                                                                                                      | —                                                                               |     —      |    —     |                       —                       |      yes      | Prose, no coupling → **leave**                                                                                                |
 
+**RBAC-1 addendum (3 Oct 2026).** The new RBAC capability (`ccure_platform/rbac/`,
+[RBAC_FOUNDATION.md](RBAC_FOUNDATION.md)) is the module-RBAC phase item 5 defers to,
+and it keeps Audit's vocabulary out: it declares no atom and names no product. One
+exception is recorded in the ratchet's `BASELINE`: `rbac/contract.py` carries four
+code-level strings for the legacy `scanner` role — its frozen key `platform.scanner`,
+its seeded display name and the legacy-name map. It is the role's own name (a
+persisted value the RBAC-0 design froze), not Audit logic; the descriptions around it
+were reworded to avoid the domain words.
+
 What is **not** here, and was checked: `ccure_platform` calls `require_permission`
 and `user_has_permission` only with whatever `(resource, action)` its callers pass
 and names no Audit atom itself (pinned by a test); it imports no Audit module,

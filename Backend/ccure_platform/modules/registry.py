@@ -50,7 +50,13 @@ from ccure_platform.modules.manifest import (
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 #: What a module's manifest.toml may declare, under ``[module]``.
-CONTRIBUTIONS = ("routers", "task_modules", "models", "audit_event_modules")
+CONTRIBUTIONS = (
+    "routers",
+    "task_modules",
+    "models",
+    "audit_event_modules",
+    "permission_modules",
+)
 
 
 def load_contributions(package: str, key: str, root: Path = BACKEND_ROOT) -> dict:
@@ -118,6 +124,7 @@ _IDENTITIES: tuple[dict, ...] = (
         route_prefix="/policy",
         task_prefix="ccure.policy",
         permission_prefixes=("policy",),
+        permission_namespace="policy",
         tile_state="not_yet_available",
         enabled=False,
     ),
@@ -139,6 +146,7 @@ _IDENTITIES: tuple[dict, ...] = (
         # strings in the broker and the beat schedule and never change; this is
         # the prefix for any it adds.
         task_prefix="ccure.audit",
+        permission_namespace="audit",
         tile_state="available",
         enabled=True,
     ),
@@ -155,6 +163,7 @@ _IDENTITIES: tuple[dict, ...] = (
         route_prefix="/rank",
         task_prefix="ccure.rank",
         permission_prefixes=("rank",),
+        permission_namespace="rank",
         tile_state="not_yet_available",
         enabled=False,
     ),
@@ -175,6 +184,7 @@ _SERVICES: tuple[dict, ...] = (
         ),
         entry_path="/ir-dashboard",
         tile_state="not_yet_available",
+        permission_namespace="ir",
     ),
 )
 
@@ -200,6 +210,10 @@ def _check(modules: tuple[ModuleManifest, ...]) -> None:
     unique("route_prefix", [(m.key, m.route_prefix) for m in modules])
     unique("task_prefix", [(m.key, m.task_prefix) for m in modules])
     unique("queue", [(m.key, q) for m in modules for q in m.queues])
+    unique(
+        "permission namespace",
+        [(m.key, m.permission_namespace) for m in modules if m.permission_namespace],
+    )
     unique("task module", [(m.key, t) for m in modules for t in m.task_modules])
     # A task prefix that is another's prefix would let one module's names
     # shadow the other's (ccure.rank vs ccure.rank.extra).
@@ -293,6 +307,27 @@ def audit_event_modules() -> list[str]:
     """Audit-event definition modules of the enabled modules, loaded by name by
     the audit log (``ccure_platform/audit_log/taxonomy.py``)."""
     return [t for m in enabled_modules() for t in m.audit_event_modules]
+
+
+def permission_modules() -> list[str]:
+    """Permission-declaration modules of the enabled modules. The composition
+    root (``ccure_platform/composition.py``) loads them by name and hands what
+    they declare to RBAC as data; RBAC never reads this list."""
+    return [t for m in enabled_modules() for t in m.permission_modules]
+
+
+def permission_namespaces() -> dict[str, str]:
+    """``{namespace: owner key}`` for every permission namespace held by a
+    module or a service — enabled or not — plus the platform's own. A namespace
+    is reserved from the day its product is registered."""
+    held = {"platform": "platform"}
+    for m in MODULES:
+        if m.permission_namespace:
+            held[m.permission_namespace] = m.key
+    for s in SERVICES:
+        if s.permission_namespace:
+            held[s.permission_namespace] = s.key
+    return held
 
 
 def queues() -> list[str]:

@@ -213,6 +213,98 @@ Many-to-many bridge.
 Composite primary key. This is the table `require_permission()` joins on for every
 non-superadmin request.
 
+### The RBAC capability's tables (`rbac_*`) — RBAC-1, dark
+
+Seven platform-owned tables for the new, independent RBAC capability
+([RBAC_FOUNDATION.md](architecture/RBAC_FOUNDATION.md)). **Nothing reads them on a
+request path yet**: the five tables above, with `users.role_id`, remain the
+authorization authority until the migration phases (RBAC-3 onward). Added by
+migration `a7c1e5b3d9f2`; every foreign key is `ON DELETE RESTRICT`; no module
+reads or writes any of them (they ask `ccure_platform.api`).
+
+#### `rbac_permissions`
+
+The catalogue. Written only by catalogue sync; there is no API that writes it.
+
+| Column                         | Type          | Notes                                                                                        |
+| ------------------------------ | ------------- | -------------------------------------------------------------------------------------------- |
+| `key`                          | `String(120)` | **PK**; `<namespace>.<resource>.<action>`, three segments, no wildcard                       |
+| `module`, `resource`, `action` | `String`      | the three segments; `key = module.resource.action` (CHECK)                                   |
+| `description`                  | `Text`        | 1–500 characters                                                                             |
+| `scope_kind`                   | `String(20)`  | `platform` or `organization`                                                                 |
+| `sensitivity`                  | `String(20)`  | `normal` or `privileged` (denials of privileged keys are audited)                            |
+| `delegable_to_org_roles`       | `Boolean`     | `false` = may not be held by an organisation-scope role; always `false` for `platform` scope |
+| `continuity`                   | `Boolean`     | one of the four frozen continuity keys                                                       |
+| `status`                       | `String(20)`  | `active`, `deprecated` (still honoured), `retired` (never granted)                           |
+| `replaced_by`                  | `String(120)` | FK `rbac_permissions.key`                                                                    |
+| `retired_at`                   | `TIMESTAMPTZ` | set exactly when `status = 'retired'`                                                        |
+
+#### `rbac_roles`
+
+A role is `id` + `key` + `display_name`; **only `id` and `key` are identity, and
+neither is ever an authorization input** — `display_name` is a mutable label.
+`id`, `key`, `kind`, `assignable_scope`, `org_id`, `managed_by` and `created_at`
+are immutable (trigger); no row is ever deleted (trigger).
+
+| Column                                          | Type          | Notes                                                                                                                          |
+| ----------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                                            | `UUID`        | **PK**, `gen_random_uuid()`; the target of every FK                                                                            |
+| `key`                                           | `String(200)` | **UNIQUE**; `platform.<slug>` (system), `custom.platform.<slug>`, `custom.<org_id>.<slug>`                                     |
+| `display_name`                                  | `String(100)` | trimmed, no control characters; unique among non-retired roles per namespace (platform, or one organisation), case-insensitive |
+| `description`                                   | `Text`        |                                                                                                                                |
+| `kind`                                          | `String(20)`  | `system` (code-managed) or `custom`                                                                                            |
+| `assignable_scope`                              | `String(20)`  | `platform` or `organization`                                                                                                   |
+| `org_id`                                        | `String(100)` | FK `organizations.id`; set exactly for an organisation custom role                                                             |
+| `managed_by`                                    | `String(20)`  | `code` (permissions from catalogue sync) or `admin`                                                                            |
+| `state`                                         | `String(20)`  | `active` → `retiring` → `retired`; reactivation allowed; transitions checked by trigger                                        |
+| `auto_grant_new_permissions`                    | `Boolean`     | platform-scope only; read by sync, which materialises grants as rows — the engine never reads it                               |
+| `replaced_by_role_id`                           | `UUID`        | FK `rbac_roles.id`                                                                                                             |
+| `retired_at`, `retired_by`, `retirement_reason` | —             | retirement metadata; `retired_at` set exactly when `state = 'retired'`                                                         |
+| `revision`                                      | `Integer`     | the latest revision recorded in `rbac_role_revisions`                                                                          |
+| `created_by`, `created_at`, `updated_at`        | —             |                                                                                                                                |
+
+#### `rbac_role_revisions`
+
+Append-only (trigger): what a role was called and held, and when. `role_id` FK,
+`revision` (unique with `role_id`), `display_name`, `description`,
+`permission_set_hash` (SHA-256 of the sorted permission keys), `state`,
+`change_kind` (`created`, `renamed`, `described`, `permissions_changed`,
+`state_changed`, `retired`, `reactivated`, `synced`), `changed_by`, `changed_at`.
+
+#### `rbac_role_permissions`
+
+Composite PK (`role_id`, `permission_key`), both FKs. A trigger refuses a retired
+permission, and a platform-scope or non-delegable permission on an
+organisation-scope role. This is what the resolver reads.
+
+#### `rbac_user_roles`
+
+A user holds a role platform-wide or in one organisation; several rows per user is
+the multi-role model. **A row is revoked, never rewritten**: its identity columns
+are immutable and a revocation cannot be undone (trigger), so the table is the
+history. `user_id` FK `users.id`; `role_id` FK; `scope_type` (`platform` /
+`organization`) with `scope_org_id` FK (set exactly for `organization`);
+`granted_by`, `granted_at`, `expires_at`, `revoked_at`, `revoked_by` (plain actor
+ids, not FKs) and `revoke_reason` (`migrated`, `role_retired`, `expired`,
+`manual`; set exactly when revoked). A partial unique index allows one live row per
+user, role and scope. An insert trigger refuses a non-`active` role, a scope the
+role does not declare, an organisation role outside its organisation, and (v1) an
+organisation assignment outside the user's own organisation.
+
+#### `rbac_default_roles`
+
+`purpose` (**PK**, `self_registration`) → `role_id` FK, `updated_by`,
+`updated_at`. Seeded to the Viewer role so today's self-registration behaviour is
+preserved. A trigger requires an active, organisation-assignable role holding no
+non-delegable or continuity permission. The registration flow does not read it yet.
+
+#### `rbac_legacy_map`
+
+**Temporary — dropped in RBAC-8.** Maps a legacy `roles.name` to a role key
+(`kind='role'`) or a legacy `resource:action` atom to a permission key
+(`kind='permission'`, one atom may map to several keys and several atoms to one),
+with an optional `behaviour_change` note. Used only by shadow evaluation.
+
 ---
 
 ## 4. Identity, sessions and audit

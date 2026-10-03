@@ -21,6 +21,14 @@ ceiling, and a test fails on anything outside it):
   platform's name for the principal rather than on where the model lives.
 * **RBAC** — ``user_has_permission``: the single implementation behind
   ``require_permission``, for checks a dependency cannot express.
+* **RBAC capability (RBAC-1, inert)** — ``PermissionDecl`` (how a module
+  declares a permission), ``ScopeContext`` / ``Principal`` /
+  ``AuthorizationDecision`` / ``EffectivePermissionSet`` (the contract types) and
+  ``authorize`` / ``can`` / ``effective_permissions`` / ``require`` (the new
+  authorization API). **No live route uses any of them**: ``require_permission``
+  and ``require_role`` above remain the authorization authority until the
+  migration phases (RBAC-3 onward). They exist so a module can declare and
+  consume permissions through the platform's one way in before any route moves.
 * **Accounts** — ``user`` / ``UserView``, ``user_display_names``,
   ``active_members_with_roles``.
 * **Tenancy** — ``organisation`` / ``OrganisationView``.
@@ -74,11 +82,22 @@ from ccure_platform.notifications.service import (
 )
 from ccure_platform.offboarding import register_user_purge_hook
 from ccure_platform.preferences import register_product_preferences
+from ccure_platform.rbac import resolver as _rbac_resolver
+from ccure_platform.rbac.contract import (
+    AuthorizationDecision,
+    EffectivePermissionSet,
+    PermissionDecl,
+    Principal,
+    ScopeContext,
+)
 from ccure_platform.rbac.dependencies import require_permission, require_role
 from ccure_platform.rbac.dependencies import (
     user_has_permission as _role_holds_permission,
 )
+from db.base import get_db
 from db.models import Organization, Role, User
+from fastapi import Depends, HTTPException
+from fastapi import status as _http_status
 from sqlalchemy.orm import Session
 
 #: The account a request is authenticated as — what ``current_user``,
@@ -97,6 +116,16 @@ __all__ = (
     "require_permission",
     "require_role",
     "user_has_permission",
+    # RBAC capability (RBAC-1): declared and consumable, used by no live route
+    "PermissionDecl",
+    "ScopeContext",
+    "Principal",
+    "AuthorizationDecision",
+    "EffectivePermissionSet",
+    "authorize",
+    "can",
+    "effective_permissions",
+    "require",
     "UserView",
     "user",
     "user_display_names",
@@ -166,6 +195,71 @@ def user_has_permission(
         if account is None:
             return False
     return _role_holds_permission(db, account, resource, action)
+
+
+# ── RBAC capability (RBAC-1: dark) ────────────────────────────────────────────
+#
+# The new authorization API. Nothing live calls it: the legacy functions above
+# are authoritative, and these answer from the ``rbac_*`` tables, which no
+# production data populates yet. They take the account a route holds (or a
+# ``Principal``), never a role, and decide from permissions and scope alone.
+
+
+def _principal(who: Union[User, Principal]) -> Principal:
+    return who if isinstance(who, Principal) else _rbac_resolver.principal_for_user(who)
+
+
+def authorize(
+    db: Session,
+    who: Union[User, Principal],
+    permission_key: str,
+    *,
+    scope: ScopeContext | None = None,
+) -> AuthorizationDecision:
+    """ALLOW or DENY ``who`` the permission, with the reason. Never raises for a
+    denial."""
+    return _rbac_resolver.authorize(db, _principal(who), permission_key, scope)
+
+
+def can(
+    db: Session,
+    who: Union[User, Principal],
+    permission_key: str,
+    *,
+    scope: ScopeContext | None = None,
+) -> bool:
+    """Whether ``who`` holds the permission here. ``authorize(...).allowed``."""
+    return authorize(db, who, permission_key, scope=scope).allowed
+
+
+def effective_permissions(
+    db: Session, who: Union[User, Principal], *, org_id: str | None = None
+) -> EffectivePermissionSet:
+    """The permission keys ``who`` holds in ``org_id`` (their own organisation
+    when omitted)."""
+    return _rbac_resolver.effective_permissions(db, _principal(who), org_id)
+
+
+def require(permission_key: str, *, scope: ScopeContext | None = None):
+    """
+    A FastAPI dependency that answers 403 unless the signed-in account holds
+    ``permission_key``, and hands the route the account. The new counterpart of
+    ``require_permission``; **no live route uses it yet**.
+    """
+
+    def _guard(
+        user: User = Depends(current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        decision = authorize(db, user, permission_key, scope=scope)
+        if not decision.allowed:
+            raise HTTPException(
+                status_code=_http_status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient privileges. Missing permission: {permission_key}.",
+            )
+        return user
+
+    return _guard
 
 
 # ── tenancy ───────────────────────────────────────────────────────────────────

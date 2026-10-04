@@ -139,6 +139,34 @@
   gap: var(--ccure-space-2xs);
 }
 
+.cc-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text);
+  line-height: var(--ccure-leading-normal);
+  cursor: pointer;
+}
+
+.cc-checkbox > input {
+  flex: none;
+  width: var(--ccure-space-lg);
+  height: var(--ccure-space-lg);
+  margin: 0;
+  accent-color: var(--ccure-primary);
+}
+
+.cc-checkbox > input:focus-visible {
+  outline: var(--ccure-focus-ring);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.cc-checkbox:has(> input:disabled) {
+  cursor: default;
+}
+
 .cc-field__label {
   font-family: var(--ccure-font);
   font-size: var(--ccure-text-base);

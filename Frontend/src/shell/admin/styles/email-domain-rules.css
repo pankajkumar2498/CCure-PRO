@@ -56,6 +56,7 @@
   border: 1px solid var(--ccure-border);
   border-radius: var(--ccure-radius-lg);
   padding: var(--ccure-space-md) var(--ccure-space-lg);
+  background: var(--ccure-surface);
   margin-bottom: var(--ccure-space-lg);
   display: flex;
   gap: var(--ccure-space-sm);
@@ -81,6 +82,7 @@
    own gap provides the spacing. */
 .edr-field {
   margin-bottom: 0;
+  min-width: 0;
 }
 
 .edr-field--domain {
@@ -156,6 +158,15 @@
 
 .edr-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--ccure-space-xs);
+}
+
+@media (max-width: 640px) {
+  .edr-panel > .cc-field,
+  .edr-filters > .cc-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }

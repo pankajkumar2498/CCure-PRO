@@ -374,8 +374,10 @@ export default function OrganizationManagement() {
   if (loading) {
     return (
       <ProductFrame pageTitle="Organization Management">
-        <div className="om-loading">
-          <CcureLoader label="Loading organizations…" />
+        <div className="page-inner">
+          <div className="om-loading">
+            <CcureLoader label="Loading organizations…" />
+          </div>
         </div>
       </ProductFrame>
     );

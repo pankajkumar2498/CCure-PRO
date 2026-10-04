@@ -19,8 +19,32 @@
 
 .al-title-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ccure-space-sm);
+}
+
+.al-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  align-items: end;
+  gap: var(--ccure-space-md);
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.al-filters > .cc-field {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.al-retention-toggle {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  text-align: start;
+}
+
+.al-table-wrap {
+  min-width: 0;
 }
 
 /* ── "N new events" ───────────────────────────────────────────────────────────
@@ -28,32 +52,6 @@
    must not reserve space or draw a box when it has nothing to say. */
 .al-newevents:empty {
   display: none;
-}
-
-/* A real button. It was a `<div onClick>` with inline hover handlers: not
-   focusable, not announced, and the only route to the newest events. */
-.al-newevents-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  padding: var(--ccure-space-2xs) var(--ccure-space-md);
-  border-radius: var(--ccure-radius-full);
-  border: 1px solid var(--ccure-info-border);
-  background: var(--ccure-info-bg);
-  color: var(--ccure-info-text);
-  font-size: var(--ccure-text-xs);
-  font-weight: var(--ccure-weight-semibold);
-  cursor: pointer;
-  transition: background var(--ccure-duration-fast) var(--ccure-ease);
-}
-
-.al-newevents-btn:hover {
-  background: var(--ccure-surface-hover);
-}
-
-.al-newevents-btn:focus-visible {
-  outline: var(--ccure-focus-ring);
-  outline-offset: var(--ccure-focus-ring-offset);
 }
 
 /* ── The refreshing veil ──────────────────────────────────────────────────────
@@ -69,22 +67,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .al-newevents-btn,
   .al-table-wrap {
     transition: none;
   }
-}
-
-/* ── Page-size control ────────────────────────────────────────────────────────
-   Kept as a bare select rather than a CcureSelect: it sits inline in the
-   pagination row beside the word "Show", where a stacked field label would
-   break the row. It carries an `aria-label` instead — it was the one control
-   the accessibility census reported as UNLABELLED. */
-.al-pagesize {
-  width: 4.5rem;
-  height: 1.75rem;
-  padding: 0 var(--ccure-space-3xs);
-  font-size: var(--ccure-text-xs);
 }
 
 /* ── Layout and type utilities ────────────────────────────────────────────────
@@ -208,23 +193,11 @@
   width: 100%;
 }
 .al-minw {
-  min-width: 13.75rem;
+  min-width: 0;
 }
 
 .al-clickable {
   cursor: pointer;
-}
-
-.al-pager-group {
-  margin-right: var(--ccure-space-sm);
-}
-
-/* Status — the word carries the meaning, the colour reinforces it. */
-.al-status--ok {
-  color: var(--ccure-success-text);
-}
-.al-status--bad {
-  color: var(--ccure-danger-text);
 }
 
 .al-sev {

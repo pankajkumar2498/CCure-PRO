@@ -31,6 +31,8 @@ export default function CcurePagination({
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = [25, 50, 100],
+  pageSizeLabel = "Rows per page",
+  showBoundaryLinks = false,
   label = "Pagination",
   itemNoun = "results",
   disabled = false,
@@ -55,7 +57,7 @@ export default function CcurePagination({
       <div className="cc-pagination__controls">
         {onPageSizeChange ? (
           <div className="cc-pagination__size">
-            <label htmlFor={sizeId}>Rows per page</label>
+            <label htmlFor={sizeId}>{pageSizeLabel}</label>
             <select
               id={sizeId}
               value={pageSize}
@@ -70,6 +72,17 @@ export default function CcurePagination({
             </select>
           </div>
         ) : null}
+
+        {showBoundaryLinks && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            disabled={disabled || atStart}
+            onClick={() => onPageChange(1)}
+          >
+            First
+          </CcureButton>
+        )}
 
         <CcureButton
           variant="secondary"
@@ -98,6 +111,16 @@ export default function CcurePagination({
         >
           Next
         </CcureButton>
+        {showBoundaryLinks && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            disabled={disabled || atEnd}
+            onClick={() => onPageChange(pageCount)}
+          >
+            Last
+          </CcureButton>
+        )}
       </div>
     </nav>
   );

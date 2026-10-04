@@ -119,7 +119,9 @@ function EntryContent() {
 export default function ModuleEntryPage() {
   return (
     <PlatformLayout>
-      <EntryContent />
+      <div className="page-inner">
+        <EntryContent />
+      </div>
     </PlatformLayout>
   );
 }

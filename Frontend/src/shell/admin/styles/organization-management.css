@@ -24,6 +24,7 @@
 
 .om-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--ccure-space-sm);
 }
 

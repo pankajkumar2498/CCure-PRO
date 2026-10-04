@@ -19,6 +19,7 @@ import {
   CcureAlert,
   CcureButton,
   CcureCard,
+  CcureCheckbox,
   CcureInput,
   CcureLoader,
   CcureModal,
@@ -189,7 +190,9 @@ export default function RoleManagement() {
   if (loading) {
     return (
       <ProductFrame pageTitle="Roles & Permissions">
-        <CcureLoader label="Loading roles…" />
+        <div className="page-inner">
+          <CcureLoader label="Loading roles…" />
+        </div>
       </ProductFrame>
     );
   }
@@ -199,21 +202,19 @@ export default function RoleManagement() {
       <div className="page-inner">
         <div className="page-title-row">
           <div>
-            <h2 className="page-title">Roles &amp; Permissions</h2>
+            <h1 className="page-title">Roles &amp; Permissions</h1>
             <p className="page-subtitle">
               Manage roles, their permissions and their lifecycle. Names are
               labels; what a role can do is its permissions.
             </p>
           </div>
-          <div>
-            <label className="rm-check">
-              <input
-                type="checkbox"
-                checked={showRetired}
-                onChange={(e) => setShowRetired(e.target.checked)}
-              />
+          <div className="rm-toolbar">
+            <CcureCheckbox
+              checked={showRetired}
+              onChange={(e) => setShowRetired(e.target.checked)}
+            >
               Show retired roles
-            </label>
+            </CcureCheckbox>
             {canCreate && (
               <CcureButton type="button" onClick={() => setCreating(true)}>
                 New custom role
@@ -228,8 +229,8 @@ export default function RoleManagement() {
           </CcureAlert>
         )}
 
-        <div className="admin-grid">
-          <CcureCard title="Roles" headingLevel={3} bodyFlush>
+        <div className="rm-grid">
+          <CcureCard title="Roles" headingLevel={2} bodyFlush>
             <div className="rm-role-list">
               {roles.map((r) => (
                 <CcureButton
@@ -256,7 +257,7 @@ export default function RoleManagement() {
             <CcureCard
               title={detail.display_name}
               subtitle={`${detail.kind} role · ${detail.assignable_scope} scope · ${detail.state}`}
-              headingLevel={3}
+              headingLevel={2}
             >
               <div className="rm-section">
                 <CcureInput
@@ -292,7 +293,7 @@ export default function RoleManagement() {
               </div>
 
               <div className="rm-section">
-                <h4>Permissions</h4>
+                <h3>Permissions</h3>
                 {isSystem && (
                   <p className="rm-muted">
                     A system role&apos;s permissions change with a catalogue
@@ -325,7 +326,7 @@ export default function RoleManagement() {
               </div>
 
               <div className="rm-section">
-                <h4>Lifecycle</h4>
+                <h3>Lifecycle</h3>
                 <p className="rm-muted">
                   {detail.assignment_count} active assignment
                   {detail.assignment_count === 1 ? "" : "s"}.
@@ -426,7 +427,7 @@ export default function RoleManagement() {
               </div>
 
               <div className="rm-section">
-                <h4>History</h4>
+                <h3>History</h3>
                 <ul className="rm-history">
                   {detail.history.map((h) => (
                     <li key={`${h.revision}-${h.change_kind}`}>

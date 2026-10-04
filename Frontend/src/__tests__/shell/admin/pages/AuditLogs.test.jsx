@@ -185,6 +185,62 @@ describe("AuditLogs — functional", () => {
     });
   });
 
+  it("keeps first/last paging and page-size changes on the existing API contract", async () => {
+    axiosInstance.get.mockImplementation((url) =>
+      url === "/admin/audit-logs/"
+        ? Promise.resolve({ data: { ...LIST, total: 120 } })
+        : routeGet(url),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(await screen.findByRole("button", { name: "Last" }));
+    await waitFor(() =>
+      expect(listCalls().at(-1)[1].params).toMatchObject({
+        skip: 100,
+        limit: 50,
+      }),
+    );
+    await user.click(await screen.findByRole("button", { name: "First" }));
+    await waitFor(() =>
+      expect(listCalls().at(-1)[1].params).toMatchObject({
+        skip: 0,
+        limit: 50,
+      }),
+    );
+    await user.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(listCalls().at(-1)[1].params).toMatchObject({
+        skip: 50,
+        limit: 50,
+      }),
+    );
+    await user.selectOptions(screen.getByLabelText("Events per page"), "25");
+    await waitFor(() =>
+      expect(listCalls().at(-1)[1].params).toMatchObject({
+        skip: 0,
+        limit: 25,
+      }),
+    );
+  });
+
+  it("opens event details once when its keyboard control is activated", async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    const button = await screen.findByRole("button", {
+      name: "Open event e-1 details",
+    });
+    button.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(
+        axiosInstance.get.mock.calls.filter(
+          ([url]) => url === "/admin/audit-logs/e-1",
+        ),
+      ).toHaveLength(1),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no events", async () => {
     axiosInstance.get.mockImplementation((url) =>
       String(url).startsWith("/admin/audit-logs") &&

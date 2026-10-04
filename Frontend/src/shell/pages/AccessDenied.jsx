@@ -16,14 +16,19 @@ import PlatformLayout from "../layout/PlatformLayout";
 export default function AccessDenied() {
   return (
     <PlatformLayout>
-      <h1 className="pl-title">Access denied</h1>
-      <CcureAlert variant="warning" title="You do not have access to this page">
-        Your account does not have the permission this page needs. If you think
-        it should, ask an administrator of your organisation.
-      </CcureAlert>
-      <CcureButton as={Link} to="/" variant="secondary" className="pm-back">
-        Back to CCure Home
-      </CcureButton>
+      <div className="page-inner">
+        <h1 className="pl-title">Access denied</h1>
+        <CcureAlert
+          variant="warning"
+          title="You do not have access to this page"
+        >
+          Your account does not have the permission this page needs. If you
+          think it should, ask an administrator of your organisation.
+        </CcureAlert>
+        <CcureButton as={Link} to="/" variant="secondary" className="pm-back">
+          Back to CCure Home
+        </CcureButton>
+      </div>
     </PlatformLayout>
   );
 }

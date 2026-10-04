@@ -25,6 +25,7 @@
 
 .du-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--ccure-space-sm);
 }
 
@@ -66,7 +67,8 @@
 }
 
 .du-search {
-  min-width: 18rem;
+  flex: 0 1 18rem;
+  min-width: 0;
   margin-bottom: 0;
 }
 
@@ -78,8 +80,15 @@
 
 .du-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--ccure-space-xs);
+}
+
+@media (max-width: 640px) {
+  .du-search {
+    flex-basis: 100%;
+  }
 }
 
 /* The username and the address stacked, as `.table-cell-identity` did. The

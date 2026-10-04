@@ -465,21 +465,21 @@
     },
     {
       "file": "src/shell/admin/components/UserRolesPanel.jsx",
-      "line": 44,
+      "line": 45,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/AuditLogs.jsx",
-      "line": 62,
+      "line": 65,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/AuditLogs.jsx",
-      "line": 66,
+      "line": 69,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
@@ -514,21 +514,14 @@
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 35,
+      "line": 36,
       "kind": "atom_check",
       "status": "display-only",
       "reason": "documentation comment"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 61,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
-    },
-    {
-      "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 153,
+      "line": 62,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
@@ -542,14 +535,14 @@
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 160,
+      "line": 155,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 163,
+      "line": 161,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
@@ -557,6 +550,13 @@
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
       "line": 164,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
+    },
+    {
+      "file": "src/shell/admin/pages/RoleManagement.jsx",
+      "line": 165,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"

@@ -23,6 +23,7 @@ import "./patterns/security-patterns.css";
 
 /* ── Actions ─────────────────────────────────────────────────────────────── */
 export { default as CcureButton } from "./components/CcureButton";
+export { default as CcureCheckbox } from "./components/CcureCheckbox";
 
 /* ── Forms ───────────────────────────────────────────────────────────────── */
 export {

@@ -5,7 +5,10 @@ import {
   CcureBadge,
   CcureButton,
   CcureInput,
+  CcureLoader,
+  CcurePagination,
   CcureSelect,
+  CcureTable,
 } from "../../../design-system";
 import "../styles/audit-logs.css";
 import {
@@ -515,8 +518,10 @@ export default function AuditLogs() {
   if (loading) {
     return (
       <ProductFrame>
-        <div className="al-centered">
-          <div className="spinner" />
+        <div className="page-inner">
+          <div className="al-centered">
+            <CcureLoader label="Loading audit logs…" />
+          </div>
         </div>
       </ProductFrame>
     );
@@ -546,9 +551,10 @@ export default function AuditLogs() {
                 seconds. */}
             <div role="status" aria-live="polite" className="al-newevents">
               {newEventsCount > 0 && (
-                <button
+                <CcureButton
                   type="button"
-                  className="al-newevents-btn"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     setPage(1);
                     loadData(true, 1);
@@ -556,7 +562,7 @@ export default function AuditLogs() {
                 >
                   <span aria-hidden="true">💬</span> {newEventsCount} new event
                   {newEventsCount > 1 ? "s" : ""} — show
-                </button>
+                </CcureButton>
               )}
             </div>
             <CcureButton
@@ -600,9 +606,14 @@ export default function AuditLogs() {
 
         {canSeeRetention && retention && (
           <div className="al-note">
-            <div
+            <CcureButton
+              type="button"
+              variant="ghost"
+              block
+              aria-expanded={retentionOpen}
+              aria-controls="al-retention-details"
               onClick={() => setRetentionOpen((open) => !open)}
-              className="al-row al-row--gap-md al-clickable"
+              className="al-retention-toggle"
             >
               <strong>Retention</strong>
               <CcureBadge
@@ -626,10 +637,10 @@ export default function AuditLogs() {
               <span className="al-push al-muted">
                 {retentionOpen ? "▲" : "▼"}
               </span>
-            </div>
+            </CcureButton>
 
             {retentionOpen && (
-              <div className="al-mt al-relaxed">
+              <div id="al-retention-details" className="al-mt al-relaxed">
                 {!retention.installed ? (
                   <div>{retention.detail}</div>
                 ) : (
@@ -659,28 +670,27 @@ export default function AuditLogs() {
                           .join(", ")}
                       </div>
                     )}
-                    <table className="al-mt-sm al-full">
-                      <thead>
-                        <tr className="al-start al-muted">
-                          <th>Organization</th>
-                          <th>Eligible</th>
-                          <th>Legacy</th>
-                          <th>Chained</th>
-                          <th>Hold</th>
+                    <CcureTable
+                      caption="Audit retention preview by organization"
+                      className="al-mt-sm"
+                      columns={[
+                        { key: "organization", header: "Organization" },
+                        { key: "eligible", header: "Eligible" },
+                        { key: "legacy", header: "Legacy" },
+                        { key: "chained", header: "Chained" },
+                        { key: "hold", header: "Hold" },
+                      ]}
+                    >
+                      {(retention.organizations || []).map((row) => (
+                        <tr key={row.org_id}>
+                          <td>{row.org_id}</td>
+                          <td>{row.eligible_count}</td>
+                          <td>{row.legacy_total}</td>
+                          <td>{row.chained_total}</td>
+                          <td>{row.on_hold ? "YES" : "—"}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {(retention.organizations || []).map((row) => (
-                          <tr key={row.org_id}>
-                            <td>{row.org_id}</td>
-                            <td>{row.eligible_count}</td>
-                            <td>{row.legacy_total}</td>
-                            <td>{row.chained_total}</td>
-                            <td>{row.on_hold ? "YES" : "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      ))}
+                    </CcureTable>
                     <div className="al-mt-sm al-muted">
                       This panel is read-only. A purge runs from the scheduler
                       or
@@ -700,10 +710,10 @@ export default function AuditLogs() {
 
         {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
-        <div className="filter-bar">
+        <div className="al-filters">
           <CcureSelect
             label="Action"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-action"
             name="action"
             value={filters.action}
@@ -720,7 +730,7 @@ export default function AuditLogs() {
 
           <CcureSelect
             label="Resource"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-resource"
             name="resource_type"
             value={filters.resource_type}
@@ -734,7 +744,7 @@ export default function AuditLogs() {
 
           <CcureSelect
             label="Status"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-status"
             name="status"
             value={filters.status}
@@ -750,7 +760,7 @@ export default function AuditLogs() {
 
           <CcureSelect
             label="Severity"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-severity"
             name="severity"
             value={filters.severity}
@@ -766,7 +776,7 @@ export default function AuditLogs() {
 
           <CcureSelect
             label="Time Range"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-range"
             name="range"
             value={filters.range}
@@ -781,7 +791,7 @@ export default function AuditLogs() {
 
           <CcureInput
             label="Search"
-            fieldClassName="filter-group"
+            fieldClassName="al-filter"
             id="filter-search"
             type="search"
             placeholder="Event ID, request ID, user, IP…"
@@ -819,10 +829,10 @@ export default function AuditLogs() {
         </div>
 
         {showAdvanced && (
-          <div className="filter-bar al-mb">
+          <div className="al-filters">
             <CcureInput
               label="IP Address"
-              fieldClassName="filter-group"
+              fieldClassName="al-filter"
               id="filter-ip"
               name="ip_address"
               placeholder="10.180.6. (prefix ok)"
@@ -832,7 +842,7 @@ export default function AuditLogs() {
 
             <CcureInput
               label="User ID"
-              fieldClassName="filter-group"
+              fieldClassName="al-filter"
               id="filter-user"
               name="user_id"
               placeholder="usr_…"
@@ -842,7 +852,7 @@ export default function AuditLogs() {
 
             <CcureInput
               label="From (UTC)"
-              fieldClassName="filter-group"
+              fieldClassName="al-filter"
               id="filter-from"
               name="date_from"
               type="datetime-local"
@@ -852,7 +862,7 @@ export default function AuditLogs() {
 
             <CcureInput
               label="To (UTC)"
-              fieldClassName="filter-group"
+              fieldClassName="al-filter"
               id="filter-to"
               name="date_to"
               type="datetime-local"
@@ -863,199 +873,151 @@ export default function AuditLogs() {
         )}
 
         {total > 0 && (
-          <div className="pagination-row al-mb">
-            <div className="pagination-summary">
-              Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}-
-              {Math.min(page * pageSize, total)} of {total} events
-            </div>
-            <div className="pagination-controls al-row al-row--gap-lg">
-              <div className="al-row al-t-xs al-pager-group">
-                <span className="text-muted" aria-hidden="true">
-                  Show
-                </span>
-                <select
-                  className="field-input al-pagesize"
-                  aria-label="Events per page"
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  disabled={refreshing}
-                >
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={250}>250</option>
-                </select>
-              </div>
-              <CcureButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page <= 1 || refreshing}
-                onClick={() => setPage(1)}
-              >
-                {"<<"}
-              </CcureButton>
-              <CcureButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page <= 1 || refreshing}
-                onClick={() => setPage(page - 1)}
-              >
-                Prev
-              </CcureButton>
-              <span className="pagination-page al-t-xs">
-                Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
-              </span>
-              <CcureButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page >= Math.ceil(total / pageSize) || refreshing}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-              </CcureButton>
-              <CcureButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={page >= Math.ceil(total / pageSize) || refreshing}
-                onClick={() =>
-                  setPage(Math.max(1, Math.ceil(total / pageSize)))
-                }
-              >
-                {">>"}
-              </CcureButton>
-            </div>
-          </div>
+          <CcurePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            pageSizeOptions={[25, 50, 100, 250]}
+            pageSizeLabel="Events per page"
+            showBoundaryLinks
+            itemNoun="events"
+            disabled={refreshing}
+            className="al-mb"
+          />
         )}
 
         <div
-          className={`table-wrap al-table-wrap${refreshing ? " al-table-wrap--busy" : ""}`}
+          className={`al-table-wrap${refreshing ? " al-table-wrap--busy" : ""}`}
           aria-busy={refreshing || undefined}
         >
-          <table className="data-table">
-            <caption className="cc-sr-only">
-              Audit trail — {total} event{total === 1 ? "" : "s"} matching the
-              current filters
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Timestamp</th>
-                <th scope="col">User</th>
-                <th scope="col">Action</th>
-                <th scope="col">Target Resource</th>
-                <th scope="col">Status &amp; Severity</th>
-                <th scope="col">Source</th>
-                <th scope="col">Changes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => {
-                const actInfo = getActionDisplay(log.action);
-                return (
-                  <tr
-                    key={log.id}
-                    onClick={() => openDetails(log, actInfo)}
-                    className="al-clickable"
-                    title="Open full event details"
-                  >
-                    <td className="al-t-xs al-muted al-nowrap">
+          <CcureTable
+            caption={`Audit trail — ${total} event${total === 1 ? "" : "s"} matching the current filters`}
+            columns={[
+              { key: "timestamp", header: "Timestamp" },
+              { key: "user", header: "User" },
+              { key: "action", header: "Action" },
+              { key: "target", header: "Target Resource" },
+              { key: "status", header: "Status & Severity" },
+              { key: "source", header: "Source" },
+              { key: "changes", header: "Changes" },
+            ]}
+            hoverable
+          >
+            {logs.map((log) => {
+              const actInfo = getActionDisplay(log.action);
+              return (
+                <tr
+                  key={log.id}
+                  onClick={() => openDetails(log, actInfo)}
+                  className="al-clickable"
+                  title="Open full event details"
+                >
+                  <td className="al-t-xs al-muted al-nowrap">
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Open event ${log.id} details`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetails(log, actInfo);
+                      }}
+                    >
                       {formatDateTime(log.created_at)}
-                    </td>
-                    <td>
-                      <div className="al-col">
-                        <span className="al-t-sm al-semibold">
-                          {getActorDisplay(log)}
+                    </CcureButton>
+                  </td>
+                  <td>
+                    <div className="al-col">
+                      <span className="al-t-sm al-semibold">
+                        {getActorDisplay(log)}
+                      </span>
+                      {log.user_email && (
+                        <span className="al-t-2xs al-muted">
+                          {log.user_email}
                         </span>
-                        {log.user_email && (
-                          <span className="al-t-2xs al-muted">
-                            {log.user_email}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="al-row">
-                        <span className="al-t-md">{actInfo.icon}</span>
-                        <strong className="al-t-sm al-semibold">
-                          {actInfo.label}
-                        </strong>
-                      </div>
-                    </td>
-                    <td>{renderAffectedObject(log)}</td>
-                    <td>
-                      <div className="al-col al-col--start">
-                        {/* The word is the status; the colour is the sighted
-                            half of the same fact, never the whole of it. */}
-                        <span
-                          className={`al-t-xs al-semibold al-status al-status--${
-                            log.status === "success" ? "ok" : "bad"
-                          }`}
-                        >
-                          {String(log.status || "").toUpperCase()}
-                        </span>
-                        {renderSeverity(log.severity)}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="al-col">
-                        <code className="al-t-xs al-semibold">
-                          {log.ip_address || "—"}
-                        </code>
-                        {log.user_agent && (
-                          <span className="al-t-2xs al-muted al-mt-2xs">
-                            {parseUserAgent(log.user_agent)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      {log.changes &&
-                      Object.keys(log.changes).length > 0 &&
-                      ![
-                        "user.login",
-                        "user.login_failed",
-                        "user.logout",
-                        "scan.started",
-                        "scan.created",
-                        "scan.completed",
-                        "scan.failed",
-                      ].includes(log.action) ? (
-                        <CcureButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            // The row itself opens the same modal now. Without
-                            // this the click runs twice and fires two detail
-                            // requests for one user action.
-                            e.stopPropagation();
-                            openDetails(log, actInfo);
-                          }}
-                        >
-                          View Changes
-                        </CcureButton>
-                      ) : (
-                        "—"
                       )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {logs.length === 0 && (
-                <tr>
-                  <td colSpan="7" className="al-centered-note">
-                    No audit logs found matching your criteria.
+                    </div>
+                  </td>
+                  <td>
+                    <div className="al-row">
+                      <span className="al-t-md">{actInfo.icon}</span>
+                      <strong className="al-t-sm al-semibold">
+                        {actInfo.label}
+                      </strong>
+                    </div>
+                  </td>
+                  <td>{renderAffectedObject(log)}</td>
+                  <td>
+                    <div className="al-col al-col--start">
+                      {/* The word is the status; the colour is the sighted
+                          half of the same fact, never the whole of it. */}
+                      <CcureBadge
+                        variant={
+                          log.status === "success" ? "success" : "danger"
+                        }
+                      >
+                        {String(log.status || "").toUpperCase()}
+                      </CcureBadge>
+                      {renderSeverity(log.severity)}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="al-col">
+                      <code className="al-t-xs al-semibold">
+                        {log.ip_address || "—"}
+                      </code>
+                      {log.user_agent && (
+                        <span className="al-t-2xs al-muted al-mt-2xs">
+                          {parseUserAgent(log.user_agent)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    {log.changes &&
+                    Object.keys(log.changes).length > 0 &&
+                    ![
+                      "user.login",
+                      "user.login_failed",
+                      "user.logout",
+                      "scan.started",
+                      "scan.created",
+                      "scan.completed",
+                      "scan.failed",
+                    ].includes(log.action) ? (
+                      <CcureButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          // The row itself opens the same modal now. Without
+                          // this the click runs twice and fires two detail
+                          // requests for one user action.
+                          e.stopPropagation();
+                          openDetails(log, actInfo);
+                        }}
+                      >
+                        View Changes
+                      </CcureButton>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              );
+            })}
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan="7" className="al-centered-note">
+                  No audit logs found matching your criteria.
+                </td>
+              </tr>
+            )}
+          </CcureTable>
         </div>
       </div>
 

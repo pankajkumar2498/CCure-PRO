@@ -10,7 +10,7 @@
  * selectable. That is a convenience: the backend refuses all of it again.
  */
 import { useMemo } from "react";
-import { CcureBadge } from "../../../design-system";
+import { CcureBadge, CcureCheckbox } from "../../../design-system";
 import { can } from "../../auth/permissions";
 
 const groupByModule = (catalogue) => {
@@ -64,18 +64,15 @@ export default function RolePermissionEditor({
                 // a held key stays removable even when it could not be newly granted
                 const disabled = readOnly || (!checked && !!reason);
                 return (
-                  <label
+                  <CcureCheckbox
                     key={p.key}
                     className={`rm-perm${disabled ? " rm-perm--off" : ""}`}
                     title={disabled && reason ? reason : p.description}
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() => onToggle(p.key)}
+                    aria-label={p.key}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={() => onToggle(p.key)}
-                      aria-label={p.key}
-                    />
                     <span className="rm-perm__action">{p.action}</span>
                     <span className="rm-perm__desc">{p.description}</span>
                     <CcureBadge variant="info">{p.scope}</CcureBadge>
@@ -91,7 +88,7 @@ export default function RolePermissionEditor({
                     {disabled && !readOnly && reason && (
                       <span className="cc-sr-only">{reason}</span>
                     )}
-                  </label>
+                  </CcureCheckbox>
                 );
               })}
             </fieldset>

@@ -24,6 +24,7 @@ import {
   CcureButton,
   CcureLoader,
   CcureSelect,
+  CcureTable,
 } from "../../../design-system";
 import { can } from "../../auth/permissions";
 import ReauthDialog from "./ReauthDialog";
@@ -93,67 +94,60 @@ export default function UserRolesPanel({ user, currentUser }) {
   return (
     <div className="um-roles">
       {error && <CcureAlert variant="danger">{error}</CcureAlert>}
-      <table className="um-roles__table">
-        <caption className="cc-sr-only">
-          Role assignments for {user.username}
-        </caption>
-        <thead>
+      <CcureTable
+        caption={`Role assignments for ${user.username}`}
+        columns={[
+          { key: "role", header: "Role" },
+          { key: "kind", header: "Kind" },
+          { key: "scope", header: "Scope" },
+          { key: "status", header: "Status" },
+          { key: "actions", header: "Actions", align: "end" },
+        ]}
+      >
+        {assignments.length === 0 && (
           <tr>
-            <th scope="col">Role</th>
-            <th scope="col">Kind</th>
-            <th scope="col">Scope</th>
-            <th scope="col">Status</th>
-            <th scope="col">
-              <span className="cc-sr-only">Actions</span>
-            </th>
+            <td colSpan={5}>
+              No RBAC role assignments. The account still holds its current
+              role.
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {assignments.length === 0 && (
-            <tr>
-              <td colSpan={5}>
-                No RBAC role assignments. The account still holds its current
-                role.
-              </td>
-            </tr>
-          )}
-          {assignments.map((a) => (
-            <tr key={a.id}>
-              <th scope="row">
-                {a.role.display_name}
-                {a.role.state !== "active" && (
-                  <CcureBadge variant="warning">{a.role.state}</CcureBadge>
-                )}
-              </th>
-              <td>{a.role.kind}</td>
-              <td>
-                {a.scope_type === "platform"
-                  ? "platform"
-                  : `organisation ${a.scope_org_id}`}
-              </td>
-              <td>
-                <CcureBadge variant={statusVariant[a.status] || "neutral"}>
-                  {a.status}
-                </CcureBadge>
-              </td>
-              <td>
-                {canAssign && a.status === "active" && (
-                  <CcureButton
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy}
-                    aria-label={`Remove ${a.role.display_name} from ${user.username}`}
-                    onClick={() => act((o) => revokeRbacAssignment(a.id, o))}
-                  >
-                    Remove
-                  </CcureButton>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        )}
+        {assignments.map((a) => (
+          <tr key={a.id}>
+            <th scope="row">
+              {a.role.display_name}
+              {a.role.state !== "active" && (
+                <CcureBadge variant="warning">{a.role.state}</CcureBadge>
+              )}
+            </th>
+            <td>{a.role.kind}</td>
+            <td>
+              {a.scope_type === "platform"
+                ? "platform"
+                : `organisation ${a.scope_org_id}`}
+            </td>
+            <td>
+              <CcureBadge variant={statusVariant[a.status] || "neutral"}>
+                {a.status}
+              </CcureBadge>
+            </td>
+            <td>
+              {canAssign && a.status === "active" && (
+                <CcureButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  aria-label={`Remove ${a.role.display_name} from ${user.username}`}
+                  onClick={() => act((o) => revokeRbacAssignment(a.id, o))}
+                >
+                  Remove
+                </CcureButton>
+              )}
+            </td>
+          </tr>
+        ))}
+      </CcureTable>
 
       {canAssign && (
         <div className="um-roles__assign">
@@ -178,7 +172,7 @@ export default function UserRolesPanel({ user, currentUser }) {
             Assign
           </CcureButton>
           {refused.length > 0 && (
-            <p className="rm-muted">
+            <p className="um-roles__note">
               Not available to you:{" "}
               {refused
                 .map(

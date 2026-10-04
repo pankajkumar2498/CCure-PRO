@@ -129,7 +129,9 @@ function HomeContent() {
 export default function CcureHome() {
   return (
     <PlatformLayout>
-      <HomeContent />
+      <div className="page-inner">
+        <HomeContent />
+      </div>
     </PlatformLayout>
   );
 }

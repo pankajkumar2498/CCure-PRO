@@ -197,7 +197,7 @@ function PlatformFrame({ children }) {
         currentPath={pathname}
         onNavigate={(route) => navigate(route)}
         headerActions={headerActions}
-        mainClassName="pl-main"
+        mainClassName="page-main pl-main"
         className="pl-shell"
       >
         {children}

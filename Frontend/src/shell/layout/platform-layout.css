@@ -1,15 +1,44 @@
-/* Platform frame for CCure Home and the module entry pages. Tokens only. */
+/* Common Platform: shared UX4G shell, fluid pages, and Audit-aligned gutters. */
 
-.pl-main {
-  max-width: 72rem;
+.pl-shell {
+  grid-template-columns: var(--ccure-sidebar-width) minmax(0, 1fr);
+}
+
+.pl-shell > .pl-main {
+  width: 100%;
+  max-width: none;
+  padding: 0;
   box-sizing: border-box;
 }
 
+.pl-main > .page-inner {
+  min-width: 0;
+  padding: calc(var(--ccure-space-md) + var(--ccure-space-lg))
+    calc(2 * var(--ccure-space-lg)) calc(3 * var(--ccure-space-lg));
+}
+
+.pl-main .page-title-row {
+  gap: var(--ccure-space-md);
+  margin-bottom: var(--ccure-space-xl);
+}
+
+.pl-main .page-title-row > div {
+  min-width: 0;
+}
+
+.pl-main .page-title,
 .pl-title {
   margin: 0 0 var(--ccure-space-xs);
   font-family: var(--ccure-font-display);
   font-size: var(--ccure-text-2xl);
   font-weight: var(--ccure-weight-bold);
+}
+
+.pl-main .page-subtitle {
+  margin: var(--ccure-space-2xs) 0 0;
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text-secondary);
+  line-height: var(--ccure-leading-relaxed);
 }
 
 .pl-lead {
@@ -25,18 +54,30 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   gap: var(--ccure-space-lg);
 }
 
 .ph-grid > li {
   display: flex;
+  min-width: 0;
 }
 
 .ph-card {
+  min-width: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+}
+
+/* Pages own one set of gutters, just as they do in the Audit Platform. */
+@media (max-width: 768px) {
+  .pl-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pl-main > .page-inner {
+    padding: var(--ccure-space-lg) var(--ccure-space-lg) var(--ccure-space-3xl);
+  }
 }
 
 .ph-card .cc-card__body {
@@ -98,5 +139,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .pl-main .cc-pagination__controls {
+    flex-wrap: wrap;
+  }
+  .pl-main .cc-pagination__size {
+    flex-basis: 100%;
   }
 }

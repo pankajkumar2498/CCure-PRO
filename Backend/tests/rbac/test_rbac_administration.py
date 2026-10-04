@@ -6,6 +6,7 @@ governance rules. Every refusal is backend-enforced; the database triggers sit b
 from __future__ import annotations
 
 import pytest
+import re
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,8 @@ from ccure_platform import composition
 from ccure_platform.identity import reauth
 from ccure_platform.identity.dependencies import get_current_user
 from ccure_platform.rbac import scope
+from ccure_platform.rbac import administration as admin
+from ccure_platform.rbac import contract as c
 from ccure_platform.rbac.authorization_view import build_authorization
 from ccure_platform.rbac.catalogue import sync
 from ccure_platform.rbac.model import RbacRole, RbacUserRole
@@ -129,6 +132,159 @@ def test_roles_list_and_detail_hide_structure_and_scope_by_organisation(w):
 
 
 # ── custom roles ─────────────────────────────────────────────────────────────
+
+
+ROLE_LABELS = (
+    ("Rehearsal Asset Reader", "rehearsal_asset_reader"),
+    ("Asset Reader / Scanner", "asset_reader_scanner"),
+    ("R&D: Asset (Reader)!", "r_d_asset_reader"),
+    ("Asset   Reader__///Scanner", "asset_reader_scanner"),
+    ("--- Asset.Reader !!!", "asset_reader"),
+    ("mIxEd CASE Label", "mixed_case_label"),
+    ("!!!@@@###", "role"),
+    ("123 Asset Reader", "role_123_asset_reader"),
+    ("___42___", "role_42"),
+    ("___", "role"),
+    ("ÖÄ💥", "role"),
+    ("a" * 39 + " / b", "a" * 39),
+    ("99 " + "A" * 90, "role_99_" + "a" * 32),
+)
+
+
+@pytest.mark.parametrize("label,expected", ROLE_LABELS)
+def test_native_role_slug_is_deterministic_and_matches_existing_grammar(
+    label, expected
+):
+    slug = admin._slug(label)
+    assert slug == expected == admin._slug(label)
+    assert len(slug) <= 40
+    assert re.fullmatch(r"[a-z][a-z0-9_]*", slug)
+    assert c.role_key_kind(f"custom.org_development.{slug}") == "org_custom"
+
+
+@pytest.mark.parametrize("label,expected", ROLE_LABELS)
+def test_authorized_administrator_persists_normalized_role_labels(w, label, expected):
+    response = w.call(
+        w.sa,
+        "POST",
+        "/platform/rbac/roles",
+        json={"display_name": label, "permission_keys": ["audit.asset.read"]},
+    )
+    assert response.status_code == 201, response.json()
+    detail = response.json()
+    assert detail["key"] == f"custom.{w.a.id}.{expected}"
+    assert c.role_key_kind(detail["key"]) == "org_custom"
+    persisted = w.db.get(RbacRole, detail["id"])
+    assert persisted is not None and persisted.display_name == label
+    assert detail["permissions"] == ["audit.asset.read"]
+
+
+def test_native_role_key_collisions_use_valid_numeric_suffixes(w):
+    for label, slug in (
+        ("Asset Reader", "asset_reader"),
+        ("Asset/Reader", "asset_reader_2"),
+        ("Asset---Reader", "asset_reader_3"),
+    ):
+        response = w.call(
+            w.sa,
+            "POST",
+            "/platform/rbac/roles",
+            json={"display_name": label, "permission_keys": []},
+        )
+        assert response.status_code == 201, response.json()
+        assert response.json()["key"] == f"custom.{w.a.id}.{slug}"
+        assert c.role_key_kind(response.json()["key"]) == "org_custom"
+    duplicate = w.call(
+        w.sa,
+        "POST",
+        "/platform/rbac/roles",
+        json={"display_name": "asset reader", "permission_keys": []},
+    )
+    assert duplicate.status_code == 403
+    assert "display_name_in_use" in {
+        violation["code"] for violation in duplicate.json()["detail"]["violations"]
+    }
+    assert w.db.query(RbacRole).filter_by(org_id=w.a.id, kind="custom").count() == 3
+
+
+def test_multiword_custom_role_permissions_assignment_rename_revocation_and_retirement(
+    w,
+):
+    created = w.call(
+        w.sa,
+        "POST",
+        "/platform/rbac/roles",
+        json={"display_name": "Rehearsal Asset Reader", "permission_keys": []},
+    )
+    assert created.status_code == 201
+    detail = created.json()
+    rid, original_key = detail["id"], detail["key"]
+    assert original_key == f"custom.{w.a.id}.rehearsal_asset_reader"
+    changed = w.call(
+        w.sa,
+        "PUT",
+        f"/platform/rbac/roles/{rid}/permissions",
+        json={"permission_keys": ["audit.asset.read"]},
+    )
+    assert changed.status_code == 200
+    target = w.person(w.a)
+    assigned = w.call(
+        w.sa,
+        "POST",
+        f"/platform/rbac/users/{target.id}/assignments",
+        json={"role_id": rid},
+    )
+    assert assigned.status_code == 201
+    assert keys(build_authorization(w.db, target)) == {"audit.asset.read"}
+    renamed = w.call(
+        w.sa,
+        "PATCH",
+        f"/platform/rbac/roles/{rid}",
+        json={
+            "display_name": "Updated Reader / Scanner",
+            "description": "Updated label",
+        },
+    )
+    assert renamed.status_code == 200 and renamed.json()["key"] == original_key
+    assert renamed.json()["display_name"] == "Updated Reader / Scanner"
+    assert keys(build_authorization(w.db, target)) == {"audit.asset.read"}
+    updated = w.call(
+        w.sa,
+        "PATCH",
+        f"/platform/rbac/roles/{rid}",
+        json={"description": "Description updated separately"},
+    )
+    assert updated.status_code == 200 and updated.json()["key"] == original_key
+    # A renamed role keeps its identity; recreating the former label collides
+    # with that permanent key and receives the next valid suffix.
+    recreated = w.call(
+        w.sa,
+        "POST",
+        "/platform/rbac/roles",
+        json={"display_name": "Rehearsal Asset Reader", "permission_keys": []},
+    )
+    assert recreated.status_code == 201
+    assert recreated.json()["key"] == original_key + "_2"
+    revoked = w.call(
+        w.sa, "DELETE", f"/platform/rbac/assignments/{assigned.json()['assignment_id']}"
+    )
+    assert revoked.status_code == 200
+    assert keys(build_authorization(w.db, target)) == set()
+    for state in ("retiring", "retired"):
+        transition = w.call(
+            w.sa,
+            "POST",
+            f"/platform/rbac/roles/{rid}/transition",
+            json={"target": state, "reason": "Normalization regression verification"},
+        )
+        assert transition.status_code == 200 and transition.json()["state"] == state
+        assert transition.json()["key"] == original_key
+    assert events(w.db, "rbac.role.permissions_changed")
+    assert events(w.db, "rbac.role.renamed")
+    assert events(w.db, "rbac.role.updated")
+    assert events(w.db, "rbac.role.assigned")
+    assert events(w.db, "rbac.role.revoked")
+    assert events(w.db, "rbac.role.retired")
 
 
 def test_a_superadmin_creates_a_custom_organisation_role(w):

@@ -349,8 +349,12 @@ def _require_visible(row: RbacRole | None, org_id: str | None) -> RbacRole:
 
 
 def _slug(display_name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")[:40]
-    return slug or "role"
+    slug = re.sub(r"[^a-z0-9]+", "_", display_name.lower()).strip("_")
+    if not slug:
+        return "role"
+    if not slug[0].isalpha():
+        slug = f"role_{slug}"
+    return slug[:40].rstrip("_")
 
 
 def create_custom_role(
@@ -371,7 +375,7 @@ def create_custom_role(
         select(RbacRole.id).filter_by(key=f"custom.{org_id}.{slug}")
     ).first():
         n += 1
-        slug = f"{base}-{n}"
+        slug = f"{base}_{n}"
     try:
         with db.begin_nested():
             row, event = governance.define_custom_org_role(

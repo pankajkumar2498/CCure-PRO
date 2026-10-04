@@ -264,8 +264,8 @@ def _run_alembic(command: list[str]) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DEFAULT_ORG_NAME = "superadmin"
-DEFAULT_ORG_SLUG = "KING"
+DEFAULT_ORG_NAME = os.getenv("DEFAULT_ORG_NAME", "superadmin")
+DEFAULT_ORG_SLUG = os.getenv("DEFAULT_ORG_SLUG", "KING")
 
 
 def seed_default_org(conn):

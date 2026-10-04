@@ -54,7 +54,7 @@ if config.config_file_name is not None:
 # Ensure env var database url overrides the ini setting.
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Set target metadata for autogenerate.
 #

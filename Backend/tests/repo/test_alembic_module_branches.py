@@ -38,7 +38,7 @@ from scripts.architecture import module_boundaries as mb
 from scripts.db import alembic_module_branches as branches
 from testpaths import BACKEND_ROOT, REPO_ROOT
 
-AUDIT_HEAD = "c9e3a7b5d1f2"
+AUDIT_HEAD = "d4f8b2c6e0a1"
 MODULES = [m for m in registry.modules() if m.key != "audit"]
 EXAMPLE_MIGRATIONS = (
     BACKEND_ROOT

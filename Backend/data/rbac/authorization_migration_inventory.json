@@ -6,12 +6,12 @@
     "legacy_calls_remaining": 0,
     "role_name_decisions_remaining": 0,
     "legacy_tables": {
-      "roles": "absent from runtime metadata; forward schema removal pending",
-      "permissions": "absent from runtime metadata; forward schema removal pending",
-      "role_permissions": "absent from runtime metadata; forward schema removal pending",
-      "rbac_legacy_map": "absent from runtime metadata; forward schema removal pending"
+      "roles": "absent from runtime metadata; removed by forward revision d4f8b2c6e0a1",
+      "permissions": "absent from runtime metadata; removed by forward revision d4f8b2c6e0a1",
+      "role_permissions": "absent from runtime metadata; removed by forward revision d4f8b2c6e0a1",
+      "rbac_legacy_map": "absent from runtime metadata; removed by forward revision d4f8b2c6e0a1"
     },
-    "users_role_id": "absent from runtime model; forward schema removal pending",
+    "users_role_id": "absent from runtime model; removed by forward revision d4f8b2c6e0a1",
     "legacy_atoms": "kept only in migration history, documentation, audit data and historical migrations"
   },
   "summary": {

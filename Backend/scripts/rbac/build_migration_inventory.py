@@ -95,9 +95,9 @@ DISPLAY_ONLY = (
         "assignment display names in the authorization payload; labels only",
     ),
 )
-#: Runtime metadata excludes these tables; the next focused commit removes their live schema.
+#: Runtime metadata excludes these tables; the forward migration removes their live schema.
 LEGACY_TABLES = {
-    name: "absent from runtime metadata; forward schema removal pending"
+    name: "absent from runtime metadata; removed by forward revision d4f8b2c6e0a1"
     for name in ("roles", "permissions", "role_permissions", "rbac_legacy_map")
 }
 
@@ -264,7 +264,7 @@ def build() -> dict:
             "legacy_calls_remaining": counts.get("legacy", 0),
             "role_name_decisions_remaining": 0,
             "legacy_tables": LEGACY_TABLES,
-            "users_role_id": "absent from runtime model; forward schema removal pending",
+            "users_role_id": "absent from runtime model; removed by forward revision d4f8b2c6e0a1",
             "legacy_atoms": "kept only in migration history, documentation, audit data and "
             "historical migrations",
         },

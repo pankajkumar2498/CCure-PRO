@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "designSystem": {
+    "family": "3.0",
+    "figmaVersion": "3.0",
+    "cdnRelease": "3.3.0"
+  },
+  "npm": {
+    "package": "ux4g-web-components",
+    "version": "3.0.0",
+    "registry": "https://registry.npmjs.org",
+    "tarball": "https://registry.npmjs.org/ux4g-web-components/-/ux4g-web-components-3.0.0.tgz",
+    "integrity": "sha512-ZVw6hhKVzEv7OFU9TWbjSUv7ymXrstOZz9d9f8lYReY38Cg7HrH2a6zMwgkRpV4znpBL5Eei028AR2DFk9us2A==",
+    "publisher": {
+      "name": "ux4g.npm",
+      "email": "support.ux4g@digitalindia.gov.in"
+    },
+    "publishedAt": "2026-09-27T17:17:41.743Z",
+    "dependencies": {},
+    "peerDependencies": {},
+    "optionalDependencies": {}
+  },
+  "verifiedAt": "2026-10-04",
+  "sources": {
+    "website": "https://www.ux4g.gov.in/get-started/installation",
+    "documentation": "https://doc.ux4g.gov.in/web/?path=/story/getting-started-quick-start-guide--quick-start",
+    "publisherMetadata": "https://registry.npmjs.org/ux4g-web-components/3.0.0",
+    "releaseNotes": "package/CHANGELOG.md in the verified npm distribution",
+    "cdnStylesheet": "https://cdn.ux4g.gov.in/UX4G@3.3.0/index.css"
+  },
+  "approval": {
+    "status": "approved-b1-foundation-only",
+    "compatibility": "current token references, font payloads and reset inspected; component/runtime compatibility not approved",
+    "report": "../docs/ux4g/B1_VERSION_FOUNDATION.md",
+    "pipelineReport": "../docs/ux4g/B2_ASSET_PIPELINE.md"
+  },
+  "assets": {
+    "mode": "tokens",
+    "retainedFonts": ["Noto Sans"],
+    "sourceCssSha256": "8963db356123377037fddd8ce9fc4fdc1a9259dee79ffc962a6b90e63f8be2aa",
+    "delivery": "same-origin-woff2",
+    "status": "central token/font pipeline; component/layout/pattern/utility CSS and typography migration remain deferred"
+  },
+  "runtime": {
+    "enabled": false,
+    "status": "blocked-by-current-csp",
+    "reason": "Official bootstrap injects inline scripts without nonce support; script-src self remains unchanged. React retains behavior ownership."
+  },
+  "migration": {
+    "phase": "B.2",
+    "officialComponentsEnabled": false,
+    "target": "One official UX4G foundation through the shared CCure Design System for Common, authentication, Audit, Policy, Rank, IR and future modules."
+  },
+  "csp": {
+    "status": "unchanged",
+    "policySha256": "74cc7d5e93ab9ebee8eb4e9aa8862609a710cac81ef4e3846cd20669b78e1ae5",
+    "scriptSources": ["'self'"],
+    "fontSources": ["'self'"]
+  }
+}

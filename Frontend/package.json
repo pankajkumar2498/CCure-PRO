@@ -8,7 +8,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
-    "ux4g-web-components": "2.1.0",
+    "ux4g-web-components": "3.0.0",
     "vis-data": "^7.1.9",
     "vis-network": "^9.1.9"
   },
@@ -28,12 +28,15 @@
   "scripts": {
     "prebuild": "node scripts/build-ux4g-assets.mjs",
     "build": "vite build",
+    "postbuild": "node scripts/check-ux4g-foundation.mjs --dist",
     "dev": "node scripts/build-ux4g-assets.mjs && vite",
+    "prepreview": "node scripts/check-ux4g-foundation.mjs --dist",
     "preview": "vite preview",
     "pretest": "node scripts/build-ux4g-assets.mjs",
     "test": "vitest run",
     "lint": "eslint src --ext .js,.jsx --max-warnings=0",
     "ux4g:assets": "node scripts/build-ux4g-assets.mjs",
+    "ux4g:check": "node scripts/check-ux4g-foundation.mjs",
     "ux4g:verify": "node scripts/verify-ux4g-assets.mjs"
   }
 }

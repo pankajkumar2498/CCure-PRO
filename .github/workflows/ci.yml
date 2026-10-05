@@ -220,6 +220,11 @@ jobs:
           cd Frontend
           npm ci
 
+      - name: Verify Approved UX4G Dependency Foundation
+        run: |
+          cd Frontend
+          npm run ux4g:check -- --dependencies-only
+
       # npm audit lives in security.yml ("npm Dependency Audit"), which also
       # runs it nightly. The step that stood here ended in `|| echo` and could
       # not fail.
@@ -234,6 +239,12 @@ jobs:
         run: |
           cd Frontend
           npm run build
+
+      - name: Verify Reproducible UX4G Assets and Provenance
+        run: |
+          cd Frontend
+          npm run ux4g:verify
+          npm run ux4g:check -- --dist
 
       - name: Run Frontend Tests
         run: |

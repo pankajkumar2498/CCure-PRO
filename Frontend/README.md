@@ -2,6 +2,28 @@
 
 React + Vite frontend unified from the CAST Dashboard design system and CCure Audit PRO backend.
 
+## UX4G foundation and development rule
+
+The entire frontend uses one approved UX4G foundation, defined in
+[`ux4g-baseline.json`](ux4g-baseline.json). The project adopts the latest official
+stable release applicable after compatibility/security/CSP validation and pins
+it exactly. All modules consume the central CCure Design System; separate
+module design systems and competing frameworks require explicit approval.
+Custom replacements for an official equivalent need a documented technical
+reason. These rules apply equally to developers and AI coding assistants.
+
+Phase B.1 upgrades the dependency foundation while retaining tokens, the
+existing self-hosted font and React-owned behavior. It does not migrate pages,
+official components or accessibility defects. See the
+[B.1 evidence, decisions and rollback](../docs/ux4g/B1_VERSION_FOUNDATION.md).
+The current [B.2 asset pipeline](../docs/ux4g/B2_ASSET_PIPELINE.md) adds generator
+and converter input hashes, staged publication and deployed manifest/font
+validation. Keep every module on this pipeline; do not copy UX4G CSS or fonts.
+
+After `npm ci`, run `npm run ux4g:check -- --dependencies-only`; after building,
+run `npm run ux4g:verify` and `npm run ux4g:check -- --dist`. CI enforces these
+checks. `postbuild` and `prepreview` also validate the deployed asset set.
+
 ## Design System
 
 - **Sidebar**: `#1a2332` dark navy
@@ -76,13 +98,15 @@ Each folder's `README.md` says what belongs there. The full picture:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.12+ for the documented CI/browser validation workflow. CI uses
+  Node 22; the current Docker build uses its existing Node 25 image. B.1 does
+  not change either build environment.
 - Backend running on `http://localhost:8000`
 
 ### Install & Start
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 

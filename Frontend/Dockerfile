@@ -23,7 +23,7 @@ COPY . .
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-RUN npm run build
+RUN npm run ux4g:check -- --dependencies-only && npm run build
 
 # ── Production Stage ───────────────────────────────────────────────────────
 FROM nginx:stable-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b AS runtime

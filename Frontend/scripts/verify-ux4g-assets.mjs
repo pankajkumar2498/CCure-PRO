@@ -17,41 +17,42 @@
  */
 
 import { readFile, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkFoundation } from "./check-ux4g-foundation.mjs";
+import { assetPaths } from "./ux4g-pipeline.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 
-const CSS = path.join(
-  ROOT,
-  "src",
-  "design-system",
-  "tokens",
-  "ux4g.generated.css",
-);
-const MANIFEST = path.join(
-  ROOT,
-  "src",
-  "design-system",
-  "tokens",
-  "ux4g.generated.manifest.json",
-);
-const FONTS = path.join(ROOT, "public", "assets", "fonts", "ux4g");
+const {
+  css: CSS,
+  manifest: MANIFEST,
+  fonts: FONTS,
+  publicManifest: PUBLIC_MANIFEST,
+} = assetPaths(ROOT);
 
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 
 async function snapshot() {
   const css = await readFile(CSS);
-  const manifest = JSON.parse(await readFile(MANIFEST, "utf8"));
+  const manifestBytes = await readFile(MANIFEST);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const publicManifest = await readFile(PUBLIC_MANIFEST);
   const fonts = {};
   for (const f of manifest.fonts) {
     fonts[f.file] = sha(await readFile(path.join(FONTS, f.file)));
   }
-  return { css: sha(css), fonts, manifest };
+  checkFoundation();
+  return {
+    css: sha(css),
+    fonts,
+    manifest,
+    manifestSha256: sha(manifestBytes),
+    publicManifestSha256: sha(publicManifest),
+  };
 }
 
 function build(label) {
@@ -68,10 +69,13 @@ function build(label) {
 }
 
 async function main() {
-  if (!existsSync(CSS) || !existsSync(MANIFEST)) {
-    console.log("[ux4g:verify] no generated assets yet — building once first");
-    build("initial");
-  }
+  // Both runs begin without generated output. Compare metadata bytes as well
+  // as CSS/fonts so timestamps, ordering and provenance cannot drift silently.
+  await rm(CSS, { force: true });
+  await rm(MANIFEST, { force: true });
+  await rm(FONTS, { recursive: true, force: true });
+  await rm(PUBLIC_MANIFEST, { force: true });
+  build("first");
 
   const first = await snapshot();
 
@@ -80,6 +84,7 @@ async function main() {
   await rm(CSS, { force: true });
   await rm(MANIFEST, { force: true });
   await rm(FONTS, { recursive: true, force: true });
+  await rm(PUBLIC_MANIFEST, { force: true });
 
   build("second");
   const second = await snapshot();
@@ -89,6 +94,14 @@ async function main() {
     problems.push(
       `CSS differs:\n    run 1 ${first.css}\n    run 2 ${second.css}`,
     );
+  }
+  if (first.manifestSha256 !== second.manifestSha256) {
+    problems.push(
+      `Manifest differs:\n    run 1 ${first.manifestSha256}\n    run 2 ${second.manifestSha256}`,
+    );
+  }
+  if (first.publicManifestSha256 !== second.publicManifestSha256) {
+    problems.push("Published provenance differs between clean generation runs");
   }
   const files = new Set([
     ...Object.keys(first.fonts),
@@ -109,6 +122,7 @@ async function main() {
     `  source        ${m.source.package}@${m.source.version}  mode=${m.mode}`,
   );
   console.log(`  css sha256    ${second.css}`);
+  console.log(`  manifest      ${second.manifestSha256}`);
   for (const f of m.fonts) {
     console.log(`  ${f.file.padEnd(14)}${second.fonts[f.file]}`);
   }

@@ -16,3 +16,9 @@ pnpm-debug.log*
 .gitignore
 Dockerfile
 README.md
+src/design-system/tokens/ux4g.generated.css
+src/design-system/tokens/ux4g.generated.manifest.json
+public/assets/fonts/ux4g
+public/assets/ux4g
+.ux4g-assets-*
+.ux4g-assets.lock

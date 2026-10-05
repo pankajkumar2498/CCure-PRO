@@ -8,23 +8,53 @@ contract with the backend.
 
 ## 1. Stack
 
-| Concern           | Choice                                               | Version                        |
-| ----------------- | ---------------------------------------------------- | ------------------------------ |
-| UI library        | React                                                | `^18.3.1`                      |
-| Router            | react-router-dom                                     | `^6.23.1`                      |
-| HTTP client       | axios                                                | `^1.7.2`                       |
-| Build tool        | Vite                                                 | `^5.2.11`                      |
-| React plugin      | `@vitejs/plugin-react`                               | `^4.3.0`                       |
-| Test runner       | Vitest + jsdom                                       | `^1.6.0` / `^24.0.0`           |
-| Testing utilities | `@testing-library/react`, `/jest-dom`, `/user-event` | `^15.0.7`, `^6.4.5`, `^14.5.2` |
-| Graph rendering   | vis-network + vis-data                               | `^9.1.9` / `^7.1.9`            |
+### Approved UX4G foundation (Phase B.1)
+
+`Frontend/ux4g-baseline.json` is the authoritative approved release/provenance
+definition. Package declarations, the lockfile, installed packages, generator,
+generated metadata and verification checks must agree with it. The evidence,
+compatibility boundary and coherent rollback procedure are in
+[`ux4g/B1_VERSION_FOUNDATION.md`](ux4g/B1_VERSION_FOUNDATION.md).
+
+The project standard is the latest officially published/recommended stable
+UX4G release applicable to the project, after compatibility, security and CSP
+validation, pinned exactly. Common, authentication, Audit, Policy, Rank, IR and
+future modules share that foundation through the CCure Design System. Product
+functionality may differ; product design systems may not. Competing frameworks
+require explicit approval, and custom equivalents require a documented
+technical reason. Developers and coding assistants follow the same rule.
+
+B.1 established the exact dependency foundation; B.2 centralizes and verifies
+the token/font asset pipeline, including production copies. See
+[`ux4g/B2_ASSET_PIPELINE.md`](ux4g/B2_ASSET_PIPELINE.md). Generated assets come
+only from that pipeline, never from module-local copies or CDN imports.
+React owns behavior. Official component CSS, font-policy changes and runtime
+activation remain deferred. Existing UI, API/RBAC behavior,
+routing and module boundaries are unchanged. This is not a declaration of full
+UX4G migration or GIGW/WCAG conformance.
+
+The dependency table below describes the application stack; `package.json` and
+the lockfile provide its executable versions.
+
+| Concern           | Choice                                               | Version                                             |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| UI library        | React                                                | `^18.3.1`                                           |
+| Router            | react-router-dom                                     | `^6.23.1`                                           |
+| HTTP client       | axios                                                | `^1.7.2`                                            |
+| Build tool        | Vite                                                 | `^8.2.2`                                            |
+| React plugin      | `@vitejs/plugin-react`                               | `^6.1.0`                                            |
+| Test runner       | Vitest + jsdom                                       | `^4.1.11` / `^24.0.0`                               |
+| UI foundation     | UX4G tokens/font + CCure adapters                    | exact approved pin in `Frontend/ux4g-baseline.json` |
+| Testing utilities | `@testing-library/react`, `/jest-dom`, `/user-event` | `^15.0.7`, `^6.4.5`, `^14.5.2`                      |
+| Graph rendering   | vis-network + vis-data                               | `^9.1.9` / `^7.1.9`                                 |
 
 `package.json` declares `"type": "module"`, name `ccure-audit-pro-unified`,
 version `2.0.0`.
 
-> **NOTE:** There is **no** TypeScript, no Redux, no React Query, no CSS framework
-> and no component library. State is React Context plus browser storage; styling
-> is 16 hand-written CSS files under `src/styles/` plus one module-scoped sheet.
+> **NOTE:** There is no TypeScript, Redux or React Query. State is React Context
+> plus browser storage. Styling currently combines the approved UX4G token/font
+> foundation, custom CCure primitives, shell/product styles and legacy global
+> CSS. Official UX4G components are not yet adopted.
 
 ---
 

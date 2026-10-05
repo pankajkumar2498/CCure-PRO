@@ -18,7 +18,10 @@ const ROOT = path.resolve(
 const SRC = path.join(ROOT, "src");
 const DS = path.join(SRC, "design-system");
 
-const PINNED_UX4G = "2.1.0";
+const baseline = JSON.parse(
+  readFileSync(path.join(ROOT, "ux4g-baseline.json"), "utf8"),
+);
+const PINNED_UX4G = baseline.npm.version;
 
 /** Every source file, minus generated output and the design system's own tokens. */
 function walk(dir, out = []) {
@@ -100,11 +103,13 @@ describe("generated assets correspond to the installed package", () => {
     expect(onDisk).toEqual(named);
   });
 
-  it("drops exactly the fonts with no consumer", () => {
+  it("retains the approved B.1 font set without changing typography", () => {
     // Proven in docs/ux4g/02-dependency-strategy.md §5 against four independent
     // sources: UX4G's own CSS, CCure components, the token graph, and what the
     // browser actually requested.
-    expect(manifest.fonts.map((f) => f.family)).toEqual(["Noto Sans"]);
+    expect(manifest.fonts.map((f) => f.family)).toEqual(
+      baseline.assets.retainedFonts,
+    );
     expect(manifest.droppedFonts.sort()).toEqual(
       [
         "Noto Sans Display",

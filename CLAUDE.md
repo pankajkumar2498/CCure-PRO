@@ -614,6 +614,20 @@ The platform's backend now matches the frontend's Platform Shell. Record:
 
 ## Frontend modules (Phase 12)
 
+**UX4G foundation (B.1):** `Frontend/ux4g-baseline.json` is the sole approved
+release/provenance definition. Follow `docs/FRONTEND_ARCHITECTURE.md` §1 and
+`docs/ux4g/B1_VERSION_FOUNDATION.md`. Use the latest officially published stable
+UX4G release applicable after compatibility/security/CSP validation, with an
+exact reviewed pin. Common, authentication and every product share the CCure
+Design System; do not add a competing framework without explicit approval or
+a custom equivalent without a documented technical reason. B.1 keeps tokens
+and the current font only; do not enable full CSS/runtime or redesign components
+as incidental dependency work. Preserve CSP, API/auth/RBAC contracts, routing
+and the module boundaries. B.2's centralized token/font pipeline is documented
+in `docs/ux4g/B2_ASSET_PIPELINE.md`; do not add module-local vendor assets,
+font declarations or CDN imports. Run `ux4g:check -- --dist`, `ux4g:verify`,
+build, tests and lint.
+
 One React application holds the four products. Record:
 [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md);
 guide: [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) §2;

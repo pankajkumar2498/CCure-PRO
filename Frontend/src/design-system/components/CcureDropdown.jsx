@@ -1,9 +1,11 @@
 import { forwardRef, useCallback, useLayoutEffect, useId, useRef } from "react";
 
 const itemsIn = (root) =>
-  Array.from(root?.querySelectorAll('[role="menuitem"]') ?? []).filter(
-    (el) => !el.disabled && el.getAttribute("aria-disabled") !== "true",
-  );
+  Array.from(
+    root?.querySelectorAll(
+      '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]',
+    ) ?? [],
+  ).filter((el) => !el.disabled && el.getAttribute("aria-disabled") !== "true");
 
 /** Controlled official dropdown styling with React-owned APG menu behavior. */
 export default function CcureDropdown({
@@ -118,8 +120,12 @@ export default function CcureDropdown({
           aria-label={label}
           className={`cc-dropdown__menu ux4g-dropdown-menu ${menuClassName}`}
           onKeyDown={menuKey}
-          onClickCapture={(event) => {
-            const item = event.target.closest('[role="menuitem"]');
+          // Let the item's action run before closing. Moving focus in capture
+          // can cancel the browser's keyboard-generated button activation.
+          onClick={(event) => {
+            const item = event.target.closest(
+              '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]',
+            );
             if (
               item &&
               !item.disabled &&
@@ -136,7 +142,7 @@ export default function CcureDropdown({
 }
 
 export const CcureMenuItem = forwardRef(function CcureMenuItem(
-  { className = "", children, ...props },
+  { className = "", children, role = "menuitem", ...props },
   ref,
 ) {
   return (
@@ -144,7 +150,7 @@ export const CcureMenuItem = forwardRef(function CcureMenuItem(
       {...props}
       ref={ref}
       type="button"
-      role="menuitem"
+      role={role}
       tabIndex={-1}
       className={`cc-menuitem ux4g-dropdown-single-option ${className}`}
     >

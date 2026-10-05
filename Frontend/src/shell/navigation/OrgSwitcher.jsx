@@ -30,7 +30,7 @@ export default function OrgSwitcher({
       onOpenChange={(next) => (next ? onToggle() : onClose())}
       id="sh-org-menu"
       label="Switch Organization"
-      className="sh-menu-anchor"
+      className="sh-menu-anchor sh-org-anchor"
       menuClassName="sh-menu--org"
       trigger={({ ref, buttonProps }) => (
         <CcureButton
@@ -62,6 +62,8 @@ export default function OrgSwitcher({
         orgs.map((org) => (
           <CcureMenuItem
             key={org.id}
+            role="menuitemradio"
+            aria-checked={org.name === selectedOrg}
             className={`sh-menu-item${org.name === selectedOrg ? " sh-menu-item--current" : ""}`}
             aria-current={org.name === selectedOrg ? "true" : undefined}
             onClick={() => onSwitch(org)}

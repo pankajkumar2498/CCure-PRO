@@ -10,6 +10,7 @@ import { useAuth } from "./AuthContext";
 import { canPermission, canAny, canAll } from "./permissions";
 import { useAccessFallbacks } from "./accessFallback";
 import IncompatibleBackend from "./IncompatibleBackend";
+import { CcureLoader } from "../../design-system";
 
 // The first candidate the user may open, other than the page just refused;
 // otherwise sign-in. Candidates come from the product (accessFallback.jsx).
@@ -37,17 +38,9 @@ export default function PrivateRoute({
 
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#1a2332",
-        }}
-      >
-        <div className="spinner" />
-      </div>
+      <main className="cc-loading-page">
+        <CcureLoader label="Loading account" />
+      </main>
     );
   }
 

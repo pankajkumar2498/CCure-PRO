@@ -1,5 +1,9 @@
 # Frontend development standard
 
+The permanent rule and required gates are in
+[`../docs/ux4g/UX4G_STANDARD.md`](../docs/ux4g/UX4G_STANDARD.md).
+Apply it to every frontend change, including all future contributors/AI agents.
+
 Read `../docs/FRONTEND_ARCHITECTURE.md` and
 `../docs/ux4g/B1_VERSION_FOUNDATION.md` and
 `../docs/ux4g/B2_ASSET_PIPELINE.md` and
@@ -25,8 +29,8 @@ Read `../docs/FRONTEND_ARCHITECTURE.md` and
   Continue using shared form semantics, React-owned menus/dialogs, loading and
   empty states. Keep domain evidence, risk charts and topology in Audit. The
   scoped browser catalogue is `scripts/ux4g-harness/b5-b6.mjs`; its API writes
-  must remain explicitly synthetic. Policy/Rank/IR and later phases are outside
-  this migration.
+  must remain explicitly synthetic. Current Policy/Rank/IR entry placeholders
+  follow the same foundation; extend the browser catalogue when implementing them.
 - Generate UX4G assets only through `scripts/build-ux4g-assets.mjs`. Do not
   add module-local copies, font declarations or CDN imports. Asset paths and
   converter/generator identities are centralized in `scripts/ux4g-pipeline.mjs`.
@@ -41,3 +45,7 @@ Read `../docs/FRONTEND_ARCHITECTURE.md` and
   `npm run ux4g:check -- --dist`, tests and lint; use browser/Docker checks for runtime impact.
 - Do not claim complete UX4G adoption or GIGW/WCAG conformance from a dependency
   update. Record remaining migration work and a coherent rollback.
+- B.7–B.10 closure enforces `ux4g:architecture` and `test:browser` alongside
+  foundation/reproducibility/build/lint/unit/authorization checks. Do not bypass
+  these gates, add native primitive duplicates/alerts, expand exception lists
+  or hide overflow/contrast findings. Preserve the existing CSP and disabled runtime.

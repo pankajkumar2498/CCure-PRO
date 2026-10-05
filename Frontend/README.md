@@ -1,8 +1,12 @@
 # CCure Audit PRO — Unified Frontend
 
-React + Vite frontend unified from the CAST Dashboard design system and CCure Audit PRO backend.
+React + Vite frontend using the shared UX4G-based CCure Design System.
 
 ## UX4G foundation and development rule
+
+Follow the permanent [UX4G standard](../docs/ux4g/UX4G_STANDARD.md) and
+[B.7–B.10 closure](../docs/ux4g/B7_B10_FINAL_CLOSURE.md). These requirements
+apply to all contributors, AI assistants and future product modules.
 
 The entire frontend uses one approved UX4G foundation, defined in
 [`ux4g-baseline.json`](ux4g-baseline.json). The project adopts the latest official
@@ -21,12 +25,16 @@ shell. Import controls through `src/design-system/index.js`; official classes,
 styles, fonts and interaction behavior belong to that boundary. Do not copy
 vendor assets into modules or enable the vendor reset/runtime.
 [B.5/B.6](../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md) migrate Authentication and
-Audit presentation through these same adapters. Policy/Rank/IR and later
-phase work remain deferred.
+Audit presentation through these same adapters. Policy/Rank/IR currently expose
+shared entry placeholders; new product UI must use and validate this foundation.
 
 After `npm ci`, run `npm run ux4g:check -- --dependencies-only`; after building,
 run `npm run ux4g:verify` and `npm run ux4g:check -- --dist`. CI enforces these
 checks. `postbuild` and `prepreview` also validate the deployed asset set.
+Run `npm run ux4g:architecture`, lint, unit tests, authorization inventory and
+`npm run test:browser` as documented in the permanent standard. The browser gate
+serves a production build made with `VITE_API_BASE_URL=/api`, uses synthetic APIs
+and the unchanged CSP, and covers accessibility, keyboard and responsive states.
 
 ## Design System
 

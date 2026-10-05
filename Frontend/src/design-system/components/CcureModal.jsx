@@ -48,8 +48,8 @@ export default function CcureModal({
   const titleId = useId();
   const subtitleId = useId();
 
-  useModalEnvironment(dialogRef, open);
   useFocusTrap(dialogRef, open, { initialFocus });
+  useModalEnvironment(dialogRef, open);
 
   // Escape is handled here rather than in the trap because whether a dialog may
   // be dismissed is the owner's decision — a destructive confirmation may

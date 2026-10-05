@@ -29,11 +29,14 @@
     "cdnStylesheet": "https://cdn.ux4g.gov.in/UX4G@3.3.0/index.css"
   },
   "approval": {
-    "status": "approved-b3-b4-scoped-component-adapters",
-    "compatibility": "Exact B.1 release; scoped official CSS and shared React adapters. B.3 gate passed before B.4 shell migration. Group 1 validation is recorded in the adapters report. Runtime remains disabled.",
+    "status": "approved-scoped-component-adapters",
+    "compatibility": "Exact B.1 release and integrity retained after compatibility/security review; self-hosted assets and scoped official CSS through shared React adapters. Auth and Audit use the same foundation. Final accessibility, responsive and CI evidence is recorded in the closure report. Runtime remains disabled.",
     "report": "../docs/ux4g/B1_VERSION_FOUNDATION.md",
     "pipelineReport": "../docs/ux4g/B2_ASSET_PIPELINE.md",
-    "adaptersReport": "../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md"
+    "adaptersReport": "../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md",
+    "migrationReport": "../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md",
+    "closureReport": "../docs/ux4g/B7_B10_FINAL_CLOSURE.md",
+    "standard": "../docs/ux4g/UX4G_STANDARD.md"
   },
   "assets": {
     "mode": "tokens",
@@ -53,7 +56,7 @@
     "reason": "Official bootstrap injects inline scripts without nonce support; script-src self remains unchanged. React retains behavior ownership."
   },
   "migration": {
-    "phase": "B.3 + B.4",
+    "phase": "B.7 + B.8 + B.9 + B.10",
     "officialComponentsEnabled": true,
     "target": "One official UX4G foundation through the shared CCure Design System for Common, authentication, Audit, Policy, Rank, IR and future modules."
   },

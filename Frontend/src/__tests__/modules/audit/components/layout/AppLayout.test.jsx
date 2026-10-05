@@ -209,6 +209,7 @@ const iconButton = (title, nameRe) =>
   screen.queryByRole("button", { name: nameRe }) || screen.getByTitle(title);
 const menuItem = (name) =>
   screen.queryByRole("menuitem", { name }) ||
+  screen.queryByRole("menuitemradio", { name }) ||
   screen.getByRole("button", { name });
 const isCollapsed = (container) => {
   const aside = container.querySelector("aside");
@@ -774,7 +775,7 @@ describe("AppLayout — accessibility and design-system expectations (migration 
     await u.click(btn);
     expect(btn).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
   });
 
   it("names the bell with its unread count and states which panel it controls", async () => {

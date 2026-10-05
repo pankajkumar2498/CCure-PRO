@@ -74,7 +74,7 @@ export default function ScanStepper({ current }) {
   const isRunning = RUNNING_STATES.has(pipelineState);
 
   return (
-    <div className="sst">
+    <div className="sst" role="region" aria-label="Scan progress" tabIndex={0}>
       <ol className="sst__steps" aria-label="Scan pipeline">
         {steps.map((s, i) => {
           const done = activeStep > s.n;

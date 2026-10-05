@@ -192,7 +192,7 @@ describe("organisation switcher", () => {
     const menu = screen.getByRole("menu", { name: "Switch Organization" });
     expect(
       within(menu)
-        .getAllByRole("menuitem")
+        .getAllByRole("menuitemradio")
         .map((m) => m.textContent.replace("✓", "").trim()),
     ).toEqual(["Org One", "Org Two"]);
   });

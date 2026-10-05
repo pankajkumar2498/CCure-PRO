@@ -614,7 +614,9 @@ The platform's backend now matches the frontend's Platform Shell. Record:
 
 ## Frontend modules (Phase 12)
 
-**UX4G frontend standard (B.1–B.6):** `Frontend/ux4g-baseline.json` is the sole approved
+**Permanent UX4G frontend standard:** follow
+[`docs/ux4g/UX4G_STANDARD.md`](docs/ux4g/UX4G_STANDARD.md) for every frontend change.
+`Frontend/ux4g-baseline.json` is the sole approved
 release/provenance definition. Follow `docs/FRONTEND_ARCHITECTURE.md` §1 and
 `docs/ux4g/B1_VERSION_FOUNDATION.md`. Use the latest officially published stable
 UX4G release applicable after compatibility/security/CSP validation, with an
@@ -632,7 +634,12 @@ vendor assets, font declarations or CDN imports. Run `ux4g:check -- --dist`,
 B.5/B.6 migrate Auth and Audit presentation using the same shared adapters;
 see `docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md` for mappings, domain exceptions and
 browser checks. Preserve the existing API calls and permission decisions when
-modifying those screens. Policy/Rank/IR and B.7–B.10 remain outside this work.
+modifying those screens. B.7–B.10 add final accessibility/responsive closure and
+CI/documentation gates: `ux4g:architecture`, authorization inventory and
+`test:browser` join foundation, reproducibility, build, lint and unit tests.
+Current Policy/Rank/IR entry placeholders use this same foundation; future
+product functionality must extend the regression catalogue. Do not expand
+exception baselines or suppress accessibility/overflow failures to pass a gate.
 
 One React application holds the four products. Record:
 [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md);

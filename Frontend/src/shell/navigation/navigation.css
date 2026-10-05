@@ -3,12 +3,28 @@
    navigation refactor); rules unchanged, class names unchanged. */
 
 .sh-menu-anchor {
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
   position: relative;
   display: inline-flex;
 }
 
+.sh-org-anchor {
+  flex: 0 1 auto;
+}
+
+.sh-org-btn .cc-badge,
+.sh-org-btn .sh-chevron {
+  flex-shrink: 0;
+}
+
 /* Org switcher ─ a menu button */
 .sh-org-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 2rem;
+  white-space: normal;
   display: inline-flex;
   align-items: center;
   gap: var(--ccure-space-2xs);
@@ -26,6 +42,13 @@
 
 .sh-org-btn:hover {
   background: var(--ccure-surface-hover);
+}
+
+.sh-org-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sh-org-btn:focus-visible,
@@ -214,6 +237,7 @@
 /* Header icon button (the notification bell, settings and help buttons) —
    moved from Audit's app-shell.css so the shared bell is styled by the shell. */
 .sh-iconbtn {
+  flex-shrink: 0;
   position: relative;
   width: 2.25rem;
   height: 2.25rem;

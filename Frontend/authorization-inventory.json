@@ -668,15 +668,8 @@
     },
     {
       "file": "src/shell/auth/PrivateRoute.jsx",
-      "line": 20,
+      "line": 21,
       "kind": "atom_check",
-      "status": "migrated",
-      "reason": "the central, permission-based authorization layer"
-    },
-    {
-      "file": "src/shell/auth/PrivateRoute.jsx",
-      "line": 25,
-      "kind": "atom_config",
       "status": "migrated",
       "reason": "the central, permission-based authorization layer"
     },
@@ -696,21 +689,28 @@
     },
     {
       "file": "src/shell/auth/PrivateRoute.jsx",
-      "line": 69,
+      "line": 28,
+      "kind": "atom_config",
+      "status": "migrated",
+      "reason": "the central, permission-based authorization layer"
+    },
+    {
+      "file": "src/shell/auth/PrivateRoute.jsx",
+      "line": 62,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "the central, permission-based authorization layer"
     },
     {
       "file": "src/shell/auth/PrivateRoute.jsx",
-      "line": 70,
+      "line": 63,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "the central, permission-based authorization layer"
     },
     {
       "file": "src/shell/auth/PrivateRoute.jsx",
-      "line": 71,
+      "line": 64,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "the central, permission-based authorization layer"

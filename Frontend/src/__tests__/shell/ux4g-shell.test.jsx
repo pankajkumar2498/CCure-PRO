@@ -178,13 +178,12 @@ describe("shell menu adapters", () => {
     await u.keyboard("{ArrowDown}");
     await waitFor(() =>
       expect(
-        within(screen.getByRole("menu")).getAllByRole("menuitem")[0],
+        within(screen.getByRole("menu")).getAllByRole("menuitemradio")[0],
       ).toHaveFocus(),
     );
-    expect(screen.getByRole("menuitem", { name: /Org One/ })).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    expect(
+      screen.getByRole("menuitemradio", { name: /Org One/ }),
+    ).toHaveAttribute("aria-checked", "true");
     await u.keyboard("{End}{Enter}");
     expect(switchOrg).toHaveBeenCalledExactlyOnceWith({
       id: "2",

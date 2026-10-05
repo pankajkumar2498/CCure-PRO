@@ -202,7 +202,7 @@ jobs:
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository
@@ -236,6 +236,8 @@ jobs:
       # all. `prebuild` generates the UX4G assets from the pinned package, so
       # this step needs no network beyond `npm ci`.
       - name: Build Frontend
+        env:
+          VITE_API_BASE_URL: /api
         run: |
           cd Frontend
           npm run build
@@ -250,6 +252,36 @@ jobs:
         run: |
           cd Frontend
           npm test
+
+      - name: Verify UX4G UI Boundaries and Documentation
+        run: |
+          cd Frontend
+          npm run ux4g:architecture
+          node scripts/build-authorization-inventory.mjs --check
+
+      - name: Install Pinned Browser Engines
+        run: |
+          cd Frontend
+          npx --no-install playwright install --with-deps chromium firefox webkit
+
+      - name: Check Accessibility, Responsive UI and Browser Contracts
+        env:
+          UX4G_BROWSER_OUTPUT: ${{ runner.temp }}/ux4g-browser-results
+          UX4G_BROWSER_REPORT: ${{ runner.temp }}/ux4g-browser-report.json
+        run: |
+          cd Frontend
+          npm run test:browser
+
+      - name: Retain Browser Failure Evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ux4g-browser-evidence
+          path: |
+            ${{ runner.temp }}/ux4g-browser-results
+            ${{ runner.temp }}/ux4g-browser-report.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       # No `|| echo` on this step, deliberately.
       #

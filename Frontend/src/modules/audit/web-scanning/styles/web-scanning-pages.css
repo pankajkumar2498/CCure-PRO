@@ -622,7 +622,7 @@
   text-decoration: underline;
 }
 .wsp-finding-link {
-  color: var(--cc-link, #4f46e5);
+  color: var(--ccure-text-link);
   text-decoration: none;
 }
 .wsp-finding-link:hover {

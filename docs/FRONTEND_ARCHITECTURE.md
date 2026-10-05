@@ -8,6 +8,10 @@ contract with the backend.
 
 ## 1. Stack
 
+The permanent rule for all modules/contributors/AI assistants and the required
+CI gates are in [`ux4g/UX4G_STANDARD.md`](ux4g/UX4G_STANDARD.md).
+The final closure is recorded in [`ux4g/B7_B10_FINAL_CLOSURE.md`](ux4g/B7_B10_FINAL_CLOSURE.md).
+
 ### Approved UX4G foundation (Phase B.1)
 
 `Frontend/ux4g-baseline.json` is the authoritative approved release/provenance
@@ -62,8 +66,10 @@ version `2.0.0`.
 > plus browser storage. Styling currently combines the approved UX4G token/font
 > foundation, official scoped CSS through CCure adapters, shell/product styles
 > and retained domain CSS. Group 1 migrates shared primitives and the Common shell;
-> B.5/B.6 migrate Authentication and Audit. Other products and unrelated
-> accessibility/remediation work remain later phases.
+> B.5/B.6 migrate Authentication and Audit. B.7–B.10 close the known in-scope
+> accessibility/responsive findings and enforce the permanent design rule.
+> Policy/Rank/IR product functionality remains unimplemented; their shared
+> entry placeholders and every future module follow the same standard.
 
 ---
 

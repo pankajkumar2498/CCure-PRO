@@ -22,6 +22,11 @@
   max-width: 52rem;
 }
 
+.cfg-lede a {
+  color: var(--ccure-text-link);
+  text-decoration: underline;
+}
+
 /* ── Platform switch ──────────────────────────────────────────────────────── */
 
 .cfg-platforms {

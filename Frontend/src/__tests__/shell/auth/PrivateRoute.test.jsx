@@ -31,7 +31,8 @@ describe("PrivateRoute Component", () => {
 
   it("shows a loading spinner when auth state is loading", () => {
     renderWithAuth({ loading: true });
-    expect(document.querySelector(".spinner")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading account");
   });
 
   it("redirects to login if user is not authenticated", () => {

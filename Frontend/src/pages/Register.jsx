@@ -526,7 +526,12 @@ export default function Register() {
         title="Terms of Service — CCure Audit PRO"
         footer={policyFooter(() => setShowTermsModal(false))}
       >
-        <div className="auth-policy-body">
+        <div
+          className="auth-policy-body"
+          role="region"
+          aria-label="Terms and conditions text"
+          tabIndex={0}
+        >
           <p>
             Welcome to CCure Audit PRO. By creating an account and using our
             network security platform, you agree to comply with the following
@@ -559,7 +564,12 @@ export default function Register() {
         title="Privacy Policy — CCure Audit PRO"
         footer={policyFooter(() => setShowPrivacyModal(false))}
       >
-        <div className="auth-policy-body">
+        <div
+          className="auth-policy-body"
+          role="region"
+          aria-label="Privacy policy text"
+          tabIndex={0}
+        >
           <p>
             Your privacy and data security are our top priorities. Here is how
             we handle your personal and enterprise telemetry data:

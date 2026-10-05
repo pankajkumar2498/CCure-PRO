@@ -134,6 +134,16 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* Shared full-page pending state, including initial account loading. */
+.cc-loading-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--ccure-space-lg);
+  background: var(--ccure-bg);
+  color: var(--ccure-text);
+}
 .cc-modal__overlay.cc-ux4g {
   z-index: var(--ccure-z-modal);
   display: flex;

@@ -152,9 +152,11 @@ let saved;
 let downloads;
 let realCreateObjectURL;
 let realRevokeObjectURL;
+let realRefreshTimers;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  realRefreshTimers = vi.spyOn(globalThis, "setTimeout");
   statsReply = () => Promise.resolve({ data: STATS });
   drillReply = (config) =>
     Promise.resolve({
@@ -202,6 +204,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Successful imports schedule a real 1.5 s refresh. Do not let a callback
+  // from the previous mounted page leak into the next permission/API assertion.
+  // Fake-timer cases still exercise the refresh itself below.
+  realRefreshTimers.mock.calls.forEach(([, delay], index) => {
+    if (delay === 1500)
+      clearTimeout(realRefreshTimers.mock.results[index]?.value);
+  });
   // The import is the page's only write, and only ever to its own endpoint.
   expect(api.put).not.toHaveBeenCalled();
   expect(api.patch).not.toHaveBeenCalled();

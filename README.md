@@ -1,6 +1,11 @@
 # CCure-Audit-PRO
 Network Scanning Tool
 
+Frontend development follows the permanent [UX4G standard](docs/ux4g/UX4G_STANDARD.md).
+All modules share the exact approved release, central asset pipeline and CCure
+adapters. See [Frontend/README.md](Frontend/README.md) for required CI checks
+and [the final migration report](docs/ux4g/B7_B10_FINAL_CLOSURE.md) for validation.
+
 Inside /Backend Folder:
 
 python -m venv .venv

@@ -31,7 +31,7 @@
 .sh-org-btn:focus-visible,
 .sh-user-btn:focus-visible,
 .sh-menu-item:focus-visible {
-  outline: var(--ccure-focus-ring);
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
   outline-offset: var(--ccure-focus-ring-offset);
 }
 
@@ -226,4 +226,31 @@
 .sh-iconbtn[aria-expanded="true"] {
   background: var(--ccure-primary-soft);
   color: var(--ccure-primary-text);
+}
+
+/* B.4 menus use the shared Dropdown; these rules only arrange shell content. */
+.sh-org-btn.cc-btn > span,
+.sh-user-btn.cc-btn > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+.sh-menu--org.cc-dropdown__menu {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+  width: min(16rem, calc(100vw - 2rem));
+}
+.sh-menu--profile.cc-dropdown__menu {
+  width: min(16rem, calc(100vw - 2rem));
+}
+.sh-menu-item.cc-menuitem {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sh-menu-head-text {
+  overflow-wrap: anywhere;
+}
+.sh-menu-body .sh-signout {
+  color: var(--ccure-danger-text);
 }

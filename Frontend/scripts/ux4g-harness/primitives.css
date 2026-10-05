@@ -1,0 +1,27 @@
+body {
+  margin: 0;
+  background: var(--ccure-bg);
+  color: var(--ccure-text);
+  font-family: var(--ccure-font);
+}
+.fixture {
+  padding: var(--ccure-space-lg);
+  display: grid;
+  gap: var(--ccure-space-lg);
+}
+.fixture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--ccure-space-lg);
+}
+.fixture-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+  margin-block: var(--ccure-space-md);
+}
+fieldset {
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}

@@ -32,6 +32,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppLayout from "@audit/components/layout/AppLayout";
 import {
+  CcureLoader,
+  CcureEmptyState,
   CcureAlert,
   CcureBadge,
   CcureButton,
@@ -41,6 +43,7 @@ import {
   CcureTable,
   CcureToastProvider,
   useCcureToast,
+  CcureCheckbox,
 } from "../../../../design-system";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
@@ -111,17 +114,15 @@ function ConfigEditor({ settings, config, onChange, disabled }) {
 
         if (BOOL_KEYS.has(key)) {
           return (
-            <label key={key} className="sp-field sp-field--check">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={value === true}
-                onChange={(e) =>
-                  e.target.checked ? set(key, true) : unset(key)
-                }
-              />
+            <CcureCheckbox
+              key={key}
+              className="sp-field sp-field--check"
+              disabled={disabled}
+              checked={value === true}
+              onChange={(e) => (e.target.checked ? set(key, true) : unset(key))}
+            >
               {key.replace(/_/g, " ")}
-            </label>
+            </CcureCheckbox>
           );
         }
 
@@ -158,20 +159,20 @@ function ConfigEditor({ settings, config, onChange, disabled }) {
               <legend>check families</legend>
               <div className="sp-checks">
                 {(settings?.check_families || []).map((fam) => (
-                  <label key={fam} className="sp-check">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(fam)}
-                      onChange={(e) => {
-                        const next = e.target.checked
-                          ? [...selected, fam]
-                          : selected.filter((f) => f !== fam);
-                        if (next.length === 0) unset(key);
-                        else set(key, next);
-                      }}
-                    />
+                  <CcureCheckbox
+                    key={fam}
+                    className="sp-check"
+                    checked={selected.includes(fam)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...selected, fam]
+                        : selected.filter((f) => f !== fam);
+                      if (next.length === 0) unset(key);
+                      else set(key, next);
+                    }}
+                  >
                     {fam.replace(/_/g, " ")}
-                  </label>
+                  </CcureCheckbox>
                 ))}
               </div>
             </fieldset>
@@ -460,25 +461,22 @@ function PolicyWorkspace() {
             </option>
           ))}
         </CcureSelect>
-        <label className="sp-check sp-check--standalone">
-          <input
-            type="checkbox"
-            checked={usableOnly}
-            onChange={(e) => setUsableOnly(e.target.checked)}
-          />
+        <CcureCheckbox
+          className="sp-check sp-check--standalone"
+          checked={usableOnly}
+          onChange={(e) => setUsableOnly(e.target.checked)}
+        >
           Only policies a scan may use now
-        </label>
+        </CcureCheckbox>
       </div>
 
       {loading ? (
-        <p className="sp-note" role="status">
-          Loading policies…
-        </p>
+        <CcureLoader label="Loading policies…" />
       ) : rows.length === 0 ? (
-        <p className="sp-empty">
-          No scan policies match. A scan with no policy still records what it
-          assessed — a policy makes that choice reusable and named.
-        </p>
+        <CcureEmptyState
+          title="No scan policies match"
+          description="No scan policies match. A scan with no policy still records what it assessed — a policy makes that choice reusable and named."
+        />
       ) : (
         <CcureTable
           caption="Scan policies"
@@ -528,13 +526,15 @@ function PolicyWorkspace() {
               key: "open",
               header: "Details",
               cell: (p) => (
-                <button
+                <CcureButton
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   className="sp-link"
                   onClick={() => openDetail(p)}
                 >
                   Open
-                </button>
+                </CcureButton>
               ),
             },
           ]}
@@ -770,17 +770,14 @@ function PolicyWorkspace() {
           )}
 
           {editor.mode === "version" && (
-            <label className="sp-check sp-check--standalone">
-              <input
-                type="checkbox"
-                checked={form.activate}
-                disabled={busy}
-                onChange={(e) =>
-                  setForm({ ...form, activate: e.target.checked })
-                }
-              />
+            <CcureCheckbox
+              className="sp-check sp-check--standalone"
+              checked={form.activate}
+              disabled={busy}
+              onChange={(e) => setForm({ ...form, activate: e.target.checked })}
+            >
               Activate the new version immediately
-            </label>
+            </CcureCheckbox>
           )}
 
           <h3 className="sp-subtitle">Configuration</h3>
@@ -870,18 +867,17 @@ function PolicyWorkspace() {
               {confirm.conflict}
             </CcureAlert>
           ) : null}
-          <label className="sp-check sp-check--standalone">
-            <input
-              type="checkbox"
-              checked={confirm.force}
-              disabled={busy}
-              onChange={(e) =>
-                setConfirm({ ...confirm, force: e.target.checked })
-              }
-            />
+          <CcureCheckbox
+            className="sp-check sp-check--standalone"
+            checked={confirm.force}
+            disabled={busy}
+            onChange={(e) =>
+              setConfirm({ ...confirm, force: e.target.checked })
+            }
+          >
             Delete anyway, leaving any schedules to run under the scan request
             defaults
-          </label>
+          </CcureCheckbox>
           <div className="sp-actions">
             <CcureButton
               variant="danger"

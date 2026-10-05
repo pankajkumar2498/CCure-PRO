@@ -31,6 +31,7 @@ import {
   CcureEmptyState,
   CcureInput,
   CcureModal,
+  CcureButton,
 } from "../../../design-system";
 import "../styles/scan-templates.css";
 
@@ -312,7 +313,9 @@ const TEMPLATES = [
 function ScanCard({ tpl, onClick }) {
   const { Icon, title, desc, tone, mapped, beta, badge } = tpl;
   return (
-    <button
+    <CcureButton
+      variant="ghost"
+      size="sm"
       type="button"
       className={`tpl-card ${mapped ? "tpl-card--active" : "tpl-card--disabled"}`}
       onClick={() => mapped && onClick(tpl)}
@@ -334,7 +337,7 @@ function ScanCard({ tpl, onClick }) {
         )}
         {mapped && badge && <CcureBadge variant="primary">{badge}</CcureBadge>}
       </span>
-    </button>
+    </CcureButton>
   );
 }
 

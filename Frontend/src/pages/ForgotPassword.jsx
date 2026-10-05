@@ -30,7 +30,13 @@ import { forgotPassword } from "@shell/api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
-import { CcureAlert, CcureButton, CcureInput } from "../design-system";
+import {
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcureCard,
+  CcureBadge,
+} from "../design-system";
 import "../styles/forgot-password.css";
 
 export default function ForgotPassword() {
@@ -68,25 +74,21 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="auth-split-wrapper">
+    <main className="auth-split-wrapper">
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="forgot" />
 
-      {/* Right Form Panel.
-          `cc-theme-dark` scopes the CCure semantic tokens to their dark values
-          for everything inside. The auth surface is a fixed dark panel —
-          `.auth-split-wrapper` hardcodes `background:#020617` and ignores
-          `data-theme` — so without this a CcureInput would render as a white
-          box with near-black text on a #0f172a card whenever the user's account
-          theme is light, which is the default. */}
+      {/* Shared auth surfaces follow the application theme. */}
       <div className="auth-form-panel">
-        <div className="auth-card cc-theme-dark">
+        <CcureCard as="div" className="auth-card">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
             <div className="auth-brand-text">
               <span className="auth-brand-name">CCure Audit</span>
-              <span className="auth-brand-badge">PRO</span>
+              <CcureBadge className="auth-brand-badge" variant="info">
+                PRO
+              </CcureBadge>
             </div>
           </div>
 
@@ -137,15 +139,21 @@ export default function ForgotPassword() {
 
           <p className="auth-switch">
             Remember your password?{" "}
-            <Link to="/login" className="auth-link">
+            <CcureButton
+              as={Link}
+              variant="ghost"
+              size="sm"
+              to="/login"
+              className="auth-link"
+            >
               Sign in
-            </Link>
+            </CcureButton>
           </p>
 
           {/* Reusable Enterprise Security Trust Footer */}
           <AuthTrustFooter />
-        </div>
+        </CcureCard>
       </div>
-    </div>
+    </main>
   );
 }

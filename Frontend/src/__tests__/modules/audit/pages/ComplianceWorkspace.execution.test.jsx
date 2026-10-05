@@ -1124,14 +1124,11 @@ describe("ComplianceWorkspace credential-bearing execution — batch 30", () => 
     expect(approvals).toMatch(/<CcureTable\b/);
     expect(dialog).toMatch(/<CcurePasswordField\b/);
     expect(dialog).toMatch(/autoComplete="new-password"/);
-    // The native controls left have no primitive: the credential-source radios,
-    // the bypass checkbox and the key field.
-    expect(
-      (dialog.match(/<input\b[^>]*>/gs) || []).every((tag) =>
-        /type="(radio|checkbox)"/.test(tag),
-      ),
-    ).toBe(true);
-    expect(dialog.match(/<textarea\b/g) || []).toHaveLength(1);
+    // B.6 uses the shared choices/key field while keeping payload tests above.
+    expect(dialog).not.toMatch(/<(input|textarea)\b/);
+    expect(dialog).toMatch(/<CcureRadio\b/);
+    expect(dialog).toMatch(/<CcureCheckbox\b/);
+    expect(dialog).toMatch(/<CcureTextarea\b/);
 
     const cssPath = path.join(AUDIT_SRC, "styles/compliance-execution.css");
     expect(existsSync(cssPath)).toBe(true);

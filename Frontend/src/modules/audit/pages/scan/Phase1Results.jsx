@@ -46,10 +46,15 @@ import { useAuth } from "@shell/auth/AuthContext";
 import { can } from "@shell/auth/permissions";
 import { parseExcludeIpsJS } from "@audit/utils/ipValidation";
 import {
+  CcureLoader,
   CcureAlert,
   CcureBadge,
   CcureButton,
   CcureTable,
+  CcureCheckbox,
+  CcureInput,
+  CcureSwitch,
+  CcureCard,
 } from "../../../../design-system";
 import "../../styles/phase1-results.css";
 
@@ -656,9 +661,7 @@ export default function Phase1Results() {
       <AppLayout pageTitle="Discovery Results">
         <div className="p1-page">
           <h1 className="p1-title">Discovery Results</h1>
-          <p className="p1-loading" role="status">
-            Loading scan results…
-          </p>
+          <CcureLoader label="Loading scan results…" />
         </div>
       </AppLayout>
     );
@@ -723,9 +726,7 @@ export default function Phase1Results() {
             key: "select",
             className: "p1-col-select",
             header: (
-              <input
-                type="checkbox"
-                className="p1-check"
+              <CcureCheckbox
                 aria-label="Select all active hosts for port scan"
                 checked={
                   activeHosts.length > 0 &&
@@ -863,7 +864,9 @@ export default function Phase1Results() {
               </CcureButton>
             </CcureAlert>
           ) : executionMode === "interactive" ? (
-            <section
+            <CcureCard
+              bodyFlush
+              as="section"
               className="p1-portscan"
               aria-labelledby={portScanHeadingId}
             >
@@ -952,7 +955,7 @@ export default function Phase1Results() {
                     <label htmlFor={customPortsId} className="p1-label">
                       Custom ports
                     </label>
-                    <input
+                    <CcureInput
                       id={customPortsId}
                       type="text"
                       className="p1-input"
@@ -981,7 +984,9 @@ export default function Phase1Results() {
                       {Object.entries(PORT_PROFILES)
                         .filter(([k]) => k !== "custom")
                         .map(([k, prof]) => (
-                          <button
+                          <CcureButton
+                            variant="ghost"
+                            size="sm"
                             key={k}
                             type="button"
                             className="p1-chip"
@@ -991,7 +996,7 @@ export default function Phase1Results() {
                             }}
                           >
                             {prof.label.split(" ")[0]}
-                          </button>
+                          </CcureButton>
                         ))}
                     </div>
                     {customPortsError && (
@@ -1019,10 +1024,7 @@ export default function Phase1Results() {
                         Exclude sensitive or firewalled ports from scanning
                       </p>
                     </div>
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      className="p1-switch"
+                    <CcureSwitch
                       checked={excludePortsEnabled}
                       onChange={(e) =>
                         handleExcludeToggleChange(e.target.checked)
@@ -1037,7 +1039,7 @@ export default function Phase1Results() {
                       <label htmlFor={excludePortsId} className="p1-label">
                         Ports to exclude
                       </label>
-                      <input
+                      <CcureInput
                         id={excludePortsId}
                         type="text"
                         className="p1-input"
@@ -1052,7 +1054,9 @@ export default function Phase1Results() {
                           {excludeTokens.map((token, idx) => (
                             <li key={`${token}-${idx}`} className="p1-tag">
                               {token}
-                              <button
+                              <CcureButton
+                                variant="ghost"
+                                size="sm"
                                 type="button"
                                 className="p1-tag__remove"
                                 aria-label={`Remove ${token} from excluded ports`}
@@ -1060,7 +1064,7 @@ export default function Phase1Results() {
                                 disabled={assetLoading || !canExecuteScans}
                               >
                                 <span aria-hidden="true">×</span>
-                              </button>
+                              </CcureButton>
                             </li>
                           ))}
                         </ul>
@@ -1068,7 +1072,9 @@ export default function Phase1Results() {
 
                       <div className="p1-chips">
                         <span className="p1-hint">Quick:</span>
-                        <button
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           className="p1-chip"
                           onClick={() =>
@@ -1077,7 +1083,7 @@ export default function Phase1Results() {
                           disabled={assetLoading || !canExecuteScans}
                         >
                           Sensitive Ports
-                        </button>
+                        </CcureButton>
                       </div>
                     </div>
                   )}
@@ -1097,10 +1103,7 @@ export default function Phase1Results() {
                         Exclude sensitive target hosts or subnets from scanning
                       </p>
                     </div>
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      className="p1-switch"
+                    <CcureSwitch
                       checked={excludeIpsEnabled}
                       onChange={(e) =>
                         handleExcludeIpsToggleChange(e.target.checked)
@@ -1115,7 +1118,7 @@ export default function Phase1Results() {
                       <label htmlFor={excludeIpsId} className="p1-label">
                         IP addresses or subnets to exclude
                       </label>
-                      <input
+                      <CcureInput
                         id={excludeIpsId}
                         type="text"
                         className="p1-input"
@@ -1151,10 +1154,10 @@ export default function Phase1Results() {
                   </CcureAlert>
                 )}
               </div>
-            </section>
+            </CcureCard>
           ) : (
             <div className="p1-running" role="status">
-              <span className="p1-spinner" aria-hidden="true" />
+              <CcureLoader decorative size="sm" />
               <div>
                 <h2 className="p1-running__title">Port Scan Running…</h2>
                 <p className="p1-running__text">
@@ -1212,7 +1215,7 @@ export default function Phase1Results() {
           </div>
         )}
 
-        <div className="p1-card">
+        <CcureCard as={"div"} bodyFlush className="p1-card">
           <CcureTable
             caption="Discovered hosts"
             columns={hostColumns}
@@ -1234,9 +1237,7 @@ export default function Phase1Results() {
                 >
                   {showCheckboxes && (
                     <td className="p1-col-select">
-                      <input
-                        type="checkbox"
-                        className="p1-check"
+                      <CcureCheckbox
                         aria-label={`Select ${h.ip_address} for port scan`}
                         checked={selected.has(h.ip_address)}
                         onChange={() => toggleHost(h.ip_address)}
@@ -1306,7 +1307,9 @@ export default function Phase1Results() {
                       <span className="p1-status__dot" aria-hidden="true" />
                       {h.is_active ? "Active" : "Inactive"}
                     </span>
-                    <button
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       className="p1-detailtoggle"
                       aria-expanded={openHost === h.ip_address}
@@ -1317,7 +1320,7 @@ export default function Phase1Results() {
                       }
                     >
                       {openHost === h.ip_address ? "Hide detail" : "Detail"}
-                    </button>
+                    </CcureButton>
                   </td>
                 </tr>
               );
@@ -1337,7 +1340,7 @@ export default function Phase1Results() {
                 </tr>
               ))}
           </CcureTable>
-        </div>
+        </CcureCard>
 
         {phase1Summary ? <ScanContext summary={phase1Summary} /> : null}
 

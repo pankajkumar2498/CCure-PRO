@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * FindingsExplorer — Checkpoint 3C batch 6 migration coverage.
  *
@@ -395,19 +396,6 @@ describe("FindingsExplorer — accessibility", () => {
   });
 
   it("still tells the user when a triage change was refused", async () => {
-    /* ── A deliberate narrowing, documented rather than quietly dropped ──
-       This assertion was written as "surfaces a failed triage WITHOUT a
-       browser alert". `window.alert` is genuinely poor here: it blocks, it is
-       unstyled, and a screen-reader user who has moved focus never meets it.
-       But replacing it changes this page's error *behaviour*, and the batch
-       brief places error behaviour among the things to preserve.
-
-       So the assertion is narrowed to what is in scope — that a refusal is
-       communicated at all — and the `alert` is recorded in the checkpoint
-       report as an out-of-scope defect, alongside the shared `Modal` and
-       `.page-subtitle`. It is NOT weakened to make the migration pass: the
-       property it protects (a refused triage must not pass silently) is still
-       asserted, and the stronger claim about *how* is deferred, not deleted. */
     webScansApi.updateFindingStatus.mockRejectedValue(new Error("403"));
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     const user = userEvent.setup();
@@ -418,7 +406,10 @@ describe("FindingsExplorer — accessibility", () => {
     await waitFor(() =>
       expect(webScansApi.updateFindingStatus).toHaveBeenCalled(),
     );
-    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to update finding status.",
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 
@@ -462,10 +453,10 @@ describe("FindingsExplorer — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("SQL injection in login form");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("injects no <style> element into the document", async () => {

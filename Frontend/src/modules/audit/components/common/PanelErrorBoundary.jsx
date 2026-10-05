@@ -1,3 +1,4 @@
+import { CcureButton, CcureAlert } from "../../../../design-system";
 import React from "react";
 
 export default class ErrorBoundary extends React.Component {
@@ -19,43 +20,27 @@ export default class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      // You can render any custom fallback UI
       return (
-        <div
-          style={{
-            padding: "24px",
-            background: "rgba(239, 68, 68, 0.05)",
-            border: "1px solid var(--danger)",
-            borderRadius: "8px",
-            color: "var(--text)",
-            margin: "20px",
-          }}
-        >
-          <h2 style={{ color: "var(--danger)", marginBottom: "12px" }}>
-            Something went wrong.
-          </h2>
+        <CcureAlert variant="danger" title="Something went wrong.">
           <details
             style={{
               whiteSpace: "pre-wrap",
-              fontSize: "0.85rem",
-              color: "var(--text-muted)",
+              overflowWrap: "anywhere",
+              fontSize: "var(--ccure-text-sm)",
             }}
           >
-            <summary style={{ cursor: "pointer", marginBottom: "8px" }}>
-              View Error Details
-            </summary>
+            <summary>View Error Details</summary>
             {this.state.error && this.state.error.toString()}
             <br />
             {this.state.errorInfo && this.state.errorInfo.componentStack}
           </details>
-          <button
-            className="btn btn--outline"
-            style={{ marginTop: "16px" }}
+          <CcureButton
+            variant="secondary"
             onClick={() => window.location.reload()}
           >
             Reload Page
-          </button>
-        </div>
+          </CcureButton>
+        </CcureAlert>
       );
     }
 

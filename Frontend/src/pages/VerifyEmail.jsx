@@ -31,7 +31,14 @@ import { Link, useSearchParams } from "react-router-dom";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
-import { CcureAlert, CcureButton, CcureInput } from "../design-system";
+import {
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcureCard,
+  CcureBadge,
+  CcureLoader,
+} from "../design-system";
 import { verifyEmail, resendVerification } from "@shell/api/auth";
 import "../styles/auth.css";
 
@@ -88,25 +95,26 @@ export default function VerifyEmail() {
   };
 
   const shell = (title, body) => (
-    <div className="auth-split-wrapper">
+    <main className="auth-split-wrapper">
       <AuthHeroPanel pageType="register" />
-      {/* `cc-theme-dark` scopes the CCure semantic tokens to their dark values.
-          The auth surface is a fixed dark panel that ignores `data-theme`. */}
+      {/* Shared auth surfaces follow the application theme and design-system tokens. */}
       <div className="auth-form-panel">
-        <div className="auth-card cc-theme-dark">
+        <CcureCard as="div" className="auth-card">
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
             <div className="auth-brand-text">
               <span className="auth-brand-name">CCure Audit</span>
-              <span className="auth-brand-badge">PRO</span>
+              <CcureBadge className="auth-brand-badge" variant="info">
+                PRO
+              </CcureBadge>
             </div>
           </div>
           <h1 className="auth-title">{title}</h1>
           {body}
           <AuthTrustFooter />
-        </div>
+        </CcureCard>
       </div>
-    </div>
+    </main>
   );
 
   if (state === "working") {
@@ -115,9 +123,7 @@ export default function VerifyEmail() {
       // role="status" so a user who cannot see the panel is told the page is
       // waiting on the network rather than left with silence. Previously this
       // was a plain paragraph and announced nothing at all.
-      <p className="auth-sub" role="status">
-        One moment while we confirm your link.
-      </p>,
+      <CcureLoader label="One moment while we confirm your link." />,
     );
   }
 
@@ -160,9 +166,15 @@ export default function VerifyEmail() {
           before sign-in is enabled.
         </CcureAlert>
         <p className="auth-sub">
-          <Link to="/login" className="auth-link">
+          <CcureButton
+            as={Link}
+            variant="ghost"
+            size="sm"
+            to="/login"
+            className="auth-link"
+          >
             Back to sign in
-          </Link>
+          </CcureButton>
         </p>
       </div>,
     );
@@ -218,9 +230,15 @@ export default function VerifyEmail() {
       )}
 
       <p className="auth-sub">
-        <Link to="/login" className="auth-link">
+        <CcureButton
+          as={Link}
+          variant="ghost"
+          size="sm"
+          to="/login"
+          className="auth-link"
+        >
           Back to sign in
-        </Link>
+        </CcureButton>
       </p>
     </div>,
   );

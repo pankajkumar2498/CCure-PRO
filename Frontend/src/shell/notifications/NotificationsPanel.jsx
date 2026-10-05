@@ -26,7 +26,18 @@ import {
   markAllAsRead,
   deleteNotification,
 } from "../api/notifications";
-import { CcureTabs } from "../../design-system";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcureCard,
+  CcureEmptyState,
+  CcureIconButton,
+  CcureLoader,
+  CcureTabPanel,
+  CcureTabs,
+  useCcureTabs,
+} from "../../design-system";
 import { useNotificationPresentation } from "./notificationPresentation";
 import "../navigation/navigation.css";
 import "./notifications.css";
@@ -82,26 +93,34 @@ function timeAgo(iso) {
 /* ── Single notification item ────────────────────────────────────────────── */
 function NotifItem({ notif, onRead, onDelete }) {
   const meta = useNotificationPresentation().typeMeta(notif.type);
+  const Content = notif.is_read ? "div" : CcureButton;
+  const contentProps = notif.is_read
+    ? {}
+    : {
+        variant: "ghost",
+        size: "sm",
+        "aria-label": `Read notification: ${notif.title}`,
+        onClick: () => onRead(notif.id),
+      };
   return (
-    <div
-      className={`shn-item ${!notif.is_read ? "shn-item--unread" : ""}`}
-      onClick={() => !notif.is_read && onRead(notif.id)}
-    >
-      <div
-        className={`shn-item-icon shn-item-icon--${meta.tone}`}
-        aria-hidden="true"
-      >
-        {meta.emoji}
-      </div>
-      <div className="shn-item-body">
-        <div className="shn-item-title">{notif.title}</div>
-        <div className="shn-item-msg">{notif.message}</div>
-        <div className="shn-item-time">{timeAgo(notif.created_at)}</div>
-      </div>
+    <div className={`shn-item ${!notif.is_read ? "shn-item--unread" : ""}`}>
+      <Content {...contentProps} className="shn-item-content">
+        <span
+          className={`shn-item-icon shn-item-icon--${meta.tone}`}
+          aria-hidden="true"
+        >
+          {meta.emoji}
+        </span>
+        <span className="shn-item-body">
+          <span className="shn-item-title">{notif.title}</span>
+          <span className="shn-item-msg">{notif.message}</span>
+          <span className="shn-item-time">{timeAgo(notif.created_at)}</span>
+        </span>
+      </Content>
       <div className="shn-item-actions">
         {!notif.is_read && (
-          <button
-            type="button"
+          <CcureIconButton
+            size="sm"
             className="shn-action-btn shn-action-btn--read"
             title="Mark as read"
             aria-label={`Mark "${notif.title}" as read`}
@@ -111,10 +130,10 @@ function NotifItem({ notif, onRead, onDelete }) {
             }}
           >
             <IcoCheck />
-          </button>
+          </CcureIconButton>
         )}
-        <button
-          type="button"
+        <CcureIconButton
+          size="sm"
           className="shn-action-btn shn-action-btn--delete"
           title="Delete"
           aria-label={`Delete "${notif.title}"`}
@@ -124,7 +143,7 @@ function NotifItem({ notif, onRead, onDelete }) {
           }}
         >
           <IcoTrash />
-        </button>
+        </CcureIconButton>
       </div>
     </div>
   );
@@ -137,11 +156,11 @@ export const NotificationBell = forwardRef(function NotificationBell(
 ) {
   const shown = unreadCount > 99 ? "99+" : unreadCount;
   return (
-    <button
-      type="button"
+    <CcureIconButton
+      size="sm"
       ref={ref}
       id="header-notifications-btn"
-      className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn shn-bell-btn"
+      className="sh-iconbtn shn-bell-btn"
       title="Notifications"
       aria-label={`Notifications, ${unreadCount > 0 ? `${shown} unread` : "no unread"}`}
       aria-expanded={expanded}
@@ -150,11 +169,11 @@ export const NotificationBell = forwardRef(function NotificationBell(
     >
       <IcoBell />
       {unreadCount > 0 && (
-        <span className="shn-badge" aria-hidden="true">
+        <CcureBadge variant="danger" className="shn-badge" aria-hidden="true">
           {shown}
-        </span>
+        </CcureBadge>
       )}
-    </button>
+    </CcureIconButton>
   );
 });
 
@@ -171,6 +190,13 @@ export default function NotificationsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const panelRef = useRef(null);
+  const notificationTabs = useCcureTabs("all", {
+    value: category,
+    onChange: (next) => {
+      setCategory(next);
+      setLoading(true);
+    },
+  });
 
   const load = useCallback(async () => {
     try {
@@ -213,7 +239,10 @@ export default function NotificationsPanel({
   // Escape closes; the owner restores focus to the bell.
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !document.body.dataset.ccModalDepth) {
+        e.preventDefault();
+        onClose();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -292,7 +321,9 @@ export default function NotificationsPanel({
      this panel does not implement — a focus trap and an inert background — so
      it names a group instead, which keeps the name without the false promise. */
   return (
-    <div
+    <CcureCard
+      as="div"
+      bodyFlush
       className="shn-panel"
       ref={panelRef}
       id={id}
@@ -306,65 +337,65 @@ export default function NotificationsPanel({
           <IcoBell />
           <span>Notifications</span>
           {unread > 0 && (
-            <span className="shn-header-badge">
+            <CcureBadge variant="danger" className="shn-header-badge">
               {unread}
               <span className="cc-sr-only"> unread</span>
-            </span>
+            </CcureBadge>
           )}
         </div>
         <div className="shn-header-actions">
           {unread > 0 && (
-            <button
-              type="button"
+            <CcureButton
+              variant="ghost"
+              size="sm"
               className="shn-text-btn"
               onClick={handleMarkAll}
               title="Mark all as read"
             >
               <IcoChecks /> Mark all read
-            </button>
+            </CcureButton>
           )}
-          <button
-            type="button"
+          <CcureIconButton
+            size="sm"
             className="shn-close"
             onClick={onClose}
             aria-label="Close notifications"
           >
             <IcoClose />
-          </button>
+          </CcureIconButton>
         </div>
       </div>
 
       {/* Category tabs */}
       <CcureTabs
+        {...notificationTabs.listProps}
         className="shn-tabs"
         label="Notification categories"
         tabs={CATEGORIES}
-        value={category}
-        onChange={(next) => {
-          setCategory(next);
-          setLoading(true);
-        }}
       />
 
       {/* Body */}
-      <div className="shn-body">
+      <CcureTabPanel
+        {...notificationTabs.panelProps(category)}
+        className="shn-body"
+      >
         {error && (
-          <div className="shn-error" role="alert">
+          <CcureAlert variant="danger" className="shn-error">
             {error}
-          </div>
+          </CcureAlert>
         )}
         {loading ? (
-          <div className="shn-loading" role="status" aria-live="polite">
-            <div className="shn-spinner" aria-hidden="true" />
-            <span className="cc-sr-only">Loading notifications</span>
-          </div>
+          <CcureLoader
+            label="Loading notifications"
+            size="sm"
+            className="shn-loading"
+          />
         ) : items.length === 0 ? (
-          <div className="shn-empty">
-            <div className="shn-empty-icon" aria-hidden="true">
-              🔔
-            </div>
-            <p>{getEmptyMessage()}</p>
-          </div>
+          <CcureEmptyState
+            title={getEmptyMessage()}
+            icon="🔔"
+            className="shn-empty"
+          />
         ) : (
           <div className="shn-list">
             {items.map((n) => (
@@ -377,7 +408,7 @@ export default function NotificationsPanel({
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </CcureTabPanel>
+    </CcureCard>
   );
 }

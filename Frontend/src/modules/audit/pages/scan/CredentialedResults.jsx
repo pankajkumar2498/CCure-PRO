@@ -35,6 +35,7 @@ import {
   CcureProgress,
   CcureTable,
   CcureToastProvider,
+  CcureCheckbox,
 } from "../../../../design-system";
 import "../../styles/credentialed-results.css";
 
@@ -174,7 +175,9 @@ function Section({ title, icon, defaultOpen = false, children }) {
   return (
     <section className="cr-section">
       <h2 className="cr-section__heading">
-        <button
+        <CcureButton
+          variant="ghost"
+          size="sm"
           type="button"
           className="cr-section__toggle"
           aria-expanded={open}
@@ -186,7 +189,7 @@ function Section({ title, icon, defaultOpen = false, children }) {
           <span className="cr-section__chevron" aria-hidden="true">
             {open ? "▲" : "▼"}
           </span>
-        </button>
+        </CcureButton>
       </h2>
       {open && (
         <div id={bodyId} className="cr-section__body">
@@ -1913,15 +1916,13 @@ export default function CredentialedResults() {
                 onChange={(e) => setUsersSearch(e.target.value)}
                 fieldClassName="cr-search"
               />
-              <label className="cr-check">
-                <input
-                  type="checkbox"
-                  className="cr-check__input"
-                  checked={showSystemUsers}
-                  onChange={(e) => setShowSystemUsers(e.target.checked)}
-                />
+              <CcureCheckbox
+                className="cr-check"
+                checked={showSystemUsers}
+                onChange={(e) => setShowSystemUsers(e.target.checked)}
+              >
                 Show system & service accounts
-              </label>
+              </CcureCheckbox>
             </div>
             {filteredUsers.length === 0 ? (
               <p className="cr-note">

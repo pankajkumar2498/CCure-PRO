@@ -147,3 +147,15 @@
     flex-basis: 100%;
   }
 }
+
+@media (max-width: 40rem) {
+  .pl-popover {
+    position: fixed;
+    inset-inline: var(--ccure-space-md);
+    top: calc(var(--ccure-header-height) + var(--ccure-space-xs));
+  }
+  .pl-popover .shn-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+}

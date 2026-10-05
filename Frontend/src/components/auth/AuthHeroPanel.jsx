@@ -3,6 +3,7 @@
  * Enterprise Left Hero Showcase Panel for Authentication Pages.
  */
 import { useState, useEffect } from "react";
+import { CcureBadge, CcureCard } from "../../design-system";
 import {
   ShieldLogoIcon,
   AssetIntelligenceIcon,
@@ -62,21 +63,21 @@ export default function AuthHeroPanel({ pageType = "login" }) {
 
   return (
     <div className="auth-hero-panel">
-      {/* Ambient Gradient Mesh Blobs */}
-      <div className="auth-hero-blob blob-cyan" />
-      <div className="auth-hero-blob blob-indigo" />
-
       <div className="auth-hero-content">
         {/* Brand Header */}
         <div className="auth-hero-brand">
           <ShieldLogoIcon size={36} />
           <span className="auth-hero-brand-title">CCure Audit</span>
-          <span className="auth-brand-badge">PRO</span>
+          <CcureBadge variant="info" className="auth-brand-badge">
+            PRO
+          </CcureBadge>
         </div>
 
         {/* Dynamic Context Section */}
         <div className="auth-hero-context">
-          <span className="auth-hero-badge">{content.badge}</span>
+          <CcureBadge variant="info" className="auth-hero-badge">
+            {content.badge}
+          </CcureBadge>
           {/* h2, not h1. Every auth page renders its own <h1> in the card —
               the page's actual name — and this panel is decorative marketing
               copy beside it. Two level-1 headings gave each of the five auth
@@ -90,7 +91,7 @@ export default function AuthHeroPanel({ pageType = "login" }) {
 
         {/* Feature Cards Grid (3-Step Pipeline Order) */}
         <div className="auth-feature-list">
-          <div className="auth-feature-card">
+          <CcureCard as="div" className="auth-feature-card">
             <div className="auth-feature-icon">
               <AssetIntelligenceIcon />
             </div>
@@ -101,9 +102,9 @@ export default function AuthHeroPanel({ pageType = "login" }) {
                 priority scoring.
               </p>
             </div>
-          </div>
+          </CcureCard>
 
-          <div className="auth-feature-card">
+          <CcureCard as="div" className="auth-feature-card">
             <div className="auth-feature-icon">
               <ComplianceEngineIcon />
             </div>
@@ -111,9 +112,9 @@ export default function AuthHeroPanel({ pageType = "login" }) {
               <h3>Automated Compliance Engine</h3>
               <p>Continuous NIST CSF 2.0, CIS & ISO framework alignment.</p>
             </div>
-          </div>
+          </CcureCard>
 
-          <div className="auth-feature-card">
+          <CcureCard as="div" className="auth-feature-card">
             <div className="auth-feature-icon">
               <ExecutiveTelemetryIcon />
             </div>
@@ -124,7 +125,7 @@ export default function AuthHeroPanel({ pageType = "login" }) {
                 generation.
               </p>
             </div>
-          </div>
+          </CcureCard>
         </div>
 
         {/* Security Metrics Bar */}
@@ -135,16 +136,14 @@ export default function AuthHeroPanel({ pageType = "login" }) {
             </span>
             <span className="auth-metric-lbl">Assets Audited</span>
           </div>
-          <div className="auth-metric-divider" />
           <div className="auth-metric-item">
             <span className="auth-metric-val">99.9%</span>
             <span className="auth-metric-lbl">Scan Precision</span>
           </div>
-          <div className="auth-metric-divider" />
           <div className="auth-metric-item">
-            <span className="auth-status-pill">
-              <span className="auth-status-dot" /> All Systems Operational
-            </span>
+            <CcureBadge variant="success" dot>
+              All Systems Operational
+            </CcureBadge>
           </div>
         </div>
       </div>

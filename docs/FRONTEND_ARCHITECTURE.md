@@ -28,8 +28,15 @@ B.1 established the exact dependency foundation; B.2 centralizes and verifies
 the token/font asset pipeline, including production copies. See
 [`ux4g/B2_ASSET_PIPELINE.md`](ux4g/B2_ASSET_PIPELINE.md). Generated assets come
 only from that pipeline, never from module-local copies or CDN imports.
-React owns behavior. Official component CSS, font-policy changes and runtime
-activation remain deferred. Existing UI, API/RBAC behavior,
+B.3/B.4 add scoped official component CSS and central React adapters, documented
+in [`ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md`](ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md).
+Modules consume the CCure Design System; official classes stay inside adapters.
+React owns behavior. Full global CSS/reset, font-policy changes and runtime
+activation remain deferred. B.5/B.6 migrate Authentication and Audit
+presentation through those adapters; their component mapping, exceptions and
+validation are in
+[`ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md`](ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md).
+API/RBAC behavior,
 routing and module boundaries are unchanged. This is not a declaration of full
 UX4G migration or GIGW/WCAG conformance.
 
@@ -53,8 +60,10 @@ version `2.0.0`.
 
 > **NOTE:** There is no TypeScript, Redux or React Query. State is React Context
 > plus browser storage. Styling currently combines the approved UX4G token/font
-> foundation, custom CCure primitives, shell/product styles and legacy global
-> CSS. Official UX4G components are not yet adopted.
+> foundation, official scoped CSS through CCure adapters, shell/product styles
+> and retained domain CSS. Group 1 migrates shared primitives and the Common shell;
+> B.5/B.6 migrate Authentication and Audit. Other products and unrelated
+> accessibility/remediation work remain later phases.
 
 ---
 

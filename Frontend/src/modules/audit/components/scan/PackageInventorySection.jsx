@@ -25,6 +25,7 @@ import {
   CcureInput,
   CcurePagination,
   CcureTable,
+  CcureCheckbox,
 } from "../../../../design-system";
 import usePagedRows from "@audit/hooks/usePagedRows";
 
@@ -104,14 +105,13 @@ export default function PackageInventorySection({
           not that the package is free of vulnerabilities.
         </p>
         <div className="pi-controls">
-          <label className="pi-toggle">
-            <input
-              type="checkbox"
-              checked={onlyVulnerable}
-              onChange={(e) => setOnlyVulnerable(e.target.checked)}
-            />
+          <CcureCheckbox
+            className="pi-toggle"
+            checked={onlyVulnerable}
+            onChange={(e) => setOnlyVulnerable(e.target.checked)}
+          >
             Only packages with matched findings
-          </label>
+          </CcureCheckbox>
           <CcureInput
             type="search"
             /* Not "Search packages": the page also has a *Packages with

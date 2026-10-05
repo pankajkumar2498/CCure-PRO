@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../../helpers/assertUx4gAdapters";
 /**
  * ConfigurationChecks — Checkpoint 3C batch 10 migration coverage.
  *
@@ -513,9 +514,9 @@ describe("ConfigurationChecks — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText(/SMBv1 must not be installed/i);
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 });

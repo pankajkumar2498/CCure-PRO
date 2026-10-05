@@ -39,7 +39,9 @@ const CcureButton = forwardRef(function CcureButton(
   ref,
 ) {
   const classes = [
-    "cc-btn",
+    "cc-btn cc-ux4g",
+    `ux4g-btn-${{ primary: "primary", secondary: "outline-neutral", ghost: "text-neutral", danger: "danger" }[variant] || "primary"}`,
+    `ux4g-btn-${{ sm: "s", md: "m", lg: "l" }[size] || "m"}`,
     `cc-btn--${variant}`,
     `cc-btn--${size}`,
     block ? "cc-btn--block" : "",
@@ -55,6 +57,8 @@ const CcureButton = forwardRef(function CcureButton(
      and an anchor that looks disabled while still following its href is worse
      than one that never looked disabled at all. A non-button that must be
      unavailable says so with aria-disabled and is given no href by its caller. */
+  const unavailable = disabled || loading;
+  const { onClick, onKeyDown, ...attributes } = rest;
   const elementProps = isButton
     ? { type, disabled: disabled || loading }
     : { "aria-disabled": disabled || loading || undefined };
@@ -65,9 +69,29 @@ const CcureButton = forwardRef(function CcureButton(
       className={classes}
       aria-busy={loading || undefined}
       {...elementProps}
-      {...rest}
+      {...attributes}
+      tabIndex={!isButton && unavailable ? -1 : attributes.tabIndex}
+      onClick={(event) => {
+        if (unavailable) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
+      onKeyDown={(event) => {
+        if (!isButton && unavailable && ["Enter", " "].includes(event.key)) {
+          event.preventDefault();
+          return;
+        }
+        onKeyDown?.(event);
+      }}
     >
-      {loading && <span className="cc-btn__spinner" aria-hidden="true" />}
+      {loading && (
+        <span
+          className="cc-btn__spinner cc-ux4g ux4g-spinner ux4g-spinner-inverse-full ux4g-spinner-xs"
+          aria-hidden="true"
+        />
+      )}
       {/* The label is not hidden while loading. Replacing it with a bare
           spinner removes the button's accessible name, so a screen reader
           announces "busy, button" with no indication of which button. */}

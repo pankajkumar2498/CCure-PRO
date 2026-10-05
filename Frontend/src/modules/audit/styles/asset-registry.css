@@ -220,10 +220,7 @@
    contains every such span inside it. */
 .ar-card {
   position: relative;
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-lg);
-  overflow: hidden;
+  min-width: 0;
 }
 
 .ar-alert-row {
@@ -428,15 +425,6 @@
   margin-bottom: var(--ccure-space-lg);
 }
 
-.ar-input {
-  padding: var(--ccure-space-2xs) var(--ccure-space-sm);
-  border-radius: var(--ccure-radius-md);
-  border: 1px solid var(--ccure-border);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text);
-  background: var(--ccure-surface);
-}
-
 .ar-input--w80 {
   width: 5rem;
 }
@@ -509,11 +497,6 @@
 
 .ar-modal-wide {
   width: min(56.25rem, 95vw);
-}
-
-.ar-modal-title {
-  font-size: var(--ccure-text-lg);
-  font-weight: var(--ccure-weight-bold);
 }
 
 /* ── Managed state ────────────────────────────────────────────────────────────
@@ -595,4 +578,9 @@
 .ar-portstate--other {
   background: var(--ccure-surface-sunken);
   color: var(--ccure-text-secondary);
+}
+
+[class*="ar-input--w"] {
+  max-width: 100%;
+  min-width: 0;
 }

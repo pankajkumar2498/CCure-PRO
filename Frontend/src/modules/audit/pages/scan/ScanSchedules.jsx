@@ -48,11 +48,11 @@ import {
   CcureCard,
   CcureConfirmDialog,
   CcureEmptyState,
-  CcureField,
   CcureInput,
   CcureLoader,
   CcureSelect,
   CcureTable,
+  CcureTextarea,
 } from "../../../../design-system";
 import {
   createScanSchedule,
@@ -544,20 +544,16 @@ export default function ScanSchedules() {
                 <option value="credentialed">Credentialed scan</option>
               </CcureSelect>
 
-              <CcureField
+              <CcureTextarea
                 id="ss-targets"
                 label="Targets (one per line, or comma separated)"
                 hint="Re-checked against your organisation's authorised scan ranges on every run, not just now."
-              >
-                <textarea
-                  id="ss-targets"
-                  className="cc-field__control ss-mono"
-                  rows={3}
-                  value={form.targets}
-                  onChange={setField("targets")}
-                  aria-describedby="ss-targets-hint"
-                />
-              </CcureField>
+                className="cc-field__control ss-mono"
+                rows={3}
+                value={form.targets}
+                onChange={setField("targets")}
+                aria-describedby="ss-targets-hint"
+              />
 
               {needsCredential && (
                 <CcureSelect

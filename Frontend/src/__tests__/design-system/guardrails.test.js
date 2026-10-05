@@ -299,11 +299,11 @@ describe("UX4G class policy", () => {
    *     bundle, so a `ux4g-` class silently styles nothing. It would look like
    *     a CSS bug, not a policy breach, and would be debugged as one.
    */
-  it("no ux4g- class appears in a className", () => {
+  it("only central design-system adapters use official ux4g- classes", () => {
     const offenders = [];
     for (const f of sources) {
       if (!/\.jsx?$/.test(f)) continue;
-      if (f.includes(`design-system${path.sep}tokens`)) continue;
+      if (f.startsWith(DS)) continue;
       const text = readFileSync(f, "utf8");
 
       // className="..." and className={`...`} — the two ways a class reaches
@@ -321,19 +321,18 @@ describe("UX4G class policy", () => {
     }
     expect(
       offenders,
-      "Use a CCure primitive. Production ships tokens only, so a ux4g- class " +
-        "matches no rule and styles nothing.",
+      "Use a central CCure adapter. Official classes belong only to the design system.",
     ).toEqual([]);
   });
 
-  it("no ux4g- class is referenced from CCure's own stylesheets", () => {
+  it("module styles cannot reference official ux4g- classes", () => {
     // The design system's components must be built on tokens, not on UX4G
     // classes — a `.cc-btn { composes: ux4g-btn }`-shaped dependency would
     // reintroduce the need for component CSS.
     const offenders = [];
     for (const f of sources) {
       if (!f.endsWith(".css")) continue;
-      if (f.includes("ux4g.generated.css")) continue;
+      if (f.startsWith(DS)) continue;
       const text = readFileSync(f, "utf8");
       for (const m of text.matchAll(/\.ux4g-[a-z0-9-]+/g)) {
         offenders.push(`${path.relative(ROOT, f)}: ${m[0]}`);

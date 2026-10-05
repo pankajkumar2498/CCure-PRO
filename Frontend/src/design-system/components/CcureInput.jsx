@@ -33,7 +33,9 @@ export function CcureField({
   children,
 }) {
   return (
-    <div className={`cc-field ${className}`.trim()}>
+    <div
+      className={`cc-field cc-ux4g ux4g-input-container ux4g-input-m ${error ? "ux4g-input-error" : "ux4g-input-default"} ${className}`.trim()}
+    >
       {label ? (
         <label className="cc-field__label" htmlFor={id}>
           {label}
@@ -73,7 +75,7 @@ export function CcureField({
 }
 
 /** Shared describedby assembly — an input and a select must not drift apart. */
-function describedBy(id, hint, error, extra) {
+export function describedBy(id, hint, error, extra) {
   return (
     [error ? `${id}-error` : null, hint && !error ? `${id}-hint` : null, extra]
       .filter(Boolean)
@@ -110,7 +112,7 @@ const CcureInput = forwardRef(function CcureInput(
       ref={ref}
       id={id}
       type={type}
-      className={`cc-field__control ${className}`.trim()}
+      className={`cc-field__control ux4g-input-input ${className}`.trim()}
       aria-invalid={error ? "true" : undefined}
       aria-describedby={describedBy(id, hint, error, extraDescribedBy)}
       /* `required` is set on the element as well as announced in the label.
@@ -130,14 +132,14 @@ const CcureInput = forwardRef(function CcureInput(
       required={required}
       className={fieldClassName}
     >
-      {adornment ? (
-        <div className="cc-field__adorned">
-          {control}
-          <span className="cc-field__adornment">{adornment}</span>
-        </div>
-      ) : (
-        control
-      )}
+      <div className="ux4g-input cc-field__adorned">
+        {control}
+        {adornment ? (
+          <span className="cc-field__adornment ux4g-input-actions">
+            {adornment}
+          </span>
+        ) : null}
+      </div>
     </CcureField>
   );
 });
@@ -167,12 +169,12 @@ export const CcureSelect = forwardRef(function CcureSelect(
       hint={hint}
       error={error}
       required={required}
-      className={fieldClassName}
+      className={`ux4g-select ux4g-select-m ${fieldClassName}`}
     >
       <select
         ref={ref}
         id={id}
-        className={`cc-field__control ${className}`.trim()}
+        className={`cc-field__control ux4g-select-control ${className}`.trim()}
         aria-invalid={error ? "true" : undefined}
         aria-describedby={describedBy(id, hint, error, extraDescribedBy)}
         required={required || undefined}

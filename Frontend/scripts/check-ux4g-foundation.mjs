@@ -1,3 +1,7 @@
+import {
+  componentCss,
+  componentCssProblems,
+} from "./ux4g-component-assets.mjs";
 /** Offline migration-aware checks. No registry access or asset writes. */
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -133,6 +137,7 @@ export function sourceProblems(baseline, filename, text) {
   const problems = [];
   if (
     filename !== ASSET_LAYOUT.css &&
+    filename !== ASSET_LAYOUT.components &&
     !filename.startsWith("dist/") &&
     /\.css$/.test(filename)
   ) {
@@ -166,6 +171,13 @@ export function sourceProblems(baseline, filename, text) {
         `generated UX4G import bypasses the central token entry point: ${filename}`,
       );
     }
+    if (
+      /ux4g\.components\.generated\.css/.test(spec) &&
+      filename !== "src/design-system/index.js"
+    )
+      problems.push(
+        `generated component import bypasses the central design system: ${filename}`,
+      );
     if (/ux4g/i.test(spec) && /node_modules\//.test(spec)) {
       problems.push(
         `UX4G vendor path bypasses the approved pipeline: ${filename}`,
@@ -191,7 +203,7 @@ export function sourceProblems(baseline, filename, text) {
         problems.push(
           `UX4G runtime is not approved for this phase: ${filename}`,
         );
-      if (baseline.assets.mode === "tokens" && spec.endsWith("/styles.css"))
+      if (/\/(?:styles\.css|styles\/.*\.css)$/.test(spec))
         problems.push(
           `full UX4G CSS is not approved for this phase: ${filename}`,
         );
@@ -312,6 +324,22 @@ export function assetProblems(baseline, root) {
   if (/url\(\s*["']?(?:data:font|https?:|\/\/)/i.test(css.toString()))
     problems.push("generated CSS includes non-self-hosted assets");
   problems.push(...tokenCssProblems(css.toString(), named));
+  const components = readFileSync(outputs.components);
+  if (
+    manifest.components?.enabled !==
+      Boolean(baseline.assets.components?.enabled) ||
+    manifest.components?.bytes !== components.length ||
+    manifest.components?.sha256 !== sha256(components)
+  )
+    problems.push("generated component CSS metadata/hash mismatch");
+  if (baseline.assets.components?.enabled) {
+    problems.push(...componentCssProblems(components.toString()));
+    const vendor = verifyVendorInput(baseline, root).css.toString();
+    if (components.toString() !== componentCss(vendor, baseline))
+      problems.push(
+        "generated component CSS differs from the approved official subset",
+      );
+  } else if (components.length) problems.push("component CSS is not approved");
   return problems;
 }
 
@@ -401,6 +429,7 @@ export function checkFoundation({
       /ux4g/i.test(path.basename(name)) &&
       /\.(css|mjs|js)$/.test(name) &&
       name !== ASSET_LAYOUT.css &&
+      name !== ASSET_LAYOUT.components &&
       !name.startsWith("src/__tests__/")
     ) {
       problems.push(`UX4G asset outside the central pipeline: ${name}`);

@@ -57,6 +57,8 @@ import {
   CcureButton,
   CcureConfirmDialog,
   CcureInput,
+  CcureLoader,
+  CcureEmptyState,
   CcureModal,
   CcurePasswordField,
   CcureTabPanel,
@@ -155,11 +157,7 @@ function ProfileTab({ profile, onProfileUpdated }) {
   };
 
   if (!profile) {
-    return (
-      <p className="ac-loading" role="status">
-        Loading profile…
-      </p>
-    );
+    return <CcureLoader label="Loading profile…" />;
   }
 
   return (
@@ -735,11 +733,9 @@ function SecurityTab({ onOpenChangePassword }) {
         {notice && <CcureAlert variant="success">{notice}</CcureAlert>}
 
         {loading ? (
-          <p className="ac-loading" role="status">
-            Loading sessions…
-          </p>
+          <CcureLoader label="Loading sessions…" />
         ) : sessions.length === 0 ? (
-          <p className="ac-empty">No active sessions found.</p>
+          <CcureEmptyState title="No active sessions found." />
         ) : (
           <ul className="ac-sessions" aria-label="Active sessions">
             {sessions.map((s) => {

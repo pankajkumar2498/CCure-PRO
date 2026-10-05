@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 import { everything } from "../../../fixtures/authorization";
 /**
  * AuditLogs — Checkpoint 3C batch 10 migration coverage.
@@ -25,7 +26,7 @@ import { everything } from "../../../fixtures/authorization";
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AuditLogs from "@shell/admin/pages/AuditLogs";
@@ -191,32 +192,40 @@ describe("AuditLogs — functional", () => {
         ? Promise.resolve({ data: { ...LIST, total: 120 } })
         : routeGet(url),
     );
-    const user = userEvent.setup();
+    // Isolate paging from the initial search debounce and background polling.
+    // A real clock could reset the page mid-click or inspect a poll request.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     await renderPage();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    const pageCalls = () =>
+      listCalls().filter((call) => [25, 50].includes(call[1].params.limit));
     await user.click(await screen.findByRole("button", { name: "Last" }));
     await waitFor(() =>
-      expect(listCalls().at(-1)[1].params).toMatchObject({
+      expect(pageCalls().at(-1)[1].params).toMatchObject({
         skip: 100,
         limit: 50,
       }),
     );
     await user.click(await screen.findByRole("button", { name: "First" }));
     await waitFor(() =>
-      expect(listCalls().at(-1)[1].params).toMatchObject({
+      expect(pageCalls().at(-1)[1].params).toMatchObject({
         skip: 0,
         limit: 50,
       }),
     );
     await user.click(await screen.findByRole("button", { name: "Next" }));
     await waitFor(() =>
-      expect(listCalls().at(-1)[1].params).toMatchObject({
+      expect(pageCalls().at(-1)[1].params).toMatchObject({
         skip: 50,
         limit: 50,
       }),
     );
     await user.selectOptions(screen.getByLabelText("Events per page"), "25");
     await waitFor(() =>
-      expect(listCalls().at(-1)[1].params).toMatchObject({
+      expect(pageCalls().at(-1)[1].params).toMatchObject({
         skip: 0,
         limit: 25,
       }),
@@ -586,9 +595,9 @@ describe("AuditLogs — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("alice@example.test");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 });

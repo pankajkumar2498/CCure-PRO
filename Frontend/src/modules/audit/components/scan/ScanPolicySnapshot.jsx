@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { CcureAlert, CcureBadge } from "../../../../design-system";
+import { CcureLoader, CcureAlert, CcureBadge } from "../../../../design-system";
 import { getScanPolicySnapshot } from "@audit/api/scanPolicies";
 
 /** Config fields that are lists; shown as counts with the values beneath. */
@@ -92,11 +92,7 @@ export default function ScanPolicySnapshot({ scanId }) {
   }, [scanId]);
 
   if (loading) {
-    return (
-      <p className="ps-note" role="status">
-        Reading this scan&apos;s policy record…
-      </p>
-    );
+    return <CcureLoader label="Reading this scan’s policy record…" />;
   }
 
   if (error) {

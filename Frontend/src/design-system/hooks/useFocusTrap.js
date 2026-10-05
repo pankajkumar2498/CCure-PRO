@@ -70,7 +70,8 @@ function focusableWithin(root) {
  * and the outer trap resumes. Single-dialog behaviour is unchanged.
  */
 const ACTIVE_TRAPS = [];
-const isTopTrap = (root) => ACTIVE_TRAPS[ACTIVE_TRAPS.length - 1] === root;
+export const isTopTrap = (root) =>
+  ACTIVE_TRAPS[ACTIVE_TRAPS.length - 1] === root;
 
 export default function useFocusTrap(ref, active, { initialFocus } = {}) {
   // Captured in a ref rather than state: writing it must not schedule a render,
@@ -107,6 +108,7 @@ export default function useFocusTrap(ref, active, { initialFocus } = {}) {
     // keystrokes, the field never filled, submit stayed disabled and the API
     // mock was never called. Only place focus if nothing inside holds it.
     const raf = requestAnimationFrame(() => {
+      if (!isTopTrap(root)) return;
       const current = document.activeElement;
       if (current && current !== root && root.contains(current)) return;
       target?.focus?.();

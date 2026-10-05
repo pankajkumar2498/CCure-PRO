@@ -12,13 +12,17 @@ module design systems and competing frameworks require explicit approval.
 Custom replacements for an official equivalent need a documented technical
 reason. These rules apply equally to developers and AI coding assistants.
 
-Phase B.1 upgrades the dependency foundation while retaining tokens, the
-existing self-hosted font and React-owned behavior. It does not migrate pages,
-official components or accessibility defects. See the
-[B.1 evidence, decisions and rollback](../docs/ux4g/B1_VERSION_FOUNDATION.md).
-The current [B.2 asset pipeline](../docs/ux4g/B2_ASSET_PIPELINE.md) adds generator
-and converter input hashes, staged publication and deployed manifest/font
-validation. Keep every module on this pipeline; do not copy UX4G CSS or fonts.
+[B.1](../docs/ux4g/B1_VERSION_FOUNDATION.md) establishes the reviewed exact
+`ux4g-web-components@3.0.0` release. The
+[B.2 pipeline](../docs/ux4g/B2_ASSET_PIPELINE.md) verifies tokens, self-hosted
+fonts and provenance. [Group 1: B.3/B.4](../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md)
+adds a scoped official component subset, shared React adapters and the Platform
+shell. Import controls through `src/design-system/index.js`; official classes,
+styles, fonts and interaction behavior belong to that boundary. Do not copy
+vendor assets into modules or enable the vendor reset/runtime.
+[B.5/B.6](../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md) migrate Authentication and
+Audit presentation through these same adapters. Policy/Rank/IR and later
+phase work remain deferred.
 
 After `npm ci`, run `npm run ux4g:check -- --dependencies-only`; after building,
 run `npm run ux4g:verify` and `npm run ux4g:check -- --dist`. CI enforces these
@@ -26,10 +30,11 @@ checks. `postbuild` and `prepreview` also validate the deployed asset set.
 
 ## Design System
 
-- **Sidebar**: `#1a2332` dark navy
-- **Accent**: `#0ea5e9` sky blue
-- **Background**: `#f8fafc` light gray
-- All CSS lives in `src/styles/global.css` with CSS variables
+The shared CCure Design System owns UX4G adapters, semantic tokens, typography,
+spacing, focus and responsive composition. `ux4g-baseline.json` records the
+approved version and font policy. Native form contracts and React-owned
+behavior preserve CSP and module APIs. See the Group 1 component mapping and
+documented exceptions before introducing a custom equivalent.
 
 ## Project Structure
 

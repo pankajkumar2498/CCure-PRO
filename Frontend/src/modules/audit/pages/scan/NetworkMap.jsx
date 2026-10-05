@@ -34,6 +34,7 @@ import {
   CcureModal,
   CcureSelect,
   CcureTable,
+  CcureCheckbox,
 } from "../../../../design-system";
 import api from "@shell/api/axiosInstance";
 import "../../styles/NetworkMap.css";
@@ -1638,15 +1639,13 @@ export default function NetworkMap() {
                 <ul className="nmap-subnets__list">
                   {subnets.map((subnet) => (
                     <li key={subnet}>
-                      <label className="nmap-subnet">
-                        <input
-                          type="checkbox"
-                          className="nmap-subnet__input"
-                          checked={!filteredSubnets.has(subnet)}
-                          onChange={() => toggleSubnetFilter(subnet)}
-                        />
+                      <CcureCheckbox
+                        className="nmap-subnet"
+                        checked={!filteredSubnets.has(subnet)}
+                        onChange={() => toggleSubnetFilter(subnet)}
+                      >
                         <span className="nmap-subnet__label">{subnet}</span>
-                      </label>
+                      </CcureCheckbox>
                     </li>
                   ))}
                 </ul>

@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * ScanDetail — Checkpoint 3C batch 8 migration coverage.
  *
@@ -870,10 +871,10 @@ describe("ScanDetail — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/var\(--[a-z-]+\)[0-9a-f]{2}/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = render(<ScanDetail />);
     await screen.findByText("Corporate portal");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("injects no <style> element into the document", async () => {
@@ -895,4 +896,26 @@ describe("ScanDetail — permission (F2)", () => {
     await screen.findByText("https://portal.example.test");
     expect(screen.queryByRole("button", { name: /cancel scan/i })).toBeNull();
   });
+});
+
+// Report failure must remain visible without leaving the user's current scan.
+it("announces report-generation failure and releases the download control", async () => {
+  webScansApi.getScan.mockResolvedValue({ data: SCAN({ status: "complete" }) });
+  webScansApi.downloadReport.mockRejectedValue(new Error("synthetic failure"));
+  const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+  const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const user = userEvent.setup();
+  render(<ScanDetail />);
+  const download = await screen.findByRole("button", {
+    name: /download report/i,
+  });
+  await user.click(download);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Failed to generate report.",
+  );
+  expect(webScansApi.downloadReport).toHaveBeenCalledWith("ws-42");
+  expect(download).toBeEnabled();
+  expect(alertSpy).not.toHaveBeenCalled();
+  alertSpy.mockRestore();
+  consoleSpy.mockRestore();
 });

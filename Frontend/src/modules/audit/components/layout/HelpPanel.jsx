@@ -18,9 +18,14 @@
 import { useState, useRef, useEffect } from "react";
 import {
   CcureButton,
-  CcureField,
   CcureInput,
   CcureTabs,
+  CcureTextarea,
+  CcureIconButton,
+  CcureCard,
+  CcureTabPanel,
+  CcureAlert,
+  CcureEmptyState,
 } from "../../../../design-system";
 
 /* ── Icons (decorative) ──────────────────────────────────────────────────── */
@@ -169,7 +174,9 @@ function FaqItem({ q, a, index }) {
   const answerId = `shh-faq-a-${index}`;
   return (
     <div className={`shh-faq-item ${open ? "shh-faq-item--open" : ""}`}>
-      <button
+      <CcureButton
+        variant="ghost"
+        size="sm"
         type="button"
         className="shh-faq-q"
         aria-expanded={open}
@@ -183,7 +190,7 @@ function FaqItem({ q, a, index }) {
         >
           <IcoChevron />
         </span>
-      </button>
+      </CcureButton>
       {open && (
         <div className="shh-faq-a" id={answerId}>
           {a}
@@ -213,21 +220,20 @@ function SupportForm() {
     <div className="shh-support">
       <h4 className="shh-section-title">Contact Support</h4>
       {sent ? (
-        <div className="shh-support-sent" role="status">
+        <CcureAlert variant="success">
           ✅ Message sent! We&apos;ll get back to you soon.
-        </div>
+        </CcureAlert>
       ) : (
         <>
-          <CcureField id="shh-support-msg" label="Your message">
-            <textarea
-              id="shh-support-msg"
-              className="cc-field__control shh-support-textarea"
-              placeholder="Describe your issue or question…"
-              value={msg}
-              onChange={(e) => setMsg(e.target.value)}
-              rows={4}
-            />
-          </CcureField>
+          <CcureTextarea
+            id="shh-support-msg"
+            label="Your message"
+            className="cc-field__control shh-support-textarea"
+            placeholder="Describe your issue or question…"
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            rows={4}
+          />
           <CcureButton
             variant="primary"
             size="sm"
@@ -288,7 +294,9 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
      this panel does not implement — a focus trap and an inert background — so
      it names a group instead, which keeps the name without the false promise. */
   return (
-    <div
+    <CcureCard
+      as="div"
+      bodyFlush
       className="shh-panel"
       ref={panelRef}
       id={id}
@@ -302,18 +310,21 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
           <IcoHelp />
           <span>Help Center</span>
         </div>
-        <button
+        <CcureIconButton
+          variant="ghost"
+          size="sm"
           type="button"
           className="shh-close"
           onClick={onClose}
           aria-label="Close help"
         >
           <IcoClose />
-        </button>
+        </CcureIconButton>
       </div>
 
       {/* Section tabs */}
       <CcureTabs
+        id={`${id}-sections`}
         className="shh-tabs"
         label="Help sections"
         tabs={SECTIONS}
@@ -322,7 +333,12 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
       />
 
       {/* Body */}
-      <div className="shh-body">
+      <CcureTabPanel
+        id={activeSection}
+        tabsId={`${id}-sections`}
+        active
+        className="shh-body"
+      >
         {/* FAQ */}
         {activeSection === "faq" && (
           <div>
@@ -337,9 +353,7 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
               />
             </div>
             {filteredFaqs.length === 0 ? (
-              <div className="shh-empty" role="status">
-                No matching questions found.
-              </div>
+              <CcureEmptyState title="No matching questions found." />
             ) : (
               <div className="shh-faqs">
                 {filteredFaqs.map((f, i) => (
@@ -354,7 +368,9 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
         {activeSection === "links" && (
           <div className="shh-links-grid">
             {QUICK_LINKS.map((l) => (
-              <a
+              <CcureButton
+                as="a"
+                variant="secondary"
                 key={l.title}
                 href={l.url}
                 className="shh-link-card"
@@ -367,7 +383,7 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
                 <span className="shh-link-title">{l.title}</span>
                 <IcoExtLink />
                 <span className="cc-sr-only"> (opens in a new tab)</span>
-              </a>
+              </CcureButton>
             ))}
           </div>
         )}
@@ -396,7 +412,7 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
 
         {/* Support */}
         {activeSection === "support" && <SupportForm />}
-      </div>
-    </div>
+      </CcureTabPanel>
+    </CcureCard>
   );
 }

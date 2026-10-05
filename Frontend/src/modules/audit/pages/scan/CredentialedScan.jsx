@@ -20,6 +20,9 @@ import {
   CcureButton,
   CcureInput,
   CcureSelect,
+  CcureCard,
+  CcureRadio,
+  CcureCheckbox,
 } from "../../../../design-system";
 import "../../styles/credentialed-scan.css";
 import { parseTargets, runCredentialedScan } from "@audit/api/credentialedScan";
@@ -246,7 +249,7 @@ export default function CredentialedScan() {
           </CcureAlert>
         )}
 
-        <div className="cs-card">
+        <CcureCard as={"div"} bodyFlush className="cs-card">
           {/* What this scan covers. Stated before the scan runs, because a
               result with no network findings is easily read as a host with no
               network exposure — and this policy never looks for that. */}
@@ -267,13 +270,15 @@ export default function CredentialedScan() {
             </p>
             <p className="cs-scope-p">
               For a complete assessment, run a{" "}
-              <button
+              <CcureButton
+                variant="ghost"
+                size="sm"
                 type="button"
                 onClick={() => navigate("/scan/new")}
                 className="cs-linkbtn"
               >
                 Vulnerability Audit
-              </button>{" "}
+              </CcureButton>{" "}
               with a stored credential attached — discovery, port scanning and
               unauthenticated checks run first, and the authenticated results
               are merged into the same report.
@@ -368,28 +373,26 @@ export default function CredentialedScan() {
             <fieldset className="cs-fieldset">
               <legend className="cs-legend">Credential source</legend>
               <div className="cs-source-row">
-                <label className="cs-radio">
-                  <input
-                    type="radio"
-                    name="cs-credential-source"
-                    value="jit"
-                    checked={credentialSource === "jit"}
-                    onChange={() => setCredentialSource("jit")}
-                    disabled={formDisabled}
-                  />
+                <CcureRadio
+                  className="cs-radio"
+                  name="cs-credential-source"
+                  value="jit"
+                  checked={credentialSource === "jit"}
+                  onChange={() => setCredentialSource("jit")}
+                  disabled={formDisabled}
+                >
                   One-time JIT Credentials
-                </label>
-                <label className="cs-radio">
-                  <input
-                    type="radio"
-                    name="cs-credential-source"
-                    value="stored"
-                    checked={credentialSource === "stored"}
-                    onChange={() => setCredentialSource("stored")}
-                    disabled={formDisabled}
-                  />
+                </CcureRadio>
+                <CcureRadio
+                  className="cs-radio"
+                  name="cs-credential-source"
+                  value="stored"
+                  checked={credentialSource === "stored"}
+                  onChange={() => setCredentialSource("stored")}
+                  disabled={formDisabled}
+                >
                   Use Stored Credential
-                </label>
+                </CcureRadio>
               </div>
             </fieldset>
 
@@ -406,13 +409,15 @@ export default function CredentialedScan() {
                       <>
                         No saved credentials registered. Manage your credentials
                         under the{" "}
-                        <button
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           className="cs-linkbtn"
                           onClick={() => navigate("/compliance")}
                         >
                           Credentials Manager
-                        </button>{" "}
+                        </CcureButton>{" "}
                         tab.
                       </>
                     ) : undefined
@@ -480,7 +485,9 @@ export default function CredentialedScan() {
                          adornment on an ordinary field, which keeps the
                          input's own id, label and describedby wiring. */
                       adornment={
-                        <button
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           className="cs-pass-toggle"
                           onClick={() => setShowPass((p) => !p)}
@@ -498,7 +505,7 @@ export default function CredentialedScan() {
                           <span aria-hidden="true">
                             {showPass ? "🙈" : "👁"}
                           </span>
-                        </button>
+                        </CcureButton>
                       }
                     />
                   ) : (
@@ -539,26 +546,23 @@ export default function CredentialedScan() {
             </div>
             <div className="cs-chip-grid">
               {SECTIONS.map((s) => (
-                <label
+                <CcureCheckbox
                   key={s.key}
                   className={`cs-chip ${sections.has(s.key) ? "cs-chip--on" : ""}`}
+                  checked={sections.has(s.key)}
+                  onChange={() => toggleSection(s.key)}
+                  disabled={formDisabled}
                 >
                   {/* Clipped, not `display: none`. See credentialed-scan.css —
                       hiding it outright took the control out of the tab order,
                       so a keyboard user could not choose what is collected. */}
-                  <input
-                    type="checkbox"
-                    className="cs-visually-hidden"
-                    checked={sections.has(s.key)}
-                    onChange={() => toggleSection(s.key)}
-                    disabled={formDisabled}
-                  />
+
                   <span className="cs-chip-icon" aria-hidden="true">
                     {s.icon}
                   </span>
                   <span className="cs-chip-label">{s.label}</span>
                   <span className="cs-chip-desc">{s.desc}</span>
-                </label>
+                </CcureCheckbox>
               ))}
             </div>
           </section>
@@ -603,7 +607,7 @@ export default function CredentialedScan() {
               {loading ? "Scanning…" : "🔐 Start Credentialed Scan"}
             </CcureButton>
           </div>
-        </div>
+        </CcureCard>
       </div>
     </AppLayout>
   );

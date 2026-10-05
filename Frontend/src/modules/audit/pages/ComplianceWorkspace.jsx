@@ -31,6 +31,9 @@ import {
   CcureTabPanel,
   CcureTabs,
   useCcureTabs,
+  CcureCheckbox,
+  CcureTextarea,
+  CcureRadio,
 } from "../../../design-system";
 import "../styles/compliance.css";
 import "../../../styles/scan.css";
@@ -2314,14 +2317,13 @@ export default function ComplianceWorkspace() {
                   </option>
                   <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
                 </CcureSelect>
-                <label className="cwh-check">
-                  <input
-                    type="checkbox"
-                    checked={zeroTrustOnly}
-                    onChange={(e) => setZeroTrustOnly(e.target.checked)}
-                  />
+                <CcureCheckbox
+                  className="cwh-check"
+                  checked={zeroTrustOnly}
+                  onChange={(e) => setZeroTrustOnly(e.target.checked)}
+                >
                   Zero Trust Only
-                </label>
+                </CcureCheckbox>
               </>
             )}
             {selectedFrameworkId === "cfw_dpdp_2023" && (
@@ -2380,14 +2382,13 @@ export default function ComplianceWorkspace() {
                     SAQ D Service Provider (Service Providers)
                   </option>
                 </CcureSelect>
-                <label className="cwh-check">
-                  <input
-                    type="checkbox"
-                    checked={cdeScopeFilter}
-                    onChange={(e) => setCdeScopeFilter(e.target.checked)}
-                  />
+                <CcureCheckbox
+                  className="cwh-check"
+                  checked={cdeScopeFilter}
+                  onChange={(e) => setCdeScopeFilter(e.target.checked)}
+                >
                   CDE Scope Only
-                </label>
+                </CcureCheckbox>
               </>
             )}
             <CcureSelect
@@ -3960,22 +3961,17 @@ export default function ComplianceWorkspace() {
                         required
                       />
                     ) : (
-                      <CcureField
+                      <CcureTextarea
                         id="cwc-key"
                         label="Private Key Content"
                         hint="Stored encrypted. The saved list never shows it."
                         required
-                      >
-                        <textarea
-                          id="cwc-key"
-                          className="cc-field__control cwc-key"
-                          value={newCredKeyContent}
-                          onChange={(e) => setNewCredKeyContent(e.target.value)}
-                          placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          aria-describedby="cwc-key-hint"
-                          required
-                        />
-                      </CcureField>
+                        className="cc-field__control cwc-key"
+                        value={newCredKeyContent}
+                        onChange={(e) => setNewCredKeyContent(e.target.value)}
+                        placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
+                        aria-describedby="cwc-key-hint"
+                      />
                     )}
 
                     <CcureButton
@@ -4508,7 +4504,7 @@ export default function ComplianceWorkspace() {
               </option>
             </CcureSelect>
 
-            <CcureField
+            <CcureTextarea
               id="cwa-justification"
               label={
                 attestStatus === "not_applicable"
@@ -4521,25 +4517,20 @@ export default function ComplianceWorkspace() {
                   ? "ISO/IEC 27001:2022 clause 6.1.3(d) requires every exclusion to carry a documented justification."
                   : undefined
               }
-            >
-              <textarea
-                id="cwa-justification"
-                className="cc-field__control cww-form__textarea"
-                value={attestJustification}
-                onChange={(e) => setAttestJustification(e.target.value)}
-                required={attestStatus === "not_applicable"}
-                aria-describedby={
-                  attestStatus === "not_applicable"
-                    ? "cwa-justification-hint"
-                    : undefined
-                }
-                placeholder={
-                  attestStatus === "not_applicable"
-                    ? "Why this control does not apply to the organization's ISMS scope."
-                    : "Why this control is applicable — defaults to the control objective if left blank."
-                }
-              />
-            </CcureField>
+              className="cc-field__control cww-form__textarea"
+              value={attestJustification}
+              onChange={(e) => setAttestJustification(e.target.value)}
+              aria-describedby={
+                attestStatus === "not_applicable"
+                  ? "cwa-justification-hint"
+                  : undefined
+              }
+              placeholder={
+                attestStatus === "not_applicable"
+                  ? "Why this control does not apply to the organization's ISMS scope."
+                  : "Why this control is applicable — defaults to the control objective if left blank."
+              }
+            />
 
             {selectedControl?.evidence_checklist &&
               selectedControl.evidence_checklist.length > 0 && (
@@ -4600,15 +4591,14 @@ export default function ComplianceWorkspace() {
               onChange={(e) => setAttestNextReview(e.target.value)}
             />
 
-            <CcureField id="cwa-note" label="Reviewer note" required>
-              <textarea
-                id="cwa-note"
-                className="cc-field__control cww-form__textarea"
-                value={attestNote}
-                onChange={(e) => setAttestNote(e.target.value)}
-                required
-              />
-            </CcureField>
+            <CcureTextarea
+              id="cwa-note"
+              label="Reviewer note"
+              required
+              className="cc-field__control cww-form__textarea"
+              value={attestNote}
+              onChange={(e) => setAttestNote(e.target.value)}
+            />
             <CcureButton
               type="submit"
               variant="primary"
@@ -4622,19 +4612,14 @@ export default function ComplianceWorkspace() {
 
         {modalType === "exception" && (
           <form onSubmit={handleSubmitException} className="cww-form">
-            <CcureField
+            <CcureTextarea
               id="cww-waiver-reason"
               label="Reason for Exception Waiver"
               required
-            >
-              <textarea
-                id="cww-waiver-reason"
-                className="cc-field__control cww-form__textarea"
-                value={exceptionReason}
-                onChange={(e) => setExceptionReason(e.target.value)}
-                required
-              />
-            </CcureField>
+              className="cc-field__control cww-form__textarea"
+              value={exceptionReason}
+              onChange={(e) => setExceptionReason(e.target.value)}
+            />
             <CcureInput
               type="date"
               label="Expiry Date"
@@ -4975,24 +4960,22 @@ export default function ComplianceWorkspace() {
                   Execution Credentials
                 </legend>
                 <div className="cwe-choices">
-                  <label className="cwe-choice">
-                    <input
-                      type="radio"
-                      name="cwe-credential-source"
-                      checked={remediationCredSource === "jit"}
-                      onChange={() => setRemediationCredSource("jit")}
-                    />
+                  <CcureRadio
+                    className="cwe-choice"
+                    name="cwe-credential-source"
+                    checked={remediationCredSource === "jit"}
+                    onChange={() => setRemediationCredSource("jit")}
+                  >
                     One-time JIT Credentials
-                  </label>
-                  <label className="cwe-choice">
-                    <input
-                      type="radio"
-                      name="cwe-credential-source"
-                      checked={remediationCredSource === "stored"}
-                      onChange={() => setRemediationCredSource("stored")}
-                    />
+                  </CcureRadio>
+                  <CcureRadio
+                    className="cwe-choice"
+                    name="cwe-credential-source"
+                    checked={remediationCredSource === "stored"}
+                    onChange={() => setRemediationCredSource("stored")}
+                  >
                     Use Stored Credential
-                  </label>
+                  </CcureRadio>
                 </div>
 
                 {/* A stored credential is chosen by its name and account and
@@ -5056,21 +5039,17 @@ export default function ComplianceWorkspace() {
                         autoComplete="new-password"
                       />
                     ) : (
-                      <CcureField
+                      <CcureTextarea
                         id="cwe-jit-key"
-                        className="cwe-jit__wide"
+                        fieldClassName="cwe-jit__wide"
                         label="Private Key Content"
                         hint="Encrypted with this request; not added to saved credentials."
-                      >
-                        <textarea
-                          id="cwe-jit-key"
-                          className="cc-field__control cwe-key"
-                          value={jitKeyContent}
-                          onChange={(e) => setJitKeyContent(e.target.value)}
-                          placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
-                          aria-describedby="cwe-jit-key-hint"
-                        />
-                      </CcureField>
+                        className="cc-field__control cwe-key"
+                        value={jitKeyContent}
+                        onChange={(e) => setJitKeyContent(e.target.value)}
+                        placeholder="-----BEGIN OpenSSH PRIVATE KEY-----..."
+                        aria-describedby="cwe-jit-key-hint"
+                      />
                     )}
                   </div>
                 )}
@@ -5078,16 +5057,15 @@ export default function ComplianceWorkspace() {
 
               {isComplianceAdmin && (
                 <div className="cwe-bypass">
-                  <label className="cwe-choice cwe-choice--strong">
-                    <input
-                      type="checkbox"
-                      checked={emergencyBypass}
-                      onChange={(e) => setEmergencyBypass(e.target.checked)}
-                      aria-describedby="cwe-bypass-note"
-                    />
+                  <CcureCheckbox
+                    className="cwe-choice cwe-choice--strong"
+                    checked={emergencyBypass}
+                    onChange={(e) => setEmergencyBypass(e.target.checked)}
+                    aria-describedby="cwe-bypass-note"
+                  >
                     <span aria-hidden="true">⚡</span> Emergency Bypass (Direct
                     Execution - Skip Approvals Queue)
-                  </label>
+                  </CcureCheckbox>
                   <p id="cwe-bypass-note" className="cwe-bypass__note">
                     Note: Emergency bypass will log a critical priority incident
                     alert to the IP audit logs.

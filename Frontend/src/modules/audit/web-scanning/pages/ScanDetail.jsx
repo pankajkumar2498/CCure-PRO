@@ -21,7 +21,7 @@
  * Also preserved without change: `cancelScan` behind a confirmation followed
  * by `refresh()` — the question is now asked in `CcureConfirmDialog` rather
  * than `window.confirm`, with the same words and the same call;
- * `downloadReport` → Blob → anchor click, with `alert()` on
+ * `downloadReport` → Blob → anchor click, with an error alert on
  * failure; the `ACTIVE_STATUSES` / `COMPLETE_STATUSES` sets that decide which
  * actions are offered; the `PIPELINE_PHASES` order; the progress derivation
  * (`live_progress.percentage`, else 100 when complete, else phase index × 33.33);
@@ -87,6 +87,7 @@ export default function ScanDetail() {
   const { scan, loading, error, refresh, liveStatus, liveEvents } =
     useScanPolling(id, 5000);
   const [downloading, setDownloading] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const handleDownload = async () => {
     try {
@@ -103,7 +104,7 @@ export default function ScanDetail() {
       link.parentNode.removeChild(link);
     } catch (err) {
       console.error("Failed to download PDF", err);
-      alert("Failed to generate report.");
+      setActionError("Failed to generate report.");
     } finally {
       setDownloading(false);
     }
@@ -260,6 +261,11 @@ export default function ScanDetail() {
   return (
     <AppLayout pageTitle={`Scan: ${scan.scan_name}`}>
       <div className="page-inner wsp-page">
+        {actionError && (
+          <CcureAlert variant="danger" onClose={() => setActionError("")}>
+            {actionError}
+          </CcureAlert>
+        )}
         <div className="wsp-header">
           <div>
             <div className="sd-title-row">

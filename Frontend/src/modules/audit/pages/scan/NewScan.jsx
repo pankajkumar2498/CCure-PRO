@@ -30,6 +30,7 @@ import { useAuth } from "@shell/auth/AuthContext";
 import ScanQuotaBar from "@audit/components/scan/ScanQuotaBar";
 import { detectTargetType, parseExcludeIpsJS } from "@audit/utils/ipValidation";
 import {
+  CcureLoader,
   CcureAlert,
   CcureBadge,
   CcureButton,
@@ -39,6 +40,10 @@ import {
   CcureProgress,
   CcureSelect,
   CcureTable,
+  CcureCard,
+  CcureSwitch,
+  CcureRadio,
+  CcureCheckbox,
 } from "../../../../design-system";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
@@ -370,7 +375,7 @@ function ActiveMission({
         </div>
       </header>
 
-      <div className="ns-mission__card">
+      <CcureCard as={"div"} bodyFlush className="ns-mission__card">
         <div className="ns-console">
           <div className="ns-console__lead">
             <div className="ns-ring">
@@ -400,7 +405,7 @@ function ActiveMission({
             </div>
           </div>
           <CcureBadge variant={badgeVariant} className="ns-console__status">
-            {isRunning && <span className="ns-spinner" aria-hidden="true" />}
+            {isRunning && <CcureLoader decorative size="sm" />}
             {badgeLabel}
           </CcureBadge>
         </div>
@@ -558,7 +563,7 @@ function ActiveMission({
             )}
           </div>
         </div>
-      </div>
+      </CcureCard>
       {(outcomeMessage || error) && (
         <CcureAlert
           variant={isFailed ? "danger" : "warning"}
@@ -642,11 +647,8 @@ function OptionRow({
           ) : null}
         </div>
         <div className="ns-option__control">
-          <input
+          <CcureSwitch
             id={id}
-            type="checkbox"
-            role="switch"
-            className="ns-switch"
             checked={checked}
             onChange={(e) => onChange(e.target.checked)}
             disabled={disabled}
@@ -686,24 +688,20 @@ function ScanModelChoice({ value, onChange }) {
       </p>
       <div className="ns-model__cards">
         {SCAN_MODELS.map((model) => (
-          <label
+          <CcureRadio
             key={model.mode}
             className={`ns-model__card${value === model.mode ? " ns-model__card--selected" : ""}`}
+            name={`${id}-model`}
+            value={model.mode}
+            checked={value === model.mode}
+            onChange={() => onChange(model.mode)}
           >
-            <input
-              type="radio"
-              name={`${id}-model`}
-              value={model.mode}
-              className="ns-model__input"
-              checked={value === model.mode}
-              onChange={() => onChange(model.mode)}
-            />
             <span className="ns-model__icon" aria-hidden="true">
               {model.icon}
             </span>
             <span className="ns-model__title">{model.title}</span>
             <span className="ns-model__desc">{model.desc}</span>
-          </label>
+          </CcureRadio>
         ))}
       </div>
     </div>
@@ -734,7 +732,7 @@ function TargetField({
     >
       <CcureField id={id} label="Target" hint="IP, CIDR, or range">
         <div className="ns-drop__row">
-          <input
+          <CcureInput
             id={id}
             className="cc-field__control ns-target"
             value={value}
@@ -2008,7 +2006,7 @@ export default function NewScan() {
             setQuotaBlocked(quota_exceeded || concurrent_exceeded)
           }
         />
-        <div className="ns-card">
+        <CcureCard as={"div"} bodyFlush className="ns-card">
           <section className="ns-section">
             <input
               type="file"
@@ -2260,7 +2258,7 @@ export default function NewScan() {
               {btnLabel} <Glyph>→</Glyph>
             </CcureButton>
           </div>
-        </div>
+        </CcureCard>
       </div>
 
       {/* Advanced settings, a side sheet */}
@@ -2632,25 +2630,24 @@ export default function NewScan() {
                     {credentialsList.map((c) => {
                       const checked = selectedCredIds.includes(c.id);
                       return (
-                        <label key={c.id} className="ns-cred">
-                          <input
-                            type="checkbox"
-                            className="ns-cred__check"
-                            checked={checked}
-                            onChange={() =>
-                              setSelectedCredIds((prev) =>
-                                checked
-                                  ? prev.filter((id) => id !== c.id)
-                                  : [...prev, c.id],
-                              )
-                            }
-                            disabled={loading || !canExecuteScans}
-                          />
+                        <CcureCheckbox
+                          key={c.id}
+                          className="ns-cred"
+                          checked={checked}
+                          onChange={() =>
+                            setSelectedCredIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== c.id)
+                                : [...prev, c.id],
+                            )
+                          }
+                          disabled={loading || !canExecuteScans}
+                        >
                           <span className="ns-cred__name">{c.name}</span>
                           <span className="ns-cred__account">
                             {c.username}@:{c.port ?? 22}
                           </span>
-                        </label>
+                        </CcureCheckbox>
                       );
                     })}
                   </fieldset>

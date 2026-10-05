@@ -167,6 +167,36 @@ describe("NotificationsPanel", () => {
     expect(screen.queryByTitle("Mark as read")).not.toBeInTheDocument();
   });
 
+  it("associates each selected notification category with its shared tab panel", async () => {
+    const u = userEvent.setup();
+    await open();
+    const association = () => {
+      const tab = screen.getByRole("tab", { selected: true });
+      const panel = screen.getByRole("tabpanel");
+      expect(tab).toHaveAttribute("aria-controls", panel.id);
+      expect(panel).toHaveAttribute("aria-labelledby", tab.id);
+    };
+    association();
+    await u.click(tabOrButton("Security"));
+    association();
+  });
+
+  it("marks notification content as read by keyboard without nesting its action buttons", async () => {
+    const u = userEvent.setup();
+    await open();
+    const content = screen.getByRole("button", {
+      name: "Read notification: Scan #41 complete",
+    });
+    expect(content.querySelector("button")).toBeNull();
+    content.focus();
+    await u.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(axiosInstance.patch).toHaveBeenCalledExactlyOnceWith(
+        "/notifications/n-1/read",
+      ),
+    );
+  });
+
   it("marks all read: PATCH read-all and the badge goes to zero", async () => {
     const u = userEvent.setup();
     const { onUnreadChange } = await open();

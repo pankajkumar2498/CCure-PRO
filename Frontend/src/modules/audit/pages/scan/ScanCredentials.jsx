@@ -30,12 +30,12 @@ import {
   CcureButton,
   CcureConfirmDialog,
   CcureEmptyState,
-  CcureField,
   CcureInput,
   CcureLoader,
   CcureModal,
   CcureSelect,
   CcureTable,
+  CcureTextarea,
 } from "../../../../design-system";
 import "../../styles/scan-credentials.css";
 import {
@@ -481,22 +481,21 @@ export default function ScanCredentials() {
                 the secret, and a field that could display one is how a
                 password reaches the DOM and the browser autofill store. */}
             {needsKey ? (
-              <CcureField label="Private key" id="sc-private-key">
-                <textarea
-                  id="sc-private-key"
-                  className="cc-field__control sc-key"
-                  rows={4}
-                  value={form.privateKey}
-                  onChange={(e) =>
-                    setForm({ ...form, privateKey: e.target.value })
-                  }
-                  placeholder={
-                    editing === "new"
-                      ? "-----BEGIN OPENSSH PRIVATE KEY-----"
-                      : "Leave blank to keep the stored key"
-                  }
-                />
-              </CcureField>
+              <CcureTextarea
+                label="Private key"
+                id="sc-private-key"
+                className="cc-field__control sc-key"
+                rows={4}
+                value={form.privateKey}
+                onChange={(e) =>
+                  setForm({ ...form, privateKey: e.target.value })
+                }
+                placeholder={
+                  editing === "new"
+                    ? "-----BEGIN OPENSSH PRIVATE KEY-----"
+                    : "Leave blank to keep the stored key"
+                }
+              />
             ) : (
               <CcureInput
                 label="Password"

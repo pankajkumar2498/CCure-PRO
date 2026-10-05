@@ -860,8 +860,9 @@ describe("ComplianceWorkspace Credentials Manager — batch 29", () => {
     expect(block).toMatch(/autoComplete="new-password"/);
     expect(block).toMatch(/<CcureConfirmDialog\b/);
     expect(block).toMatch(/<CcureTable\b/);
-    // The one native control left is the key field, which has no primitive.
-    expect(block.match(/<textarea\b/g) || []).toHaveLength(1);
+    // The key field now uses the shared textarea; its request contract stays above.
+    expect(block).not.toMatch(/<textarea\b/);
+    expect(block).toMatch(/<CcureTextarea\b/);
 
     const cssPath = path.join(AUDIT_SRC, "styles/compliance-credentials.css");
     expect(existsSync(cssPath)).toBe(true);

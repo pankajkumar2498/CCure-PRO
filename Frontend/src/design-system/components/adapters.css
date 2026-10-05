@@ -1,0 +1,326 @@
+/* Compatibility and accessibility around official, generated UX4G CSS.
+   No independent color/size variants: those belong to the official component. */
+.cc-ux4g {
+  font-family: var(--ccure-font);
+  box-sizing: border-box;
+  min-width: 0;
+}
+.cc-ux4g *,
+.cc-ux4g *::before,
+.cc-ux4g *::after {
+  box-sizing: border-box;
+}
+.cc-ux4g :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+.cc-ux4g:focus-visible,
+.cc-ux4g :where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+.cc-btn--block {
+  width: 100%;
+}
+.cc-btn.cc-ux4g > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  min-width: 0;
+}
+.cc-icon-button > span:last-child {
+  display: contents;
+}
+.cc-field.cc-ux4g {
+  color: var(--ccure-text);
+}
+.cc-field.cc-ux4g .ux4g-input-input,
+.cc-field.cc-ux4g .ux4g-textarea-input {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  color: var(--ccure-text);
+  min-height: 0;
+  padding: 0;
+}
+.cc-field.cc-ux4g .ux4g-input-input::placeholder,
+.cc-field.cc-ux4g .ux4g-textarea-input::placeholder {
+  color: var(--ccure-text-placeholder);
+  opacity: 1;
+}
+.cc-field.cc-ux4g .ux4g-textarea-input {
+  padding: var(--ccure-space-sm);
+  resize: vertical;
+  height: auto;
+  min-height: 6rem;
+}
+.cc-field.cc-ux4g .ux4g-input:focus-within,
+.cc-field.cc-ux4g .ux4g-textarea:focus-within {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+.cc-field.cc-ux4g :where(.ux4g-input, .ux4g-textarea):has(:disabled) {
+  background: var(--ccure-surface-disabled);
+  cursor: not-allowed;
+}
+.cc-field.cc-ux4g
+  :where(.ux4g-input, .ux4g-textarea):has([aria-invalid="true"]) {
+  border-color: var(--ccure-danger-border);
+}
+.cc-checkbox.cc-ux4g {
+  width: auto;
+}
+.cc-checkbox.cc-ux4g > input {
+  margin: 0;
+}
+.cc-choice input,
+.cc-checkbox.cc-ux4g input {
+  margin: 0;
+}
+.cc-choice:has(input:disabled),
+.cc-checkbox:has(input:disabled) {
+  cursor: not-allowed;
+}
+.cc-card.cc-ux4g {
+  width: 100%;
+}
+.cc-card.cc-ux4g .cc-card__header {
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+}
+.cc-card.cc-ux4g .cc-card__body--flush,
+.cc-card.cc-card--flush .cc-card__header,
+.cc-card.cc-card--flush .cc-card__footer {
+  padding: 0;
+}
+.cc-alert.cc-ux4g {
+  border-radius: var(--ccure-radius-md);
+}
+.cc-alert.cc-ux4g .ux4g-alert-message {
+  overflow-wrap: anywhere;
+}
+.cc-badge.cc-ux4g {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  border-radius: var(--ccure-radius-sm);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  white-space: nowrap;
+}
+.cc-tabs.cc-ux4g .ux4g-tab-list {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.cc-tab {
+  font: inherit;
+  background: transparent;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+}
+.cc-breadcrumb__list {
+  display: flex;
+  margin: 0;
+  padding: 0;
+}
+.cc-table.cc-ux4g {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cc-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.cc-modal__overlay.cc-ux4g {
+  z-index: var(--ccure-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ccure-space-lg);
+  overflow-y: auto;
+}
+.cc-modal.cc-ux4g {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 2 * var(--ccure-space-lg));
+  margin: auto;
+  width: min(100%, 36rem);
+}
+.cc-modal.cc-modal--sm {
+  width: min(100%, 26rem);
+}
+.cc-modal.cc-modal--lg,
+.cc-modal.cc-modal--xl {
+  width: min(100%, 60rem);
+}
+.cc-modal__body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.cc-modal.cc-ux4g .cc-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+}
+.cc-modal__close {
+  flex-shrink: 0;
+}
+.cc-drawer-overlay.cc-ux4g {
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+.cc-drawer.cc-ux4g {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  margin: 0;
+  width: min(100%, 26rem);
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  transform: none;
+}
+.cc-drawer.ux4g-drawer-left {
+  margin-right: auto;
+}
+.cc-dropdown__menu {
+  max-width: calc(100vw - 2 * var(--ccure-space-md));
+  max-height: min(70dvh, 28rem);
+  overflow-y: auto;
+  z-index: var(--ccure-z-overlay);
+}
+.cc-dropdown.is-open > .cc-dropdown__menu {
+  display: block;
+}
+.cc-menuitem {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.cc-menuitem:disabled {
+  color: var(--ccure-text-disabled);
+  cursor: not-allowed;
+}
+.cc-combobox {
+  position: relative;
+}
+.cc-combobox__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  box-shadow: var(--ccure-shadow-md);
+  z-index: var(--ccure-z-overlay);
+}
+.cc-combobox__list [role="option"] {
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  cursor: pointer;
+}
+.cc-combobox__list [role="option"].is-active {
+  background: var(--ccure-surface-hover);
+}
+.cc-combobox__list [aria-disabled="true"] {
+  color: var(--ccure-text-disabled);
+  cursor: not-allowed;
+}
+.cc-toaster-stack {
+  position: fixed;
+  inset-block-start: var(--ccure-space-lg);
+  inset-inline-end: var(--ccure-space-lg);
+  width: min(26rem, calc(100vw - 2 * var(--ccure-space-lg)));
+  z-index: var(--ccure-z-toast);
+}
+.cc-toaster-stack [aria-live] {
+  display: grid;
+  gap: var(--ccure-space-sm);
+}
+.cc-toaster-stack [aria-live]:not(:empty) + [aria-live]:not(:empty) {
+  margin-top: var(--ccure-space-sm);
+}
+.cc-toast--exit {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+/* Preserve the reviewed CCure contrast corrections on official components.
+   Upstream's light danger fill is 4.38:1; several dark soft fills also fail.
+   These aliases use the existing UX4G palette, verified by contrast tests. */
+.cc-btn.cc-ux4g.ux4g-btn-danger {
+  background-color: var(--ccure-danger-solid);
+  color: var(--ccure-on-primary);
+}
+.cc-btn.cc-ux4g.ux4g-btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.cc-alert.cc-ux4g.cc-alert--info {
+  background-color: var(--ccure-info-bg) !important;
+  color: var(--ccure-info-text);
+}
+.cc-alert.cc-ux4g.cc-alert--success {
+  background-color: var(--ccure-success-bg);
+  color: var(--ccure-success-text);
+}
+.cc-alert.cc-ux4g.cc-alert--warning {
+  background-color: var(--ccure-warning-bg);
+  color: var(--ccure-warning-text);
+}
+.cc-alert.cc-ux4g.cc-alert--danger {
+  background-color: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+}
+.cc-alert.cc-ux4g
+  :where(.ux4g-alert-title, .ux4g-alert-message, .ux4g-alert-icon) {
+  color: inherit;
+}
+.cc-alert.cc-ux4g .ux4g-alert-icon {
+  color: inherit;
+}
+.cc-badge.cc-ux4g.cc-badge--success {
+  background-color: var(--ccure-success-bg);
+  color: var(--ccure-success-text);
+}
+.cc-badge.cc-ux4g.cc-badge--warning {
+  background-color: var(--ccure-warning-bg);
+  color: var(--ccure-warning-text);
+}
+.cc-badge.cc-ux4g.cc-badge--danger {
+  background-color: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+}
+.cc-badge.cc-ux4g.cc-badge--info {
+  background-color: var(--ccure-info-bg);
+  color: var(--ccure-info-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-ux4g,
+  .cc-ux4g *,
+  .cc-toast--exit {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Explicit placement overrides the vendor's physical left default. */
+.cc-dropdown.cc-ux4g.cc-dropdown--start > .cc-dropdown__menu {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+}
+.cc-dropdown.cc-ux4g.cc-dropdown--end > .cc-dropdown__menu {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}

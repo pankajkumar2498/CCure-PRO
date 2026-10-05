@@ -380,6 +380,23 @@ export function census(opts) {
     clickable,
     contrast: { pairs, unknown, fails, disabledFails },
     overflowX: de.scrollWidth > de.clientWidth + 1,
+    overflowElements:
+      de.scrollWidth > de.clientWidth + 1
+        ? Array.from(document.querySelectorAll("*"))
+            .filter((el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.right > de.clientWidth + 1;
+            })
+            .slice(0, 40)
+            .map((el) => ({
+              tag: el.tagName.toLowerCase(),
+              className: el.getAttribute("class"),
+              width: Math.round(el.getBoundingClientRect().width),
+              right: Math.round(el.getBoundingClientRect().right),
+              minWidth: getComputedStyle(el).minWidth,
+              overflow: getComputedStyle(el).overflowX,
+            }))
+        : [],
     errorBoundary: /Something went wrong|Unexpected Application Error/i.test(
       bodyText,
     ),

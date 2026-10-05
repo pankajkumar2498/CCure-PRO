@@ -9,6 +9,7 @@ import {
   CcureButton,
   CcureInput,
   CcureProgress,
+  CcureIconButton,
 } from "../../../../design-system";
 import "../../styles/app-shell.css";
 // The platform's shared header pieces (Phase 12 navigation refactor). Imported
@@ -583,7 +584,9 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
         />
       </div>
       <UserCard user={user}>
-        <button
+        <CcureIconButton
+          variant="ghost"
+          size="sm"
           type="button"
           ref={settingsBtnRef}
           className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn"
@@ -596,7 +599,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           }}
         >
           <IcoSettings />
-        </button>
+        </CcureIconButton>
       </UserCard>
     </>
   );
@@ -664,7 +667,9 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
           <span className="hide-on-mobile">New Scan</span>
         </CcureButton>
       )}
-      <button
+      <CcureIconButton
+        variant="ghost"
+        size="sm"
         type="button"
         ref={helpBtnRef}
         id="header-help-btn"
@@ -679,7 +684,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
         }}
       >
         <IcoHelp />
-      </button>
+      </CcureIconButton>
       <div className="sh-menu-anchor">
         <NotificationBell
           ref={bellRef}
@@ -730,7 +735,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
         navRef={sidebarNavRef}
         onNavScroll={handleSidebarScroll}
         mainClassName="page-main"
-        className="sh-shell"
+        className={`sh-shell${isSuperadmin ? " sh-shell--organization" : ""}`}
       >
         {children}
       </CcureAppShell>

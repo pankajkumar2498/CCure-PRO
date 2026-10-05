@@ -33,10 +33,8 @@
  * `CcureSeverityBadge` keeps all five bands distinct and puts the band's name
  * in the accessible name.
  *
- * ── Deliberately preserved, though it is not good ───────────────────────────
- * A failed triage still calls `window.alert`. Changing it to a toast would
- * change this page's error *behaviour*, which this batch's rules place out of
- * scope. It is recorded in the checkpoint report instead.
+ * B.6 keeps the triage failure text and request contract while delivering
+ * the error through the shared, dismissible live alert.
  */
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
@@ -45,6 +43,8 @@ import { useAuth } from "@shell/auth/AuthContext";
 import { can } from "@shell/auth/permissions";
 import { webScansApi } from "../api/webScansApi";
 import {
+  CcureLoader,
+  CcureAlert,
   CcureBadge,
   CcureCard,
   CcureEmptyState,
@@ -52,6 +52,7 @@ import {
   CcureSeverityBadge,
   CcureSkeleton,
   normalizeSeverity,
+  CcureButton,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -76,6 +77,7 @@ export default function FindingsExplorer() {
   const [findings, setFindings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFinding, setSelectedFinding] = useState(null);
+  const [actionError, setActionError] = useState("");
   // Proof screenshot (Codex item 10) — fetched as a blob (auth header) and
   // shown as an object URL; revoked when the selection changes.
   const [screenshotUrl, setScreenshotUrl] = useState(null);
@@ -129,7 +131,7 @@ export default function FindingsExplorer() {
       }
     } catch (err) {
       console.error("Failed to update status", err);
-      alert("Failed to update finding status.");
+      setActionError("Failed to update finding status.");
     }
   };
 
@@ -160,6 +162,11 @@ export default function FindingsExplorer() {
   return (
     <AppLayout pageTitle="Findings Explorer">
       <div className="page-inner wsp-page wsp-page--wide">
+        {actionError && (
+          <CcureAlert variant="danger" onClose={() => setActionError("")}>
+            {actionError}
+          </CcureAlert>
+        )}
         <div className="wsp-header">
           <div>
             <Link to={`/web-scans/${id}`} className="wsp-back">
@@ -220,7 +227,9 @@ export default function FindingsExplorer() {
                     return (
                       /* A real button. `aria-pressed` reports which finding is
                          open, which the previous tinted background did not. */
-                      <button
+                      <CcureButton
+                        variant="ghost"
+                        size="sm"
                         key={finding.id}
                         type="button"
                         className={`wsp-finding wsp-finding--${band}`}
@@ -236,7 +245,7 @@ export default function FindingsExplorer() {
                         <span className="wsp-finding-url">
                           {finding.request_method} {finding.request_url}
                         </span>
-                      </button>
+                      </CcureButton>
                     );
                   })}
                 </div>
@@ -401,7 +410,7 @@ export default function FindingsExplorer() {
                         className="wsp-screenshot"
                       />
                     ) : (
-                      <p className="wsp-muted">Loading screenshot…</p>
+                      <CcureLoader label="Loading screenshot…" />
                     )}
                   </>
                 )}

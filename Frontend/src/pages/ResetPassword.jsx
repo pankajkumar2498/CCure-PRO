@@ -29,7 +29,13 @@ import { resetPassword } from "@shell/api/auth";
 import AuthHeroPanel from "../components/auth/AuthHeroPanel";
 import AuthTrustFooter from "../components/auth/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/auth/AuthIcons";
-import { CcureAlert, CcureButton, CcurePasswordField } from "../design-system";
+import {
+  CcureAlert,
+  CcureButton,
+  CcurePasswordField,
+  CcureCard,
+  CcureBadge,
+} from "../design-system";
 import "../styles/auth.css";
 
 function validate(password, confirm) {
@@ -115,23 +121,21 @@ export default function ResetPassword() {
   const confirmMismatch = confirm && confirm !== password;
 
   return (
-    <div className="auth-split-wrapper">
+    <main className="auth-split-wrapper">
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="reset" />
 
-      {/* Right Form Panel. `cc-theme-dark` scopes the CCure semantic tokens to
-          their dark values: the auth surface is a fixed dark panel that ignores
-          `data-theme`, so without it every migrated control would render light
-          on a dark card whenever the account theme is light, which is the
-          default. */}
+      {/* Shared auth surfaces follow the application theme. */}
       <div className="auth-form-panel">
-        <div className="auth-card cc-theme-dark">
+        <CcureCard as="div" className="auth-card">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
             <div className="auth-brand-text">
               <span className="auth-brand-name">CCure Audit</span>
-              <span className="auth-brand-badge">PRO</span>
+              <CcureBadge className="auth-brand-badge" variant="info">
+                PRO
+              </CcureBadge>
             </div>
           </div>
 
@@ -195,15 +199,21 @@ export default function ResetPassword() {
 
           <p className="auth-switch">
             Back to{" "}
-            <Link to="/login" className="auth-link">
+            <CcureButton
+              as={Link}
+              variant="ghost"
+              size="sm"
+              to="/login"
+              className="auth-link"
+            >
               Sign in
-            </Link>
+            </CcureButton>
           </p>
 
           {/* Reusable Enterprise Security Trust Footer */}
           <AuthTrustFooter />
-        </div>
+        </CcureCard>
       </div>
-    </div>
+    </main>
   );
 }

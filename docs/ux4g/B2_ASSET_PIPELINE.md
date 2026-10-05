@@ -1,5 +1,7 @@
 # Phase B.2 — centralized UX4G asset pipeline
 
+> Group 1 extends this completed B.2 pipeline with scoped official component CSS. See [B.3/B.4 implementation and validation](B3_B4_SHARED_PRIMITIVES_SHELL.md); the B.2 results below remain historical evidence.
+
 This phase strengthens the approved B.1 asset foundation without migrating
 components or changing application styling, typography, functionality, APIs,
 auth/RBAC, routing or backend code. The exact approved release remains

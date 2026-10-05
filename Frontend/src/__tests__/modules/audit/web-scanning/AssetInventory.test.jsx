@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * AssetInventory — Checkpoint 3C batch 6 migration coverage.
  *
@@ -387,10 +388,10 @@ describe("AssetInventory — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("https://portal.example.test/");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("renders one row per asset and no more", async () => {

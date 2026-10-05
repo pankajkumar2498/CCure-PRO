@@ -131,8 +131,8 @@ describe("Audit's preference block (preference namespacing)", () => {
   const checked = () =>
     screen
       .getAllByRole("radio")
-      .filter((r) => r.getAttribute("aria-checked") === "true")
-      .map((r) => r.textContent);
+      .filter((r) => r.checked)
+      .map((r) => r.closest("label").textContent);
 
   it("reads the namespaced value in preference to the flat one", async () => {
     getPreferences.mockResolvedValueOnce({

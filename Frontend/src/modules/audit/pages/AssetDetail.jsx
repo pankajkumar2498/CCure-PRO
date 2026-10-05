@@ -29,7 +29,7 @@
  *      still reverts, edit mode stays open, the tag stays — and nothing
  *      retries.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import HostPosturePanel from "@audit/components/assets/HostPosturePanel";
@@ -54,13 +54,14 @@ import {
   CcureButton,
   CcureCard,
   CcureEmptyState,
-  CcureField,
   CcureInput,
   CcureSeverityBadge,
   CcureSkeleton,
   CcureTabPanel,
   CcureTabs,
-  useFocusTrap,
+  CcureTextarea,
+  CcureDrawer,
+  CcureTable,
 } from "../../../design-system";
 import "../styles/asset-detail.css";
 
@@ -202,15 +203,6 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
 
   /* A real dialog: focus is contained while it is open and restored to the
      opener on close; Escape closes it. */
-  const panelRef = useRef(null);
-  useFocusTrap(panelRef, true);
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   useEffect(() => {
     if (!findingId) return;
@@ -242,251 +234,226 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
   const saveFailed = saveMsg.includes("Failed");
 
   return (
-    <div className="ad-drawer">
-      <div className="ad-drawer-scrim" onClick={onClose} />
-      <div
-        className="ad-drawer-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ad-drawer-title"
-        ref={panelRef}
-      >
-        <div className="ad-drawer-head">
-          <div>
-            <div className="ad-kicker">Finding Detail</div>
-            <h2 className="ad-drawer-title" id="ad-drawer-title">
-              {loading ? (
-                <CcureSkeleton width={200} height={18} radius={3} />
-              ) : (
-                <CVELink cveId={v?.id} className="ad-inherit" />
-              )}
-            </h2>
-          </div>
-          <CcureButton
-            variant="ghost"
-            size="sm"
-            aria-label="Close finding details"
-            onClick={onClose}
-          >
-            ✕
-          </CcureButton>
-        </div>
-
-        {/* Always mounted, so a result written after the action panel closes
-            still has somewhere to be announced. (Approved change 1.) */}
-        <div
-          role="status"
-          aria-live="polite"
-          className={`ad-savemsg${saveMsg ? (saveFailed ? " ad-savemsg--bad" : " ad-savemsg--ok") : ""}`}
-        >
-          {saveMsg}
-        </div>
-
-        {loading ? (
-          <div className="ad-drawer-body">
-            {[200, 100, 150, 80, 120].map((w, i) => (
-              <CcureSkeleton
-                key={i}
-                width={w}
-                height={12}
-                radius={3}
-                className="ad-mb-sm"
-              />
-            ))}
-          </div>
-        ) : !detail ? (
-          <CcureEmptyState icon="⚠" title="Finding not found" />
+    <CcureDrawer
+      subtitle="Finding Detail"
+      open
+      onClose={onClose}
+      title={
+        !loading && v?.id ? (
+          <CVELink cveId={v.id} className="ad-inherit" />
         ) : (
-          <div className="ad-drawer-body">
-            <div className="ad-badges ad-mb-sm">
-              <CcureSeverityBadge severity={v?.severity} />
-              <CcureBadge
-                variant={PRIORITY_VARIANT[v?.priority_label] || "neutral"}
-                mono
+          "Finding detail"
+        )
+      }
+      closeLabel="Close finding details"
+      className="ad-drawer-panel"
+    >
+      {/* Always mounted, so a result written after the action panel closes
+            still has somewhere to be announced. (Approved change 1.) */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={`ad-savemsg${saveMsg ? (saveFailed ? " ad-savemsg--bad" : " ad-savemsg--ok") : ""}`}
+      >
+        {saveMsg}
+      </div>
+
+      {loading ? (
+        <div className="ad-drawer-body">
+          {[200, 100, 150, 80, 120].map((w, i) => (
+            <CcureSkeleton
+              key={i}
+              width={w}
+              height={12}
+              radius={3}
+              className="ad-mb-sm"
+            />
+          ))}
+        </div>
+      ) : !detail ? (
+        <CcureEmptyState icon="⚠" title="Finding not found" />
+      ) : (
+        <div className="ad-drawer-body">
+          <div className="ad-badges ad-mb-sm">
+            <CcureSeverityBadge severity={v?.severity} />
+            <CcureBadge
+              variant={PRIORITY_VARIANT[v?.priority_label] || "neutral"}
+              mono
+            >
+              {v?.priority_label}
+            </CcureBadge>
+            {v?.in_kev && <CcureBadge variant="danger">KEV</CcureBadge>}
+            {v?.has_exploit && (
+              <CcureBadge variant="warning">Exploit</CcureBadge>
+            )}
+          </div>
+
+          <div className="ad-drawer-name">{v?.title}</div>
+
+          <div className="ad-scores">
+            <div className="ad-score">
+              <div className="ad-score-label">CVSSv3</div>
+              <div
+                className={`ad-score-value ad-cvss--${cvssBand(v?.cvss_v3_score || 0)}`}
               >
-                {v?.priority_label}
-              </CcureBadge>
-              {v?.in_kev && <CcureBadge variant="danger">KEV</CcureBadge>}
-              {v?.has_exploit && (
-                <CcureBadge variant="warning">Exploit</CcureBadge>
-              )}
-            </div>
-
-            <div className="ad-drawer-name">{v?.title}</div>
-
-            <div className="ad-scores">
-              <div className="ad-score">
-                <div className="ad-score-label">CVSSv3</div>
-                <div
-                  className={`ad-score-value ad-cvss--${cvssBand(v?.cvss_v3_score || 0)}`}
-                >
-                  {(v?.cvss_v3_score || 0).toFixed(1)}
-                </div>
-              </div>
-              <div className="ad-score">
-                <div className="ad-score-label">EPSS</div>
-                <div className="ad-score-value">
-                  {((v?.epss_score || 0) * 100).toFixed(1)}%
-                </div>
-              </div>
-              <div className="ad-score">
-                <div className="ad-score-label">Priority</div>
-                <div className="ad-score-value">
-                  {(v?.priority_score || 0).toFixed(0)}
-                </div>
+                {(v?.cvss_v3_score || 0).toFixed(1)}
               </div>
             </div>
-
-            <div className="ad-description">
-              {v?.description || "No description available."}
-            </div>
-
-            {v?.cvss_v3_vector && (
-              <div className="ad-section">
-                <div className="ad-kicker">CVSS Vector</div>
-                <div className="ad-code">{v.cvss_v3_vector}</div>
+            <div className="ad-score">
+              <div className="ad-score-label">EPSS</div>
+              <div className="ad-score-value">
+                {((v?.epss_score || 0) * 100).toFixed(1)}%
               </div>
+            </div>
+            <div className="ad-score">
+              <div className="ad-score-label">Priority</div>
+              <div className="ad-score-value">
+                {(v?.priority_score || 0).toFixed(0)}
+              </div>
+            </div>
+          </div>
+
+          <div className="ad-description">
+            {v?.description || "No description available."}
+          </div>
+
+          {v?.cvss_v3_vector && (
+            <div className="ad-section">
+              <div className="ad-kicker">CVSS Vector</div>
+              <div className="ad-code">{v.cvss_v3_vector}</div>
+            </div>
+          )}
+
+          {(v?.cwe_ids || []).length > 0 && (
+            <div className="ad-section">
+              <div className="ad-kicker">CWE IDs</div>
+              <div className="ad-badges">
+                {v.cwe_ids.map((c) => (
+                  <CcureBadge key={c} variant="neutral" mono>
+                    {c}
+                  </CcureBadge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(detail.proof || detail.plugin_output) && (
+            <div className="ad-section">
+              <div className="ad-kicker">Evidence / Plugin Output</div>
+              <pre className="ad-evidence">
+                {detail.proof || detail.plugin_output}
+              </pre>
+            </div>
+          )}
+
+          <div className="ad-dates">
+            <span>First: {ago(detail.first_found_at)}</span>
+            <span>Last: {ago(detail.last_found_at)}</span>
+            {detail.fixed_at && (
+              <span className="ad-dates-fixed">
+                Fixed: {ago(detail.fixed_at)}
+              </span>
             )}
+          </div>
 
-            {(v?.cwe_ids || []).length > 0 && (
-              <div className="ad-section">
-                <div className="ad-kicker">CWE IDs</div>
-                <div className="ad-badges">
-                  {v.cwe_ids.map((c) => (
-                    <CcureBadge key={c} variant="neutral" mono>
-                      {c}
-                    </CcureBadge>
-                  ))}
+          {canUpdate && detail.status === "open" && (
+            <div className="ad-section">
+              <div className="ad-kicker ad-kicker--strong">Actions</div>
+              {!action ? (
+                <div className="ad-actions">
+                  <CcureButton
+                    variant="secondary"
+                    className="ad-grow"
+                    onClick={() => setAction("accepted")}
+                  >
+                    ✔ Accept Risk
+                  </CcureButton>
+                  <CcureButton
+                    variant="secondary"
+                    className="ad-grow ad-btn--ok"
+                    onClick={() => setAction("fixed")}
+                  >
+                    🛠 Mark Fixed
+                  </CcureButton>
                 </div>
-              </div>
-            )}
-
-            {(detail.proof || detail.plugin_output) && (
-              <div className="ad-section">
-                <div className="ad-kicker">Evidence / Plugin Output</div>
-                <pre className="ad-evidence">
-                  {detail.proof || detail.plugin_output}
-                </pre>
-              </div>
-            )}
-
-            <div className="ad-dates">
-              <span>First: {ago(detail.first_found_at)}</span>
-              <span>Last: {ago(detail.last_found_at)}</span>
-              {detail.fixed_at && (
-                <span className="ad-dates-fixed">
-                  Fixed: {ago(detail.fixed_at)}
-                </span>
-              )}
-            </div>
-
-            {canUpdate && detail.status === "open" && (
-              <div className="ad-section">
-                <div className="ad-kicker ad-kicker--strong">Actions</div>
-                {!action ? (
+              ) : (
+                <div className="ad-action-panel">
+                  <div className="ad-action-title">
+                    {action === "accepted"
+                      ? "Accept Risk — provide reason:"
+                      : "Mark as Fixed:"}
+                  </div>
+                  {action === "accepted" && (
+                    <CcureTextarea
+                      id="ad-reason"
+                      label="Reason for accepting this risk"
+                      className="cc-field__control ad-textarea"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      placeholder="Reason for accepting this risk…"
+                      rows={3}
+                    />
+                  )}
+                  <CcureTextarea
+                    id="ad-remediation"
+                    label="Remediation notes (optional)"
+                    className="cc-field__control ad-textarea"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Remediation notes (optional)…"
+                    rows={2}
+                  />
                   <div className="ad-actions">
                     <CcureButton
-                      variant="secondary"
+                      variant="primary"
                       className="ad-grow"
-                      onClick={() => setAction("accepted")}
+                      disabled={saving}
+                      onClick={() => handleStatusSave(action)}
                     >
-                      ✔ Accept Risk
+                      {saving
+                        ? "Saving…"
+                        : `Confirm ${action === "accepted" ? "Accept" : "Fixed"}`}
                     </CcureButton>
                     <CcureButton
-                      variant="secondary"
-                      className="ad-grow ad-btn--ok"
-                      onClick={() => setAction("fixed")}
+                      variant="ghost"
+                      onClick={() => setAction(null)}
                     >
-                      🛠 Mark Fixed
+                      Cancel
                     </CcureButton>
                   </div>
-                ) : (
-                  <div className="ad-action-panel">
-                    <div className="ad-action-title">
-                      {action === "accepted"
-                        ? "Accept Risk — provide reason:"
-                        : "Mark as Fixed:"}
-                    </div>
-                    {action === "accepted" && (
-                      <CcureField
-                        id="ad-reason"
-                        label="Reason for accepting this risk"
-                      >
-                        <textarea
-                          id="ad-reason"
-                          className="cc-field__control ad-textarea"
-                          value={reason}
-                          onChange={(e) => setReason(e.target.value)}
-                          placeholder="Reason for accepting this risk…"
-                          rows={3}
-                        />
-                      </CcureField>
-                    )}
-                    <CcureField
-                      id="ad-remediation"
-                      label="Remediation notes (optional)"
-                    >
-                      <textarea
-                        id="ad-remediation"
-                        className="cc-field__control ad-textarea"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Remediation notes (optional)…"
-                        rows={2}
-                      />
-                    </CcureField>
-                    <div className="ad-actions">
-                      <CcureButton
-                        variant="primary"
-                        className="ad-grow"
-                        disabled={saving}
-                        onClick={() => handleStatusSave(action)}
-                      >
-                        {saving
-                          ? "Saving…"
-                          : `Confirm ${action === "accepted" ? "Accept" : "Fixed"}`}
-                      </CcureButton>
-                      <CcureButton
-                        variant="ghost"
-                        onClick={() => setAction(null)}
-                      >
-                        Cancel
-                      </CcureButton>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {detail.remediation_notes && (
-              <div className="ad-section">
-                <div className="ad-kicker">Remediation Notes</div>
-                <div className="ad-note-box">{detail.remediation_notes}</div>
-              </div>
-            )}
-
-            {(v?.references || []).length > 0 && (
-              <div className="ad-section">
-                <div className="ad-kicker">References</div>
-                <div className="ad-refs">
-                  {v.references.slice(0, 5).map((ref, i) => (
-                    <a
-                      key={i}
-                      href={ref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ad-ref"
-                    >
-                      {ref}
-                    </a>
-                  ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {detail.remediation_notes && (
+            <div className="ad-section">
+              <div className="ad-kicker">Remediation Notes</div>
+              <div className="ad-note-box">{detail.remediation_notes}</div>
+            </div>
+          )}
+
+          {(v?.references || []).length > 0 && (
+            <div className="ad-section">
+              <div className="ad-kicker">References</div>
+              <div className="ad-refs">
+                {v.references.slice(0, 5).map((ref, i) => (
+                  <a
+                    key={i}
+                    href={ref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ad-ref"
+                  >
+                    {ref}
+                  </a>
+                ))}
               </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+            </div>
+          )}
+        </div>
+      )}
+    </CcureDrawer>
   );
 }
 
@@ -511,7 +478,9 @@ function ServiceDetailRow({
           {/* Was a `<tr onClick>` with a glyph: unreachable by keyboard and
               silent about whether it was open. */}
           {hasDetails ? (
-            <button
+            <CcureButton
+              variant="ghost"
+              size="sm"
               type="button"
               className="ad-expand"
               aria-expanded={expanded}
@@ -522,7 +491,7 @@ function ServiceDetailRow({
                 {expanded ? "▼" : "▶"}
               </span>
               {svc.port} / {svc.protocol}
-            </button>
+            </CcureButton>
           ) : (
             <span className="ad-mono ad-strong">
               {svc.port} / {svc.protocol}
@@ -927,7 +896,9 @@ export default function AssetDetail() {
 
               {/* A toggle that says which way it is set. Disabled, not hidden,
                   without the permission — the state is still information. */}
-              <button
+              <CcureButton
+                variant="ghost"
+                size="sm"
                 type="button"
                 disabled={!canUpdate}
                 aria-pressed={Boolean(asset.is_managed)}
@@ -935,7 +906,7 @@ export default function AssetDetail() {
                 className={`ad-toggle ${asset.is_managed ? "ad-toggle--on" : "ad-toggle--off"}`}
               >
                 {asset.is_managed ? "✔ Managed Asset" : "✗ Unmanaged Asset"}
-              </button>
+              </CcureButton>
 
               <CcureBadge variant="info">
                 👤 Owner: {asset.owner || "Unassigned"}
@@ -1019,104 +990,101 @@ export default function AssetDetail() {
               active={activeTab === "vulnerabilities"}
             >
               <CcureCard title="Discovered Findings" headingLevel={2} bodyFlush>
-                <div className="cc-table-wrap">
-                  <table className="cc-table ad-table">
-                    <caption className="cc-sr-only">
+                <CcureTable
+                  className="ad-table"
+                  caption={
+                    <>
                       Findings on this asset, with CVSS score, priority,
                       severity, status and last detection
-                    </caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">CVE / Finding</th>
-                        <th scope="col">CVSS</th>
-                        <th scope="col">Priority</th>
-                        <th scope="col">Severity</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Last Detected</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {findings.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="ad-empty-cell">
-                            <CcureEmptyState
-                              title="No vulnerabilities identified on this asset."
-                              description={
-                                <>
-                                  To scan for vulnerabilities, run a{" "}
-                                  <strong>Vulnerability Audit Scan</strong> on
-                                  this host.
-                                </>
-                              }
+                    </>
+                  }
+                  columns={[
+                    { key: "column-0", header: <>CVE / Finding</> },
+                    { key: "column-1", header: <>CVSS</> },
+                    { key: "column-2", header: <>Priority</> },
+                    { key: "column-3", header: <>Severity</> },
+                    { key: "column-4", header: <>Status</> },
+                    { key: "column-5", header: <>Last Detected</> },
+                  ]}
+                >
+                  {findings.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="ad-empty-cell">
+                        <CcureEmptyState
+                          title="No vulnerabilities identified on this asset."
+                          description={
+                            <>
+                              To scan for vulnerabilities, run a{" "}
+                              <strong>Vulnerability Audit Scan</strong> on this
+                              host.
+                            </>
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ) : (
+                    findings.map((f) => (
+                      <tr key={f.id}>
+                        <td>
+                          <div className="ad-cve-id">
+                            <CVELink
+                              cveId={f.vuln_id}
+                              className="ad-cve-link"
                             />
-                          </td>
-                        </tr>
-                      ) : (
-                        findings.map((f) => (
-                          <tr key={f.id}>
-                            <td>
-                              <div className="ad-cve-id">
-                                <CVELink
-                                  cveId={f.vuln_id}
-                                  className="ad-cve-link"
-                                />
-                              </div>
-                              <div className="ad-finding-title" title={f.title}>
-                                {f.title}
-                              </div>
-                              <div className="ad-badges ad-mt-2xs">
-                                {f.in_kev && (
-                                  <CcureBadge variant="danger">KEV</CcureBadge>
-                                )}
-                                <CcureButton
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label={`Details for ${f.vuln_id}`}
-                                  onClick={() => setSelectedFindingId(f.id)}
-                                >
-                                  Details
-                                </CcureButton>
-                              </div>
-                            </td>
-                            <td>
-                              <span
-                                className={`ad-cvss ad-cvss--${cvssBand(f.cvss_v3_score || 0)}`}
-                              >
-                                {f.cvss_v3_score
-                                  ? f.cvss_v3_score.toFixed(1)
-                                  : "0.0"}
-                              </span>
-                            </td>
-                            <td>
-                              <CcureBadge
-                                variant={
-                                  PRIORITY_VARIANT[f.priority_label] ||
-                                  "neutral"
-                                }
-                                mono
-                              >
-                                {f.priority_label}
-                              </CcureBadge>
-                            </td>
-                            <td>
-                              <CcureSeverityBadge severity={f.severity} />
-                            </td>
-                            <td>
-                              <CcureBadge
-                                variant={STATUS_VARIANT[f.status] || "neutral"}
-                              >
-                                {f.status}
-                              </CcureBadge>
-                            </td>
-                            <td className="ad-t-xs ad-secondary">
-                              {ago(f.last_found_at)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                          </div>
+                          <div className="ad-finding-title" title={f.title}>
+                            {f.title}
+                          </div>
+                          <div className="ad-badges ad-mt-2xs">
+                            {f.in_kev && (
+                              <CcureBadge variant="danger">KEV</CcureBadge>
+                            )}
+                            <CcureButton
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Details for ${f.vuln_id}`}
+                              onClick={() => setSelectedFindingId(f.id)}
+                            >
+                              Details
+                            </CcureButton>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`ad-cvss ad-cvss--${cvssBand(f.cvss_v3_score || 0)}`}
+                          >
+                            {f.cvss_v3_score
+                              ? f.cvss_v3_score.toFixed(1)
+                              : "0.0"}
+                          </span>
+                        </td>
+                        <td>
+                          <CcureBadge
+                            variant={
+                              PRIORITY_VARIANT[f.priority_label] || "neutral"
+                            }
+                            mono
+                          >
+                            {f.priority_label}
+                          </CcureBadge>
+                        </td>
+                        <td>
+                          <CcureSeverityBadge severity={f.severity} />
+                        </td>
+                        <td>
+                          <CcureBadge
+                            variant={STATUS_VARIANT[f.status] || "neutral"}
+                          >
+                            {f.status}
+                          </CcureBadge>
+                        </td>
+                        <td className="ad-t-xs ad-secondary">
+                          {ago(f.last_found_at)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </CcureTable>
               </CcureCard>
             </CcureTabPanel>
 
@@ -1179,60 +1147,61 @@ export default function AssetDetail() {
                       </div>
                     )}
 
-                    <div className="cc-table-wrap">
-                      <table className="cc-table ad-table">
-                        <caption className="cc-sr-only">
-                          Open ports and running services on this asset
-                        </caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">Port / Protocol</th>
-                            <th scope="col">Service Name</th>
-                            <th scope="col">State</th>
-                            {showProduct && (
-                              <th scope="col">Product &amp; Version</th>
-                            )}
-                            {showBanner && <th scope="col">Banner</th>}
-                            {showAudits && <th scope="col">Audits</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {services.length === 0 ? (
-                            <tr>
-                              <td colSpan={colCount} className="ad-empty-cell">
-                                <CcureEmptyState
-                                  title="No open ports detected on this host."
-                                  description={
-                                    <>
-                                      To discover active running services, run a{" "}
-                                      <strong>
-                                        Asset Discovery (Port Scan)
-                                      </strong>{" "}
-                                      or{" "}
-                                      <strong>
-                                        Service Fingerprinting Scan
-                                      </strong>{" "}
-                                      on this host.
-                                    </>
-                                  }
-                                />
-                              </td>
-                            </tr>
-                          ) : (
-                            services.map((svc) => (
-                              <ServiceDetailRow
-                                key={svc.id}
-                                svc={svc}
-                                showProduct={showProduct}
-                                showBanner={showBanner}
-                                showAudits={showAudits}
-                                colSpan={colCount}
-                              />
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                    <CcureTable
+                      className="ad-table"
+                      caption={
+                        <>Open ports and running services on this asset</>
+                      }
+                      columns={[
+                        { key: "column-0", header: <>Port / Protocol</> },
+                        { key: "column-1", header: <>Service Name</> },
+                        { key: "column-2", header: <>State</> },
+                        ...(showProduct
+                          ? [
+                              {
+                                key: "column-3",
+                                header: <>Product &amp; Version</>,
+                              },
+                            ]
+                          : []),
+                        ...(showBanner
+                          ? [{ key: "column-4", header: <>Banner</> }]
+                          : []),
+                        ...(showAudits
+                          ? [{ key: "column-5", header: <>Audits</> }]
+                          : []),
+                      ]}
+                    >
+                      {services.length === 0 ? (
+                        <tr>
+                          <td colSpan={colCount} className="ad-empty-cell">
+                            <CcureEmptyState
+                              title="No open ports detected on this host."
+                              description={
+                                <>
+                                  To discover active running services, run a{" "}
+                                  <strong>Asset Discovery (Port Scan)</strong>{" "}
+                                  or{" "}
+                                  <strong>Service Fingerprinting Scan</strong>{" "}
+                                  on this host.
+                                </>
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ) : (
+                        services.map((svc) => (
+                          <ServiceDetailRow
+                            key={svc.id}
+                            svc={svc}
+                            showProduct={showProduct}
+                            showBanner={showBanner}
+                            showAudits={showAudits}
+                            colSpan={colCount}
+                          />
+                        ))
+                      )}
+                    </CcureTable>
                   </CcureCard>
                 );
               })()}
@@ -1568,7 +1537,9 @@ export default function AssetDetail() {
                     <span key={tag} className="ad-tag">
                       {tag}
                       {canUpdate && (
-                        <button
+                        <CcureButton
+                          variant="ghost"
+                          size="sm"
                           type="button"
                           className="ad-tag-remove"
                           aria-label={`Remove tag ${tag}`}
@@ -1576,7 +1547,7 @@ export default function AssetDetail() {
                           onClick={() => handleRemoveTag(tag)}
                         >
                           ✕
-                        </button>
+                        </CcureButton>
                       )}
                     </span>
                   ))
@@ -1616,16 +1587,15 @@ export default function AssetDetail() {
               {/* Note Submission Form */}
               {canUpdate && (
                 <form onSubmit={handleAddNote} className="ad-note-form">
-                  <CcureField id="ad-new-note" label="Analyst note">
-                    <textarea
-                      id="ad-new-note"
-                      className="cc-field__control ad-textarea"
-                      placeholder="Add comment logs for other SOC analysts…"
-                      rows={3}
-                      value={newNote}
-                      onChange={(e) => setNewNote(e.target.value)}
-                    />
-                  </CcureField>
+                  <CcureTextarea
+                    id="ad-new-note"
+                    label="Analyst note"
+                    className="cc-field__control ad-textarea"
+                    placeholder="Add comment logs for other SOC analysts…"
+                    rows={3}
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                  />
                   <CcureButton type="submit" variant="primary" size="sm">
                     Log Note
                   </CcureButton>

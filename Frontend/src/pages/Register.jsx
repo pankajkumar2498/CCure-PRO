@@ -35,9 +35,12 @@ import {
   CcureAlert,
   CcureButton,
   CcureInput,
+  CcureCheckbox,
   CcureModal,
   CcurePasswordField,
   gradePassword,
+  CcureBadge,
+  CcureCard,
 } from "../design-system";
 import {
   checkEmail,
@@ -246,26 +249,25 @@ export default function Register() {
       <ShieldLogoIcon size={24} />
       <div className="auth-brand-text">
         <span className="auth-brand-name">CCure Audit</span>
-        <span className="auth-brand-badge">PRO</span>
+        <CcureBadge className="auth-brand-badge" variant="info">
+          PRO
+        </CcureBadge>
       </div>
     </div>
   );
 
-  /* `cc-theme-dark` scopes the CCure semantic tokens to their dark values. The
-     auth surface is a fixed dark panel that ignores `data-theme`, so without it
-     every migrated control would render light-on-dark whenever the account
-     theme is light — which is the default. */
+  /* Shared auth surfaces follow the application theme and design-system tokens. */
   const shell = (body) => (
-    <div className="auth-split-wrapper">
+    <main className="auth-split-wrapper">
       <AuthHeroPanel pageType="register" />
       <div className="auth-form-panel">
-        <div className="auth-card cc-theme-dark">
+        <CcureCard as="div" className="auth-card">
           {brandHeader}
           {body}
           <AuthTrustFooter />
-        </div>
+        </CcureCard>
       </div>
-    </div>
+    </main>
   );
 
   // ── Self-registration disabled for this deployment ───────────────────────
@@ -326,9 +328,15 @@ export default function Register() {
               : "Resend verification email"}
         </CcureButton>
         <p className="auth-sub">
-          <Link to="/login" className="auth-link">
+          <CcureButton
+            as={Link}
+            variant="ghost"
+            size="sm"
+            to="/login"
+            className="auth-link"
+          >
             Back to sign in
-          </Link>
+          </CcureButton>
         </p>
       </div>,
     );
@@ -460,34 +468,33 @@ export default function Register() {
 
             {/* Terms of Service & Privacy Policy Checkbox */}
             <div className="auth-checkbox-row auth-consent-row">
-              <label className="auth-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={agreeToTerms}
-                  onChange={(e) => setAgreeToTerms(e.target.checked)}
-                  required
-                />
-                <span>
-                  I agree to the{" "}
-                  <CcureButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowTermsModal(true)}
-                  >
-                    Terms of Service
-                  </CcureButton>{" "}
-                  and{" "}
-                  <CcureButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPrivacyModal(true)}
-                  >
-                    Privacy Policy
-                  </CcureButton>
-                </span>
-              </label>
+              <CcureCheckbox
+                checked={agreeToTerms}
+                onChange={(e) => setAgreeToTerms(e.target.checked)}
+                required
+                aria-describedby="registration-policies"
+              >
+                I agree to the Terms of Service and Privacy Policy
+              </CcureCheckbox>
+              <div id="registration-policies" className="auth-policy-actions">
+                <CcureButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTermsModal(true)}
+                >
+                  Terms of Service
+                </CcureButton>{" "}
+                and{" "}
+                <CcureButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPrivacyModal(true)}
+                >
+                  Privacy Policy
+                </CcureButton>
+              </div>
             </div>
 
             <CcureButton type="submit" loading={loading} block size="lg">
@@ -497,9 +504,15 @@ export default function Register() {
 
           <p className="auth-switch">
             Already have access?{" "}
-            <Link to="/login" className="auth-link">
+            <CcureButton
+              as={Link}
+              variant="ghost"
+              size="sm"
+              to="/login"
+              className="auth-link"
+            >
               Sign in
-            </Link>
+            </CcureButton>
           </p>
         </>,
       )}
@@ -511,7 +524,6 @@ export default function Register() {
         open={showTermsModal}
         onClose={() => setShowTermsModal(false)}
         title="Terms of Service — CCure Audit PRO"
-        className="cc-theme-dark"
         footer={policyFooter(() => setShowTermsModal(false))}
       >
         <div className="auth-policy-body">
@@ -545,7 +557,6 @@ export default function Register() {
         open={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
         title="Privacy Policy — CCure Audit PRO"
-        className="cc-theme-dark"
         footer={policyFooter(() => setShowPrivacyModal(false))}
       >
         <div className="auth-policy-body">

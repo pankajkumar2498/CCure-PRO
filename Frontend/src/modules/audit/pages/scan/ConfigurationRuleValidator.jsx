@@ -44,6 +44,7 @@ import {
   CcureButton,
   CcureInput,
   CcureSelect,
+  CcureTextarea,
 } from "../../../../design-system";
 import {
   configAuditErrorMessage,
@@ -287,22 +288,15 @@ export default function ConfigurationRuleValidator() {
           />
         </div>
 
-        <label className="cfg-collect">
-          <span className="cfg-collect__label">
-            What to collect (JSON, shape decided by the check type)
-          </span>
-          <textarea
-            className="cfg-collect__area"
-            rows={8}
-            spellCheck={false}
-            value={form.collect}
-            onChange={set("collect")}
-          />
-        </label>
-
-        {collectError ? (
-          <CcureAlert variant="danger">{collectError}</CcureAlert>
-        ) : null}
+        <CcureTextarea
+          label="What to collect (JSON, shape decided by the check type)"
+          fieldClassName="cfg-collect"
+          rows={8}
+          spellCheck={false}
+          value={form.collect}
+          onChange={set("collect")}
+          error={collectError}
+        />
 
         {localGap ? (
           <CcureAlert variant="warning">

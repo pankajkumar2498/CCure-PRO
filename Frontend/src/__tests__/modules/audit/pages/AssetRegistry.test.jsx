@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * AssetRegistry — Checkpoint 3C batch 10 migration coverage.
  *
@@ -610,10 +611,10 @@ describe("AssetRegistry — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("10.180.5.10");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 });
 
@@ -639,6 +640,18 @@ describe("AssetRegistry — associated-assets dialog focus trap (stage 1 remedia
     });
     return { opener, dialog };
   };
+
+  it("isolates background assets while open and restores them after Escape", async () => {
+    const user = userEvent.setup();
+    const { opener, dialog } = await openDialog(user);
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(opener.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(opener.closest("[inert]")).not.toBeNull();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(opener).toHaveFocus());
+    expect(opener.closest('[aria-hidden="true"]')).toBeNull();
+    expect(opener.closest("[inert]")).toBeNull();
+  });
 
   it("moves focus into the dialog when it opens", async () => {
     const user = userEvent.setup();

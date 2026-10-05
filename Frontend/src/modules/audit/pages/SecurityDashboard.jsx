@@ -23,7 +23,7 @@
  * refresh and permission check is unchanged.
  */
 
-import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
 import { useAuth } from "@shell/auth/AuthContext";
@@ -55,6 +55,9 @@ import {
   CcureTabPanel,
   CcureTabs,
   useCcureTabs,
+  CcureCard,
+  CcureDropdown,
+  CcureMenuItem,
 } from "../../../design-system";
 import "../styles/security-dashboard.css";
 
@@ -168,28 +171,21 @@ const CountHeader = ({ letter, word }) => (
 /* A headed panel. The titles were <div>s, so the page had no headings at all
    and nothing to navigate by. Emoji are decorative and hidden. */
 function Panel({ title, icon, subtitle, action, flush = false, children }) {
-  const id = useId();
   return (
-    <section
-      className={`sd-card${flush ? " sd-card--flush" : ""}`}
-      aria-labelledby={id}
+    <CcureCard
+      className="sd-card"
+      title={
+        <>
+          {icon ? <span aria-hidden="true">{icon} </span> : null}
+          {title}
+        </>
+      }
+      subtitle={subtitle}
+      actions={action}
+      bodyFlush={flush}
     >
-      <div className="sd-card__head">
-        <div>
-          <h2 className="sd-card__title" id={id}>
-            {icon ? (
-              <>
-                <span aria-hidden="true">{icon}</span>{" "}
-              </>
-            ) : null}
-            {title}
-          </h2>
-          {subtitle ? <p className="sd-card__sub">{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
       {children}
-    </section>
+    </CcureCard>
   );
 }
 
@@ -289,11 +285,11 @@ function MetricCards({ summary, loading }) {
     return (
       <div className="sd-metrics">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="sd-metric">
+          <CcureCard as={"div"} key={i} className="sd-metric">
             <CcureSkeleton width="60%" height={10} />
             <CcureSkeleton width="50%" height={28} />
             <CcureSkeleton width="80%" height={10} />
-          </div>
+          </CcureCard>
         ))}
       </div>
     );
@@ -420,7 +416,8 @@ function MetricCards({ summary, loading }) {
           filtered list and a keyboard could not reach it. A card is a link to
           exactly the place the handler went. */}
       {cards.map((c) => (
-        <Link
+        <CcureCard
+          as={Link}
           key={c.label}
           to={c.nav}
           className={`sd-metric sd-metric--${c.variant}`}
@@ -435,7 +432,7 @@ function MetricCards({ summary, loading }) {
             </span>
           ) : null}{" "}
           <span className="sd-metric__sub">{c.sub}</span>
-        </Link>
+        </CcureCard>
       ))}
     </div>
   );
@@ -1672,69 +1669,42 @@ const DATE_RANGES = [
 /* Was a <div> with a click handler, so the choice could not be reached from
    the keyboard; the options also stated the current range by colour and a
    tick. A disclosure button now, each option stating its state with
-   aria-pressed, and Escape closes it and returns focus. Choosing a range
+   aria-current through the shared menu, and Escape restores its trigger. Choosing a range
    reloads the panels exactly as it did — the range is not sent. */
 function DateRangeControl({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
-  const toggleRef = useRef(null);
-
-  const close = () => {
-    setOpen(false);
-    toggleRef.current?.focus();
-  };
-
   return (
-    <div
+    <CcureDropdown
+      open={open}
+      onOpenChange={setOpen}
+      label="Date range"
+      id={menuId}
       className="sd-daterange"
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && open) {
-          e.stopPropagation();
-          close();
-        }
-      }}
-    >
-      <button
-        ref={toggleRef}
-        type="button"
-        className="sd-daterange__toggle"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        aria-label={`Date range: ${value}`}
-        onClick={() => setOpen((s) => !s)}
-      >
-        <span aria-hidden="true">📅</span> {value}{" "}
-        <span className="sd-daterange__caret" aria-hidden="true">
-          ▼
-        </span>
-      </button>
-      {open && (
-        <div
-          id={menuId}
-          role="group"
-          aria-label="Date range"
-          className="sd-daterange__menu"
+      align="end"
+      trigger={({ ref, buttonProps }) => (
+        <CcureButton
+          {...buttonProps}
+          ref={ref}
+          variant="secondary"
+          size="sm"
+          aria-label={`Date range: ${value}`}
         >
-          {DATE_RANGES.map((range) => (
-            <button
-              key={range}
-              type="button"
-              aria-pressed={range === value}
-              className={`sd-daterange__option${range === value ? " sd-daterange__option--on" : ""}`}
-              onClick={() => {
-                close();
-                onChange(range);
-              }}
-            >
-              <span className="sd-daterange__check" aria-hidden="true">
-                {range === value ? "✓" : ""}
-              </span>
-              {range}
-            </button>
-          ))}
-        </div>
+          <span aria-hidden="true">📅</span> {value}{" "}
+          <span aria-hidden="true">▼</span>
+        </CcureButton>
       )}
-    </div>
+    >
+      {DATE_RANGES.map((range) => (
+        <CcureMenuItem
+          key={range}
+          aria-current={range === value ? "true" : undefined}
+          onClick={() => onChange(range)}
+        >
+          <span aria-hidden="true">{range === value ? "✓" : ""}</span> {range}
+        </CcureMenuItem>
+      ))}
+    </CcureDropdown>
   );
 }
 

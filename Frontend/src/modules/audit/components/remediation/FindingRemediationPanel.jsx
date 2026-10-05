@@ -30,6 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CcureLoader,
   CcureAlert,
   CcureButton,
   CcureInput,
@@ -162,8 +163,7 @@ export default function FindingRemediationPanel({
     }
   };
 
-  if (loading)
-    return <p className="rm-muted">Reading the remediation record…</p>;
+  if (loading) return <CcureLoader label="Reading the remediation record…" />;
   if (error) return <CcureAlert variant="danger">{error}</CcureAlert>;
   if (!finding) return null;
 

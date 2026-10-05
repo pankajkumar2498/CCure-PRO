@@ -14,7 +14,7 @@
 
 .cc-shell {
   display: grid;
-  grid-template-columns: var(--ccure-sidebar-width) 1fr;
+  grid-template-columns: var(--ccure-sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--ccure-header-height) 1fr auto;
   grid-template-areas:
     "sidebar header"
@@ -28,7 +28,7 @@
 }
 
 .cc-shell--collapsed {
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 64px minmax(0, 1fr);
 }
 
 /* ── Government identity strip ───────────────────────────────────────────────
@@ -266,7 +266,8 @@
    The existing responsive.css sets `.sidebar { display: none }` under 768px
    with no replacement, which leaves the application with no navigation at all
    on a phone. This shell collapses to a single column and moves the sidebar
-   into a disclosure instead — the nav stays in the DOM and stays reachable. */
+   into the shared Drawer. Closed mobile navigation is unmounted; open
+   navigation traps focus, isolates the background and restores its trigger. */
 @media (max-width: 768px) {
   .cc-shell,
   .cc-shell--collapsed {
@@ -275,21 +276,6 @@
       "header"
       "main"
       "footer";
-  }
-
-  .cc-sidebar {
-    position: fixed;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: min(280px, 80vw);
-    z-index: var(--ccure-z-drawer);
-    transform: translateX(-100%);
-    transition: transform var(--ccure-duration-base) var(--ccure-ease);
-    box-shadow: var(--ccure-shadow-lg);
-  }
-
-  .cc-sidebar[data-open="true"] {
-    transform: none;
   }
 
   .cc-main {
@@ -337,7 +323,7 @@
 .cc-sidebar__link:focus-visible,
 .cc-sidebar__collapse:focus-visible,
 .cc-header__nav-toggle:focus-visible {
-  outline: var(--ccure-focus-ring);
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
   outline-offset: calc(-1 * var(--ccure-focus-ring-width));
 }
 
@@ -396,19 +382,7 @@
   border-top: 1px solid var(--ccure-border-subtle);
 }
 
-/* Off-canvas backdrop: present only while the narrow-viewport nav is open. */
-.cc-sidebar__backdrop {
-  display: none;
-}
-
 @media (max-width: 768px) {
-  .cc-sidebar__backdrop[data-open="true"] {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: var(--ccure-overlay);
-    z-index: calc(var(--ccure-z-drawer) - 1);
-  }
   /* The rail mode is a desktop concept; off-canvas the sidebar is full. */
   .cc-shell--collapsed .cc-sidebar__brand-text,
   .cc-shell--collapsed .cc-sidebar__label,
@@ -428,5 +402,47 @@
   .cc-shell--collapsed .cc-sidebar__link {
     justify-content: flex-start;
     padding-inline: var(--ccure-space-md);
+  }
+}
+
+/* B.4: compose official controls in the console's existing fluid grid. */
+.cc-header.ux4g-navbar {
+  width: auto;
+  min-width: 0;
+  height: var(--ccure-header-height);
+  min-height: var(--ccure-header-height);
+  padding: 0 var(--ccure-space-lg);
+  gap: var(--ccure-space-lg);
+}
+.cc-sidebar__link.cc-btn {
+  justify-content: flex-start;
+  white-space: normal;
+  height: auto;
+}
+.cc-sidebar__link.cc-btn > span {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  width: 100%;
+  min-width: 0;
+}
+.cc-sidebar__link.cc-btn[aria-current="page"] {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+}
+.cc-sidebar-drawer.cc-drawer {
+  width: min(18rem, 100%);
+}
+.cc-sidebar-drawer .cc-modal__body {
+  padding: 0;
+}
+@media (max-width: 768px) {
+  .cc-header.ux4g-navbar {
+    padding-inline: var(--ccure-space-md);
+    gap: var(--ccure-space-xs);
+  }
+  .cc-header__left,
+  .cc-header__right {
+    gap: var(--ccure-space-xs);
   }
 }

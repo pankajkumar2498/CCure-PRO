@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../../helpers/assertUx4gAdapters";
 /**
  * CredentialedScan — Checkpoint 3C batch 9 migration coverage.
  *
@@ -540,8 +541,8 @@ describe("CredentialedScan — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", () => {
+  it("confines official UX4G classes to shared adapters", () => {
     const { container } = renderPage();
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 });

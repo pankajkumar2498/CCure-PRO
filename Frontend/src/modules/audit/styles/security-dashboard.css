@@ -145,41 +145,6 @@
 .sd-card {
   position: relative;
   min-width: 0;
-  padding: var(--ccure-space-lg);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-lg);
-  overflow: hidden;
-}
-
-.sd-card--flush {
-  padding: 0;
-}
-
-.sd-card__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-sm);
-  margin-bottom: var(--ccure-space-md);
-}
-
-.sd-card--flush > .sd-card__head {
-  margin-bottom: 0;
-  padding: var(--ccure-space-md) var(--ccure-space-lg) var(--ccure-space-xs);
-}
-
-.sd-card__title {
-  margin: 0;
-  font-size: var(--ccure-text-sm);
-  font-weight: var(--ccure-weight-bold);
-  color: var(--ccure-text);
-}
-
-.sd-card__sub {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-xs);
-  color: var(--ccure-text-secondary);
 }
 
 .sd-subhead {
@@ -332,16 +297,9 @@
 
 .sd-metric {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--ccure-space-3xs);
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-lg);
+  min-width: 0;
   color: var(--ccure-text);
   text-decoration: none;
-  overflow: hidden;
 }
 
 /* The band strip across the top of each card. */
@@ -356,11 +314,6 @@
 a.sd-metric:hover {
   border-color: var(--ccure-border-strong);
   box-shadow: var(--ccure-shadow-sm);
-}
-
-a.sd-metric:focus-visible {
-  outline: none;
-  box-shadow: var(--ccure-focus-ring);
 }
 
 .sd-metric--critical::before {
@@ -1016,68 +969,9 @@ a.sd-metric:focus-visible {
   position: relative;
 }
 
-.sd-daterange__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  min-height: 32px;
-  padding: 0 var(--ccure-space-md);
-  font: inherit;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-  cursor: pointer;
-}
-
-.sd-daterange__toggle:hover,
-.sd-daterange__option:hover {
-  background: var(--ccure-surface-hover);
-}
-
-.sd-daterange__toggle:focus-visible,
-.sd-daterange__option:focus-visible {
-  outline: none;
-  box-shadow: var(--ccure-focus-ring);
-}
-
 .sd-daterange__caret {
   font-size: 0.6rem;
   color: var(--ccure-text-secondary);
-}
-
-.sd-daterange__menu {
-  position: absolute;
-  top: calc(100% + var(--ccure-space-xs));
-  right: 0;
-  z-index: var(--ccure-z-overlay);
-  width: 11.25rem;
-  padding: var(--ccure-space-3xs) 0;
-  background: var(--ccure-surface-raised);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-  box-shadow: var(--ccure-shadow-lg);
-}
-
-.sd-daterange__option {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-xs);
-  width: 100%;
-  padding: var(--ccure-space-xs) var(--ccure-space-sm);
-  font: inherit;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.sd-daterange__option--on {
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text-link);
 }
 
 .sd-daterange__check {
@@ -1129,10 +1023,6 @@ a.sd-metric:focus-visible {
     padding: var(--ccure-space-sm) var(--ccure-space-lg) 0;
   }
   /* The toggle sits at the left edge once the header stacks. */
-  .sd-daterange__menu {
-    right: auto;
-    left: 0;
-  }
 }
 
 /* ── P3-1: dashboard completeness ────────────────────────────────────────── */
@@ -1155,4 +1045,11 @@ a.sd-metric:focus-visible {
 .sd-flag--exploit {
   background: var(--ccure-warning-bg);
   color: var(--ccure-warning-text);
+}
+
+.sd-metric > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
 }

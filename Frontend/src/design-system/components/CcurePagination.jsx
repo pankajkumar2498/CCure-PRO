@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { CcureSelect } from "./CcureInput";
 import CcureButton from "./CcureButton";
 
 /**
@@ -49,7 +50,10 @@ export default function CcurePagination({
   const atEnd = current >= pageCount;
 
   return (
-    <nav className={`cc-pagination ${className}`.trim()} aria-label={label}>
+    <nav
+      className={`cc-pagination cc-ux4g ux4g-pagination-wrapper ${className}`.trim()}
+      aria-label={label}
+    >
       <div className="cc-pagination__summary">
         Showing {first}–{last} of {total ?? 0} {itemNoun}
       </div>
@@ -58,7 +62,8 @@ export default function CcurePagination({
         {onPageSizeChange ? (
           <div className="cc-pagination__size">
             <label htmlFor={sizeId}>{pageSizeLabel}</label>
-            <select
+            <CcureSelect
+              aria-label={pageSizeLabel}
               id={sizeId}
               value={pageSize}
               disabled={disabled}
@@ -69,7 +74,7 @@ export default function CcurePagination({
                   {n}
                 </option>
               ))}
-            </select>
+            </CcureSelect>
           </div>
         ) : null}
 

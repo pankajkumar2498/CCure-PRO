@@ -8,3 +8,5 @@ public/assets/fonts/ux4g/
 public/assets/ux4g/
 .ux4g-assets-*/
 .ux4g-assets.lock/
+
+src/design-system/components/ux4g.components.generated.css

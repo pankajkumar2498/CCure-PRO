@@ -1,11 +1,12 @@
 /** Shared build-time asset layout and input identity. No browser runtime. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { FRONTEND_ROOT, readJson, sha256 } from "./ux4g-baseline.mjs";
 
 export const ASSET_LAYOUT = Object.freeze({
   css: "src/design-system/tokens/ux4g.generated.css",
   manifest: "src/design-system/tokens/ux4g.generated.manifest.json",
+  components: "src/design-system/components/ux4g.components.generated.css",
   fonts: "public/assets/fonts/ux4g",
   publicManifest: "public/assets/ux4g/manifest.json",
   fontUrl: "/assets/fonts/ux4g",
@@ -46,6 +47,7 @@ export function pipelineIdentity(root = FRONTEND_ROOT) {
     "scripts/build-ux4g-assets.mjs",
     "scripts/ux4g-baseline.mjs",
     "scripts/ux4g-pipeline.mjs",
+    "scripts/ux4g-component-assets.mjs",
   ];
   const inputs = Object.fromEntries(
     scripts.map((file) => [file, sha256(readFileSync(path.join(root, file)))]),
@@ -71,6 +73,13 @@ export function pipelineIdentity(root = FRONTEND_ROOT) {
       sha256(readFileSync(path.join(dir, file))),
     ]),
   );
+  const parserDir = path.join(root, "node_modules/postcss");
+  const parser = readJson(path.join(parserDir, "package.json"));
+  const parserLock = readJson(path.join(root, "package-lock.json")).packages[
+    "node_modules/postcss"
+  ];
+  if (parser.version !== parserLock?.version || !parserLock.integrity)
+    throw new Error("CSS parser differs from the locked input; run npm ci");
   return {
     schemaVersion: 1,
     inputs,
@@ -79,6 +88,20 @@ export function pipelineIdentity(root = FRONTEND_ROOT) {
       version: installed.version,
       integrity: locked.integrity,
       files,
+    },
+    parser: {
+      package: "postcss",
+      version: parser.version,
+      integrity: parserLock.integrity,
+      files: Object.fromEntries(
+        readdirSync(path.join(parserDir, "lib"))
+          .filter((file) => /\.m?js$/.test(file))
+          .sort()
+          .map((file) => [
+            `lib/${file}`,
+            sha256(readFileSync(path.join(parserDir, "lib", file))),
+          ]),
+      ),
     },
     outputs: ASSET_LAYOUT,
   };

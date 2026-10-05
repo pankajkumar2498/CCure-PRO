@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * NewWebScan — Checkpoint 3C batch 7 migration coverage.
  *
@@ -936,9 +937,9 @@ describe("NewWebScan — rendered surface", () => {
     expect(container.innerHTML).not.toMatch(/var\(--[a-z-]+\)[0-9a-f]{2}/i);
   });
 
-  it("uses no ux4g-* class in application markup", () => {
+  it("confines official UX4G classes to shared adapters", () => {
     const { container } = render(<NewWebScan />);
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("injects no <style> element into the document", () => {

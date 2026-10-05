@@ -19,7 +19,11 @@
  */
 import { useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CcureAppShell, CcureButton } from "../../design-system";
+import {
+  CcureAppShell,
+  CcureButton,
+  CcureIconButton,
+} from "../../design-system";
 import { useAuth } from "../auth/AuthContext";
 import { canSwitchOrganisation } from "../auth/permissions";
 import { usePreferences } from "../preferences/PreferencesContext";
@@ -159,10 +163,10 @@ function PlatformFrame({ children }) {
           </div>
         )}
       </div>
-      <button
-        type="button"
+      <CcureIconButton
         ref={settingsBtnRef}
-        className="cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn"
+        size="sm"
+        className="sh-iconbtn"
         aria-label="Settings"
         aria-expanded={showSettings}
         aria-controls="sh-settings"
@@ -172,7 +176,7 @@ function PlatformFrame({ children }) {
         }}
       >
         <IcoSettings />
-      </button>
+      </CcureIconButton>
       <AccountMenu
         user={user}
         onLogout={() => logout()}

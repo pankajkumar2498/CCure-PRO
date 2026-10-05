@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { forwardRef, useId } from "react";
 
 /**
  * CcureCard
@@ -23,28 +23,33 @@ import { useId } from "react";
  * table supplies its own cell padding, and doubling it wastes a lot of
  * horizontal space on a console that has none to spare.
  */
-export default function CcureCard({
-  as: Tag = "section",
-  title,
-  subtitle,
-  headingLevel = 2,
-  actions,
-  footer,
-  raised = false,
-  flush = false,
-  bodyFlush = false,
-  children,
-  className = "",
-  ...rest
-}) {
+const CcureCard = forwardRef(function CcureCard(
+  {
+    as: Tag = "section",
+    title,
+    subtitle,
+    headingLevel = 2,
+    actions,
+    footer,
+    raised = false,
+    flush = false,
+    bodyFlush = false,
+    children,
+    className = "",
+    ...rest
+  },
+  ref,
+) {
   const titleId = useId();
   const Heading = `h${Math.min(Math.max(headingLevel, 1), 6)}`;
   const hasHeader = Boolean(title || subtitle || actions);
 
   return (
     <Tag
+      ref={ref}
       className={[
-        "cc-card",
+        "cc-card cc-ux4g ux4g-card ux4g-card-vertical",
+        raised ? "ux4g-card-solid" : "ux4g-card-outline",
         raised ? "cc-card--raised" : "",
         flush ? "cc-card--flush" : "",
         className,
@@ -57,26 +62,33 @@ export default function CcureCard({
       {...rest}
     >
       {hasHeader ? (
-        <div className="cc-card__header">
+        <div className="cc-card__header ux4g-card-header">
           <div className="cc-card__heading">
             {title ? (
-              <Heading className="cc-card__title" id={titleId}>
+              <Heading className="cc-card__title ux4g-card-title" id={titleId}>
                 {title}
               </Heading>
             ) : null}
-            {subtitle ? <p className="cc-card__subtitle">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="cc-card__subtitle ux4g-card-sub-title">
+                {subtitle}
+              </p>
+            ) : null}
           </div>
           {actions ? <div className="cc-card__actions">{actions}</div> : null}
         </div>
       ) : null}
 
       <div
-        className={`cc-card__body${bodyFlush ? " cc-card__body--flush" : ""}`}
+        className={`cc-card__body ux4g-card-body${bodyFlush ? " cc-card__body--flush" : ""}`}
       >
         {children}
       </div>
 
-      {footer ? <div className="cc-card__footer">{footer}</div> : null}
+      {footer ? (
+        <div className="cc-card__footer ux4g-card-footer">{footer}</div>
+      ) : null}
     </Tag>
   );
-}
+});
+export default CcureCard;

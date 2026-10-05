@@ -29,17 +29,23 @@
     "cdnStylesheet": "https://cdn.ux4g.gov.in/UX4G@3.3.0/index.css"
   },
   "approval": {
-    "status": "approved-b1-foundation-only",
-    "compatibility": "current token references, font payloads and reset inspected; component/runtime compatibility not approved",
+    "status": "approved-b3-b4-scoped-component-adapters",
+    "compatibility": "Exact B.1 release; scoped official CSS and shared React adapters. B.3 gate passed before B.4 shell migration. Group 1 validation is recorded in the adapters report. Runtime remains disabled.",
     "report": "../docs/ux4g/B1_VERSION_FOUNDATION.md",
-    "pipelineReport": "../docs/ux4g/B2_ASSET_PIPELINE.md"
+    "pipelineReport": "../docs/ux4g/B2_ASSET_PIPELINE.md",
+    "adaptersReport": "../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md"
   },
   "assets": {
     "mode": "tokens",
     "retainedFonts": ["Noto Sans"],
     "sourceCssSha256": "8963db356123377037fddd8ce9fc4fdc1a9259dee79ffc962a6b90e63f8be2aa",
     "delivery": "same-origin-woff2",
-    "status": "central token/font pipeline; component/layout/pattern/utility CSS and typography migration remain deferred"
+    "status": "central tokens/font plus scoped component adapters; global component CSS and font policy changes remain deferred",
+    "components": {
+      "enabled": true,
+      "scope": ".cc-ux4g",
+      "status": "official component subset through central React adapters only; no global reset or full stylesheet"
+    }
   },
   "runtime": {
     "enabled": false,
@@ -47,8 +53,8 @@
     "reason": "Official bootstrap injects inline scripts without nonce support; script-src self remains unchanged. React retains behavior ownership."
   },
   "migration": {
-    "phase": "B.2",
-    "officialComponentsEnabled": false,
+    "phase": "B.3 + B.4",
+    "officialComponentsEnabled": true,
     "target": "One official UX4G foundation through the shared CCure Design System for Common, authentication, Audit, Policy, Rank, IR and future modules."
   },
   "csp": {

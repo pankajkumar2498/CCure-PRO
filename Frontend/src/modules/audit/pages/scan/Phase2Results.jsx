@@ -40,6 +40,7 @@ import {
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
 import {
+  CcureLoader,
   CcureAlert,
   CcureBadge,
   CcureButton,
@@ -48,6 +49,8 @@ import {
   CcureSeverityBadge,
   CcureTable,
   normalizeSeverity,
+  CcureCheckbox,
+  CcureCard,
 } from "../../../../design-system";
 import "../../styles/phase2-results.css";
 
@@ -654,9 +657,7 @@ export default function Phase2Results() {
       <AppLayout pageTitle="Port Scan Results">
         <div className="p2-page">
           <h1 className="p2-title">Port Scan Results</h1>
-          <p className="p2-loading" role="status">
-            Loading scan results…
-          </p>
+          <CcureLoader label="Loading scan results…" />
         </div>
       </AppLayout>
     );
@@ -695,9 +696,7 @@ export default function Phase2Results() {
             key: "select",
             className: "p2-col-select",
             header: (
-              <input
-                type="checkbox"
-                className="p2-check"
+              <CcureCheckbox
                 aria-label="Select all active hosts for vulnerability audit"
                 checked={
                   activeHosts.length > 0 &&
@@ -801,7 +800,7 @@ export default function Phase2Results() {
           ))}
         </div>
 
-        <div className="p2-card">
+        <CcureCard as={"div"} bodyFlush className="p2-card">
           <CcureTable
             caption="Discovered hosts"
             columns={hostColumns}
@@ -822,9 +821,7 @@ export default function Phase2Results() {
                 >
                   {showCheckboxes && (
                     <td className="p2-col-select">
-                      <input
-                        type="checkbox"
-                        className="p2-check"
+                      <CcureCheckbox
                         aria-label={`Select ${host.ip_address} for vulnerability audit`}
                         checked={selected.has(host.ip_address)}
                         onChange={() => toggleHost(host.ip_address)}
@@ -870,7 +867,7 @@ export default function Phase2Results() {
               );
             })}
           </CcureTable>
-        </div>
+        </CcureCard>
 
         {summary && (
           <ul className="p2-summary">
@@ -948,9 +945,7 @@ export default function Phase2Results() {
             <article key={host.ip_address} className="p2-host">
               <div className="p2-host__header">
                 {showCheckboxes && (
-                  <input
-                    type="checkbox"
-                    className="p2-check"
+                  <CcureCheckbox
                     aria-label={`Select ${host.ip_address} for vulnerability audit`}
                     checked={selected.has(host.ip_address)}
                     onChange={() => toggleHost(host.ip_address)}
@@ -958,7 +953,9 @@ export default function Phase2Results() {
                   />
                 )}
                 <h2 className="p2-host__heading">
-                  <button
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     className="p2-host__toggle"
                     aria-expanded={isExpanded}
@@ -993,7 +990,7 @@ export default function Phase2Results() {
                     <span className="p2-host__chevron" aria-hidden="true">
                       {isExpanded ? "▲" : "▼"}
                     </span>
-                  </button>
+                  </CcureButton>
                 </h2>
               </div>
 

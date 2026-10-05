@@ -43,6 +43,9 @@ import {
   CcurePagination,
   CcureSelect,
   CcureTable,
+  CcureCheckbox,
+  CcureTabs,
+  CcureTabPanel,
 } from "../../../design-system";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
@@ -239,8 +242,7 @@ export default function Remediation() {
             header: "",
             width: "36px",
             cell: (row) => (
-              <input
-                type="checkbox"
+              <CcureCheckbox
                 checked={selected.has(row.finding_id)}
                 onChange={() => toggle(row.finding_id)}
                 aria-label={`Select ${row.vuln_id}`}
@@ -253,7 +255,9 @@ export default function Remediation() {
       key: "vuln_id",
       header: "Finding",
       cell: (row) => (
-        <button
+        <CcureButton
+          variant="ghost"
+          size="sm"
           type="button"
           className="rm-link"
           onClick={() => {
@@ -263,7 +267,7 @@ export default function Remediation() {
           }}
         >
           {row.vuln_id}
-        </button>
+        </CcureButton>
       ),
     },
     {
@@ -404,105 +408,103 @@ export default function Remediation() {
         ) : null}
 
         <section className="rm-queues">
-          <div
+          <CcureTabs
+            id="remediation-queues"
+            label="Remediation queues"
             className="rm-tabs"
-            role="tablist"
-            aria-label="Remediation queues"
-          >
-            {QUEUES.map((q) => (
-              <button
-                key={q.key}
-                type="button"
-                role="tab"
-                aria-selected={q.key === queueKey}
-                className={`rm-tab ${q.key === queueKey ? "is-active" : ""}`}
-                onClick={() => {
-                  setQueueKey(q.key);
-                  setPage(1);
-                }}
-              >
-                {q.label}
-                {q.key === "overdue" && summary ? (
-                  <CcureBadge variant="danger">{summary.overdue}</CcureBadge>
-                ) : null}
-                {q.key === "pending" && summary ? (
-                  <CcureBadge variant="warning">
-                    {summary.by_state?.pending_verification ?? 0}
-                  </CcureBadge>
-                ) : null}
-              </button>
-            ))}
-          </div>
-
-          <p className="rm-note">{queue.blurb}</p>
-
-          <div className="rm-toolbar">
-            {canListUsers ? (
-              <CcureSelect
-                label="Owner"
-                value={ownerFilter}
-                onChange={(e) => {
-                  setOwnerFilter(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">Anyone</option>
-                {assignable.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.username || p.email}
-                  </option>
-                ))}
-              </CcureSelect>
-            ) : (
-              <CcureInput
-                label="Owner id"
-                value={ownerFilter}
-                onChange={(e) => {
-                  setOwnerFilter(e.target.value);
-                  setPage(1);
-                }}
-                hint="Listing people needs users:read; filter by id instead."
-              />
-            )}
-
-            {canUpdate ? (
-              <CcureButton
-                variant="secondary"
-                disabled={selected.size === 0}
-                onClick={() => setAssignOpen(true)}
-              >
-                Assign {selected.size || ""}
-              </CcureButton>
-            ) : null}
-          </div>
-
-          {listError ? (
-            <CcureAlert variant="danger">{listError}</CcureAlert>
-          ) : null}
-
-          <CcureTable
-            columns={columns}
-            rows={rows}
-            loading={loading}
-            caption={`${queue.label} findings`}
-            emptyMessage={
-              queue.key === "overdue"
-                ? "Nothing is past its due date."
-                : "Nothing is waiting on a verification scan."
-            }
-          />
-
-          <CcurePagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            itemNoun="findings"
-            onPageChange={setPage}
-            onPageSizeChange={(n) => {
-              setPageSize(n);
+            value={queueKey}
+            onChange={(next) => {
+              setQueueKey(next);
               setPage(1);
             }}
+            tabs={QUEUES.map((q) => ({
+              id: q.key,
+              label: (
+                <>
+                  {q.label}
+                  {q.key === "overdue" && summary ? (
+                    <CcureBadge variant="danger">{summary.overdue}</CcureBadge>
+                  ) : null}
+                  {q.key === "pending" && summary ? (
+                    <CcureBadge variant="warning">
+                      {summary.by_state?.pending_verification ?? 0}
+                    </CcureBadge>
+                  ) : null}
+                </>
+              ),
+            }))}
           />
+          <CcureTabPanel id={queueKey} tabsId="remediation-queues" active>
+            <p className="rm-note">{queue.blurb}</p>
+
+            <div className="rm-toolbar">
+              {canListUsers ? (
+                <CcureSelect
+                  label="Owner"
+                  value={ownerFilter}
+                  onChange={(e) => {
+                    setOwnerFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Anyone</option>
+                  {assignable.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.full_name || p.username || p.email}
+                    </option>
+                  ))}
+                </CcureSelect>
+              ) : (
+                <CcureInput
+                  label="Owner id"
+                  value={ownerFilter}
+                  onChange={(e) => {
+                    setOwnerFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  hint="Listing people needs users:read; filter by id instead."
+                />
+              )}
+
+              {canUpdate ? (
+                <CcureButton
+                  variant="secondary"
+                  disabled={selected.size === 0}
+                  onClick={() => setAssignOpen(true)}
+                >
+                  Assign {selected.size || ""}
+                </CcureButton>
+              ) : null}
+            </div>
+
+            {listError ? (
+              <CcureAlert variant="danger">{listError}</CcureAlert>
+            ) : null}
+
+            <CcureTable
+              columns={columns}
+              rows={rows}
+              loading={loading}
+              caption={`${queue.label} findings`}
+              emptyMessage={
+                queue.key === "overdue"
+                  ? "Nothing is past its due date."
+                  : "Nothing is waiting on a verification scan."
+              }
+            />
+
+            <CcurePagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              itemNoun="findings"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+            />
+          </CcureTabPanel>
         </section>
 
         <section className="rm-slasection">

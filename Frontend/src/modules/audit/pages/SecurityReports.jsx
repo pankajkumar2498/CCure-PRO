@@ -38,6 +38,7 @@ import { saveResponseAsFile } from "@audit/utils/download";
 import { dateTimeMs, formatDateTime } from "@shell/utils/date";
 import { can, denyMessage } from "@shell/auth/permissions";
 import {
+  CcureTabPanel,
   CcureAlert,
   CcureBadge,
   CcureButton,
@@ -49,6 +50,7 @@ import {
   CcureTabs,
   CcureToastProvider,
   useCcureToast,
+  CcureCard,
 } from "../../../design-system";
 import "../styles/SecurityReports.css";
 
@@ -280,6 +282,7 @@ function ReportsView() {
             a mouse. CcureTabs implements the WAI-ARIA pattern, and the URL
             stays the source of truth exactly as before. */}
         <CcureTabs
+          id="security-reports"
           tabs={TABS}
           value={currentTab}
           onChange={(id) => setSearchParams(id ? { tab: id } : {})}
@@ -287,83 +290,85 @@ function ReportsView() {
           className="reports-tabs"
         />
 
-        {currentTab === "" && (
-          <>
-            {/* Search & Filter Bar */}
-            <div className="reports-filter-bar">
-              <CcureInput
-                label="Search reports"
-                type="search"
-                placeholder="Search by target IP or Scan No..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                fieldClassName="reports-search-field"
-              />
-              <CcureSelect
-                label="Report type"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                fieldClassName="reports-type-field"
-              >
-                <option value="all">All Report Types</option>
-                <option value="basic">Host Discovery</option>
-                <option value="asset">Asset Discovery</option>
-                <option value="vulnerability_audit">
-                  Vulnerability Audits
-                </option>
-                <option value="credentialed">Credentialed Audits</option>
-              </CcureSelect>
-              <CcureButton
-                variant="secondary"
-                onClick={load}
-                loading={loading}
-                className="reports-refresh"
-              >
-                {loading ? "Syncing..." : "Refresh Cabinet"}
-              </CcureButton>
-            </div>
-
-            {error && <CcureAlert variant="danger">{error}</CcureAlert>}
-
-            {loading ? (
-              <div className="reports-loading-state">
-                <CcureLoader label="Accessing secure storage…" />
+        <CcureTabPanel tabsId="security-reports" id={currentTab} active>
+          {currentTab === "" && (
+            <>
+              {/* Search & Filter Bar */}
+              <div className="reports-filter-bar">
+                <CcureInput
+                  label="Search reports"
+                  type="search"
+                  placeholder="Search by target IP or Scan No..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  fieldClassName="reports-search-field"
+                />
+                <CcureSelect
+                  label="Report type"
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  fieldClassName="reports-type-field"
+                >
+                  <option value="all">All Report Types</option>
+                  <option value="basic">Host Discovery</option>
+                  <option value="asset">Asset Discovery</option>
+                  <option value="vulnerability_audit">
+                    Vulnerability Audits
+                  </option>
+                  <option value="credentialed">Credentialed Audits</option>
+                </CcureSelect>
+                <CcureButton
+                  variant="secondary"
+                  onClick={load}
+                  loading={loading}
+                  className="reports-refresh"
+                >
+                  {loading ? "Syncing..." : "Refresh Cabinet"}
+                </CcureButton>
               </div>
-            ) : filtered.length === 0 ? (
-              <CcureEmptyState
-                icon="📁"
-                title="No reports found in this section."
-                description="Complete a scan to automatically generate and store a report here."
-              />
-            ) : (
-              <div className="reports-grid">
-                {filtered.map((scan) => (
-                  <ReportCard
-                    key={scan.id}
-                    scan={scan}
-                    onDownload={handleDownload}
-                    onDelete={handleDelete}
-                    canReadReports={canReadReports}
-                    canDeleteReports={canDeleteReports}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
 
-        {placeholder && (
-          <div className="reports-placeholder">
-            <div className="rp-icon" aria-hidden="true">
-              {placeholder.icon}
+              {error && <CcureAlert variant="danger">{error}</CcureAlert>}
+
+              {loading ? (
+                <div className="reports-loading-state">
+                  <CcureLoader label="Accessing secure storage…" />
+                </div>
+              ) : filtered.length === 0 ? (
+                <CcureEmptyState
+                  icon="📁"
+                  title="No reports found in this section."
+                  description="Complete a scan to automatically generate and store a report here."
+                />
+              ) : (
+                <div className="reports-grid">
+                  {filtered.map((scan) => (
+                    <ReportCard
+                      key={scan.id}
+                      scan={scan}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                      canReadReports={canReadReports}
+                      canDeleteReports={canDeleteReports}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {placeholder && (
+            <div className="reports-placeholder">
+              <div className="rp-icon" aria-hidden="true">
+                {placeholder.icon}
+              </div>
+              <h2 className="rp-title">{placeholder.title}</h2>
+              <p>{placeholder.body}</p>
+              <CcureBadge variant="info" className="rp-soon">
+                AVAILABLE SOON
+              </CcureBadge>
             </div>
-            <h2 className="rp-title">{placeholder.title}</h2>
-            <p>{placeholder.body}</p>
-            <CcureBadge variant="info" className="rp-soon">
-              AVAILABLE SOON
-            </CcureBadge>
-          </div>
-        )}
+          )}
+        </CcureTabPanel>
       </div>
 
       {/* Confirmation modal for permanent deletion. The wording is carried over
@@ -400,9 +405,9 @@ function ReportCard({
   const no = scanNo(scan);
 
   return (
-    <div className="report-card">
+    <CcureCard as={"div"} bodyFlush className="report-card">
       <div className="rc-top">
-        <span className="rc-type-tag">{typeLabel}</span>
+        <CcureBadge variant="info">{typeLabel}</CcureBadge>
         <span className="rc-id">Scan No. {no}</span>
       </div>
 
@@ -497,6 +502,6 @@ function ReportCard({
           </CcureButton>
         )}
       </div>
-    </div>
+    </CcureCard>
   );
 }

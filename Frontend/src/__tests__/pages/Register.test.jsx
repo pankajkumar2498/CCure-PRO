@@ -645,3 +645,30 @@ describe("Register — accessibility", () => {
     }
   });
 });
+
+describe("Register — shared consent controls", () => {
+  it("keeps policy actions outside the required checkbox label and restores focus", async () => {
+    const u = userEvent.setup();
+    renderPage();
+    const consent = await screen.findByRole("checkbox", {
+      name: "I agree to the Terms of Service and Privacy Policy",
+    });
+    expect(consent).toBeRequired();
+    expect(consent.closest("label").querySelector("button")).toBeNull();
+    const terms = screen.getByRole("button", { name: "Terms of Service" });
+    await u.click(terms);
+    expect(
+      screen.getByRole("dialog", {
+        name: "Terms of Service — CCure Audit PRO",
+      }),
+    ).toBeInTheDocument();
+    expect(consent).not.toBeChecked();
+    await u.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(terms).toHaveFocus();
+    expect(consent).not.toBeChecked();
+    consent.focus();
+    await u.keyboard(" ");
+    expect(consent).toBeChecked();
+  });
+});

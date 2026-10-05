@@ -614,19 +614,25 @@ The platform's backend now matches the frontend's Platform Shell. Record:
 
 ## Frontend modules (Phase 12)
 
-**UX4G foundation (B.1):** `Frontend/ux4g-baseline.json` is the sole approved
+**UX4G frontend standard (B.1–B.6):** `Frontend/ux4g-baseline.json` is the sole approved
 release/provenance definition. Follow `docs/FRONTEND_ARCHITECTURE.md` §1 and
 `docs/ux4g/B1_VERSION_FOUNDATION.md`. Use the latest officially published stable
 UX4G release applicable after compatibility/security/CSP validation, with an
 exact reviewed pin. Common, authentication and every product share the CCure
 Design System; do not add a competing framework without explicit approval or
-a custom equivalent without a documented technical reason. B.1 keeps tokens
-and the current font only; do not enable full CSS/runtime or redesign components
-as incidental dependency work. Preserve CSP, API/auth/RBAC contracts, routing
-and the module boundaries. B.2's centralized token/font pipeline is documented
-in `docs/ux4g/B2_ASSET_PIPELINE.md`; do not add module-local vendor assets,
-font declarations or CDN imports. Run `ux4g:check -- --dist`, `ux4g:verify`,
-build, tests and lint.
+a custom equivalent without a documented technical reason. B.2's centralized
+pipeline is documented in `docs/ux4g/B2_ASSET_PIPELINE.md`. Group 1 adds scoped
+official component CSS and reusable React adapters, then migrates the Platform
+shell: see `docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md`. Modules import the CCure
+Design System entrypoint, never vendor CSS/classes/behavior. Do not activate
+full global CSS/reset or the vendor runtime. Preserve CSP, native form contracts,
+API/auth/RBAC behavior, routing and module boundaries. Do not add module-local
+vendor assets, font declarations or CDN imports. Run `ux4g:check -- --dist`,
+`ux4g:verify`, build, tests and lint; validate changed controls in the browser.
+B.5/B.6 migrate Auth and Audit presentation using the same shared adapters;
+see `docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md` for mappings, domain exceptions and
+browser checks. Preserve the existing API calls and permission decisions when
+modifying those screens. Policy/Rank/IR and B.7–B.10 remain outside this work.
 
 One React application holds the four products. Record:
 [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md);

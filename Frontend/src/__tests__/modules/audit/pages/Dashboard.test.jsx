@@ -277,7 +277,10 @@ describe("Dashboard — Start New Scan modal", () => {
     ).toBeInTheDocument();
     // Grid and modal both list the templates now.
     expect(
-      screen.getAllByRole("button", { name: /Basic Network Scan/ }),
+      screen.getAllByRole("button", {
+        name: /Basic Network Scan/,
+        hidden: true,
+      }),
     ).toHaveLength(2);
   });
 
@@ -287,7 +290,7 @@ describe("Dashboard — Start New Scan modal", () => {
     await user.type(screen.getByPlaceholderText("Search templates…"), "asset");
     await user.click(screen.getByRole("button", { name: "New Scan" }));
     expect(
-      screen.getAllByRole("button", { name: /Asset Discovery/ }),
+      screen.getAllByRole("button", { name: /Asset Discovery/, hidden: true }),
     ).toHaveLength(2);
     expect(
       screen.queryByRole("button", { name: /Malware Scan/ }),
@@ -298,9 +301,8 @@ describe("Dashboard — Start New Scan modal", () => {
     const user = userEvent.setup();
     render(<Dashboard />);
     await user.click(screen.getByRole("button", { name: "New Scan" }));
-    const inModal = screen.getAllByRole("button", {
-      name: /Asset Discovery/,
-    })[1];
+    const inModal = screen.getByRole("button", { name: /Asset Discovery/ });
+    expect(inModal.closest("[role=dialog]")).not.toBeNull();
     await user.click(inModal);
 
     expect(resetScan).toHaveBeenCalledTimes(1);

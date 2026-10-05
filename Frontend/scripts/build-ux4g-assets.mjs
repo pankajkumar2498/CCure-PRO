@@ -48,6 +48,7 @@ import {
   pipelineIdentity,
   tokenCssProblems,
 } from "./ux4g-pipeline.mjs";
+import { componentCss } from "./ux4g-component-assets.mjs";
 import { checkFoundation } from "./check-ux4g-foundation.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -133,7 +134,13 @@ const sha = (buf) =>
   createHash("sha256").update(buf).digest("hex").slice(0, 16);
 
 /** Prepare a complete output set before replacement; restore it on write failure. */
-export async function publishAssets({ root = ROOT, css, kept, manifest }) {
+export async function publishAssets({
+  root = ROOT,
+  css,
+  components = "",
+  kept,
+  manifest,
+}) {
   const outputs = assetPaths(root);
   const lock = path.join(root, ".ux4g-assets.lock");
   try {
@@ -156,9 +163,16 @@ export async function publishAssets({ root = ROOT, css, kept, manifest }) {
       await writeFile(path.join(next, "fonts", font.filename), font.woff2);
     const metadata = `${JSON.stringify(manifest, null, 2)}\n`;
     await writeFile(path.join(next, "css"), css, "utf8");
+    await writeFile(path.join(next, "components"), components, "utf8");
     await writeFile(path.join(next, "publicManifest"), metadata, "utf8");
     await writeFile(path.join(next, "manifest"), metadata, "utf8");
-    for (const key of ["fonts", "css", "publicManifest", "manifest"]) {
+    for (const key of [
+      "fonts",
+      "css",
+      "components",
+      "publicManifest",
+      "manifest",
+    ]) {
       const destination = outputs[key];
       await mkdir(path.dirname(destination), { recursive: true });
       const backup = path.join(stage, `old-${key}`);
@@ -349,6 +363,9 @@ async function main() {
   // ── Manifest: what these bytes were derived from ─────────────────────────
   // Makes the gitignored output auditable and lets `ux4g:verify` prove the
   // build is deterministic without committing the artefacts themselves.
+  const components = BASELINE.assets.components?.enabled
+    ? componentCss(source, BASELINE)
+    : "";
   const manifest = {
     schemaVersion: 2,
     generator: "scripts/build-ux4g-assets.mjs",
@@ -371,6 +388,12 @@ async function main() {
       sha256: sha256(css),
       sha256_16: sha(css),
     },
+    components: {
+      enabled: Boolean(BASELINE.assets.components?.enabled),
+      scope: ".cc-ux4g",
+      bytes: Buffer.byteLength(components),
+      sha256: sha256(components),
+    },
     fonts: kept.map(
       ({ family, filename, to, sha: s, sha256: full, sourceSha256 }) => ({
         family,
@@ -383,7 +406,7 @@ async function main() {
     ),
     droppedFonts: dropped,
   };
-  await publishAssets({ css, kept, manifest });
+  await publishAssets({ css, components, kept, manifest });
 
   // ── Report ───────────────────────────────────────────────────────────────
   console.log(

@@ -54,7 +54,7 @@ export default function CcureTabs({
 
   const move = useCallback(
     (targetId) => {
-      if (!targetId) return;
+      if (targetId == null) return;
       refs.current[targetId]?.focus();
       if (activateOnFocus) onChange?.(targetId);
     },
@@ -63,7 +63,10 @@ export default function CcureTabs({
 
   const onKeyDown = useCallback(
     (e) => {
-      const idx = enabled.findIndex((t) => t.id === value);
+      const focusedId = Object.keys(refs.current).find(
+        (id) => refs.current[id] === document.activeElement,
+      );
+      const idx = enabled.findIndex((t) => t.id === (focusedId ?? value));
       if (idx === -1 && !["Home", "End"].includes(e.key)) return;
 
       switch (e.key) {
@@ -97,35 +100,37 @@ export default function CcureTabs({
       role="tablist"
       // Two tab bars on one page are announced identically without this.
       aria-label={label}
-      className={`cc-tabs ${className}`.trim()}
+      className={`cc-tabs cc-ux4g ux4g-tab ux4g-tab-underline ux4g-tab-m ${className}`.trim()}
       onKeyDown={onKeyDown}
     >
-      {tabs.map((tab) => {
-        const selected = tab.id === value;
-        return (
-          <button
-            key={tab.id}
-            ref={(el) => {
-              refs.current[tab.id] = el;
-            }}
-            type="button"
-            role="tab"
-            id={tabId(tab.id)}
-            aria-selected={selected}
-            aria-controls={panelId(tab.id)}
-            // Roving tabindex: only the selected tab is in the tab order.
-            tabIndex={selected ? 0 : -1}
-            disabled={tab.disabled}
-            className="cc-tab"
-            onClick={() => onChange?.(tab.id)}
-          >
-            <span>{tab.label}</span>
-            {tab.count != null ? (
-              <span className="cc-tab__count">{tab.count}</span>
-            ) : null}
-          </button>
-        );
-      })}
+      <div className="ux4g-tab-list">
+        {tabs.map((tab) => {
+          const selected = tab.id === value;
+          return (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                refs.current[tab.id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={tabId(tab.id)}
+              aria-selected={selected}
+              aria-controls={panelId(tab.id)}
+              // Roving tabindex: only the selected tab is in the tab order.
+              tabIndex={selected ? 0 : -1}
+              disabled={tab.disabled}
+              className={`cc-tab ux4g-tab-item ${selected ? "is-active" : ""} ${tab.disabled ? "ux4g-tab-item-disabled" : ""}`}
+              onClick={() => onChange?.(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.count != null ? (
+                <span className="cc-tab__count">{tab.count}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

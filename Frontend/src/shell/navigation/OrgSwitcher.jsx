@@ -6,16 +6,15 @@
  * `useOrganizationSwitcher`; this is the menu. Moved from Audit's AppLayout
  * unchanged.
  */
-import { useRef } from "react";
-import { CcureBadge } from "../../design-system";
-import useDismiss from "./useDismiss";
+import {
+  CcureBadge,
+  CcureButton,
+  CcureDropdown,
+  CcureLoader,
+  CcureMenuItem,
+} from "../../design-system";
 import "./navigation.css";
 
-/* Shown only to an account the backend says may switch organisation
-   (`canSwitchOrganisation`). A real menu button: the legacy control was a
-   `<div onClick>` with no name, no state and no keyboard path. Selecting an
-   organisation asks the backend (AuthContext.switchOrganisation); the document
-   reloads only after it accepts. */
 export default function OrgSwitcher({
   selectedOrg,
   orgs,
@@ -25,61 +24,55 @@ export default function OrgSwitcher({
   onClose,
   onSwitch,
 }) {
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
-  useDismiss(menuRef, open, onClose, btnRef);
   return (
-    <div className="sh-menu-anchor">
-      <button
-        type="button"
-        ref={btnRef}
-        className="sh-org-btn"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls="sh-org-menu"
-        aria-label={`Switch organization. Current: ${selectedOrg}`}
-        onClick={onToggle}
-      >
-        <span className="sh-org-name">{selectedOrg}</span>
-        <CcureBadge variant="primary" size="sm">
-          ENTERPRISE
-        </CcureBadge>
-        <span className="sh-chevron" aria-hidden="true">
-          ▼
-        </span>
-      </button>
-      {open && (
-        <div
-          className="sh-menu sh-menu--org"
-          ref={menuRef}
-          id="sh-org-menu"
-          role="menu"
-          aria-label="Switch Organization"
+    <CcureDropdown
+      open={open}
+      onOpenChange={(next) => (next ? onToggle() : onClose())}
+      id="sh-org-menu"
+      label="Switch Organization"
+      className="sh-menu-anchor"
+      menuClassName="sh-menu--org"
+      trigger={({ ref, buttonProps }) => (
+        <CcureButton
+          {...buttonProps}
+          ref={ref}
+          variant="secondary"
+          size="sm"
+          className="sh-org-btn"
+          aria-label={`Switch organization. Current: ${selectedOrg}`}
         >
-          <div className="sh-menu-title">Switch Organization</div>
-          {loading ? (
-            <div className="sh-menu-note">Loading...</div>
-          ) : orgs.length === 0 ? (
-            <div className="sh-menu-note">No organizations found</div>
-          ) : (
-            orgs.map((org) => (
-              <button
-                key={org.id}
-                type="button"
-                role="menuitem"
-                className={`sh-menu-item${org.name === selectedOrg ? " sh-menu-item--current" : ""}`}
-                aria-current={org.name === selectedOrg ? "true" : undefined}
-                onClick={() => onSwitch(org)}
-              >
-                <span className="sh-menu-check" aria-hidden="true">
-                  {org.name === selectedOrg ? "✓" : ""}
-                </span>
-                {org.name}
-              </button>
-            ))
-          )}
-        </div>
+          <span className="sh-org-name">{selectedOrg}</span>
+          <CcureBadge variant="primary" size="sm">
+            ENTERPRISE
+          </CcureBadge>
+          <span className="sh-chevron" aria-hidden="true">
+            ▼
+          </span>
+        </CcureButton>
       )}
-    </div>
+    >
+      <div className="sh-menu-title" role="presentation">
+        Switch Organization
+      </div>
+      {loading ? (
+        <CcureLoader label="Loading..." size="sm" />
+      ) : orgs.length === 0 ? (
+        <div className="sh-menu-note">No organizations found</div>
+      ) : (
+        orgs.map((org) => (
+          <CcureMenuItem
+            key={org.id}
+            className={`sh-menu-item${org.name === selectedOrg ? " sh-menu-item--current" : ""}`}
+            aria-current={org.name === selectedOrg ? "true" : undefined}
+            onClick={() => onSwitch(org)}
+          >
+            <span className="sh-menu-check" aria-hidden="true">
+              {org.name === selectedOrg ? "✓" : ""}
+            </span>
+            {org.name}
+          </CcureMenuItem>
+        ))
+      )}
+    </CcureDropdown>
   );
 }

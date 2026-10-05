@@ -28,7 +28,13 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { CcureAlert, CcureButton, CcureInput } from "../../../../design-system";
+import {
+  CcureLoader,
+  CcureAlert,
+  CcureButton,
+  CcureInput,
+  CcureCheckbox,
+} from "../../../../design-system";
 import {
   getSlaPolicy,
   remediationErrorMessage,
@@ -82,7 +88,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
     load();
   }, [load]);
 
-  if (loading) return <p className="rm-muted">Reading the SLA policy…</p>;
+  if (loading) return <CcureLoader label="Reading the SLA policy…" />;
   if (error) return <CcureAlert variant="danger">{error}</CcureAlert>;
   if (!policy) return null;
 
@@ -181,13 +187,12 @@ export default function SlaPolicyPanel({ canEdit = false }) {
           disabled={!canEdit || busy}
           hint="How long before the due date a finding starts reporting due soon."
         />
-        <label className="rm-check">
-          <input
-            type="checkbox"
-            checked={kev}
-            disabled={!canEdit || busy}
-            onChange={(e) => setKev(e.target.checked)}
-          />
+        <CcureCheckbox
+          className="rm-check"
+          checked={kev}
+          disabled={!canEdit || busy}
+          onChange={(e) => setKev(e.target.checked)}
+        >
           <span>
             Honour CISA KEV due dates
             <small className="rm-muted">
@@ -197,7 +202,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
               extend a federal deadline by writing a setting.
             </small>
           </span>
-        </label>
+        </CcureCheckbox>
       </div>
 
       {canEdit ? (

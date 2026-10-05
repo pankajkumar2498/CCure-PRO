@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 import { everything } from "../../../fixtures/authorization";
 /**
  * DeletedUsers — Checkpoint 3C batch 5 migration coverage.
@@ -599,10 +600,10 @@ describe("DeletedUsers — rendered surface", () => {
     expect(html).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("jdoe");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("renders one row per user and no more", async () => {

@@ -36,6 +36,7 @@ import {
   CcureSelect,
   CcureTable,
   CcureToastProvider,
+  CcureCheckbox,
 } from "../../../../design-system";
 import usePagedRows from "@audit/hooks/usePagedRows";
 import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
@@ -357,20 +358,20 @@ export default function ScanComparison() {
             <legend className="sc-sevfilter__legend">Severity</legend>
             <div className="sc-sevfilter__options">
               {SEVERITIES.map((s) => (
-                <label key={s} className="sc-check">
-                  <input
-                    type="checkbox"
-                    checked={severity.includes(s)}
-                    onChange={(e) =>
-                      setSeverity(
-                        e.target.checked
-                          ? [...severity, s]
-                          : severity.filter((v) => v !== s),
-                      )
-                    }
-                  />
+                <CcureCheckbox
+                  key={s}
+                  className="sc-check"
+                  checked={severity.includes(s)}
+                  onChange={(e) =>
+                    setSeverity(
+                      e.target.checked
+                        ? [...severity, s]
+                        : severity.filter((v) => v !== s),
+                    )
+                  }
+                >
                   {s}
-                </label>
+                </CcureCheckbox>
               ))}
             </div>
           </fieldset>
@@ -461,16 +462,20 @@ export default function ScanComparison() {
                   role="group"
                   aria-label="Filter by change"
                 >
-                  <button
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     className={`sc-chip ${classFilter === "all" ? "is-active" : ""}`}
                     aria-pressed={classFilter === "all"}
                     onClick={() => setClassFilter("all")}
                   >
                     All ({findings.length})
-                  </button>
+                  </CcureButton>
                   {CLASSIFICATIONS.map((spec) => (
-                    <button
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
                       key={spec.value}
                       type="button"
                       className={`sc-chip sc-chip--${spec.tone} ${classFilter === spec.value ? "is-active" : ""}`}
@@ -478,7 +483,7 @@ export default function ScanComparison() {
                       onClick={() => setClassFilter(spec.value)}
                     >
                       {spec.label} ({counts[spec.value] ?? 0})
-                    </button>
+                    </CcureButton>
                   ))}
                 </div>
                 <CcureInput
@@ -575,14 +580,16 @@ export default function ScanComparison() {
                         key: "details",
                         header: "Details",
                         cell: (row) => (
-                          <button
+                          <CcureButton
+                            variant="ghost"
+                            size="sm"
                             type="button"
                             className="sc-expand"
                             aria-expanded={expanded.has(row.finding_id)}
                             onClick={() => toggle(row.finding_id)}
                           >
                             {expanded.has(row.finding_id) ? "Hide" : "Show"}
-                          </button>
+                          </CcureButton>
                         ),
                       },
                     ]}

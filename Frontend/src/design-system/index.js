@@ -18,6 +18,8 @@
 
 import "./tokens/index.css";
 import "./components/components.css";
+import "./components/ux4g.components.generated.css";
+import "./components/adapters.css";
 import "./patterns/shell.css";
 import "./patterns/security-patterns.css";
 
@@ -93,3 +95,17 @@ export { default as CcureAppShell } from "./patterns/CcureAppShell";
 
 /* ── Hooks ───────────────────────────────────────────────────────────────── */
 export { default as useFocusTrap } from "./hooks/useFocusTrap";
+
+// Group 1: official UX4G adapters. Modules consume this entry point only.
+export { default as CcureIconButton } from "./components/CcureIconButton";
+export { default as CcureTextarea } from "./components/CcureTextarea";
+export { default as CcureCombobox } from "./components/CcureCombobox";
+export { CcureRadio, CcureSwitch } from "./components/CcureChoice";
+export { CcureField as CcureFormField } from "./components/CcureInput";
+export { default as CcureDrawer } from "./components/CcureDrawer";
+export {
+  default as CcureDropdown,
+  CcureMenuItem,
+} from "./components/CcureDropdown";
+export { CcureToastList, useCcureToasts } from "./components/CcureToast";
+export { CcureLoader as CcureSpinner } from "./components/CcureFeedback";

@@ -353,7 +353,7 @@ describe("SecurityDashboard — contract", () => {
     }
     await user.click(tabNamed("Overview"));
     await user.click(screen.getByText(/Last 30 days/));
-    await user.click(screen.getByRole("button", { name: /Last 7 days/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Last 7 days/ }));
     await waitFor(() => expect(callsTo("/dashboard/summary")).toHaveLength(2));
     expect(axiosInstance.post).not.toHaveBeenCalled();
     expect(axiosInstance.put).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe("SecurityDashboard — contract", () => {
     const user = userEvent.setup();
     await renderPage();
     await user.click(screen.getByText(/Last 30 days/));
-    await user.click(screen.getByRole("button", { name: /Year to date/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Year to date/ }));
     await waitFor(() =>
       DASHBOARD_PANELS.forEach((p) => expect(callsTo(p)).toHaveLength(2)),
     );
@@ -622,11 +622,17 @@ describe("SecurityDashboard — batch 17", () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(
-      screen.getByRole("button", { name: "Last 30 days", pressed: true }),
-    ).toBeInTheDocument();
+      screen.getByRole("menuitem", { name: "Last 30 days" }),
+    ).toHaveAttribute("aria-current", "true");
     expect(
-      screen.getByRole("button", { name: "Last 7 days", pressed: false }),
-    ).toBeInTheDocument();
+      screen.getByRole("menuitem", { name: "Last 7 days" }),
+    ).not.toHaveAttribute("aria-current");
+    const menu = screen.getByRole("menu", { name: "Date range" });
+    expect(menu.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{End}");
+    expect(
+      screen.getByRole("menuitem", { name: "Year to date" }),
+    ).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveFocus();

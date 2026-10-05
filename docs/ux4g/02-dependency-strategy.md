@@ -1,5 +1,13 @@
 # UX4G migration — Phase 2 dependency strategy
 
+> Historical decision record for the earlier tokens-only foundation. The active
+> approved version/provenance now comes from `Frontend/ux4g-baseline.json` and
+> [Phase B.1](B1_VERSION_FOUNDATION.md). Version numbers and measurements below
+> describe that earlier assessment, not an independent current pin. Tokens-only
+> global delivery remains excluded. [Group 1](B3_B4_SHARED_PRIMITIVES_SHELL.md)
+> now provides scoped official component CSS through shared React adapters;
+> the vendor runtime remains disabled under the existing CSP.
+
 **Date:** 9 September 2026
 **Branch:** `feat/ux4g-spike`
 **Prior phases:** [`00-baseline.md`](00-baseline.md) · [`01-spike-report.md`](01-spike-report.md)

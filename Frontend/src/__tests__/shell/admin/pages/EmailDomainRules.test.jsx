@@ -1,3 +1,4 @@
+import { assertUx4gAdapters } from "../../../helpers/assertUx4gAdapters";
 /**
  * EmailDomainRules — Checkpoint 3C batch 5 migration coverage.
  *
@@ -611,10 +612,10 @@ describe("EmailDomainRules — rendered surface", () => {
     expect(html).not.toMatch(/rgba?\(/i);
   });
 
-  it("uses no ux4g-* class in application markup", async () => {
+  it("confines official UX4G classes to shared adapters", async () => {
     const { container } = await renderPage();
     await screen.findByText("test.com");
-    expect(container.innerHTML).not.toMatch(/\bux4g-/);
+    assertUx4gAdapters(container);
   });
 
   it("renders one row per rule and no more", async () => {

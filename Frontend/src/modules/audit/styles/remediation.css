@@ -77,28 +77,7 @@
 /* ── Queues ────────────────────────────────────────────────────────────── */
 
 .rm-tabs {
-  display: flex;
-  gap: var(--ccure-space-2xs);
-  border-bottom: 1px solid var(--ccure-color-border);
   margin-bottom: var(--ccure-space-sm);
-}
-
-.rm-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: var(--ccure-space-xs) var(--ccure-space-sm);
-  color: var(--ccure-color-text-secondary);
-  border-bottom: 2px solid transparent;
-  font-size: var(--ccure-font-size-sm);
-}
-
-.rm-tab.is-active {
-  color: var(--ccure-color-text-primary);
-  border-bottom-color: var(--ccure-color-primary);
 }
 
 .rm-toolbar {

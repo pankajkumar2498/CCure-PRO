@@ -35,6 +35,7 @@ import {
   CcureInput,
   CcurePagination,
   CcureTable,
+  CcureButton,
 } from "../../../../design-system";
 import usePagedRows from "@audit/hooks/usePagedRows";
 
@@ -374,16 +375,20 @@ export default function ConfigAuditSection({ configAudit }) {
 
       <div className="ca-toolbar">
         <div className="ca-filters" role="group" aria-label="Filter by outcome">
-          <button
+          <CcureButton
+            variant="ghost"
+            size="sm"
             type="button"
             className={`ca-chip ${outcomeFilter === "all" ? "is-active" : ""}`}
             aria-pressed={outcomeFilter === "all"}
             onClick={() => setOutcomeFilter("all")}
           >
             All ({results.length})
-          </button>
+          </CcureButton>
           {OUTCOMES.map((o) => (
-            <button
+            <CcureButton
+              variant="ghost"
+              size="sm"
               key={o.key}
               type="button"
               className={`ca-chip ca-chip--${o.tone} ${outcomeFilter === o.key ? "is-active" : ""}`}
@@ -391,7 +396,7 @@ export default function ConfigAuditSection({ configAudit }) {
               onClick={() => setOutcomeFilter(o.key)}
             >
               {o.label} ({counts[o.key] ?? 0})
-            </button>
+            </CcureButton>
           ))}
         </div>
         <CcureInput
@@ -463,14 +468,16 @@ export default function ConfigAuditSection({ configAudit }) {
                   const id = row.check_id;
                   const open = expanded.has(id);
                   return (
-                    <button
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
                       type="button"
                       className="ca-expand"
                       aria-expanded={open}
                       onClick={() => toggle(id)}
                     >
                       {open ? "Hide" : "Show"}
-                    </button>
+                    </CcureButton>
                   );
                 },
               },

@@ -453,7 +453,9 @@ export default function AMTIntegration() {
                 />
               ) : (
                 <div className="amt-metrics">
-                  <button
+                  <CcureButton
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     className={`amt-ring amt-ring--${coverageBand(stats.coverage_percentage)}`}
                     aria-pressed={activeCategory === "matched"}
@@ -495,14 +497,16 @@ export default function AMTIntegration() {
                       <strong>{stats.total_inventory}</strong> inventory assets
                       matched.
                     </span>
-                  </button>
+                  </CcureButton>
 
                   <ul className="amt-categories">
                     {categories.map((c) => {
                       const helpId = `${idBase}-${c.key}-help`;
                       return (
                         <li key={c.key} className="amt-categories__item">
-                          <button
+                          <CcureButton
+                            variant="ghost"
+                            size="sm"
                             type="button"
                             className="amt-category"
                             aria-pressed={activeCategory === c.key}
@@ -536,7 +540,7 @@ export default function AMTIntegration() {
                                 {c.value}
                               </span>
                             )}
-                          </button>
+                          </CcureButton>
                           {c.help && (
                             <span id={helpId} className="cc-sr-only">
                               {c.help}

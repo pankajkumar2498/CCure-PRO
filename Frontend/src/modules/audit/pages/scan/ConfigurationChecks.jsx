@@ -123,7 +123,9 @@ const CheckRow = ({ check, defaultOpen = false }) => {
 
   return (
     <div className="cfg-row">
-      <button
+      <CcureButton
+        variant="ghost"
+        size="sm"
         type="button"
         className="cfg-row-toggle"
         onClick={() => setOpen((value) => !value)}
@@ -148,7 +150,7 @@ const CheckRow = ({ check, defaultOpen = false }) => {
         <span className="cfg-row-caret" aria-hidden="true">
           {open ? "−" : "+"}
         </span>
-      </button>
+      </CcureButton>
 
       {open && (
         <div className="cfg-detail">

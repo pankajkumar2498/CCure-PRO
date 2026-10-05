@@ -44,7 +44,8 @@ export default function CcureBadge({
   return (
     <span
       className={[
-        "cc-badge",
+        "cc-badge cc-ux4g ux4g-tag-s",
+        `ux4g-tag-tonal-${safeVariant === "danger" ? "error" : safeVariant}`,
         `cc-badge--${safeVariant}`,
         `cc-badge--${size}`,
         mono ? "cc-badge--mono" : "",

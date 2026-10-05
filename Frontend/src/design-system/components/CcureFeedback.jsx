@@ -23,8 +23,18 @@ import { useId } from "react";
 export function CcureLoader({
   label = "Loading…",
   inline = false,
+  decorative = false,
+  size = "md",
   className = "",
 }) {
+  const spinner = (
+    <span
+      className={`cc-loader__spinner cc-ux4g ux4g-spinner ux4g-spinner-primary-full ux4g-spinner-${size === "sm" ? "s" : "m"}`}
+      aria-hidden="true"
+    />
+  );
+  // A domain status already supplies visible text and a live region.
+  if (decorative) return spinner;
   return (
     <div
       className={["cc-loader", inline ? "cc-loader--inline" : "", className]
@@ -35,7 +45,7 @@ export function CcureLoader({
       role="status"
       aria-live="polite"
     >
-      <span className="cc-loader__spinner" aria-hidden="true" />
+      {spinner}
       {/* The label is always rendered for assistive tech; `inline` only
           changes the layout, never whether the state is announced. A spinner
           with no accessible text is silent. */}

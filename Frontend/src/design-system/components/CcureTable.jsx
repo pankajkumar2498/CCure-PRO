@@ -109,7 +109,8 @@ export default function CcureTable({
     >
       <table
         className={[
-          "cc-table",
+          "cc-table cc-ux4g ux4g-table",
+          density === "compact" ? "ux4g-table-s" : "ux4g-table-m",
           `cc-table--${density}`,
           hoverable ? "cc-table--hoverable" : "",
           stickyHeader ? "cc-table--sticky" : "",

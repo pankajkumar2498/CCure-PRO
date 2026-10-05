@@ -594,50 +594,9 @@
 }
 
 /* ── Finding drawer ──────────────────────────────────────────────────────── */
-.ad-drawer {
-  position: fixed;
-  inset: 0;
-  z-index: var(--ccure-z-modal);
-  display: flex;
-  align-items: stretch;
-}
-
-.ad-drawer-scrim {
-  flex: 1;
-  background: var(--ccure-overlay);
-}
-
-.ad-drawer-panel {
-  width: 30rem;
-  max-width: 100%;
-  background: var(--ccure-surface);
-  box-shadow: var(--ccure-shadow-xl);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.ad-drawer-head {
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  border-bottom: 1px solid var(--ccure-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--ccure-space-sm);
-}
-
-.ad-drawer-title {
-  margin: 0;
-  font-family: var(--ccure-font-mono);
-  font-size: var(--ccure-text-base);
-  font-weight: var(--ccure-weight-bold);
-  color: var(--ccure-text-link);
-}
 
 .ad-drawer-body {
-  padding: var(--ccure-space-lg);
-  flex: 1;
-  overflow-y: auto;
+  min-width: 0;
 }
 
 .ad-savemsg {

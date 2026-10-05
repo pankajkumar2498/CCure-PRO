@@ -57,6 +57,7 @@ import {
   CcureCard,
   CcureInput,
   CcureSelect,
+  CcureCheckbox,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -256,16 +257,15 @@ export default function NewWebScan() {
             {/* The checkbox stays inside its <label>, which is how the
                 pre-migration page associated these two — the only two controls
                 on the form that were labelled at all. */}
-            <label className="wsp-check">
-              <input
-                type="checkbox"
-                checked={formData.options.include_subdomains}
-                onChange={(e) =>
-                  handleOptChange("include_subdomains", e.target.checked)
-                }
-              />
+            <CcureCheckbox
+              className="wsp-check"
+              checked={formData.options.include_subdomains}
+              onChange={(e) =>
+                handleOptChange("include_subdomains", e.target.checked)
+              }
+            >
               <span>Include Discovered Subdomains</span>
-            </label>
+            </CcureCheckbox>
           </CcureCard>
 
           <CcureCard title="Authentication" headingLevel={2}>
@@ -319,17 +319,16 @@ export default function NewWebScan() {
           {/* The agreement panel. Amber is not the message — the words are, and
               they are what a reader without colour perception gets. */}
           <div className="wsp-agreement">
-            <label className="wsp-check wsp-check--block">
-              <input
-                type="checkbox"
-                checked={formData.authorization_confirmed}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    authorization_confirmed: e.target.checked,
-                  })
-                }
-              />
+            <CcureCheckbox
+              className="wsp-check wsp-check--block"
+              checked={formData.authorization_confirmed}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  authorization_confirmed: e.target.checked,
+                })
+              }
+            >
               <span className="wsp-agreement-text">
                 <strong className="wsp-agreement-title">
                   Authorization Agreement:
@@ -339,7 +338,7 @@ export default function NewWebScan() {
                 cause performance degradation or data modification on the target
                 system.
               </span>
-            </label>
+            </CcureCheckbox>
           </div>
 
           <div className="wsp-form-actions">

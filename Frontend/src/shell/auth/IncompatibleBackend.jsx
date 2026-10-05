@@ -4,27 +4,29 @@
  * build requires. There is no older-backend fallback: the UI says so instead of
  * guessing what the account may do.
  */
+import { CcureAlert, CcureCard } from "../../design-system";
+
 export default function IncompatibleBackend({ message }) {
   return (
-    <div
-      role="alert"
+    <main
       style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "16px",
-        background: "#1a2332",
-        color: "#fff",
-        textAlign: "center",
+        minHeight: "100dvh",
+        display: "grid",
+        placeItems: "center",
+        padding: "var(--ccure-space-xl)",
       }}
     >
-      <div style={{ maxWidth: 520 }}>
-        <h1 style={{ fontSize: "1.25rem", marginBottom: 12 }}>
+      <CcureCard style={{ maxWidth: "32rem", width: "100%" }}>
+        <h1
+          style={{
+            fontSize: "var(--ccure-text-xl)",
+            marginBottom: "var(--ccure-space-md)",
+          }}
+        >
           Backend not compatible
         </h1>
-        <p>{message}</p>
-      </div>
-    </div>
+        <CcureAlert variant="danger">{message}</CcureAlert>
+      </CcureCard>
+    </main>
   );
 }

@@ -34,6 +34,7 @@ import {
   CcureButton,
   CcureSelect,
   useCcureToast,
+  CcureCheckbox,
 } from "../../../../design-system";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
@@ -117,20 +118,20 @@ function CheckboxGroup({ legend, options, selected, onChange, disabled }) {
       <legend className="rx-group__legend">{legend}</legend>
       <div className="rx-group__options">
         {options.map((value) => (
-          <label key={value} className="rx-check">
-            <input
-              type="checkbox"
-              checked={selected.includes(value)}
-              onChange={(e) =>
-                onChange(
-                  e.target.checked
-                    ? [...selected, value]
-                    : selected.filter((v) => v !== value),
-                )
-              }
-            />
+          <CcureCheckbox
+            key={value}
+            className="rx-check"
+            checked={selected.includes(value)}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? [...selected, value]
+                  : selected.filter((v) => v !== value),
+              )
+            }
+          >
             {value.replace(/_/g, " ")}
-          </label>
+          </CcureCheckbox>
         ))}
       </div>
     </fieldset>
@@ -363,15 +364,14 @@ export default function ReportExportPanel({ scanId, scanNo, baselineScanId }) {
             onChange={setStatus}
             disabled={busy}
           />
-          <label className="rx-check rx-check--standalone">
-            <input
-              type="checkbox"
-              checked={overdueOnly}
-              disabled={busy}
-              onChange={(e) => setOverdueOnly(e.target.checked)}
-            />
+          <CcureCheckbox
+            className="rx-check rx-check--standalone"
+            checked={overdueOnly}
+            disabled={busy}
+            onChange={(e) => setOverdueOnly(e.target.checked)}
+          >
             Overdue findings only
-          </label>
+          </CcureCheckbox>
         </details>
 
         <div className="rx-actions">

@@ -42,14 +42,16 @@ function FindingMore({ cve }) {
   if (!detail) return null;
   return (
     <div className="cr-finding__more">
-      <button
+      <CcureButton
+        variant="ghost"
+        size="sm"
         type="button"
         className="cr-finding__moretoggle"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         {open ? "Hide detail" : "Detail"}
-      </button>
+      </CcureButton>
       {open ? detail : null}
     </div>
   );

@@ -137,7 +137,7 @@
 .shh-link-card:focus-visible,
 .shs-option:focus-visible,
 .shs-toggle-input:focus-visible + .shs-toggle-track {
-  outline: var(--ccure-focus-ring);
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
   outline-offset: var(--ccure-focus-ring-offset);
 }
 
@@ -204,7 +204,6 @@
   align-items: flex-start;
   gap: var(--ccure-space-xs);
   padding: var(--ccure-space-sm) var(--ccure-space-md);
-  cursor: pointer;
   position: relative;
   border-bottom: 1px solid var(--ccure-border-subtle);
   transition: background var(--ccure-duration-fast) var(--ccure-ease);
@@ -318,4 +317,65 @@
 
 .shn-action-btn--delete:hover {
   color: var(--ccure-danger-text);
+}
+
+/* Rich notification content is a shared Card disclosure, not an action menu. */
+.shn-panel.cc-card {
+  max-height: min(30rem, calc(100dvh - var(--ccure-header-height) - 2rem));
+}
+.shn-panel > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.shn-panel .shn-header {
+  flex: none;
+  flex-wrap: wrap;
+}
+.shn-panel .shn-header-actions {
+  flex-wrap: wrap;
+}
+.shn-panel .shn-tabs {
+  flex: none;
+}
+.shn-badge.cc-badge {
+  padding: 0 3px;
+  min-width: 1rem;
+  height: 1rem;
+}
+.shn-item-actions {
+  flex-wrap: wrap;
+  width: 2rem;
+}
+
+.shn-item-content {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  gap: var(--ccure-space-xs);
+}
+.shn-item-content.cc-btn {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  white-space: normal;
+}
+.shn-item-content.cc-btn > span {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+.shn-item-body,
+.shn-item-title,
+.shn-item-msg,
+.shn-item-time {
+  display: block;
+}
+.shn-item-title {
+  overflow-wrap: anywhere;
 }

@@ -29,6 +29,7 @@ const ROOT = path.resolve(HERE, "..");
 
 const {
   css: CSS,
+  components: COMPONENTS,
   manifest: MANIFEST,
   fonts: FONTS,
   publicManifest: PUBLIC_MANIFEST,
@@ -48,6 +49,7 @@ async function snapshot() {
   checkFoundation();
   return {
     css: sha(css),
+    components: sha(await readFile(COMPONENTS)),
     fonts,
     manifest,
     manifestSha256: sha(manifestBytes),
@@ -72,6 +74,7 @@ async function main() {
   // Both runs begin without generated output. Compare metadata bytes as well
   // as CSS/fonts so timestamps, ordering and provenance cannot drift silently.
   await rm(CSS, { force: true });
+  await rm(COMPONENTS, { force: true });
   await rm(MANIFEST, { force: true });
   await rm(FONTS, { recursive: true, force: true });
   await rm(PUBLIC_MANIFEST, { force: true });
@@ -82,6 +85,7 @@ async function main() {
   // Remove the output entirely, so the second run cannot pass by leaving the
   // previous files in place.
   await rm(CSS, { force: true });
+  await rm(COMPONENTS, { force: true });
   await rm(MANIFEST, { force: true });
   await rm(FONTS, { recursive: true, force: true });
   await rm(PUBLIC_MANIFEST, { force: true });
@@ -90,6 +94,8 @@ async function main() {
   const second = await snapshot();
 
   const problems = [];
+  if (first.components !== second.components)
+    problems.push("Scoped component CSS differs between clean runs");
   if (first.css !== second.css) {
     problems.push(
       `CSS differs:\n    run 1 ${first.css}\n    run 2 ${second.css}`,

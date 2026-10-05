@@ -33,7 +33,10 @@ import {
   CcureAlert,
   CcureButton,
   CcureInput,
+  CcureCheckbox,
   CcurePasswordField,
+  CcureCard,
+  CcureBadge,
 } from "../design-system";
 import {
   verifyMfa as verifyMfaApi,
@@ -233,25 +236,21 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-split-wrapper">
+    <main className="auth-split-wrapper">
       {/* Left Enterprise Showcase Panel */}
       <AuthHeroPanel pageType="login" />
 
-      {/* Right Form Panel.
-          `cc-theme-dark` scopes the CCure semantic tokens to their dark values
-          for everything inside. The auth surface is a fixed dark panel —
-          `.auth-split-wrapper` hardcodes `background:#020617` and ignores
-          `data-theme` — so without this a CcureInput would render as a white
-          box with near-black text on a #0f172a card whenever the user's account
-          theme is light, which is the default. */}
+      {/* Shared auth surfaces follow the application theme. */}
       <div className="auth-form-panel">
-        <div className="auth-card cc-theme-dark">
+        <CcureCard as="div" className="auth-card">
           {/* Mobile Brand Header */}
           <div className="auth-brand">
             <ShieldLogoIcon size={24} />
             <div className="auth-brand-text">
               <span className="auth-brand-name">CCure Audit</span>
-              <span className="auth-brand-badge">PRO</span>
+              <CcureBadge className="auth-brand-badge" variant="info">
+                PRO
+              </CcureBadge>
             </div>
           </div>
 
@@ -367,17 +366,21 @@ export default function Login() {
 
                 {/* Remember Me & Forgot Password Row */}
                 <div className="auth-checkbox-row">
-                  <label className="auth-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                    />
-                    <span>Remember me</span>
-                  </label>
-                  <Link to="/forgot-password" className="auth-link">
+                  <CcureCheckbox
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  >
+                    Remember me
+                  </CcureCheckbox>
+                  <CcureButton
+                    as={Link}
+                    variant="ghost"
+                    size="sm"
+                    to="/forgot-password"
+                    className="auth-link"
+                  >
                     Forgot password?
-                  </Link>
+                  </CcureButton>
                 </div>
 
                 <CcureButton type="submit" loading={loading} block size="lg">
@@ -388,9 +391,15 @@ export default function Login() {
               {selfRegAllowed === true && (
                 <p className="auth-switch">
                   No account?{" "}
-                  <Link to="/register" className="auth-link">
+                  <CcureButton
+                    as={Link}
+                    variant="ghost"
+                    size="sm"
+                    to="/register"
+                    className="auth-link"
+                  >
                     Register here
-                  </Link>
+                  </CcureButton>
                 </p>
               )}
               {selfRegAllowed === false && (
@@ -404,8 +413,8 @@ export default function Login() {
 
           {/* Reusable Enterprise Security Trust Footer */}
           <AuthTrustFooter />
-        </div>
+        </CcureCard>
       </div>
-    </div>
+    </main>
   );
 }

@@ -16,11 +16,13 @@
  */
 import { useId, useState } from "react";
 import {
+  CcureLoader,
   CcureBadge,
   CcureButton,
   CcureEmptyState,
   CcureSeverityBadge,
   CcureTabs,
+  CcureTabPanel,
 } from "../../../../design-system";
 import "../../styles/audit-timeline.css";
 
@@ -117,7 +119,9 @@ function EventRow({ event, rawEvent }) {
         )}
 
         <div className="audit-tech-toggle">
-          <button
+          <CcureButton
+            variant="ghost"
+            size="sm"
             type="button"
             className="audit-tech-btn"
             aria-expanded={showTech}
@@ -125,7 +129,7 @@ function EventRow({ event, rawEvent }) {
             onClick={() => setShowTech(!showTech)}
           >
             {showTech ? "Hide Technical Details" : "View Technical Details"}
-          </button>
+          </CcureButton>
           {showTech && <TechDetailsPanel id={techId} rawEvent={rawEvent} />}
         </div>
       </div>
@@ -147,7 +151,9 @@ function ScanGroupCard({ group, rawChangelog }) {
     >
       {/* Was a `<div onClick>`: unreachable by keyboard and silent about its
           state. A button with aria-expanded is both. */}
-      <button
+      <CcureButton
+        variant="ghost"
+        size="sm"
         type="button"
         className="audit-group-header"
         aria-expanded={expanded}
@@ -185,7 +191,7 @@ function ScanGroupCard({ group, rawChangelog }) {
             </svg>
           </span>
         </span>
-      </button>
+      </CcureButton>
 
       {expanded && (
         <div className="audit-group-body" id={bodyId}>
@@ -213,13 +219,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
 
   // If we haven't loaded or there's no data
   if (!changelogData || !changelogData.timeline) {
-    return (
-      <CcureEmptyState
-        icon="⏳"
-        title="Loading Timeline..."
-        className="audit-empty"
-      />
-    );
+    return <CcureLoader label="Loading Timeline..." />;
   }
 
   const { timeline, raw_changelog, admin_logs, category_meta } = changelogData;
@@ -257,6 +257,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
         </div>
         <div className="audit-controls">
           <CcureTabs
+            id="asset-activity"
             tabs={VIEW_TABS}
             value={viewMode}
             onChange={setViewMode}
@@ -266,124 +267,132 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
         </div>
       </div>
 
-      {viewMode === "timeline" ? (
-        <>
-          {/* Category Filter Pills — toggle buttons that announce their state. */}
-          {category_meta && Object.keys(category_meta).length > 0 && (
-            <div
-              className="audit-filter-bar"
-              role="group"
-              aria-label="Filter events by category"
-            >
-              <button
-                type="button"
-                className="audit-filter-pill"
-                aria-pressed={activeCategory === "all"}
-                onClick={() => setActiveCategory("all")}
+      <CcureTabPanel tabsId="asset-activity" id={viewMode} active>
+        {viewMode === "timeline" ? (
+          <>
+            {/* Category Filter Pills — toggle buttons that announce their state. */}
+            {category_meta && Object.keys(category_meta).length > 0 && (
+              <div
+                className="audit-filter-bar"
+                role="group"
+                aria-label="Filter events by category"
               >
-                <span className="audit-filter-icon" aria-hidden="true">
-                  🔍
-                </span>{" "}
-                All Events
-              </button>
-              {Object.entries(category_meta).map(([catId, meta]) => {
-                // Only show categories that exist in our data
-                if (!changelogData.categories?.includes(catId)) return null;
-                return (
-                  <button
-                    key={catId}
-                    type="button"
-                    className="audit-filter-pill"
-                    aria-pressed={activeCategory === catId}
-                    onClick={() => setActiveCategory(catId)}
-                  >
-                    <span className="audit-filter-icon" aria-hidden="true">
-                      {meta.icon}
-                    </span>{" "}
-                    {meta.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                <CcureButton
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  className="audit-filter-pill"
+                  aria-pressed={activeCategory === "all"}
+                  onClick={() => setActiveCategory("all")}
+                >
+                  <span className="audit-filter-icon" aria-hidden="true">
+                    🔍
+                  </span>{" "}
+                  All Events
+                </CcureButton>
+                {Object.entries(category_meta).map(([catId, meta]) => {
+                  // Only show categories that exist in our data
+                  if (!changelogData.categories?.includes(catId)) return null;
+                  return (
+                    <CcureButton
+                      variant="ghost"
+                      size="sm"
+                      key={catId}
+                      type="button"
+                      className="audit-filter-pill"
+                      aria-pressed={activeCategory === catId}
+                      onClick={() => setActiveCategory(catId)}
+                    >
+                      <span className="audit-filter-icon" aria-hidden="true">
+                        {meta.icon}
+                      </span>{" "}
+                      {meta.label}
+                    </CcureButton>
+                  );
+                })}
+              </div>
+            )}
 
-          {/* Timeline Groups */}
-          <div className="audit-groups">
-            {filteredTimeline.length === 0 ? (
+            {/* Timeline Groups */}
+            <div className="audit-groups">
+              {filteredTimeline.length === 0 ? (
+                <CcureEmptyState
+                  icon="🗂️"
+                  title="No events match filter"
+                  description="Try selecting a different category or viewing all events."
+                  className="audit-empty"
+                  action={
+                    <CcureButton
+                      variant="secondary"
+                      onClick={() => setActiveCategory("all")}
+                    >
+                      Clear Filters
+                    </CcureButton>
+                  }
+                />
+              ) : (
+                filteredTimeline.map((group) => (
+                  <ScanGroupCard
+                    key={group.group_id}
+                    group={group}
+                    rawChangelog={raw_changelog}
+                  />
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          /* Administrative Audit Trail View */
+          <div className="audit-admin-trail">
+            {!admin_logs || admin_logs.length === 0 ? (
               <CcureEmptyState
-                icon="🗂️"
-                title="No events match filter"
-                description="Try selecting a different category or viewing all events."
+                icon="🛡️"
+                title="No Administrative Actions"
+                description="No users have performed administrative actions on this asset."
                 className="audit-empty"
-                action={
-                  <CcureButton
-                    variant="secondary"
-                    onClick={() => setActiveCategory("all")}
-                  >
-                    Clear Filters
-                  </CcureButton>
-                }
               />
             ) : (
-              filteredTimeline.map((group) => (
-                <ScanGroupCard
-                  key={group.group_id}
-                  group={group}
-                  rawChangelog={raw_changelog}
-                />
+              admin_logs.map((log_entry) => (
+                <div key={log_entry.id} className="audit-admin-entry">
+                  <div className="audit-admin-dot" aria-hidden="true" />
+                  <div className="audit-admin-time">
+                    {formatTime(log_entry.created_at)}
+                  </div>
+                  <div className="audit-admin-action">
+                    {log_entry.action
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase())}
+                    <CcureBadge
+                      variant={
+                        log_entry.status === "success" ? "success" : "danger"
+                      }
+                    >
+                      {log_entry.status}
+                    </CcureBadge>
+                  </div>
+                  <div className="audit-admin-actor">
+                    Actor:{" "}
+                    <span className="audit-admin-actor-name">
+                      {log_entry.user_email}
+                    </span>
+                  </div>
+                  {log_entry.changes &&
+                    Object.keys(log_entry.changes).length > 0 && (
+                      <div className="audit-admin-changes">
+                        <div className="audit-admin-changes-title">
+                          Changes:
+                        </div>
+                        <pre className="audit-admin-pre">
+                          {JSON.stringify(log_entry.changes, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                </div>
               ))
             )}
           </div>
-        </>
-      ) : (
-        /* Administrative Audit Trail View */
-        <div className="audit-admin-trail">
-          {!admin_logs || admin_logs.length === 0 ? (
-            <CcureEmptyState
-              icon="🛡️"
-              title="No Administrative Actions"
-              description="No users have performed administrative actions on this asset."
-              className="audit-empty"
-            />
-          ) : (
-            admin_logs.map((log_entry) => (
-              <div key={log_entry.id} className="audit-admin-entry">
-                <div className="audit-admin-dot" aria-hidden="true" />
-                <div className="audit-admin-time">
-                  {formatTime(log_entry.created_at)}
-                </div>
-                <div className="audit-admin-action">
-                  {log_entry.action
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (l) => l.toUpperCase())}
-                  <CcureBadge
-                    variant={
-                      log_entry.status === "success" ? "success" : "danger"
-                    }
-                  >
-                    {log_entry.status}
-                  </CcureBadge>
-                </div>
-                <div className="audit-admin-actor">
-                  Actor:{" "}
-                  <span className="audit-admin-actor-name">
-                    {log_entry.user_email}
-                  </span>
-                </div>
-                {log_entry.changes &&
-                  Object.keys(log_entry.changes).length > 0 && (
-                    <div className="audit-admin-changes">
-                      <div className="audit-admin-changes-title">Changes:</div>
-                      <pre className="audit-admin-pre">
-                        {JSON.stringify(log_entry.changes, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+        )}
+      </CcureTabPanel>
     </div>
   );
 }

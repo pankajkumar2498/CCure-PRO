@@ -60,11 +60,44 @@ TICKET_OR_BEARER = [
 WEBSOCKETS = ["/scans/{scan_id}/progress", "/web-scans/{scan_id}/progress"]
 
 
+def _production_app():
+    """The application as production serves it.
+
+    The gateway policy describes the **production** route set: FastAPI's own
+    documentation routes (``/openapi.json``, ``/docs``, ``/redoc``) exist only when
+    ``ENV`` is not ``production`` (``main.py``), and they are plain Starlette routes
+    the policy has no class for. The Dockerfile defaults ``ENV=production``, but a
+    development deployment sets ``ENV=development`` and the test session imports
+    ``main`` that way, which made this module error with "route type Route at
+    /openapi.json is not represented" for a reason unrelated to any route.
+
+    So the application under test is built the way production builds it: ``main.py``
+    executed once more, under its own module name, with ``ENV=production`` for the
+    duration of the import. The session's own ``main.app`` is untouched. When the
+    session is already production the session app is used as it is.
+    """
+    import importlib.util
+
+    from main import app as session_app
+
+    if not any(type(r).__name__ == "Route" for r in session_app.routes):
+        return session_app
+    spec = importlib.util.spec_from_file_location(
+        "main_production_for_route_policy", BACKEND_ROOT / "main.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("ENV", "production")
+        spec.loader.exec_module(module)
+    return module.app
+
+
 @pytest.fixture(scope="module")
 def app():
     logging.disable(logging.CRITICAL)
     try:
-        from main import app as application
+        application = _production_app()
     finally:
         logging.disable(logging.NOTSET)
     return application
@@ -367,7 +400,9 @@ def test_two_independent_processes_generate_identical_bytes():
             capture_output=True,
             text=True,
             check=True,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            # the policy is generated for the production route set (see
+            # _production_app), whatever ENV the test session runs under
+            env={**os.environ, "ENV": "production", "PYTHONDONTWRITEBYTECODE": "1"},
         )
         outputs.append(run.stdout)
     assert outputs[0] == outputs[1] and outputs[0].startswith("{")

@@ -3,6 +3,7 @@
  * relative to the frozen clock in freeze.mjs, so "3d ago" and certificate
  * expiry bands render the same way on every run.
  */
+import { readFileSync } from "node:fs";
 import { FIXED_TIME } from "./freeze.mjs";
 
 const DAY = 86400000;
@@ -26,14 +27,77 @@ const BASE_PERMISSIONS = [
   "compliance:export_report",
 ];
 
-const persona = (permissions) => ({
+/* The harness answers `/auth/me` with the native authorization contract
+   (`user.authorization`, contract 1), exactly as the backend does since the native
+   RBAC cut-over: permission keys split by scope, no role, no legacy atom. The
+   personas below are still *written* with the short legacy names they were
+   authored with; ATOM_KEYS is the one place they become native keys, and a name
+   with no entry throws, so a persona can never silently hold nothing. */
+const VOCABULARY = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../../src/__tests__/fixtures/authorizationVocabulary.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+).keys;
+
+const ATOM_KEYS = {
+  "dashboard:read": ["audit.dashboard.read"],
+  "scans:read": ["audit.scan.read", "audit.scan.read_all"],
+  "scans:execute": ["audit.scan.run"],
+  "scans:archive": ["audit.scan.lifecycle"],
+  "scans:recycle": ["audit.scan.lifecycle"],
+  "assets:read": ["audit.asset.read"],
+  "assets:update": ["audit.asset.update"],
+  "findings:read": ["audit.finding.read"],
+  "findings:update": ["audit.finding.update"],
+  "reports:read": ["audit.report.read"],
+  // notifications are the platform's and are not permission-gated
+  "notifications:read": [],
+  "compliance:read": ["audit.compliance.read"],
+  "compliance:attest": ["audit.compliance.attest"],
+  "compliance:manage": ["audit.compliance.manage_rules"],
+  "compliance:export_report": ["audit.compliance.export_report"],
+  "audit:read": ["platform.audit_log.read"],
+  "users:read": ["platform.user.read"],
+  "organizations:read": ["platform.organization.read"],
+  "roles:read": ["platform.role.read"],
+};
+
+export const authorizationFor = (names, { reach = false } = {}) => {
+  const keys = new Set();
+  for (const name of names) {
+    if (!Object.prototype.hasOwnProperty.call(ATOM_KEYS, name))
+      throw new Error(`harness persona names an unmapped permission: ${name}`);
+    for (const key of ATOM_KEYS[name]) keys.add(key);
+  }
+  const platform = [];
+  const organization = [];
+  for (const key of [...keys].sort()) {
+    if (!(key in VOCABULARY))
+      throw new Error(`harness maps to a key the catalogue lacks: ${key}`);
+    (VOCABULARY[key] === "platform" ? platform : organization).push(key);
+  }
+  return {
+    contract: 1,
+    home_org_id: "o-1",
+    active_org_id: "o-1",
+    permissions: { platform, organization },
+    can_switch_organisation: reach,
+    assignments: [],
+  };
+};
+
+const persona = (permissions, options) => ({
   id: 101,
   username: "harness",
   email: "harness@example.test",
   full_name: "Harness Operator",
   org_id: "o-1",
   organization_name: "Harness Org",
-  role: { name: "analyst", permissions },
+  authorization: authorizationFor(permissions, options),
   is_active: true,
   is_verified: true,
   mfa_enabled: false,
@@ -3147,30 +3211,33 @@ export const PLATFORM_MODULES = {
   ],
 };
 
-export const PH_ORG_ADMIN = {
-  ...persona([
-    ...BASE_PERMISSIONS,
-    "users:read",
-    "audit:read",
-    "organizations:read",
-    "roles:read",
-  ]),
-  role: {
-    name: "org_admin",
-    permissions: [
+export const PH_ORG_ADMIN = persona([
+  ...BASE_PERMISSIONS,
+  "users:read",
+  "audit:read",
+  "organizations:read",
+  "roles:read",
+]);
+
+/* Can enter another organisation: the platform-scope switch grant, which the
+   persona factory cannot express from a legacy name, so it is added by hand. */
+export const PH_SUPERADMIN = (() => {
+  const base = persona(
+    [
       ...BASE_PERMISSIONS,
       "users:read",
       "audit:read",
       "organizations:read",
       "roles:read",
     ],
-  },
-};
-
-export const PH_SUPERADMIN = {
-  ...ANALYST,
-  role: { name: "superadmin", permissions: [] },
-};
+    { reach: true },
+  );
+  base.authorization.permissions.platform = [
+    ...base.authorization.permissions.platform,
+    "platform.organization.switch",
+  ].sort();
+  return base;
+})();
 
 export const PH_ORGS = {
   organizations: [

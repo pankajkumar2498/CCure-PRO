@@ -11,20 +11,20 @@ database; do not weaken them.
 Tests are grouped by the module they cover. The group a file sits in is the
 answer to "what breaks if this fails".
 
-| Group           | Covers |
-|-----------------|--------|
-| `auth/`         | Login, MFA, password reset, mailbox verification, email-domain screening, the platform's own endpoints (`/platform/modules`) |
-| `security/`     | RBAC route coverage, tenant isolation, organization lifecycle, CORS and security headers, file upload validation |
-| `compliance/`   | The policy compliance engine, framework activation and parking, and the per-catalogue suites |
-| `scans/`        | Discovery and port phases, scope, progress, Celery tasks, OT probe safety, NVD sync |
-| `assets/`       | MAC normalisation, OUI lookup, device classification, IP resolution |
-| `topology/`     | Network map API, client, graph engine, vendor quirks |
-| `credentialed/` | Authenticated collection, version matching, package and process identity |
-| `web/`          | The web-application scanning module |
-| `reports/`      | PDF/CSV generation, layout limits, download access rules |
-| `repo/`         | Repository-wide invariants: documentation coverage, schema drift |
-| `rbac/`         | The new RBAC capability (`ccure_platform/rbac/`, RBAC-1, dark): schema and triggers, the decision engine, catalogue sync, governance, shadow, independence, and a characterization that the legacy authorization is still the authority. Its fixtures live in `rbac_testing.py` — see below |
-| `audit_boundary/` | The CCure Audit module's boundary layers (`ccure_audit/`): views, application services, integration mappers |
+| Group             | Covers                                                                                                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth/`           | Login, MFA, password reset, mailbox verification, email-domain screening, the platform's own endpoints (`/platform/modules`)                                                                                                                                                                |
+| `security/`       | RBAC route coverage, tenant isolation, organization lifecycle, CORS and security headers, file upload validation                                                                                                                                                                            |
+| `compliance/`     | The policy compliance engine, framework activation and parking, and the per-catalogue suites                                                                                                                                                                                                |
+| `scans/`          | Discovery and port phases, scope, progress, Celery tasks, OT probe safety, NVD sync                                                                                                                                                                                                         |
+| `assets/`         | MAC normalisation, OUI lookup, device classification, IP resolution                                                                                                                                                                                                                         |
+| `topology/`       | Network map API, client, graph engine, vendor quirks                                                                                                                                                                                                                                        |
+| `credentialed/`   | Authenticated collection, version matching, package and process identity                                                                                                                                                                                                                    |
+| `web/`            | The web-application scanning module                                                                                                                                                                                                                                                         |
+| `reports/`        | PDF/CSV generation, layout limits, download access rules                                                                                                                                                                                                                                    |
+| `repo/`           | Repository-wide invariants: documentation coverage, schema drift                                                                                                                                                                                                                            |
+| `rbac/`           | The new RBAC capability (`ccure_platform/rbac/`, RBAC-1, dark): schema and triggers, the decision engine, catalogue sync, governance, shadow, independence, and a characterization that the legacy authorization is still the authority. Its fixtures live in `rbac_testing.py` — see below |
+| `audit_boundary/` | The CCure Audit module's boundary layers (`ccure_audit/`): views, application services, integration mappers                                                                                                                                                                                 |
 
 ## Two rules the layout depends on
 
@@ -65,7 +65,34 @@ second `conftest.py` would replace the first in `sys.modules`.
 
 The rollback is load-bearing. The `rbac_*` tables reference `organizations` and
 `users` `ON DELETE RESTRICT`, and role history and roles refuse deletes outright,
-so a row one of these tests *committed* would make the suite's per-test purge
+so a row one of these tests _committed_ would make the suite's per-test purge
 (`DELETE FROM organizations`, `DELETE FROM users`) fail in an unrelated test. Never
 `commit()` in an RBAC test, and never use the committed `test_org` / `test_user`
 fixtures with the `rbac_*` tables.
+
+## Provisioning the disposable database
+
+`test_development_reset.py` (and anything touching audit retention) needs the audit
+chain and retention machinery, which the application role cannot create. On a fresh
+scratch database a DBA applies, as a superuser:
+
+    for f in bootstrap_chain bootstrap_chain_retention bootstrap_chain_retention_chained; do
+      docker exec -i ccure-db psql -U postgres -d <scratch_db> -v ON_ERROR_STOP=1 \
+        < Backend/scripts/audit/$f.sql
+    done
+
+Without them `audit_retention.retention_holds` does not exist and that test fails with
+`UndefinedTable` — an environment gap, not a defect. Never run these against the live
+database from a test setup.
+
+## Route-policy tests and `ENV`
+
+The gateway policy describes the **production** route set. `test_gateway_route_policy.py`
+builds that application itself (it re-executes `main.py` once with `ENV=production`), so
+it passes whether the session runs as `development` or `production`.
+
+## Browser suite
+
+Build exactly as `docs/ux4g/UX4G_STANDARD.md` says — `VITE_API_BASE_URL=/api npm run build`.
+A build made with the developer's `Frontend/.env.local` calls `http://localhost:8000`,
+which the harness's CSP blocks, and every page then lands on "Sign in".

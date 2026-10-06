@@ -121,6 +121,12 @@ services:
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # The key the MFA Fernet key is derived from (users.totp_secret). It must be
+      # the value the secrets were encrypted under: it was initialised to the
+      # JWT secret's value, so nothing already stored changes. Required, because
+      # an unset one used to fall back to the JWT secret and would silently
+      # re-key (and so lose) every enrolled authenticator.
+      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY must be set (see scripts/security/verify_mfa_key_continuity.py)}
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       # Set explicitly rather than left to Backend/.env: auth/router.py reads
@@ -271,7 +277,9 @@ services:
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
+      # nothing. The api is the only service that does either.
+      - SKIP_DOTENV_LOAD=1
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - REFRESH_COOKIE_PATH=${REFRESH_COOKIE_PATH:-/}
       # Set explicitly rather than left to Backend/.env: auth/router.py reads
@@ -302,6 +310,10 @@ services:
         condition: service_healthy
     volumes:
       - ./Backend:/app
+      # ./Backend/.env carries the application's secrets; the mount above would
+      # hand it to every process in this container. Nothing here reads it
+      # (SKIP_DOTENV_LOAD) so it is masked, not just unused.
+      - /dev/null:/app/.env:ro
       # Internal root CA, so libpq can verify the PostgreSQL server
       # certificate (sslmode=verify-full). Read-only: the container has
       # no reason to alter a trust anchor.
@@ -401,7 +413,9 @@ services:
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
+      # nothing. The api is the only service that does either.
+      - SKIP_DOTENV_LOAD=1
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - APP_ENV=production
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
@@ -423,6 +437,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
+      # ./Backend/.env carries the application's secrets; the mount above would
+      # hand it to every process in this container. Nothing here reads it
+      # (SKIP_DOTENV_LOAD) so it is masked, not just unused.
+      - /dev/null:/app/.env:ro
       - ./certs/ccure-internal-ca.crt:/etc/ssl/ccure/ccure-internal-ca.crt:ro
       - backend_venv:/app/.venv
       - beat_state:/var/lib/ccure-beat
@@ -460,7 +478,9 @@ services:
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      # Workers hold no token or MFA secret (Phase 9, 3b): they verify and sign
+      # nothing. The api is the only service that does either.
+      - SKIP_DOTENV_LOAD=1
       - COMPLIANCE_ENCRYPTION_KEY=${COMPLIANCE_ENCRYPTION_KEY:?COMPLIANCE_ENCRYPTION_KEY must be set, and must match the value in Backend/.env used by the host scanner worker}
       - APP_ENV=production
       - PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
@@ -483,6 +503,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./Backend:/app
+      # ./Backend/.env carries the application's secrets; the mount above would
+      # hand it to every process in this container. Nothing here reads it
+      # (SKIP_DOTENV_LOAD) so it is masked, not just unused.
+      - /dev/null:/app/.env:ro
       # Internal root CA, so libpq can verify the PostgreSQL server
       # certificate (sslmode=verify-full). Read-only: the container has
       # no reason to alter a trust anchor.

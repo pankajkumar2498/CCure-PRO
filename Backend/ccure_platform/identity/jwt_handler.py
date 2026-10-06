@@ -42,23 +42,9 @@ ALGORITHM = tokens.ALGORITHM
 ACCESS_TOKEN_EXPIRE = timedelta(minutes=_JWTCfg.ACCESS_TOKEN_EXPIRES_MINUTES)
 REFRESH_TOKEN_EXPIRE = timedelta(days=_JWTCfg.REFRESH_TOKEN_EXPIRES_DAYS)
 
-# Runtime guard: warn or fail if the key is insecure.
-_KNOWN_WEAK_KEYS = {
-    "dev-secret-key-change-in-production",
-    "ccure-dev-only-secret-change-me",
-    "ccure-super-secret-change-in-production",
-    "your-super-secret-jwt-key-change-in-production",
-}
-if SECRET_KEY in _KNOWN_WEAK_KEYS:
-    if ENVIRONMENT == "production":
-        raise RuntimeError(
-            "JWT_SECRET_KEY must be set to a strong, unique value in production. "
-            "The current value is a known development default."
-        )
-    logger.warning(
-        "JWT_SECRET_KEY is using a development default. "
-        "Set JWT_SECRET_KEY in your .env before deploying to production."
-    )
+# (The "known weak JWT secret" start-up guard was here. It guarded the HS256
+# secret, which no longer verifies or signs anything, and it raised in production
+# for a process that has — deliberately — no such secret: the workers.)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 argon2_hasher = PasswordHasher()

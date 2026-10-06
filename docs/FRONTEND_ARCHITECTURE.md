@@ -117,8 +117,6 @@ Frontend/
     │   ├── policy/            @policy — CCure Policy Pro (README only)
     │   ├── rank/              @rank — CCure Rank (README only)
     │   └── ir/                @ir — CCure IR frontend integration (README only)
-    ├── pages/, components/auth/, styles/auth.css, styles/forgot-password.css
-    │                          The sign-in screens — pending (below)
     └── __tests__/             Vitest; architecture/, shell/, design-system/,
                                modules/<key>/ mirroring each module; testPaths.js
 ```
@@ -134,7 +132,6 @@ import — relative and alias alike — to a file:
 | design system                | itself                                                      | anything of the application                       |
 | shell                        | itself, the design system                                   | any product, the root, the global stylesheet      |
 | a product module             | itself, the shell, the design system, the global stylesheet | another product, the root                         |
-| pending sign-in group        | itself, the shell, the design system, the global stylesheet | any product, the root                             |
 | root (`main.jsx`, `App.jsx`) | everything                                                  | — (nothing imports it but `main.jsx` → `App.jsx`) |
 
 The same test fails on a source file outside a place the config names (so code
@@ -165,10 +162,12 @@ test fails if shell source names a product.
 
 ### Pending and recorded decisions
 
-- **Sign-in screens.** Platform screens by function, but they carry Audit's
-  branding ("CCure Audit", "CCure Audit PRO"); the shell may name no product.
-  They stay in `pages/`, `components/auth/` and `styles/` until the platform's
-  sign-in branding is decided (`PENDING` in `modules.config.js`).
+- **Sign-in screens** (moved 6 Oct 2026). Platform screens, now in
+  `shell/auth/{pages,components,styles}/`; they name the platform ("CCure") and no
+  product, and state no figure or status they cannot back. **Still open (owner,
+  D12-9): the Terms of Service and Privacy Policy dialogs in `pages/Register.jsx`
+  name "CCure Audit PRO" and describe scanning.** That is legal copy; it is left
+  verbatim and a test records the exception.
 - **Shared platform capabilities** (owner decision, 1 Oct 2026). There is no
   platform-admin product or team. User, organisation, role, email-domain and
   audit-log administration, the account menu, notifications, organisation
@@ -738,7 +737,7 @@ shell's organization switcher, which writes `localStorage.activeOrgId`.
 | `shell/account/`, `shell/notifications/`, `shell/navigation/`, `shell/feedback/` | `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`; `NotificationsPanel`; `CcureHomeLink`, `AccountMenu`, `OrgSwitcher`, `UserCard`; `Toast` |
 | `modules/audit/components/scan/`                                                 | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                                        |
 | `modules/audit/components/assets/`                                               | `AuditTimeline`                                                                                                                                   |
-| `components/auth/` (pending sign-in)                                             | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                                   |
+| `shell/auth/components/` (sign-in)                                               | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                                   |
 | `shell/auth/`, `shell/navigation/`                                               | `PrivateRoute`, `CcureHomeLink`                                                                                                                   |
 
 `Skeleton` and `Loader` are the two loading primitives; `EmptyState` covers the

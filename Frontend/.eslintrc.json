@@ -138,40 +138,6 @@
       }
     },
     {
-      "files": [
-        "src/pages/Login.jsx",
-        "src/pages/Register.jsx",
-        "src/pages/VerifyEmail.jsx",
-        "src/pages/ForgotPassword.jsx",
-        "src/pages/ResetPassword.jsx",
-        "src/components/auth/AuthHeroPanel.jsx",
-        "src/components/auth/AuthIcons.jsx",
-        "src/components/auth/AuthTrustFooter.jsx"
-      ],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "@audit",
-                  "@audit/*",
-                  "@policy",
-                  "@policy/*",
-                  "@rank",
-                  "@rank/*",
-                  "@ir",
-                  "@ir/*"
-                ],
-                "message": "The sign-in screens are pending a move to the shell (modules.config.js PENDING) and may import no product."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "files": ["src/modules/audit/**"],
       "rules": {
         "no-restricted-imports": [

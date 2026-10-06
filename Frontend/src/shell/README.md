@@ -37,7 +37,9 @@ product-specific; otherwise it belongs in the product's module.
   preferences; a product passes its own sections, which render between Display
   and Notifications and save with the rest. Audit passes "Scan Defaults".
 
-The sign-in screens are platform screens by function but still live in
-`src/pages/`, `src/components/auth/` and `src/styles/` because they carry
-Audit's branding; they move here once the platform's sign-in branding is
-decided (`Frontend/modules.config.js`, `PENDING`).
+The sign-in screens are platform screens and live in `src/shell/auth/` (`pages/`,
+`components/`, `styles/`; moved from `src/pages/`, `src/components/auth/` and
+`src/styles/` on 6 Oct 2026). They name the platform and no product. One piece of
+legal copy — the Terms of Service and Privacy Policy dialogs in
+`pages/Register.jsx` — still says "CCure Audit PRO" and is left verbatim: rewording
+it is the owner's decision.

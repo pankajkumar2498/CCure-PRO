@@ -257,14 +257,12 @@ describe("imports respect the module boundaries", () => {
     expect(allowed("audit", "global-styles")).toBe(true);
     expect(allowed("shell", "global-styles")).toBe(false);
     expect(allowed("rank", "design-system")).toBe(true);
-    expect(allowed("pending:sign-in", "audit")).toBe(false);
-    expect(allowed("pending:sign-in", "shell")).toBe(true);
-    expect(allowed("shell", "pending:sign-in")).toBe(false);
     expect(
       ownerOf("src/modules/audit/web-scanning/WebScanningRoutes.jsx"),
     ).toBe("audit");
     expect(ownerOf("src/pages/SecurityDashboard.jsx")).toBe("unclassified");
-    expect(ownerOf("src/pages/Login.jsx")).toBe("pending:sign-in");
+    expect(ownerOf("src/shell/auth/pages/Login.jsx")).toBe("shell");
+    expect(ownerOf("src/pages/Login.jsx")).toBe("unclassified");
     expect(ownerOf("src/styles/global.css")).toBe("global-styles");
     expect(ownerOf("src/modules/rank/x.js")).toBe("rank");
     expect(ownerOf("src/shell/auth/PrivateRoute.jsx")).toBe("shell");
@@ -342,13 +340,34 @@ describe("ESLint repeats the alias rules", () => {
     },
   );
 
-  it.each(Object.keys(PENDING))(
-    "pending group %s may import no product alias",
-    (group) => {
-      const scripts = PENDING[group].files.filter((f) => /\.jsx?$/.test(f));
+  it("no file waits in PENDING, and none may without a reason", () => {
+    for (const [group, entry] of Object.entries(PENDING)) {
+      expect(entry.reason, group).toBeTruthy();
+      const scripts = entry.files.filter((f) => /\.jsx?$/.test(f));
       expect(forbidden(scripts)).toEqual(new Set(aliasGroup(MODULE_KEYS)));
-    },
-  );
+    }
+    expect(Object.keys(PENDING)).toEqual([]);
+  });
+
+  it("the sign-in screens are the shell's and name no product", () => {
+    const dir = path.join(FRONT, "src/shell/auth");
+    for (const f of [
+      "pages/Login.jsx",
+      "pages/Register.jsx",
+      "pages/VerifyEmail.jsx",
+      "pages/ForgotPassword.jsx",
+      "pages/ResetPassword.jsx",
+      "components/AuthHeroPanel.jsx",
+      "components/AuthTrustFooter.jsx",
+    ]) {
+      const code = readFileSync(path.join(dir, f), "utf8");
+      // Nothing here names a product. The Terms of Service and Privacy Policy
+      // wording does, and lives in Audit's module (`@audit/legal`), handed to the
+      // sign-up screen by the composition root: legal copy is the owner's
+      // decision (D12-9), moved verbatim and pinned, never reworded.
+      expect(code, f).not.toMatch(/CCure Audit/);
+    }
+  });
 
   it("no override remains for the retired pre-12.4 Audit locations", () => {
     expect(

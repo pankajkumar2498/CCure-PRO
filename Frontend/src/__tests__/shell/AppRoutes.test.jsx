@@ -68,19 +68,19 @@ vi.mock("@audit/pages/VulnerabilityBrowser", () => ({
 vi.mock("@audit/pages/ComplianceWorkspace", () => ({
   default: () => <div data-testid="page">ComplianceWorkspace</div>,
 }));
-vi.mock("../../pages/Login", () => ({
+vi.mock("@shell/auth/pages/Login", () => ({
   default: () => <div data-testid="page">Login</div>,
 }));
-vi.mock("../../pages/Register", () => ({
+vi.mock("@shell/auth/pages/Register", () => ({
   default: () => <div data-testid="page">Register</div>,
 }));
-vi.mock("../../pages/VerifyEmail", () => ({
+vi.mock("@shell/auth/pages/VerifyEmail", () => ({
   default: () => <div data-testid="page">VerifyEmail</div>,
 }));
-vi.mock("../../pages/ForgotPassword", () => ({
+vi.mock("@shell/auth/pages/ForgotPassword", () => ({
   default: () => <div data-testid="page">ForgotPassword</div>,
 }));
-vi.mock("../../pages/ResetPassword", () => ({
+vi.mock("@shell/auth/pages/ResetPassword", () => ({
   default: () => <div data-testid="page">ResetPassword</div>,
 }));
 vi.mock("@audit/pages/Dashboard", () => ({

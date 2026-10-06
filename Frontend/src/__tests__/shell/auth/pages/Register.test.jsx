@@ -25,6 +25,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import Register from "@shell/auth/pages/Register";
+import { LegalDocumentsProvider } from "@shell/auth/legalDocuments";
 import {
   checkEmail,
   checkUsername,
@@ -45,10 +46,25 @@ vi.mock("@shell/auth/AuthContext", () => ({
   useAuth: () => ({ register }),
 }));
 
-const renderPage = () =>
+/** The shell owns no legal wording: these fixtures stand in for what the
+ *  composition root provides. The real text is pinned in the Audit tests. */
+const DOCUMENTS = {
+  terms: {
+    title: "Terms of Service — Fixture",
+    body: <h4>1. Authorized Use</h4>,
+  },
+  privacy: {
+    title: "Privacy Policy — Fixture",
+    body: <h4>1. Data Collection</h4>,
+  },
+};
+
+const renderPage = (documents = DOCUMENTS) =>
   render(
     <MemoryRouter>
-      <Register />
+      <LegalDocumentsProvider documents={documents}>
+        <Register />
+      </LegalDocumentsProvider>
     </MemoryRouter>,
   );
 
@@ -531,6 +547,20 @@ describe("Register — terms and privacy", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
   });
 
+  it("says so when a document is not provided, never an empty dialog", async () => {
+    renderPage({});
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /terms of service/i }));
+    expect(
+      await screen.findByText(/terms of service are not available/i),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /close dialog/i }));
+    await user.click(screen.getByRole("button", { name: /privacy policy/i }));
+    expect(
+      await screen.findByText(/privacy policy is not available/i),
+    ).toBeInTheDocument();
+  });
+
   it("does not submit the form from a policy trigger", async () => {
     renderPage();
     const user = userEvent.setup();
@@ -659,7 +689,7 @@ describe("Register — shared consent controls", () => {
     await u.click(terms);
     expect(
       screen.getByRole("dialog", {
-        name: "Terms of Service — CCure Audit PRO",
+        name: "Terms of Service — Fixture",
       }),
     ).toBeInTheDocument();
     expect(consent).not.toBeChecked();

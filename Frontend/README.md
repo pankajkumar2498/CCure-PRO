@@ -66,7 +66,6 @@ Frontend/
     │   ├── policy/       @policy/… — CCure Policy Pro (nothing built yet)
     │   ├── rank/         @rank/… — CCure Rank (nothing built yet)
     │   └── ir/           @ir/… — CCure IR frontend integration (nothing built yet)
-    ├── pages/, components/auth/   the sign-in screens, pending (see below)
     └── __tests__/        Vitest; module tests under __tests__/modules/<key>/
 ```
 
@@ -81,9 +80,11 @@ Frontend/
   (`/dashboard` redirects there); `/policy-dashboard`, `/rank-dashboard` and
   `/ir-dashboard` are entry pages rendered from the registry until each product
   ships its own.
-- **Pending**: the sign-in screens carry Audit's branding, so they stay in
-  `src/pages/`, `src/components/auth/` and `src/styles/` until the platform's
-  sign-in branding is decided.
+- **Sign-in screens** are the platform's and live in `src/shell/auth/`
+  (`pages/`, `components/`, `styles/`). They name the platform ("CCure") and no
+  product. The Terms of Service and Privacy Policy text in `Register.jsx` still
+  names "CCure Audit PRO": that is legal copy, and rewording it is the owner's
+  decision (D12-9), not made here.
 
 Each folder's `README.md` says what belongs there. The full picture:
 `docs/FRONTEND_ARCHITECTURE.md` and

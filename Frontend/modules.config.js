@@ -61,30 +61,12 @@ export const GLOBAL_STYLES = [
  * Files whose owner is undecided, each with the reason. Nothing may be added
  * here to make a build pass: a file belongs to the shell, a module or the root.
  *
- * The sign-in screens are platform screens by function, but they carry Audit's
- * branding ("CCure Audit", "CCure Audit PRO" in the brand mark and the terms
- * text), and the shell may name no product. They move to the shell once the
- * platform's sign-in branding is decided (D12-9); until then they are their own
- * group and may import only the shell, the design system and each other.
+ * Empty since the sign-in screens moved to `src/shell/auth/` (6 Oct 2026): they
+ * are platform screens by function and no longer carry a product's name. The
+ * group is kept so a future undecided file has somewhere honest to wait, and a
+ * test pins that nothing sits here without a reason.
  */
-export const PENDING = {
-  "sign-in": {
-    reason:
-      "Audit-branded sign-in screens: platform by function, awaiting the sign-in branding decision (D12-9)",
-    files: [
-      "src/pages/Login.jsx",
-      "src/pages/Register.jsx",
-      "src/pages/VerifyEmail.jsx",
-      "src/pages/ForgotPassword.jsx",
-      "src/pages/ResetPassword.jsx",
-      "src/components/auth/AuthHeroPanel.jsx",
-      "src/components/auth/AuthIcons.jsx",
-      "src/components/auth/AuthTrustFooter.jsx",
-      "src/styles/auth.css",
-      "src/styles/forgot-password.css",
-    ],
-  },
-};
+export const PENDING = {};
 
 /** Path aliases: `@shell/…` and one `@<module>/…` per product module. */
 export const ALIASES = {

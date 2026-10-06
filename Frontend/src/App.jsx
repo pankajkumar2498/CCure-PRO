@@ -30,6 +30,8 @@ import {
   AUDIT_NOTIFICATION_TYPES,
 } from "@audit/config/notificationPresentation";
 import { NotificationPresentationProvider } from "@shell/notifications/notificationPresentation";
+import { LegalDocumentsProvider } from "@shell/auth/legalDocuments";
+import { AUDIT_LEGAL_DOCUMENTS } from "@audit/legal/legalDocuments";
 import { ScanProvider } from "@audit/context/ScanContext";
 
 // ── New dashboard pages ───────────────────────────────────────────────────────
@@ -40,11 +42,11 @@ import VulnerabilityBrowser from "@audit/pages/VulnerabilityBrowser";
 import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
+import Login from "@shell/auth/pages/Login";
+import Register from "@shell/auth/pages/Register";
+import VerifyEmail from "@shell/auth/pages/VerifyEmail";
+import ForgotPassword from "@shell/auth/pages/ForgotPassword";
+import ResetPassword from "@shell/auth/pages/ResetPassword";
 import Dashboard from "@audit/pages/Dashboard"; // scan launcher → /scan
 import ScanHistory from "@audit/pages/ScanHistory";
 import ScanSchedules from "@audit/pages/scan/ScanSchedules";
@@ -120,6 +122,25 @@ function AuditProduct() {
   );
 }
 
+/**
+ * What the composition root hands the shell on a product's behalf: how Audit's
+ * notifications look in the shared panel, and the legal wording the sign-up screen
+ * shows (a product's words, so not the shell's — D12-9). One component, so the
+ * route tree below keeps its shape.
+ */
+function ProductPresentation({ children }) {
+  return (
+    <NotificationPresentationProvider
+      types={AUDIT_NOTIFICATION_TYPES}
+      categories={AUDIT_NOTIFICATION_CATEGORIES}
+    >
+      <LegalDocumentsProvider documents={AUDIT_LEGAL_DOCUMENTS}>
+        {children}
+      </LegalDocumentsProvider>
+    </NotificationPresentationProvider>
+  );
+}
+
 export default function App() {
   return (
     // Where a refused route falls back to is the platform guard's rule with
@@ -127,10 +148,7 @@ export default function App() {
     <AccessFallbackProvider candidates={AUDIT_ACCESS_FALLBACKS}>
       {/* How Audit's notifications look in the shared panel: the shell
           describes the platform's own and takes a product's from here. */}
-      <NotificationPresentationProvider
-        types={AUDIT_NOTIFICATION_TYPES}
-        categories={AUDIT_NOTIFICATION_CATEGORIES}
-      >
+      <ProductPresentation>
         <Routes>
           {/* ── Public ── */}
           <Route path="/login" element={<Login />} />
@@ -340,7 +358,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </NotificationPresentationProvider>
+      </ProductPresentation>
     </AccessFallbackProvider>
   );
 }

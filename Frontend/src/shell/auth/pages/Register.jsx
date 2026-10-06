@@ -27,6 +27,7 @@
  */
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useLegalDocuments } from "../legalDocuments";
 import { useAuth } from "@shell/auth/AuthContext";
 import AuthHeroPanel from "../components/AuthHeroPanel";
 import AuthTrustFooter from "../components/AuthTrustFooter";
@@ -88,6 +89,7 @@ export default function Register() {
 
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const { terms, privacy } = useLegalDocuments();
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -516,7 +518,7 @@ export default function Register() {
       <CcureModal
         open={showTermsModal}
         onClose={() => setShowTermsModal(false)}
-        title="Terms of Service — CCure Audit PRO"
+        title={terms?.title || "Terms of Service"}
         footer={policyFooter(() => setShowTermsModal(false))}
       >
         <div
@@ -525,36 +527,18 @@ export default function Register() {
           aria-label="Terms and conditions text"
           tabIndex={0}
         >
-          <p>
-            Welcome to CCure Audit PRO. By creating an account and using our
-            network security platform, you agree to comply with the following
-            terms:
-          </p>
-          <h4>1. Authorized Use</h4>
-          <p>
-            You agree to only perform security assessments and vulnerability
-            scans on networks, hosts, and domain infrastructure that you own or
-            have explicit written authorization to audit.
-          </p>
-          <h4>2. Account Security</h4>
-          <p>
-            You are responsible for maintaining the confidentiality of your
-            credentials and multi-factor authentication tokens. Any action
-            initiated under your credentials is your responsibility.
-          </p>
-          <h4>3. Compliance &amp; Audit Logs</h4>
-          <p>
-            All activities performed on this platform are recorded in
-            tamper-resistant immutable audit logs for enterprise compliance and
-            SIEM auditing.
-          </p>
+          {terms ? (
+            terms.body
+          ) : (
+            <p>The Terms of Service are not available on this installation.</p>
+          )}
         </div>
       </CcureModal>
 
       <CcureModal
         open={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
-        title="Privacy Policy — CCure Audit PRO"
+        title={privacy?.title || "Privacy Policy"}
         footer={policyFooter(() => setShowPrivacyModal(false))}
       >
         <div
@@ -563,27 +547,11 @@ export default function Register() {
           aria-label="Privacy policy text"
           tabIndex={0}
         >
-          <p>
-            Your privacy and data security are our top priorities. Here is how
-            we handle your personal and enterprise telemetry data:
-          </p>
-          <h4>1. Data Collection</h4>
-          <p>
-            We collect your username, email address, optional full name, and
-            authentication logs to provide secure tenant isolation and audit
-            trails.
-          </p>
-          <h4>2. Scan Result Encryption</h4>
-          <p>
-            All network scan assets, vulnerability reports, and credential
-            credentials are stored with strict multi-tenant isolation and
-            database encryption.
-          </p>
-          <h4>3. No Data Sharing</h4>
-          <p>
-            We never sell or share your telemetry or scan findings with third
-            parties.
-          </p>
+          {privacy ? (
+            privacy.body
+          ) : (
+            <p>The Privacy Policy is not available on this installation.</p>
+          )}
         </div>
       </CcureModal>
     </>

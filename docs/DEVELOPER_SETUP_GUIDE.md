@@ -82,13 +82,13 @@ cp Backend/.env.example Backend/.env
 
 Compose refuses to start without five variables, each declared `${VAR:?message}`:
 
-| Variable                    | Set in      | Note                                                           |
-| --------------------------- | ----------- | -------------------------------------------------------------- |
-| `POSTGRES_USER`             | root `.env` |                                                                |
-| `POSTGRES_PASSWORD`         | root `.env` |                                                                |
-| `POSTGRES_DB`               | root `.env` |                                                                |
-| `JWT_SECRET_KEY`            | root `.env` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `COMPLIANCE_ENCRYPTION_KEY` | root `.env` | **Must match `Backend/.env`** on the host scanner worker       |
+| Variable                    | Set in      | Note                                                                                        |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`             | root `.env` |                                                                                             |
+| `POSTGRES_PASSWORD`         | root `.env` |                                                                                             |
+| `POSTGRES_DB`               | root `.env` |                                                                                             |
+| `MFA_ENCRYPTION_KEY`        | root `.env` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` — never change it afterwards |
+| `COMPLIANCE_ENCRYPTION_KEY` | root `.env` | **Must match `Backend/.env`** on the host scanner worker                                    |
 
 > **CAUTION:** `COMPLIANCE_ENCRYPTION_KEY` was previously defaulted to empty. The
 > API then encrypted stored credentials under the fallback key hardcoded in
@@ -164,7 +164,7 @@ pip install -r requirements.txt
 ```
 
 Then create `Backend/.env` from `Backend/.env.example` and set at minimum
-`DATABASE_URL`, `JWT_SECRET_KEY`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`.
+`DATABASE_URL`, `MFA_ENCRYPTION_KEY`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`.
 
 Initialise the database (migrations + RBAC + default org):
 
@@ -293,20 +293,19 @@ otherwise `.env.test`. `SKIP_DOTENV_LOAD` disables loading entirely.
 
 ### Authentication
 
-| Variable                                         | Default                    | Effect                                                                       |
-| ------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                                 | dev default                | **Raises `RuntimeError` in production if left at a known default**           |
-| `ACCESS_TOKEN_EXPIRES_MINUTES`                   | `30`                       |                                                                              |
-| `REFRESH_TOKEN_EXPIRES_DAYS`                     | `7`                        |                                                                              |
-| `MFA_ENCRYPTION_KEY`                             | `JWT_SECRET_KEY`           | Rotating the JWT key without setting this orphans every enrolled TOTP secret |
-| `REFRESH_COOKIE_NAME`                            | `ccure_refresh_token`      |                                                                              |
-| `REFRESH_COOKIE_PATH`                            | `/`                        |                                                                              |
-| `REFRESH_COOKIE_SAMESITE`                        | `lax`                      |                                                                              |
-| `REFRESH_COOKIE_SECURE`                          | `false`                    | **Set `true` behind HTTPS**                                                  |
-| `REFRESH_COOKIE_DOMAIN`                          | unset                      |                                                                              |
-| `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` | empty                      | Seeds the first superadmin at startup                                        |
-| `COMPLIANCE_ENCRYPTION_KEY`                      | fallback (logged at ERROR) | AES-256-GCM master key for stored credentials                                |
-| `SCAN_KEY_DIR`                                   | user home                  | Directory `key_path` must resolve under                                      |
+| Variable                                         | Default                    | Effect                                                                                              |
+| ------------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ACCESS_TOKEN_EXPIRES_MINUTES`                   | `30`                       |                                                                                                     |
+| `REFRESH_TOKEN_EXPIRES_DAYS`                     | `7`                        |                                                                                                     |
+| `MFA_ENCRYPTION_KEY`                             | none (required)            | The API refuses to start without it; never change it — every enrolled TOTP secret would be orphaned |
+| `REFRESH_COOKIE_NAME`                            | `ccure_refresh_token`      |                                                                                                     |
+| `REFRESH_COOKIE_PATH`                            | `/`                        |                                                                                                     |
+| `REFRESH_COOKIE_SAMESITE`                        | `lax`                      |                                                                                                     |
+| `REFRESH_COOKIE_SECURE`                          | `false`                    | **Set `true` behind HTTPS**                                                                         |
+| `REFRESH_COOKIE_DOMAIN`                          | unset                      |                                                                                                     |
+| `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` | empty                      | Seeds the first superadmin at startup                                                               |
+| `COMPLIANCE_ENCRYPTION_KEY`                      | fallback (logged at ERROR) | AES-256-GCM master key for stored credentials                                                       |
+| `SCAN_KEY_DIR`                                   | user home                  | Directory `key_path` must resolve under                                                             |
 
 ### Scanning
 
@@ -655,23 +654,22 @@ Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
 
 ## 14. Troubleshooting
 
-| Symptom                                                              | Cause                                                                                      | Fix                                                              |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| API container starts but every request 500s                          | `SELECT 1` failed at startup; the lifespan logs the error and continues so you can exec in | Check `DATABASE_URL` and that `db` is healthy                    |
-| `RuntimeError: JWT_SECRET_KEY must be set to a strong, unique value` | A known development default with `ENVIRONMENT=production`                                  | Generate a real key                                              |
-| Compose refuses to start                                             | One of the five `${VAR:?}` variables is unset                                              | Set it in the root `.env`                                        |
-| Credentialed scans complete as unauthenticated audits                | `COMPLIANCE_ENCRYPTION_KEY` differs between API and host worker                            | Make them identical, then re-enter stored credentials            |
-| Phase 1 finds nothing on a LAN                                       | No raw-socket privilege, or Npcap missing on Windows                                       | Run elevated / install Npcap                                     |
-| Port scan is slow and version-poor                                   | `nmap` not on PATH — PortEngine logged a warning and fell back to TCP connect              | Install nmap                                                     |
-| `nuclei_probe` produces nothing                                      | Binary absent (logged as a coverage gap), or a two-argument `run()` was introduced         | Install nuclei; keep the three-argument serial signature         |
-| Web scan reports a tool gap                                          | `ToolCoverage` recorded `unavailable`                                                      | Install the tool, or accept the recorded gap                     |
-| CVE lookups return nothing                                           | `VULN_DB_*` unset, so `VulnIntelConfig` fell through to `DATABASE_URL`                     | Set `VULN_DB_NAME` et al., or `VULNERABILITY_INTEL_DATABASE_URL` |
-| Frontend calls hit the Vite server and 404                           | `/user`, `/compliance`, `/api` are not proxied                                             | Set `VITE_API_BASE_URL`                                          |
-| Frontend still points at the old API URL                             | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
-| `test_docs_integrity` fails on three missing files                   | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
-| CI fails on "Breaking OpenAPI changes detected"                      | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
-| Two workers serving different code                                   | A second host worker was started                                                           | Use `start_host_scanner_worker.ps1 -Force`                       |
-| Scan History shows the download time as the scan date                | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
+| Symptom                                               | Cause                                                                                      | Fix                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| API container starts but every request 500s           | `SELECT 1` failed at startup; the lifespan logs the error and continues so you can exec in | Check `DATABASE_URL` and that `db` is healthy                    |
+| Compose refuses to start                              | One of the five `${VAR:?}` variables is unset                                              | Set it in the root `.env`                                        |
+| Credentialed scans complete as unauthenticated audits | `COMPLIANCE_ENCRYPTION_KEY` differs between API and host worker                            | Make them identical, then re-enter stored credentials            |
+| Phase 1 finds nothing on a LAN                        | No raw-socket privilege, or Npcap missing on Windows                                       | Run elevated / install Npcap                                     |
+| Port scan is slow and version-poor                    | `nmap` not on PATH — PortEngine logged a warning and fell back to TCP connect              | Install nmap                                                     |
+| `nuclei_probe` produces nothing                       | Binary absent (logged as a coverage gap), or a two-argument `run()` was introduced         | Install nuclei; keep the three-argument serial signature         |
+| Web scan reports a tool gap                           | `ToolCoverage` recorded `unavailable`                                                      | Install the tool, or accept the recorded gap                     |
+| CVE lookups return nothing                            | `VULN_DB_*` unset, so `VulnIntelConfig` fell through to `DATABASE_URL`                     | Set `VULN_DB_NAME` et al., or `VULNERABILITY_INTEL_DATABASE_URL` |
+| Frontend calls hit the Vite server and 404            | `/user`, `/compliance`, `/api` are not proxied                                             | Set `VITE_API_BASE_URL`                                          |
+| Frontend still points at the old API URL              | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
+| `test_docs_integrity` fails on three missing files    | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
+| CI fails on "Breaking OpenAPI changes detected"       | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
+| Two workers serving different code                    | A second host worker was started                                                           | Use `start_host_scanner_worker.ps1 -Force`                       |
+| Scan History shows the download time as the scan date | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
 
 ---
 

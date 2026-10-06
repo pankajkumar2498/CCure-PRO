@@ -30,14 +30,12 @@ def app_and_checker(monkeypatch):
     from fastapi.testclient import TestClient
 
     from ccure_platform.identity import dependencies, keys as keymod, tokens, verification
-    from config import JWTConfig
     from conftest import Mint
 
     mint = Mint(issuer=tokens.ISSUER, audience=tokens.USER_AUDIENCE)
     keyset = keymod.KeySet(keys=(keymod.SigningKey(kid=mint.kid, state="active", alg="ES256",
                                                    private_key=mint.key),))
     monkeypatch.setattr(tokens, "_keyset", keyset)
-    monkeypatch.setattr(JWTConfig, "ACCEPT_LEGACY_HS256", False)
     user = SimpleNamespace(id="usr_gw")
     monkeypatch.setattr(dependencies, "_load_auth_context_from_payload",
                         lambda payload, db: SimpleNamespace(user=user, user_id="usr_gw"))
@@ -68,7 +66,7 @@ def app_and_checker(monkeypatch):
 
     def gw_verify(token, kind):
         return verification.verify(token, expected_kind=kind, issuer=tokens.ISSUER,
-                                   audience=tokens.USER_AUDIENCE, keyset=lambda: source, legacy=None)
+                                   audience=tokens.USER_AUDIENCE, keyset=lambda: source)
 
     return TestClient(app, raise_server_exceptions=True), seen, gw_verify, mint
 

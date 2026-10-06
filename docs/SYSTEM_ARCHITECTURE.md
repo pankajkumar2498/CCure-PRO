@@ -1,5 +1,7 @@
 # System Architecture
 
+> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+
 **CCure-Audit-PRO** — network, web-application and compliance auditing platform.
 
 > This document is generated from a direct audit of the current source tree. Every

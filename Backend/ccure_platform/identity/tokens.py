@@ -6,9 +6,17 @@ Every token the platform issues — ``access``, ``refresh``, ``ticket`` and
 Nothing else in the codebase may import a JWT library;
 ``tests/repo/test_token_guardrails.py`` fails if anything does.
 
-**9.1** moved token handling here unchanged (HS256, python-jose, same claims and
-lifetimes) and made the kind a required argument of :func:`verify`, so an
-access-token endpoint can no longer accept a refresh, ticket or challenge token.
+**9.1** moved token handling here and made the kind a required argument of
+:func:`verify`, so an access-token endpoint can no longer accept a refresh, ticket
+or challenge token.
+
+**9.6c removed the legacy HS256 mechanism entirely** (6 Oct 2026): no HS256
+issuance, no HS256 verification, no ``JWT_SECRET_KEY``, no
+``CCURE_TOKEN_SIGNING_ALG`` or ``CCURE_ACCEPT_LEGACY_HS256``. ES256 with a ``kid``
+from the platform keyset is the only token the platform signs or accepts; any other
+algorithm, or a token with no ``kid``, is refused. Rollback of a release is a git
+revert, not a runtime switch. The paragraphs below describe how the mechanism was
+built and are kept for the reasoning; where they mention HS256 they are history.
 
 **9.3 adds verification of asymmetric tokens, and only verification.** Tokens
 are still *issued* HS256; ES256 issuance is step 9.4. What 9.3 adds:
@@ -93,9 +101,6 @@ log = logging.getLogger("ccure.tokens")
 # asymmetric token must carry are defined in ``verification`` (Phase 10.2a) and
 # re-exported here, so the rules exist once and every caller's names still work.
 
-SECRET_KEY: str = JWTConfig.SECRET_KEY
-ALGORITHM = verification.LEGACY_ALGORITHM
-
 #: The platform issuer and the audience of user tokens (owner's decisions,
 #: 29 Sep 2026). The issuer must never change for the life of the platform.
 ISSUER: str = JWTConfig.TOKEN_ISSUER
@@ -103,9 +108,8 @@ USER_AUDIENCE: str = JWTConfig.TOKEN_USER_AUDIENCE
 
 _REFUSED_HEADERS = verification.REFUSED_HEADERS
 
-#: What tokens may be issued with (``CCURE_TOKEN_SIGNING_ALG``). ES256 is the
-#: platform algorithm; HS256 is the rollback and issues exactly the 9.3 token.
-SIGNING_ALGORITHMS = ("ES256", ALGORITHM)
+#: The only algorithm tokens are issued with.
+SIGNING_ALGORITHM = "ES256"
 #: Claims sign() sets itself on an ES256 token. A caller supplying one is a
 #: programming error, refused rather than silently overwritten.
 _SIGNER_SET_CLAIMS = frozenset({"iss", "aud", "ptype", "iat", "nbf", "exp"})
@@ -144,8 +148,8 @@ _keyset_problem: str | None = None
 def _current_keyset() -> keyset_mod.KeySet | None:
     """
     The configured keyset, loaded once. None when no keyset directory is
-    configured or it failed validation — asymmetric tokens are then refused and
-    HS256 verification is unaffected. The reason is kept for the start-up log.
+    configured or it failed validation — every token is then refused. The reason
+    is kept for the start-up log.
     """
     global _keyset, _keyset_problem
     if _keyset is _KEYSET_UNLOADED:
@@ -177,33 +181,7 @@ def public_jwks() -> dict[str, Any] | None:
     return keyset.jwks() if keyset is not None else None
 
 
-# ── signing (ES256 since step 9.4; HS256 is the rollback) ─────────────────────
-
-
-def signing_algorithm() -> str:
-    """The configured issuance algorithm, or SigningUnavailable if unknown."""
-    alg = (JWTConfig.TOKEN_SIGNING_ALG or "").strip().upper()
-    if alg not in SIGNING_ALGORITHMS:
-        raise SigningUnavailable(
-            f"CCURE_TOKEN_SIGNING_ALG={JWTConfig.TOKEN_SIGNING_ALG!r} is not one "
-            f"of {', '.join(SIGNING_ALGORITHMS)}"
-        )
-    if alg == ALGORITHM and not JWTConfig.ACCEPT_LEGACY_HS256:
-        # Step 9.6a. With legacy verification off, an HS256 token is refused
-        # everywhere, so issuing one would sign every user out at their next
-        # request. Refused here, so start-up and sign() both refuse it.
-        raise SigningUnavailable(
-            "CCURE_TOKEN_SIGNING_ALG=HS256 while CCURE_ACCEPT_LEGACY_HS256=false: "
-            "HS256 tokens would be issued and then refused"
-        )
-    return alg
-
-
-def legacy_verification_status() -> str:
-    """One line for the start-up log: whether HS256 tokens still verify."""
-    if JWTConfig.ACCEPT_LEGACY_HS256:
-        return "enabled (CCURE_ACCEPT_LEGACY_HS256=true)"
-    return "disabled (CCURE_ACCEPT_LEGACY_HS256=false)"
+# ── signing (ES256 only) ─────────────────────────────────────────────────────
 
 
 def signing_key() -> keyset_mod.SigningKey:
@@ -223,8 +201,6 @@ def assert_signing_ready() -> str:
     issued, or SigningUnavailable. main.py refuses to start on the latter —
     a core that cannot sign must not come up half-working.
     """
-    if signing_algorithm() == ALGORITHM:
-        return "HS256 (legacy issuance, CCURE_TOKEN_SIGNING_ALG=HS256)"
     key = signing_key()
     return f"{key.alg} with key {key.kid}"
 
@@ -246,19 +222,12 @@ def sign(claims: Mapping[str, Any], lifetime: timedelta) -> str:
     and a ``jti`` unless the caller chose one (the refresh token does, because
     its session row is keyed on it). ``type`` must be a kind this module issues.
 
-    HS256 (``CCURE_TOKEN_SIGNING_ALG=HS256``, the rollback): exactly what 9.3
-    signed — the claims copied, ``iat`` and ``exp`` added, the HMAC secret.
     """
     now = _utcnow()
     payload = dict(claims)
     if payload.get("type") == SERVICE_ACCESS:
-        # Service tokens come only from sign_service_token(), never HS256.
+        # Service tokens come only from sign_service_token().
         raise ValueError("service tokens are issued by sign_service_token()")
-    if signing_algorithm() == ALGORITHM:
-        payload["iat"] = now
-        payload["exp"] = now + lifetime
-        return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
     reserved = _SIGNER_SET_CLAIMS & set(payload)
     if reserved:
         raise ValueError(f"sign() sets {sorted(reserved)} itself")
@@ -286,9 +255,8 @@ def sign_service_token(
     """
     A ``service_access`` token (Phase 9.5) for ``service_id``, to call the
     service named by ``audience``, bound to one ``tenant``, carrying exactly
-    ``scopes``. Always ES256 with the active key: a service token is never
-    HS256, whatever CCURE_TOKEN_SIGNING_ALG says, because the HMAC secret is
-    shared and service authentication must not rest on a shared secret.
+    ``scopes``. Always ES256 with the active key: service authentication never
+    rests on a shared secret.
 
     The caller has already authenticated the service and checked that the
     scopes and the tenant are granted; this function only refuses what no
@@ -324,11 +292,10 @@ def sign_service_token(
 
 # ── verification ─────────────────────────────────────────────────────────────
 #
-# The rules live in ``verification`` (Phase 10.2a), with the keyset, the legacy
-# secret, the issuer and the audience injected. This module supplies them from
-# the core service's configuration — read at call time, as before, so the
-# ``CCURE_ACCEPT_LEGACY_HS256`` switch and a swapped keyset take effect on the
-# next call — and turns a refusal into a log line on ``ccure.tokens`` and None.
+# The rules live in ``verification`` (Phase 10.2a), with the keyset, the issuer and
+# the audience injected. This module supplies them from the core service's
+# configuration — read at call time, so a swapped keyset takes effect on the next
+# call — and turns a refusal into a log line on ``ccure.tokens`` and None.
 
 #: Reasons that are routine in normal use and logged at INFO; every other
 #: refusal is WARNING, because it means a malformed, forged or misdirected token.
@@ -349,7 +316,7 @@ def _loggable(value: Any) -> str | None:
     )
 
 
-def _refuse(reason: str, token: str, header: Mapping | None, *, legacy: bool) -> None:
+def _refuse(reason: str, token: str, header: Mapping | None) -> None:
     """
     Log why a token was refused and return None. The token itself is never
     logged: only the reason and the unverified kid, jti and ptype, which
@@ -359,9 +326,8 @@ def _refuse(reason: str, token: str, header: Mapping | None, *, legacy: bool) ->
     header = header if isinstance(header, Mapping) else {}
     log.log(
         logging.INFO if reason in _ROUTINE_REFUSALS else logging.WARNING,
-        "token refused: reason=%s legacy=%s kid=%r jti=%r ptype=%r",
+        "token refused: reason=%s kid=%r jti=%r ptype=%r",
         reason,
-        legacy,
         _loggable(header.get("kid")),
         _loggable(claims.get("jti")),
         _loggable(claims.get("ptype")),
@@ -372,15 +338,8 @@ def _refuse(reason: str, token: str, header: Mapping | None, *, legacy: bool) ->
 def _settle(outcome: Any, token: str) -> Any:
     """A verification outcome as this module has always returned it."""
     if isinstance(outcome, verification.Refusal):
-        return _refuse(outcome.reason, token, outcome.header, legacy=outcome.legacy)
+        return _refuse(outcome.reason, token, outcome.header)
     return outcome
-
-
-def _legacy() -> verification.LegacyHS256 | None:
-    """The legacy HS256 policy in force now: the secret while it is on."""
-    if not JWTConfig.ACCEPT_LEGACY_HS256:
-        return None
-    return verification.LegacyHS256(SECRET_KEY)
 
 
 def _keyset_source() -> keyset_mod.KeySet | None:
@@ -395,7 +354,6 @@ def _decode(token: str, *, issuer: str, audience: str) -> dict | None:
             issuer=issuer,
             audience=audience,
             keyset=_keyset_source,
-            legacy=_legacy(),
         ),
         token,
     )
@@ -415,7 +373,6 @@ def decode_any_kind(token: str) -> dict | None:
             issuer=ISSUER,
             audience=USER_AUDIENCE,
             keyset=_keyset_source,
-            legacy=_legacy(),
         ),
         token,
     )
@@ -449,7 +406,6 @@ def verify(
             issuer=issuer,
             audience=audience,
             keyset=_keyset_source,
-            legacy=_legacy(),
         ),
         token,
     )

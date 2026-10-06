@@ -69,7 +69,6 @@ class GatewayAuth:
             issuer=self.settings.issuer,
             audience=self.settings.user_audience,
             keyset=lambda: self.keys,
-            legacy=None,  # no HS256 secret is ever held here
         )
 
     async def __call__(self, scope, receive, send):

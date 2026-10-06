@@ -8,7 +8,7 @@ repository mounted read-only and no network:
     docker run --rm --network none \
       -v "$PWD/gateway":/gateway:ro -v "$PWD/Backend":/backend:ro -v "$PWD/docs":/docs:ro \
       -e PYTHONPATH=/gateway:/backend -e PYTHONDONTWRITEBYTECODE=1 \
-      -e CCURE_ACCEPT_LEGACY_HS256=false -w /gateway \
+      -w /gateway \
       ccure-audit-pro-backend:latest python -m pytest -q -p no:cacheprovider token_check/tests
 
 Every key and token here is generated at run time and thrown away.
@@ -114,7 +114,7 @@ def verify(settings, keys):
 
     def _verify(token, kind):
         return verification.verify(token, expected_kind=kind, issuer=settings.issuer,
-                                   audience=settings.user_audience, keyset=lambda: keys, legacy=None)
+                                   audience=settings.user_audience, keyset=lambda: keys)
 
     return _verify
 

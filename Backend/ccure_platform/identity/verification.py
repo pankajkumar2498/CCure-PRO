@@ -14,15 +14,10 @@ callers supply:
   ``public_pem``), or ``None`` when no keyset is usable. It is called only once
   a token has passed the header checks, as ``tokens._current_keyset`` always
   was. ``keys.KeySet`` satisfies it; a set built from a JWKS can too.
-* ``legacy`` — :class:`LegacyHS256` carrying the HMAC secret while legacy
-  verification is on, or ``None`` when it is off (``CCURE_ACCEPT_LEGACY_HS256=
-  false``, the live setting since the 9.6b cut-off). A verifier holding no
-  secret always passes ``None``.
 * ``issuer`` / ``audience`` — keyword-only, no defaults, as before.
 
 **Outcomes.** A verified payload is returned as the claims dict. A refusal is a
-:class:`Refusal` naming the reason code, the unverified header and whether the
-legacy path was taken; the caller logs it (``tokens`` does, on the
+:class:`Refusal` naming the reason code and the unverified header; the caller logs it (``tokens`` does, on the
 ``ccure.tokens`` logger, exactly as before) and turns it into ``None``.
 :func:`verify` can also return ``None`` itself, unlogged, for the one case the
 Phase 9 code returned ``None`` without a refusal (a verified but empty payload).
@@ -33,7 +28,7 @@ Nothing here may be reimplemented elsewhere; ``tests/repo/test_token_guardrails
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping, Optional, Protocol, Union
 
@@ -61,10 +56,6 @@ KIND_PTYPE = {
     MFA_CHALLENGE: PTYPE_USER,
     SERVICE_ACCESS: PTYPE_SERVICE,
 }
-
-#: The legacy symmetric algorithm. A token with this ``alg`` and **no** ``kid``
-#: takes the fenced legacy path; any other shape takes the keyset path.
-LEGACY_ALGORITHM = "HS256"
 
 #: Claims an asymmetric token must carry.
 REQUIRED_ASYMMETRIC_CLAIMS = (
@@ -125,19 +116,11 @@ class KeySource(Protocol):
 
 
 @dataclass(frozen=True)
-class LegacyHS256:
-    """Legacy HS256 verification is on, with this secret. Never logged."""
-
-    secret: str = field(repr=False)
-
-
-@dataclass(frozen=True)
 class Refusal:
     """Why a token was refused. Carries nothing that could be replayed."""
 
     reason: str
     header: Optional[Mapping[str, Any]]
-    legacy: bool
 
 
 Outcome = Union[dict, Refusal, None]
@@ -193,38 +176,32 @@ def decode(
     issuer: str,
     audience: str,
     keyset: KeysetProvider,
-    legacy: Optional[LegacyHS256],
 ) -> Union[dict, Refusal]:
     """Signature, expiry and — for asymmetric tokens — issuer, audience, claims."""
     try:
         header = jwt.get_unverified_header(token)
     except JWTError:
-        return Refusal("malformed", None, False)
+        return Refusal("malformed", None)
     if not isinstance(header, dict):
-        return Refusal("malformed", None, False)
+        return Refusal("malformed", None)
     if REFUSED_HEADERS & set(header):
-        return Refusal("refused_header", header, False)
+        return Refusal("refused_header", header)
     alg, kid = header.get("alg"), header.get("kid")
 
-    if alg == LEGACY_ALGORITHM and kid is None:
-        # Legacy HS256, fenced: no kid, HMAC secret, only while switched on.
-        if legacy is None:
-            return Refusal("legacy_disabled", header, True)
-        try:
-            return jwt.decode(token, legacy.secret, algorithms=[LEGACY_ALGORITHM])
-        except JWTError as exc:
-            return Refusal(reason_for(exc), header, True)
-
+    # Keys are chosen by ``kid`` and nothing else, and verify with the key's own
+    # algorithm. A token with no ``kid`` — every HS256 token the platform ever
+    # issued — has no key to be checked against and is refused here, as is any
+    # token whose ``alg`` is not its key's.
     if not isinstance(kid, str) or not kid:
-        return Refusal("missing_kid", header, False)
+        return Refusal("missing_kid", header)
     keys = keyset()
     if keys is None:
-        return Refusal("no_keyset", header, False)
+        return Refusal("no_keyset", header)
     key = keys.verification_key(kid)
     if key is None:
-        return Refusal("unknown_kid", header, False)
+        return Refusal("unknown_kid", header)
     if alg != key.alg:
-        return Refusal("alg_mismatch", header, False)
+        return Refusal("alg_mismatch", header)
     try:
         payload = jwt.decode(
             token,
@@ -235,9 +212,9 @@ def decode(
             options=dict(_ASYMMETRIC_OPTIONS),
         )
     except JWTError as exc:
-        return Refusal(reason_for(exc), header, False)
+        return Refusal(reason_for(exc), header)
     if any(claim not in payload for claim in REQUIRED_ASYMMETRIC_CLAIMS):
-        return Refusal("missing_claim", header, False)
+        return Refusal("missing_claim", header)
     return payload
 
 
@@ -248,7 +225,6 @@ def verify(
     issuer: str,
     audience: str,
     keyset: KeysetProvider,
-    legacy: Optional[LegacyHS256],
 ) -> Outcome:
     """
     The payload of ``token`` if it is correctly signed, unexpired, **of the
@@ -260,23 +236,16 @@ def verify(
     """
     if expected_kind not in KINDS:
         raise ValueError(f"unknown token kind {expected_kind!r}")
-    payload = decode(
-        token, issuer=issuer, audience=audience, keyset=keyset, legacy=legacy
-    )
+    payload = decode(token, issuer=issuer, audience=audience, keyset=keyset)
     if isinstance(payload, Refusal):
         return payload
     if not payload:
         return None
     header = header_of(token)
-    is_legacy = "kid" not in header
-    if is_legacy and KIND_PTYPE[expected_kind] == PTYPE_SERVICE:
-        # HS256 rests on a secret the api and every worker hold; no service
-        # may authenticate with it (no shared secret, owner's decision).
-        return Refusal("legacy_service", header, True)
     if payload.get("type") != expected_kind:
-        return Refusal("wrong_kind", header, is_legacy)
-    if not is_legacy and payload.get("ptype") != KIND_PTYPE[expected_kind]:
-        return Refusal("wrong_ptype", header, False)
+        return Refusal("wrong_kind", header)
+    if payload.get("ptype") != KIND_PTYPE[expected_kind]:
+        return Refusal("wrong_ptype", header)
     return payload
 
 
@@ -286,21 +255,18 @@ def decode_any_kind(
     issuer: str,
     audience: str,
     keyset: KeysetProvider,
-    legacy: Optional[LegacyHS256],
 ) -> Outcome:
     """
     A valid token of **any** kind — the legacy ``decode_token`` behaviour.
     Asymmetric tokens are still held to ``issuer``, ``audience`` and the
     ``user`` principal type.
     """
-    payload = decode(
-        token, issuer=issuer, audience=audience, keyset=keyset, legacy=legacy
-    )
+    payload = decode(token, issuer=issuer, audience=audience, keyset=keyset)
     if isinstance(payload, Refusal):
         return payload
     header = header_of(token)
-    if payload and "kid" in header and payload.get("ptype") != PTYPE_USER:
-        return Refusal("wrong_ptype", header, False)
+    if payload and payload.get("ptype") != PTYPE_USER:
+        return Refusal("wrong_ptype", header)
     return payload
 
 
@@ -325,21 +291,21 @@ def verify_service_assertion(
         header = jwt.get_unverified_header(assertion)
         claims = jwt.get_unverified_claims(assertion)
     except JWTError:
-        return Refusal("malformed", None, False)
+        return Refusal("malformed", None)
     if not isinstance(header, dict) or not isinstance(claims, dict):
-        return Refusal("malformed", None, False)
+        return Refusal("malformed", None)
     if REFUSED_HEADERS & set(header):
-        return Refusal("refused_header", header, False)
+        return Refusal("refused_header", header)
     kid, service_id = header.get("kid"), claims.get("iss")
     if header.get("alg") != SERVICE_ASSERTION_ALGORITHM:
-        return Refusal("alg_mismatch", header, False)
+        return Refusal("alg_mismatch", header)
     if not isinstance(kid, str) or not kid:
-        return Refusal("missing_kid", header, False)
+        return Refusal("missing_kid", header)
     if not isinstance(service_id, str) or not service_id:
-        return Refusal("missing_claim", header, False)
+        return Refusal("missing_claim", header)
     key = key_for(service_id, kid)
     if key is None:
-        return Refusal("unknown_service_key", header, False)
+        return Refusal("unknown_service_key", header)
     try:
         verified = jwt.decode(
             assertion,
@@ -350,16 +316,16 @@ def verify_service_assertion(
             options=dict(_ASSERTION_OPTIONS),
         )
     except JWTError as exc:
-        return Refusal(reason_for(exc), header, False)
+        return Refusal(reason_for(exc), header)
     if verified.get("sub") != service_id:
-        return Refusal("subject_mismatch", header, False)
+        return Refusal("subject_mismatch", header)
     iat, exp = verified.get("iat"), verified.get("exp")
     if not isinstance(iat, (int, float)) or not isinstance(exp, (int, float)):
-        return Refusal("invalid_claims", header, False)
+        return Refusal("invalid_claims", header)
     if iat > now().timestamp():
-        return Refusal("not_yet_valid", header, False)
+        return Refusal("not_yet_valid", header)
     if exp - iat > SERVICE_ASSERTION_MAX_LIFETIME.total_seconds():
-        return Refusal("lifetime_too_long", header, False)
+        return Refusal("lifetime_too_long", header)
     if not isinstance(verified.get("jti"), str) or not verified["jti"]:
-        return Refusal("missing_claim", header, False)
+        return Refusal("missing_claim", header)
     return verified

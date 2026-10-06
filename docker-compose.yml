@@ -120,7 +120,6 @@ services:
       - VULN_DB_NAME=${VULN_DB_NAME:-vuln_intel}
       - VULN_DB_USER=${VULN_DB_USER:-admin}
       - VULN_DB_PASSWORD=${VULN_DB_PASSWORD:-root}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       # The key the MFA Fernet key is derived from (users.totp_secret). It must be
       # the value the secrets were encrypted under: it was initialised to the
       # JWT secret's value, so nothing already stored changes. Required, because
@@ -150,15 +149,9 @@ services:
       # service that verifies or will sign platform tokens; worker, web-worker
       # and beat deliberately get neither the variable nor the mount.
       - CCURE_TOKEN_KEYS_DIR=/run/ccure/keys
-      # The algorithm new tokens are issued with (Phase 9.4). ES256 needs an
-      # active key in the keyset above, or the api refuses to start; HS256 is
-      # the rollback. Set in the root .env while a deployment's key is not yet
-      # active.
-      - CCURE_TOKEN_SIGNING_ALG=${CCURE_TOKEN_SIGNING_ALG:-ES256}
-      # Whether legacy HS256 tokens still verify (step 9.6). true until the
-      # measured cut-off (Phase 9 doc §17); false then refuses every HS256
-      # token, and the api refuses to start with HS256 issuance selected.
-      - CCURE_ACCEPT_LEGACY_HS256=${CCURE_ACCEPT_LEGACY_HS256:-true}
+      # Tokens are ES256 only (Phase 9.6c): the active key above signs, the keyset
+      # verifies. There is no HS256 mode, no signing-algorithm switch and no JWT
+      # secret; a release is rolled back with git, not with a setting.
       # Which peers may assert the client address and scheme (core/trusted_proxy.py,
       # Phase 10.3). Exact addresses, never a range:
       #   172.31.254.10  api-gateway — the only production ingress (Phase 10.7);

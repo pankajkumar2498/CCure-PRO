@@ -1,5 +1,7 @@
 # Authentication and Authorization
 
+> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+
 **CCure-Audit-PRO** — an end-to-end trace of identity, session and access
 control, read from `Backend/auth/`, `Backend/db/models/users.py`,
 `Backend/db/models/rbac.py` and `Frontend/src/`.

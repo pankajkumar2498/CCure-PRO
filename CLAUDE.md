@@ -254,21 +254,21 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - **Live token issuance is ES256** since 29 Sep 2026 (step 9.4), with the
     promoted `active` key `7jKp…`. Tokens are signed only by `tokens.sign()`,
     which sets `iss`, `aud`, `ptype`, `nbf` and `jti` itself.
-  - **Legacy HS256 tokens no longer verify** — `CCURE_ACCEPT_LEGACY_HS256=false`
-    (api only; root `.env`) since a forced cut-off on 29 Sep 2026, 17:40 IST,
-    which revoked the last 14 HS256 sessions (Phase 9 doc §17.5). The HS256
-    code, issuance mode and `JWT_SECRET_KEY` remain as the rollback; removing
-    them is a later, separately reviewed step.
-  - **With the switch off, HS256 issuance is refused**, and the API will not
-    start with `CCURE_TOKEN_SIGNING_ALG=HS256`: it would issue tokens it then
-    refuses.
-  - **Rollback.** Set `CCURE_ACCEPT_LEGACY_HS256=true` in the root `.env` and
-    `docker compose up -d --no-deps api`; only then can
-    `CCURE_TOKEN_SIGNING_ALG=HS256` roll issuance back too. Tokens already
-    issued ES256 stay valid either way.
-  - **With ES256 selected and no active key, the API refuses to start** —
-    deliberately (design §3.7). Set HS256 before demoting or removing the
-    active key. See Phase 9 doc §15.3.
+  - **HS256 is gone entirely (Phase 9.6c, 6 Oct 2026).** No HS256 issuance, no
+    HS256 verification, no `JWT_SECRET_KEY`, no `CCURE_TOKEN_SIGNING_ALG`, no
+    `CCURE_ACCEPT_LEGACY_HS256`. ES256 with a `kid` from the platform keyset is
+    the only token signed or accepted; a token with no `kid` (every HS256 token
+    ever issued) is refused as `missing_kid`. `verification.py` has no `legacy`
+    parameter and `Refusal` no `legacy` field. **Do not reintroduce a symmetric
+    path or a secret to "roll back" to**: a release rolls back with git.
+  - **Deploying it.** The *running* containers still carry the old compose
+    definition until recreated. Order: rebuild/restart `gateway-auth` (its image
+    bakes `verification.py`, and the new code takes no `legacy` argument), then
+    `docker compose up -d --no-deps api worker beat web-worker` — the api now
+    **requires `MFA_ENCRYPTION_KEY`** (compose `:?`) and refuses to start without
+    it. Prepared and committed on 6 Oct 2026; **not deployed**.
+  - **With no active key, the API refuses to start** — deliberately (design
+    §3.7). There is no HS256 to fall back to; activate a key first.
 - **Service identities (step 9.5) are not users.** They live in a static
   registry — `services.json` plus public keys, in `CCURE_SERVICE_REGISTRY_DIR`,
   read-only into the api — never in `users`, `roles` or any table.
@@ -286,14 +286,23 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
     `ccure_platform.api` until their first consumer, Phase 14.
   - **Live state.** The registry is empty; no service is registered. Phase 9
     doc §16.
-- **MFA encryption is separate from the JWT secret since step 9.2.**
-  - `MFA_ENCRYPTION_KEY` (in `Backend/.env`) derives the Fernet key for
-    `users.totp_secret`. It was initialised to the JWT secret's value, so the
-    key did not change.
+- **The MFA key is explicit and has no fallback (step 9.2, 9.6c).**
+  - `MFA_ENCRYPTION_KEY` derives the Fernet key for `users.totp_secret`. It was
+    initialised to the retired JWT secret's value, so the key did not change
+    (`scripts/security/verify_mfa_key_continuity.py` proves it without printing
+    anything).
+  - **Where it comes from.** Containers run with `SKIP_DOTENV_LOAD`, so
+    `Backend/.env` is never read there: the value reaches the **api only**
+    through the root `.env` and `docker-compose.yml`. Editing `Backend/.env`
+    changes nothing in a container.
   - **Never change `MFA_ENCRYPTION_KEY`**: every stored MFA secret would become
-    undecryptable. The JWT secret may now rotate without touching it.
-  - Unset falls back to the JWT secret, and the API logs a
-    `ccure.security` warning at start-up.
+    undecryptable.
+  - **Unset, the API refuses to start** (`main.py`); `AppConfig.MFA_KEY` is empty
+    rather than a key derived from `""`.
+  - **Workers hold no secrets of this kind.** `worker`, `beat` and `web-worker`
+    get neither `JWT_SECRET_KEY` (gone) nor `MFA_ENCRYPTION_KEY`, set
+    `SKIP_DOTENV_LOAD=1`, and have `/app/.env` masked by a `/dev/null` bind so
+    the `./Backend` mount cannot hand them `Backend/.env`.
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
   (step 8.5) and take `require_authorized` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.
@@ -1017,10 +1026,9 @@ dump": up to six hours of operational data.
 - **Token signing keys (Phase 9.3, 9.4)** — the API verifies ES256 tokens
   signed by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,
   mounted read-only into **api only**) and publishes it at `/auth/jwks.json`.
-  It issues ES256 with the `active` key `7jKp…`. The root `.env` sets
-  `CCURE_TOKEN_SIGNING_ALG=ES256` (live since 29 Sep 2026) and
-  `CCURE_ACCEPT_LEGACY_HS256=false` (since the 9.6b cut-off). See Phase 9 doc
-  §15.3 and §17.5.
+  It issues ES256 with the `active` key `7jKp…` (live since 29 Sep 2026). There are
+  no signing-algorithm settings any more (Phase 9.6c). See Phase 9 doc §15.3 and
+  §17.5 (history).
   - **Key management.** Keys are managed only with
     `scripts/security/manage_token_keys.py`, run in the backend image as root —
     never by hand.
@@ -1204,8 +1212,6 @@ dump": up to six hours of operational data.
     matching neither pin.
   - **`beat`, `worker` and `web-worker` already drift from the compose file**,
     so recreate services with `--no-deps` and name them.
-  - **An HS256 rollback now needs `rollback` first**, because gateway-auth
-    verifies ES256 only.
   - **Record:** `docs/architecture/phase10/PHASE10_5_CUTOVER.md`,
     `PHASE10_6_HARDENING.md` and `PHASE10_7_GATEWAY_ONLY.md`.
 

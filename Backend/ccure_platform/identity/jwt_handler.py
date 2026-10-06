@@ -13,7 +13,6 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Union
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -35,10 +34,7 @@ logger = logging.getLogger(__name__)
 from config import JWTConfig as _JWTCfg
 
 ENVIRONMENT = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).lower()
-# Signing lives in ccure_platform.identity.tokens (Phase 9.1). These names
-# stay importable from here, with the same values, for existing callers.
-SECRET_KEY: str = tokens.SECRET_KEY
-ALGORITHM = tokens.ALGORITHM
+# Signing lives in ccure_platform.identity.tokens (Phase 9.1): ES256 only.
 ACCESS_TOKEN_EXPIRE = timedelta(minutes=_JWTCfg.ACCESS_TOKEN_EXPIRES_MINUTES)
 REFRESH_TOKEN_EXPIRE = timedelta(days=_JWTCfg.REFRESH_TOKEN_EXPIRES_DAYS)
 

@@ -3,8 +3,9 @@ Signing-key infrastructure, JWKS and dual verification — Phase 9.3.
 
 These tests mint ES256 tokens themselves, with keysets built by the real
 management tool, and pin how the platform *verifies* them. (Issuance switched to
-ES256 in step 9.4; ``test_token_issuance.py`` covers that. Legacy HS256 tokens
-are minted here through the HS256 issuance mode, which issues exactly what 9.3
+ES256 in step 9.4; ``test_token_issuance.py`` covers that. (HS256 was removed in
+9.6c; the lines below that mention it describe what is now refused.) HS256 tokens
+were minted here through the HS256 issuance mode, which issues exactly what 9.3
 did.)
 
 * old HS256 tokens still verify (and the 9.1 characterisation suite is unchanged);
@@ -115,37 +116,7 @@ def test_issuer_and_audience_are_the_owners_decisions():
     assert tokens.USER_AUDIENCE == "urn:ccure:api"
 
 
-# ── HS256 is unaffected ───────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def legacy_issuance(monkeypatch):
-    """Mint tokens as 9.3 did: CCURE_TOKEN_SIGNING_ALG=HS256, the rollback."""
-    from config import JWTConfig
-
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
-
-
-@pytest.mark.parametrize("kind", ["access", "refresh", "ticket", "mfa_challenge"])
-def test_legacy_hs256_tokens_still_verify_with_a_keyset_loaded(
-    keyset, legacy_issuance, db_session, test_user, kind
-):
-    role = "forged-role-claim"
-    token = {
-        "access": lambda: jwt_handler.create_access_token(
-            test_user.id, test_user.username, role=role, org_id=test_user.org_id
-        ),
-        "refresh": lambda: jwt_handler.create_refresh_token(test_user.id, db_session),
-        "ticket": lambda: jwt_handler.create_download_ticket(
-            test_user.id, test_user.username
-        ),
-        "mfa_challenge": lambda: jwt_handler.create_mfa_challenge_token(
-            test_user.id, test_user.username, role=role, org_id=test_user.org_id
-        ),
-    }[kind]()
-    assert jose_jwt.get_unverified_header(token)["alg"] == "HS256"
-    assert _verify(token, kind)["sub"] == str(test_user.id)
-    assert jwt_handler.decode_token(token)["type"] == kind
+# ── HS256 is not a token the platform knows ───────────────────────────────────
 
 
 def test_issuance_signs_with_the_active_key_of_a_rotating_keyset(keyset, test_user):
@@ -156,18 +127,6 @@ def test_issuance_signs_with_the_active_key_of_a_rotating_keyset(keyset, test_us
         "kid": _key(keyset, "active").kid,
         "typ": "JWT",
     }
-
-
-def test_turning_legacy_off_refuses_hs256(
-    keyset, legacy_issuance, test_user, monkeypatch
-):
-    from config import JWTConfig
-
-    token = jwt_handler.create_access_token(test_user.id, test_user.username)
-    assert jose_jwt.get_unverified_header(token)["alg"] == "HS256"
-    monkeypatch.setattr(JWTConfig, "ACCEPT_LEGACY_HS256", False)
-    assert _verify(token) is None
-    assert jwt_handler.decode_token(token) is None
 
 
 # ── ES256 acceptance, by kid ──────────────────────────────────────────────────
@@ -226,7 +185,7 @@ def _refusals(keyset):
         # Legacy-shaped (no iss/aud), so only the kid fence can refuse it.
         "HS256 with a kid": jose_jwt.encode(
             _claims(iss=None, aud=None),
-            jwt_handler.SECRET_KEY,
+            "an-arbitrary-hmac-secret",
             algorithm="HS256",
             headers={"kid": active.kid},
         ),
@@ -324,17 +283,6 @@ def test_a_protected_route_refuses_them_uniformly(client, keyset):
         response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 401, name
         assert response.json()["detail"] == "Invalid or expired token", name
-
-
-def test_without_a_keyset_es256_is_refused_and_hs256_is_not(
-    test_user, monkeypatch, keyset_dir, legacy_issuance
-):
-    loaded = keys.load_keyset(str(keyset_dir))
-    token = _es256(loaded.in_state("active")[0], _claims())
-    monkeypatch.setattr(tokens, "_keyset", None)
-    assert _verify(token) is None
-    hs = jwt_handler.create_access_token(test_user.id, test_user.username)
-    assert _verify(hs) is not None
 
 
 # ── rotation states ───────────────────────────────────────────────────────────
@@ -496,3 +444,16 @@ def test_a_signing_key_never_reaches_a_repr(keyset):
     for key in keyset.keys:
         assert "PRIVATE" not in repr(key)
         assert "private_key" not in repr(key)
+
+
+def test_without_a_keyset_every_token_is_refused_including_hs256(
+    test_user, monkeypatch, keyset_dir
+):
+    loaded = keys.load_keyset(str(keyset_dir))
+    es = _es256(loaded.in_state("active")[0], _claims())
+    hs = jose_jwt.encode(
+        {"sub": test_user.id, "type": "access"}, "k", algorithm="HS256"
+    )
+    monkeypatch.setattr(tokens, "_keyset", None)
+    assert _verify(es) is None
+    assert _verify(hs) is None

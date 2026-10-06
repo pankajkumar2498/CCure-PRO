@@ -349,11 +349,11 @@ def _ensure_test_db_exists(url: str):
 # DATABASE_URL created a stray database before the check rejected the name.
 _ensure_test_db_exists(database_url)
 
-os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
-# Pinned to the same value the MFA key fell back to before Phase 9.2, so the
-# test process derives exactly the key it always did — and never the real one
-# a developer's Backend/.env may now carry.
-os.environ["MFA_ENCRYPTION_KEY"] = os.environ["JWT_SECRET_KEY"]
+# The platform holds no JWT secret (Phase 9.6c): if one is present in the container
+# environment it is removed, so nothing in the suite can quietly depend on it.
+os.environ.pop("JWT_SECRET_KEY", None)
+# A fixed test value, never the real one a developer's Backend/.env may carry.
+os.environ["MFA_ENCRYPTION_KEY"] = "test-mfa-key-do-not-use-in-prod"
 
 # Token issuance (Phase 9.4). The suite runs the target state — ES256 from a
 # throwaway keyset generated for this session — whatever the container's own
@@ -366,8 +366,6 @@ import tempfile
 _TEST_TOKEN_KEYS_DIR = tempfile.mkdtemp(prefix="ccure-pytest-keys-")
 atexit.register(shutil.rmtree, _TEST_TOKEN_KEYS_DIR, ignore_errors=True)
 os.environ["CCURE_TOKEN_KEYS_DIR"] = _TEST_TOKEN_KEYS_DIR
-os.environ["CCURE_TOKEN_SIGNING_ALG"] = "ES256"
-os.environ["CCURE_ACCEPT_LEGACY_HS256"] = "true"
 
 from scripts.security.manage_token_keys import generate as _generate_token_key
 

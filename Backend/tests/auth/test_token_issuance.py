@@ -3,10 +3,8 @@ ES256 token issuance — Phase 9.4.
 
 New tokens of all four kinds are signed ES256 with the keyset's active key,
 through ``tokens.sign`` alone, and carry the full claim set (design §3.3).
-Legacy HS256 tokens still in circulation keep working, and a legacy session
-moves onto ES256 at its next refresh. The HS256 rollback
-(``CCURE_TOKEN_SIGNING_ALG=HS256``) is characterised by
-``test_token_characterisation.py``, which runs in that mode.
+ES256 is the only algorithm (Phase 9.6c removed HS256 issuance and verification);
+the per-kind refusal matrix is ``test_token_characterisation.py``.
 
 The session's keyset is the throwaway one ``conftest.py`` generates; tests that
 need another swap ``tokens._keyset`` with monkeypatch. Tokens are minted
@@ -62,20 +60,6 @@ def _mint(user, kind: str, db) -> str:
     )
 
 
-@pytest.fixture
-def legacy_issuance(monkeypatch):
-    """Issue as 9.3 did, to make the legacy tokens still in circulation."""
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
-
-
-def _as_legacy(monkeypatch, mint):
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
-    try:
-        return mint()
-    finally:
-        monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "ES256")
-
-
 def _verify(token, kind):
     return tokens.verify(
         token, expected_kind=kind, issuer=tokens.ISSUER, audience=tokens.USER_AUDIENCE
@@ -90,8 +74,7 @@ def _bearer(client, token):
 
 
 def test_the_session_issues_es256():
-    assert tokens.signing_algorithm() == "ES256"
-    assert JWTConfig.TOKEN_SIGNING_ALG == "ES256"
+    assert tokens.SIGNING_ALGORITHM == "ES256"
 
 
 @pytest.mark.parametrize("kind", KINDS)
@@ -210,56 +193,6 @@ def test_claim_consistency_still_applies_to_es256_tokens(client, db_session, tes
 # ── legacy sessions ───────────────────────────────────────────────────────────
 
 
-def test_a_legacy_refresh_token_is_replaced_by_es256_tokens(
-    db_session, test_user, monkeypatch
-):
-    legacy = _as_legacy(
-        monkeypatch, lambda: jwt_handler.create_refresh_token(test_user.id, db_session)
-    )
-    assert jose_jwt.get_unverified_header(legacy) == {"alg": "HS256", "typ": "JWT"}
-    rotated = jwt_handler.refresh_access_token(legacy, db_session)
-    assert rotated is not None
-    for name in ("access_token", "refresh_token"):
-        assert jose_jwt.get_unverified_header(rotated[name])["alg"] == "ES256", name
-    assert jwt_handler.refresh_access_token(legacy, db_session) is None
-    assert jwt_handler.refresh_access_token(rotated["refresh_token"], db_session)
-
-
-def test_a_mixed_age_session_keeps_working(client, db_session, test_user, monkeypatch):
-    """A legacy access token still in its 30 minutes, beside new ES256 ones."""
-    legacy_access = _as_legacy(
-        monkeypatch, lambda: _mint(test_user, "access", db_session)
-    )
-    new_access = _mint(test_user, "access", db_session)
-    assert jose_jwt.get_unverified_header(legacy_access)["alg"] == "HS256"
-    assert _bearer(client, legacy_access).status_code == 200
-    assert _bearer(client, new_access).status_code == 200
-
-
-@pytest.mark.parametrize("era", ["legacy", "es256"])
-def test_logout_revokes_a_session_of_either_era(
-    db_session, test_user, monkeypatch, era
-):
-    def mint():
-        return jwt_handler.create_refresh_token(test_user.id, db_session)
-
-    refresh = _as_legacy(monkeypatch, mint) if era == "legacy" else mint()
-    assert jwt_handler.revoke_refresh_token(refresh, db_session) is True
-    assert jwt_handler.refresh_access_token(refresh, db_session) is None
-
-
-def test_es256_tokens_survive_a_rollback_to_hs256(
-    client, db_session, test_user, legacy_issuance
-):
-    """Rollback flips issuance only; what was issued ES256 stays valid."""
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "ES256")
-        es256_access = _mint(test_user, "access", db_session)
-    assert tokens.signing_algorithm() == "HS256"
-    assert jose_jwt.get_unverified_header(es256_access)["alg"] == "ES256"
-    assert _bearer(client, es256_access).status_code == 200
-
-
 # ── what sign() refuses ───────────────────────────────────────────────────────
 
 
@@ -294,27 +227,6 @@ def test_no_keyset_means_no_es256_token(monkeypatch):
     monkeypatch.setattr(tokens, "_keyset", None)
     with pytest.raises(tokens.SigningUnavailable, match="no usable token keyset"):
         tokens.sign({"sub": "usr_x", "type": "access"}, timedelta(minutes=1))
-
-
-def test_hs256_mode_needs_no_keyset(monkeypatch, legacy_issuance):
-    monkeypatch.setattr(tokens, "_keyset", None)
-    assert tokens.assert_signing_ready().startswith("HS256")
-    token = tokens.sign({"sub": "usr_x", "type": "access"}, timedelta(minutes=1))
-    assert jose_jwt.get_unverified_header(token) == {"alg": "HS256", "typ": "JWT"}
-
-
-@pytest.mark.parametrize("value", ["RS256", "none", "", "es384"])
-def test_an_unknown_signing_algorithm_is_refused(monkeypatch, value):
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", value)
-    with pytest.raises(tokens.SigningUnavailable):
-        tokens.assert_signing_ready()
-    with pytest.raises(tokens.SigningUnavailable):
-        tokens.sign({"sub": "usr_x", "type": "access"}, timedelta(minutes=1))
-
-
-def test_the_setting_is_case_insensitive(monkeypatch):
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", " es256 ")
-    assert tokens.signing_algorithm() == "ES256"
 
 
 def test_assert_signing_ready_names_the_active_key():
@@ -401,18 +313,6 @@ def test_a_refusal_names_its_reason_and_never_the_token(caplog, case, reason, le
         assert "jti-probe-0001" in line.getMessage()
 
 
-def test_a_disabled_legacy_token_is_logged_as_such(
-    caplog, db_session, test_user, monkeypatch
-):
-    legacy = _as_legacy(monkeypatch, lambda: _mint(test_user, "access", db_session))
-    monkeypatch.setattr(JWTConfig, "ACCEPT_LEGACY_HS256", False)
-    caplog.set_level(logging.INFO, logger="ccure.tokens")
-    assert _verify(legacy, "access") is None
-    (line,) = _refusal_lines(caplog)
-    assert "reason=legacy_disabled legacy=True" in line.getMessage()
-    assert legacy not in caplog.text
-
-
 def test_an_accepted_token_logs_nothing(caplog, db_session, test_user):
     caplog.set_level(logging.DEBUG, logger="ccure.tokens")
     assert _verify(_mint(test_user, "access", db_session), "access")
@@ -441,3 +341,30 @@ def test_an_oversized_claim_is_truncated_in_the_log(caplog):
     (line,) = _refusal_lines(caplog)
     assert "J" * 64 in line.getMessage()
     assert "J" * 65 not in line.getMessage()
+
+
+def test_logout_revokes_a_session(db_session, test_user):
+    refresh = jwt_handler.create_refresh_token(test_user.id, db_session)
+    assert jwt_handler.revoke_refresh_token(refresh, db_session) is True
+    assert jwt_handler.refresh_access_token(refresh, db_session) is None
+
+
+def test_there_is_no_way_to_ask_for_another_algorithm():
+    """Issuance has one algorithm; no setting, no name, no function selects another."""
+    assert tokens.SIGNING_ALGORITHM == "ES256"
+    assert not hasattr(tokens, "signing_algorithm")
+    assert not hasattr(JWTConfig, "TOKEN_SIGNING_ALG")
+    assert not hasattr(JWTConfig, "ACCEPT_LEGACY_HS256")
+
+
+def test_an_hs256_token_is_refused_and_logged_with_its_reason(
+    caplog, db_session, test_user
+):
+    hs256 = jose_jwt.encode(
+        {"sub": test_user.id, "type": "access"}, "any-secret", algorithm="HS256"
+    )
+    caplog.set_level(logging.INFO, logger="ccure.tokens")
+    assert _verify(hs256, "access") is None
+    (line,) = _refusal_lines(caplog)
+    assert "reason=missing_kid" in line.getMessage()
+    assert hs256 not in caplog.text

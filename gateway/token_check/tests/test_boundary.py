@@ -59,10 +59,11 @@ def test_imports_are_confined():
     assert not offenders, offenders
 
 
-def test_the_legacy_secret_is_never_passed():
-    """Every verification call in the service passes legacy=None."""
+def test_the_service_has_no_notion_of_a_legacy_secret():
+    """There is no HS256 path in the verification rules any more (Phase 9.6c), so the
+    service neither passes nor names a secret."""
     source = (PACKAGE / "app.py").read_text()
-    assert "legacy=None" in source
+    assert "legacy" not in source.lower()
     assert "LegacyHS256" not in source
 
 

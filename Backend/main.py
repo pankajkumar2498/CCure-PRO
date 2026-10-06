@@ -126,13 +126,10 @@ async def lifespan(app: FastAPI):
     # so anything logged then had no handler to reach.
     log_trust_boundary()
 
-    # Whether MFA encryption is still tied to the JWT signing secret. While it
-    # is, rotating or unsetting JWT_SECRET_KEY makes every stored MFA secret
-    # undecryptable (Phase 9.2). Reported here for the same reason as above.
     from config import JWTConfig
 
     # The token keyset (Phase 9.3): which kids are published, or why none is.
-    # Asymmetric tokens are refused without one; HS256 is unaffected.
+    # Every token is refused without one.
     from ccure_platform.identity.tokens import keyset_status, public_jwks
 
     if public_jwks() is not None:
@@ -146,21 +143,14 @@ async def lifespan(app: FastAPI):
     from ccure_platform.identity.tokens import (
         SigningUnavailable,
         assert_signing_ready,
-        legacy_verification_status,
     )
 
-    # Logged before the issuance check, so a refusal below is always preceded
-    # by the state that caused it (step 9.6a).
-    logging.getLogger("ccure.security").info(
-        "Legacy HS256 verification: %s", legacy_verification_status()
-    )
     try:
         _issuing = assert_signing_ready()
     except SigningUnavailable as exc:
         logging.getLogger("ccure.security").critical(
             "Refusing to start: tokens cannot be issued (%s). Activate a "
-            "signing key, or set CCURE_TOKEN_SIGNING_ALG=HS256 (which needs "
-            "CCURE_ACCEPT_LEGACY_HS256=true) to issue legacy tokens.",
+            "signing key (scripts/security/manage_token_keys.py).",
             exc,
         )
         raise
@@ -182,12 +172,16 @@ async def lifespan(app: FastAPI):
             "Service identities: %s", registry_status()
         )
 
-    if JWTConfig.MFA_KEY_SOURCE != "MFA_ENCRYPTION_KEY":
-        logging.getLogger("ccure.security").warning(
-            "MFA_ENCRYPTION_KEY is not set: the key protecting stored MFA "
-            "secrets is derived from JWT_SECRET_KEY. Set MFA_ENCRYPTION_KEY to "
-            "the current JWT_SECRET_KEY value before rotating the JWT secret."
+    # The key protecting stored MFA secrets has no fallback: a key derived from
+    # nothing, or from some other secret, would silently orphan every enrolled
+    # authenticator. Refuse to start rather than guess.
+    if not JWTConfig.MFA_ENCRYPTION_KEY:
+        logging.getLogger("ccure.security").critical(
+            "Refusing to start: MFA_ENCRYPTION_KEY is not set. It must be the "
+            "value stored MFA secrets were encrypted under (never change it; "
+            "scripts/security/verify_mfa_key_continuity.py)."
         )
+        raise RuntimeError("MFA_ENCRYPTION_KEY is not set")
 
     # Whether the audit tamper-evidence chain is armed. Reported for the same
     # reason and at the same point.

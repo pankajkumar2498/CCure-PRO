@@ -1,33 +1,27 @@
 """
-Token characterisation — Phase 9.1.
+Token characterisation — Phase 9.1, rewritten for ES256 only (Phase 9.6c).
 
 These tests pin what the four token kinds *are* and how every verification path
-treats them **today** (HS256, python-jose), so that consolidating token handling
-into ``ccure_platform.identity.tokens`` can be shown to change nothing. They
-were written and passed against the code before the consolidation, and pass
-unchanged after it.
+treats them. They were written against the HS256 mechanism to show the 9.1
+consolidation changed nothing; with HS256 removed they pin the same matrix for the
+only token the platform issues, so the guarantees survive the mechanism.
 
 For each kind — ``access``, ``refresh``, ``ticket``, ``mfa_challenge`` — they
 cover:
 
 * the header and the exact claim set, and the lifetime;
 * acceptance by the path that consumes that kind;
-* refusal, by that path, of: a tampered signature, a token signed with another
-  key, ``alg: none``, an expired token, each *other* kind, a token with no
-  ``type``, and malformed input — with the path's own, uniform error;
-* the legacy ``decode_token``, which the two WebSocket logins and the rate-limit
+* refusal, by that path, of: a tampered signature or payload, a token signed with
+  another key, ``alg: none``, a forged HS256 token, an expired token, each *other*
+  kind, a token with no ``type``, and malformed input — with the path's own, uniform
+  error;
+* the any-kind ``decode_token``, which the two WebSocket logins and the rate-limit
   audit still call, returning the payload for every valid kind and ``None`` for
   every invalid token.
 
 Tokens are minted directly rather than through ``/auth/login``, so no test
 commits a login (CLAUDE.md: "Do not test this through TestClient with
 auth_headers").
-
-**Since Phase 9.4** new tokens are ES256 by default
-(``tests/auth/test_token_issuance.py`` characterises those). Every test here
-runs with ``CCURE_TOKEN_SIGNING_ALG=HS256``, the rollback, so this file now pins
-two things at once: the rollback still issues byte-for-byte the pre-9.4 token,
-and the HS256 tokens still in circulation are treated exactly as before.
 """
 
 from __future__ import annotations
@@ -41,17 +35,22 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt as jose_jwt
 
-from ccure_platform.identity import jwt_handler
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
+from ccure_platform.identity import jwt_handler, tokens
 from ccure_platform.identity.dependencies import get_current_user_flexible
 from config import JWTConfig
 
 KINDS = ("access", "refresh", "ticket", "mfa_challenge")
 
+#: What sign() adds to every user token itself.
+_PLATFORM = {"iss", "aud", "ptype", "nbf", "jti", "iat", "exp"}
 EXPECTED_CLAIMS = {
-    "access": {"sub", "username", "type", "org_id", "iat", "exp"},
-    "refresh": {"sub", "type", "jti", "iat", "exp"},
-    "ticket": {"sub", "username", "type", "iat", "exp"},
-    "mfa_challenge": {"sub", "username", "type", "org_id", "iat", "exp"},
+    "access": {"sub", "username", "type", "org_id"} | _PLATFORM,
+    "refresh": {"sub", "type"} | _PLATFORM,
+    "ticket": {"sub", "username", "type"} | _PLATFORM,
+    "mfa_challenge": {"sub", "username", "type", "org_id"} | _PLATFORM,
 }
 EXPECTED_LIFETIME = {
     "access": timedelta(minutes=JWTConfig.ACCESS_TOKEN_EXPIRES_MINUTES),
@@ -59,12 +58,6 @@ EXPECTED_LIFETIME = {
     "ticket": timedelta(seconds=60),
     "mfa_challenge": timedelta(minutes=5),
 }
-
-
-@pytest.fixture(autouse=True)
-def _hs256_issuance(monkeypatch):
-    """The legacy issuance mode (see the module docstring)."""
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -77,6 +70,24 @@ def _b64(data: dict) -> str:
 
 def _payload(token: str) -> dict:
     return jose_jwt.get_unverified_claims(token)
+
+
+def _es256(claims: dict, *, header: dict | None = None, key=None) -> str:
+    """A correctly formed ES256 token over ``claims`` — signed by the platform's
+    active key unless ``key`` (a private key object) says otherwise."""
+    active = tokens.signing_key()
+    pem = (
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        if key is not None
+        else tokens._private_pem(active)
+    )
+    return jose_jwt.encode(
+        claims, pem, algorithm="ES256", headers=header or {"kid": active.kid}
+    )
 
 
 def _mint(user, kind: str, db) -> str:
@@ -105,19 +116,26 @@ def _variants(valid: str) -> dict[str, str]:
         exp=int((now - timedelta(hours=1)).timestamp()),
     )
     no_type = {k: v for k, v in claims.items() if k != "type"}
+    other_key = ec.generate_private_key(ec.SECP256R1())
     return {
         "tampered signature": f"{header}.{body}.{flipped}",
         "tampered payload": f"{header}.{_b64(dict(claims, sub='usr_someone_else'))}.{signature}",
-        "wrong signing key": jose_jwt.encode(
-            claims, "a-different-key-entirely", algorithm="HS256"
-        ),
+        "wrong signing key, right kid": _es256(claims, key=other_key),
         "alg none": f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64(claims)}.",
         "alg none, no dot": f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64(claims)}",
-        "HS512 with the right key": jose_jwt.encode(
-            claims, jwt_handler.SECRET_KEY, algorithm="HS512"
+        "forged HS256, no kid": jose_jwt.encode(
+            claims, "a-different-key-entirely", algorithm="HS256"
         ),
-        "expired": jose_jwt.encode(expired, jwt_handler.SECRET_KEY, algorithm="HS256"),
-        "no type": jose_jwt.encode(no_type, jwt_handler.SECRET_KEY, algorithm="HS256"),
+        "forged HS256 naming the real kid": jose_jwt.encode(
+            claims,
+            "a-different-key-entirely",
+            algorithm="HS256",
+            headers={"kid": tokens.signing_key().kid},
+        ),
+        "expired": _es256(expired),
+        "no type": _es256(no_type),
+        "wrong issuer": _es256(dict(claims, iss="https://elsewhere.example")),
+        "wrong audience": _es256(dict(claims, aud="urn:ccure:ir")),
         "empty": "",
         "garbage": "not-a-jwt",
         "two segments": f"{header}.{body}",
@@ -136,7 +154,8 @@ def _other_kinds(user, kind: str, db) -> dict[str, str]:
 @pytest.mark.parametrize("kind", KINDS)
 def test_header_claims_and_lifetime(db_session, test_user, kind):
     token = _mint(test_user, kind, db_session)
-    assert jose_jwt.get_unverified_header(token) == {"alg": "HS256", "typ": "JWT"}
+    header = jose_jwt.get_unverified_header(token)
+    assert header["alg"] == "ES256" and header["kid"] == tokens.signing_key().kid
     claims = _payload(token)
     assert set(claims) == EXPECTED_CLAIMS[kind]
     assert claims["type"] == kind
@@ -149,9 +168,10 @@ def test_header_claims_and_lifetime(db_session, test_user, kind):
     assert "role" not in claims
 
 
-def test_the_signing_configuration_is_hs256_from_jwt_secret_key():
-    assert jwt_handler.ALGORITHM == "HS256"
-    assert jwt_handler.SECRET_KEY == JWTConfig.SECRET_KEY
+def test_the_platform_holds_no_symmetric_signing_configuration():
+    assert not hasattr(jwt_handler, "SECRET_KEY")
+    assert not hasattr(jwt_handler, "ALGORITHM")
+    assert not hasattr(JWTConfig, "SECRET_KEY")
     assert jwt_handler.ACCESS_TOKEN_EXPIRE == EXPECTED_LIFETIME["access"]
     assert jwt_handler.REFRESH_TOKEN_EXPIRE == EXPECTED_LIFETIME["refresh"]
 
@@ -175,15 +195,17 @@ def test_decode_token_refuses_every_invalid_variant(db_session, test_user, kind)
         assert jwt_handler.decode_token(bad) is None, name
 
 
-def test_decode_token_does_not_check_the_kind(db_session, test_user):
-    """Recorded as finding F9-3; its callers each check `type` themselves."""
+def test_decode_token_requires_a_type_claim_but_not_a_particular_kind(
+    db_session, test_user
+):
+    """Finding F9-3 recorded that the HS256-era decode never checked ``type``. An
+    ES256 token must carry it (REQUIRED_ASYMMETRIC_CLAIMS), so a token with none is
+    refused; which kind it names is still left to each caller."""
     token = _mint(test_user, "access", db_session)
-    no_type = jose_jwt.encode(
-        {k: v for k, v in _payload(token).items() if k != "type"},
-        jwt_handler.SECRET_KEY,
-        algorithm="HS256",
-    )
-    assert jwt_handler.decode_token(no_type) is not None
+    no_type = _es256({k: v for k, v in _payload(token).items() if k != "type"})
+    assert jwt_handler.decode_token(no_type) is None
+    for kind in KINDS:
+        assert jwt_handler.decode_token(_mint(test_user, kind, db_session)) is not None
 
 
 # ── access: the Bearer dependency behind every protected route ────────────────
@@ -303,16 +325,19 @@ def test_refresh_refuses_every_bad_token(db_session, test_user):
 def test_a_correctly_signed_refresh_token_without_its_session_is_refused(
     db_session, test_user
 ):
-    forged = jose_jwt.encode(
+    now = datetime.now(timezone.utc)
+    forged = _es256(
         {
             "sub": str(test_user.id),
             "type": "refresh",
             "jti": "no-such-session",
-            "iat": int(datetime.now(timezone.utc).timestamp()),
-            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
-        },
-        jwt_handler.SECRET_KEY,
-        algorithm="HS256",
+            "iss": tokens.ISSUER,
+            "aud": tokens.USER_AUDIENCE,
+            "ptype": "user",
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int((now + timedelta(days=1)).timestamp()),
+        }
     )
     assert jwt_handler.refresh_access_token(forged, db_session) is None
 

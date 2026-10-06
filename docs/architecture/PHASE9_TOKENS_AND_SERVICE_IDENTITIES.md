@@ -1,5 +1,7 @@
 # Phase 9 — Verifiable tokens and service identities (design proposal)
 
+> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+
 |               |                                                                                                                                                                                                                                                                                                                               |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Status**    | **Design approved 29 Sep 2026** (`9e296b3`), with the owner's amendments in §11. **Steps 9.1–9.5 done**; ES256 issuance live since 29 Sep 2026 (§15.3); service identities built, none registered (§16); 9.6a done; 9.6b done as a **forced** cut-off on 29 Sep 2026 — legacy HS256 verification off since 17:40 IST (§17.5). |

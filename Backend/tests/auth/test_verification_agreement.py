@@ -340,9 +340,8 @@ def corpus():
 
 @pytest.fixture
 def platform(corpus, monkeypatch):
-    """``tokens`` configured with the corpus keyset and legacy secret."""
+    """``tokens`` configured with the corpus keyset."""
     monkeypatch.setattr(tokens, "_keyset", corpus.keyset)
-    monkeypatch.setattr(tokens, "SECRET_KEY", corpus.legacy)
     return corpus
 
 
@@ -1099,11 +1098,14 @@ GOLDEN_ASSERTIONS = {
 }
 
 
-@pytest.mark.parametrize("legacy_on", [False, True], ids=["legacy-off", "legacy-on"])
-def test_tokens_matches_the_recorded_phase9_outcomes(
-    platform, caplog, monkeypatch, legacy_on
-):
-    monkeypatch.setattr(JWTConfig, "ACCEPT_LEGACY_HS256", legacy_on)
+#: HS256 removal (9.6c): the recorded legacy-off outcome for a no-kid HS256 token was
+#: ``legacy_disabled``; with no legacy path at all it is refused for having no kid.
+_RENAMED = {"legacy_disabled": "missing_kid"}
+
+
+def test_tokens_matches_the_recorded_phase9_outcomes(platform, caplog):
+    """The legacy-off columns of the golden table. The legacy-on columns recorded
+    what HS256 verification accepted and are history: that path no longer exists."""
     caplog.set_level(logging.INFO, logger="ccure.tokens")
     assert set(platform.tokens) == set(
         GOLDEN
@@ -1121,7 +1123,7 @@ def test_tokens_matches_the_recorded_phase9_outcomes(
         )
         got_any = _through_tokens(tokens.decode_any_kind, caplog, token)
         want = GOLDEN[case]
-        expected = (want[1], want[3]) if legacy_on else (want[0], want[2])
+        expected = (_RENAMED.get(want[0], want[0]), _RENAMED.get(want[2], want[2]))
         if (got_verify, got_any) != expected:
             wrong.append(f"{case}: got {(got_verify, got_any)}, recorded {expected}")
     assert not wrong, "\n".join(wrong)
@@ -1155,7 +1157,6 @@ def test_an_unknown_kind_still_raises(platform):
             issuer=tokens.ISSUER,
             audience=tokens.USER_AUDIENCE,
             keyset=lambda: None,
-            legacy=None,
         )
 
 
@@ -1176,15 +1177,10 @@ def test_no_keyset_is_refused_as_before(platform, caplog, monkeypatch):
 # ── 2. agreement with a public-only (JWKS) key source ────────────────────────
 
 
-@pytest.mark.parametrize("legacy_on", [False, True], ids=["legacy-off", "legacy-on"])
-def test_a_jwks_only_verifier_decides_exactly_as_the_platform(
-    platform, caplog, monkeypatch, legacy_on
-):
+def test_a_jwks_only_verifier_decides_exactly_as_the_platform(platform, caplog):
     """Every token × every expected kind × every audience, both paths."""
-    monkeypatch.setattr(JWTConfig, "ACCEPT_LEGACY_HS256", legacy_on)
     caplog.set_level(logging.INFO, logger="ccure.tokens")
     source = _JwksSource(platform.keyset.jwks())
-    legacy = verification.LegacyHS256(platform.legacy) if legacy_on else None
     audiences = (
         tokens.USER_AUDIENCE,
         tokens.CORE_SERVICE_AUDIENCE,
@@ -1209,7 +1205,6 @@ def test_a_jwks_only_verifier_decides_exactly_as_the_platform(
                         issuer=tokens.ISSUER,
                         audience=audience,
                         keyset=lambda: source,
-                        legacy=legacy,
                     )
                 )
                 compared += 1
@@ -1221,7 +1216,7 @@ def test_a_jwks_only_verifier_decides_exactly_as_the_platform(
     assert not wrong, "\n".join(wrong[:20])
 
 
-def test_the_jwks_only_verifier_never_accepts_legacy_hs256(platform):
+def test_the_jwks_only_verifier_never_accepts_hs256(platform):
     source = _JwksSource(platform.keyset.jwks())
     for case, token in platform.tokens.items():
         if "legacy_hs256" in case or case == "global/legacy_no_type":
@@ -1232,10 +1227,9 @@ def test_the_jwks_only_verifier_never_accepts_legacy_hs256(platform):
                 issuer=tokens.ISSUER,
                 audience=audience,
                 keyset=lambda: source,
-                legacy=None,
             )
             assert isinstance(outcome, verification.Refusal), case
-            assert outcome.reason == "legacy_disabled", (case, outcome.reason)
+            assert outcome.reason == "missing_kid", (case, outcome.reason)
 
 
 def test_tokens_reexports_the_rules_rather_than_redefining_them():
@@ -1255,7 +1249,9 @@ def test_tokens_reexports_the_rules_rather_than_redefining_them():
     ):
         assert getattr(tokens, name) is getattr(verification, name), name
     assert tokens._REFUSED_HEADERS is verification.REFUSED_HEADERS
-    assert tokens.ALGORITHM == verification.LEGACY_ALGORITHM == "HS256"
+    assert not hasattr(tokens, "ALGORITHM")
+    assert not hasattr(verification, "LEGACY_ALGORITHM")
+    assert not hasattr(verification, "LegacyHS256")
     assert (
         tokens._SERVICE_ASSERTION_ALGORITHM
         == verification.SERVICE_ASSERTION_ALGORITHM

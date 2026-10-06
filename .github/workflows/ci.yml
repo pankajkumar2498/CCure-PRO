@@ -52,7 +52,7 @@ jobs:
       VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
-      JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
+      MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
 
     services:
       postgres:

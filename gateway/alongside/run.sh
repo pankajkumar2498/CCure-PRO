@@ -21,7 +21,7 @@ rand() { python3 -c "import secrets; print(secrets.token_urlsafe($1))"; }
 fernet() { python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"; }
 
 # Throwaway secrets for this run only; never printed, gone with the stack.
-export ALONGSIDE_DB_PASSWORD=$(rand 24) ALONGSIDE_JWT_SECRET=$(rand 48) ALONGSIDE_MFA_KEY=$(rand 48)
+export ALONGSIDE_DB_PASSWORD=$(rand 24) ALONGSIDE_MFA_KEY=$(rand 48)
 export ALONGSIDE_COMPLIANCE_KEY=$(fernet) ALONGSIDE_USER_PASSWORD="Aa1!$(rand 24)"
 
 cleanup() {
@@ -37,7 +37,7 @@ live_state() {
     sha256sum /etc/nginx/conf.d/ccure.conf | cut -c1-16
     docker inspect ccure-api ccure-db --format '{{.Name}} {{.State.StartedAt}}'
     sha256sum /home/cdac/ccure-keys/keyset.json 2>/dev/null | cut -c1-16 || echo "keyset not readable"
-    docker exec ccure-api printenv CCURE_TOKEN_SIGNING_ALG CCURE_ACCEPT_LEGACY_HS256 2>/dev/null | tr '\n' ' '; echo
+    docker exec ccure-api printenv CCURE_TOKEN_KEYS_DIR 2>/dev/null | tr '\n' ' '; echo
     docker exec ccure-db psql -U postgres -d ccure_db -Atc "select string_agg(version_num, ',' order by version_num) from alembic_version"
 }
 live_before=$(live_state)

@@ -9,11 +9,10 @@ every stored MFA secret undecryptable (finding F9-1).
 These tests pin:
 
 * the derivation formula, which must never change;
-* the fallback — unset (or empty) still derives from ``JWT_SECRET_KEY``, so an
-  installation that has not set the variable behaves exactly as before;
-* **the separation** — with ``MFA_ENCRYPTION_KEY`` set, changing
-  ``JWT_SECRET_KEY`` alone leaves the MFA key, and every secret it encrypted,
-  unchanged;
+* **no fallback** (since 9.6c) — unset (or empty) yields no key, and the API refuses to
+  start; it used to derive one from ``JWT_SECRET_KEY``, which is gone;
+* **the separation** — the MFA key is derived from ``MFA_ENCRYPTION_KEY`` alone, and a
+  JWT secret in the environment changes nothing;
 * that the MFA endpoints encrypt and decrypt with the configured key.
 
 Configurations are loaded in fresh interpreters with ``SKIP_DOTENV_LOAD=1``,
@@ -41,9 +40,8 @@ JWT_B = "phase-9-2-test-jwt-secret-B-rotated"
 MFA_M = "phase-9-2-test-mfa-secret-M"
 
 _PROBE = (
-    "import json; from config import AppConfig, JWTConfig; "
-    "print(json.dumps({'key': AppConfig.MFA_KEY.decode(), "
-    "'source': JWTConfig.MFA_KEY_SOURCE}))"
+    "import json; from config import AppConfig; "
+    "print(json.dumps({'key': AppConfig.MFA_KEY.decode()}))"
 )
 
 
@@ -71,51 +69,48 @@ def test_the_derivation_formula_is_unchanged():
     assert derive_mfa_fernet_key("any secret") == expected
 
 
-def test_unset_falls_back_to_the_jwt_secret_as_before():
+def test_unset_means_no_key_not_a_derived_one():
+    """There is no JWT-secret fallback (9.6c): unset yields no key at all, and the API
+    refuses to start (main.py) rather than derive one from something else."""
     seen = _config(JWT_A, None)
-    assert seen["key"] == derive_mfa_fernet_key(JWT_A).decode()
-    assert seen["source"] == "JWT_SECRET_KEY (fallback)"
+    assert seen["key"] == ""
+    assert seen["key"] != derive_mfa_fernet_key(JWT_A).decode()
 
 
-def test_an_empty_value_is_treated_as_unset_not_as_the_empty_secret():
+def test_an_empty_value_is_not_the_empty_secret():
     seen = _config(JWT_A, "")
-    assert seen["key"] == derive_mfa_fernet_key(JWT_A).decode()
+    assert seen["key"] == ""
     assert seen["key"] != derive_mfa_fernet_key("").decode()
-    assert seen["source"] == "JWT_SECRET_KEY (fallback)"
 
 
 def test_when_set_the_mfa_key_derives_from_it_alone():
     seen = _config(JWT_A, MFA_M)
     assert seen["key"] == derive_mfa_fernet_key(MFA_M).decode()
-    assert seen["source"] == "MFA_ENCRYPTION_KEY"
 
 
-def test_changing_the_jwt_secret_alone_does_not_change_the_mfa_key():
-    """The regression the separation exists for."""
-    before = _config(JWT_A, MFA_M)
-    after = _config(JWT_B, MFA_M)
-    assert before["key"] == after["key"]
+def test_a_jwt_secret_in_the_environment_changes_nothing():
+    """The platform no longer reads JWT_SECRET_KEY; the MFA key cannot be tied to it."""
+    assert _config(JWT_A, MFA_M)["key"] == _config(JWT_B, MFA_M)["key"]
 
 
-def test_without_the_separation_changing_the_jwt_secret_would_change_it():
-    """Why 9.2 had to come first: the coupling F9-1 describes, demonstrated."""
-    assert _config(JWT_A, None)["key"] != _config(JWT_B, None)["key"]
+def test_setting_it_to_the_retired_jwt_value_keeps_the_key_byte_identical():
+    """The migration step that was taken: the explicit key repeats the old secret's
+    value, so the derived key — and every stored secret — is unchanged."""
+    assert _config(JWT_A, JWT_A)["key"] == derive_mfa_fernet_key(JWT_A).decode()
 
 
-def test_setting_it_to_the_current_jwt_secret_keeps_the_key_byte_identical():
-    """The migration step: separate without re-encrypting anything."""
-    assert _config(JWT_A, None)["key"] == _config(JWT_A, JWT_A)["key"]
-
-
-def test_a_secret_encrypted_before_the_separation_decrypts_after_a_jwt_rotation():
-    before = Fernet(_config(JWT_A, None)["key"].encode())  # today: fallback
-    stored = before.encrypt(b"JBSWY3DPEHPK3PXP")
-    # separated at the current JWT value, then the JWT secret rotated
+def test_a_secret_encrypted_under_the_old_fallback_decrypts_under_the_explicit_key():
+    stored = Fernet(derive_mfa_fernet_key(JWT_A)).encrypt(b"JBSWY3DPEHPK3PXP")
     after = Fernet(_config(JWT_B, JWT_A)["key"].encode())
     assert after.decrypt(stored) == b"JBSWY3DPEHPK3PXP"
-    # and had it not been separated, the rotation would have lost it
     with pytest.raises(InvalidToken):
-        Fernet(_config(JWT_B, None)["key"].encode()).decrypt(stored)
+        Fernet(derive_mfa_fernet_key(JWT_B)).decrypt(stored)
+
+
+def test_the_api_refuses_to_start_without_an_mfa_key():
+    source = (BACKEND_ROOT / "main.py").read_text()
+    assert "Refusing to start: MFA_ENCRYPTION_KEY is not set" in source
+    assert "MFA_KEY_SOURCE" not in source
 
 
 def test_the_mfa_endpoints_use_the_configured_key(monkeypatch):
@@ -131,8 +126,9 @@ def test_the_mfa_endpoints_use_the_configured_key(monkeypatch):
     assert router.decrypt_secret(token) == "JBSWY3DPEHPK3PXP"
 
 
-def test_the_test_session_derives_the_key_it_always_did():
-    """conftest pins MFA_ENCRYPTION_KEY to the test JWT secret (see there)."""
+def test_the_test_session_derives_its_key_from_the_explicit_variable():
+    """conftest sets MFA_ENCRYPTION_KEY to a fixed test value and removes any JWT secret."""
     from config import AppConfig, JWTConfig
 
-    assert AppConfig.MFA_KEY == derive_mfa_fernet_key(JWTConfig.SECRET_KEY)
+    assert AppConfig.MFA_KEY == derive_mfa_fernet_key(JWTConfig.MFA_ENCRYPTION_KEY)
+    assert "JWT_SECRET_KEY" not in os.environ

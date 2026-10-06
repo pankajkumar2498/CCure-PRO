@@ -271,12 +271,7 @@ def test_issuance_is_audited_without_the_token(client, services, db_session, tes
     assert token not in str(row.changes)
 
 
-def test_issuance_is_es256_even_in_the_hs256_rollback_mode(
-    client, services, monkeypatch
-):
-    from config import JWTConfig
-
-    monkeypatch.setattr(JWTConfig, "TOKEN_SIGNING_ALG", "HS256")
+def test_service_tokens_are_es256(client, services):
     token = _service_token(client, services["ir"])
     assert jose_jwt.get_unverified_header(token)["alg"] == "ES256"
 
@@ -391,14 +386,13 @@ def test_the_platform_signing_key_authenticates_no_service(client, services):
 
 
 def test_no_shared_secret_can_authenticate_a_service(client, services):
-    """The HMAC secret the api and workers hold opens nothing here."""
-    secret_signed = services["ir"].assertion(
-        signing_pem=jwt_handler.SECRET_KEY, algorithm="HS256"
-    )
+    """No HMAC secret — the platform holds none now — opens anything here."""
+    a_secret = "any-hmac-secret-an-attacker-might-guess"
+    secret_signed = services["ir"].assertion(signing_pem=a_secret, algorithm="HS256")
     _invalid_client(_request(client, secret_signed))
     no_kid = jose_jwt.encode(
         {"iss": "ir", "sub": "ir", "aud": tokens.SERVICE_ASSERTION_AUDIENCE},
-        jwt_handler.SECRET_KEY,
+        a_secret,
         algorithm="HS256",
     )
     _invalid_client(_request(client, no_kid))
@@ -446,7 +440,7 @@ def test_an_hs256_service_token_is_refused(services):
             "tenant": "org_x",
             "exp": int(datetime.now(timezone.utc).timestamp()) + 60,
         },
-        jwt_handler.SECRET_KEY,
+        "any-hmac-secret-an-attacker-might-guess",
         algorithm="HS256",
     )
     assert (

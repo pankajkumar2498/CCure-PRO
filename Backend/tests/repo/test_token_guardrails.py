@@ -248,10 +248,15 @@ def test_only_the_api_service_carries_the_token_settings():
         items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
         return {str(e).split("=", 1)[0] for e in items}
 
-    api_only = (
+    # HS256 and its switches were removed in Phase 9.6c: no service holds them, and
+    # none holds a JWT secret. Only the api holds the MFA key.
+    gone = (
         "CCURE_ACCEPT_LEGACY_HS256",
         "CCURE_TOKEN_SIGNING_ALG",
+        "JWT_SECRET_KEY",
     )
-    for setting in api_only:
+    for setting in gone:
         holders = sorted(n for n, s in services.items() if setting in names(s))
-        assert holders == ["api"], f"{setting} reaches {holders}; only api may hold it"
+        assert holders == [], f"{setting} still reaches {holders}"
+    holders = sorted(n for n, s in services.items() if "MFA_ENCRYPTION_KEY" in names(s))
+    assert holders == ["api"], f"MFA_ENCRYPTION_KEY reaches {holders}"

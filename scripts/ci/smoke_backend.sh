@@ -34,7 +34,7 @@ rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 DB_USER="smoke_$(rand 8 | tr '[:upper:]' '[:lower:]')"
 DB_PASSWORD="$(rand 32)"
 DB_NAME="ccure_smoke"
-JWT_SECRET_KEY="$(rand 48)"
+MFA_ENCRYPTION_KEY="$(rand 48)"
 COMPLIANCE_ENCRYPTION_KEY="$(rand 48)"
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB}:5432/${DB_NAME}?sslmode=disable"
 
@@ -55,7 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 redact() {
-  sed -e "s/${DB_PASSWORD}/[redacted]/g" -e "s/${JWT_SECRET_KEY}/[redacted]/g" \
+  sed -e "s/${DB_PASSWORD}/[redacted]/g" -e "s/${MFA_ENCRYPTION_KEY}/[redacted]/g" \
       -e "s/${COMPLIANCE_ENCRYPTION_KEY}/[redacted]/g"
 }
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -94,7 +94,7 @@ APP_ENV_ARGS=(
   -e CELERY_RESULT_BACKEND="redis://$REDIS:6379/0"
   -e VULN_DB_HOST="$DB" -e VULN_DB_PORT=5432 -e VULN_DB_NAME=vuln_intel
   -e VULN_DB_USER="$DB_USER" -e VULN_DB_PASSWORD="$DB_PASSWORD"
-  -e JWT_SECRET_KEY="$JWT_SECRET_KEY"
+  -e MFA_ENCRYPTION_KEY="$MFA_ENCRYPTION_KEY"
   -e COMPLIANCE_ENCRYPTION_KEY="$COMPLIANCE_ENCRYPTION_KEY"
   -e CORS_ALLOW_ORIGINS=http://localhost:3000
   -e FRONTEND_URL=http://localhost:3000
@@ -177,12 +177,12 @@ pass "beat started and runs as ccure (uid $beat_uid)"
 echo "== secrets never appear in a log"
 for c in "${CONTAINERS[@]}"; do
   logs="$(docker logs "$c" 2>&1)"
-  for secret in "$DB_PASSWORD" "$JWT_SECRET_KEY" "$COMPLIANCE_ENCRYPTION_KEY"; do
+  for secret in "$DB_PASSWORD" "$MFA_ENCRYPTION_KEY" "$COMPLIANCE_ENCRYPTION_KEY"; do
     if grep -qF -- "$secret" <<<"$logs"; then
       fail "a generated secret was printed by ${c#"$RUN_ID"-}"
     fi
   done
 done
-pass "no database password, JWT key or encryption key in any log"
+pass "no database password, MFA key or encryption key in any log"
 
 echo "PASS: backend image $IMAGE"

@@ -86,24 +86,17 @@ class DatabaseConfig:
 class JWTConfig:
     """JWT authentication configuration."""
 
-    SECRET_KEY: str = os.getenv(
-        "JWT_SECRET_KEY",
-        "dev-secret-key-change-in-production",  # ⚠️ Never use in production
-    )
     ACCESS_TOKEN_EXPIRES_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30")
     )
     REFRESH_TOKEN_EXPIRES_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7"))
 
     # The secret the MFA Fernet key is derived from (it encrypts
-    # users.totp_secret). Independently configurable since Phase 9.2 so the JWT
-    # signing secret can later be rotated or retired without making every stored
-    # MFA secret undecryptable. When unset — or set empty, which would otherwise
-    # derive a key from "" — it falls back to JWT_SECRET_KEY, exactly as before,
-    # and the start-up log says so (main.py). Set it to the *current*
-    # JWT_SECRET_KEY value to separate the two without changing the key.
-    _MFA_ENCRYPTION_KEY_ENV = os.getenv("MFA_ENCRYPTION_KEY")
-    MFA_ENCRYPTION_KEY: str = _MFA_ENCRYPTION_KEY_ENV or SECRET_KEY
+    # users.totp_secret). Required: there is no fallback. It was initialised to
+    # the value of the retired JWT secret so that nothing already stored changed
+    # (scripts/security/verify_mfa_key_continuity.py proved it), and it must
+    # never change afterwards. Unset, the API refuses to start (main.py).
+    MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", "")
     # ── Token issuer, audience and signing keys (Phase 9.3) ─────────────────
     # The issuer every asymmetric token names, chosen by the project owner on
     # 29 Sep 2026. It must not change for the life of the platform: every
@@ -115,24 +108,10 @@ class JWTConfig:
     # The keyset directory (keyset.json + PEM files), mounted read-only into the
     # api container only. Unset means no asymmetric verification and no JWKS.
     TOKEN_KEYS_DIR: str = os.getenv("CCURE_TOKEN_KEYS_DIR", "")
-    # The algorithm new tokens are issued with (Phase 9.4). ES256 signs with the
-    # keyset's active key, and the API refuses to start without one. HS256 is
-    # the rollback: it issues exactly the 9.3 token, and tokens already issued
-    # ES256 stay valid because verification accepts both.
-    TOKEN_SIGNING_ALG: str = os.getenv("CCURE_TOKEN_SIGNING_ALG", "ES256")
     # The service-identity registry (Phase 9.5): services.json plus each
     # service's public keys, mounted read-only into the api only. Unset means
     # no service is registered, and every service assertion is refused.
     SERVICE_REGISTRY_DIR: str = os.getenv("CCURE_SERVICE_REGISTRY_DIR", "")
-    # Whether legacy HS256 tokens (no kid) still verify. On until the step 9.6
-    # cut-off, which needs its own evidence and review.
-    ACCEPT_LEGACY_HS256: bool = (
-        os.getenv("CCURE_ACCEPT_LEGACY_HS256", "true").strip().lower() != "false"
-    )
-
-    MFA_KEY_SOURCE: str = (
-        "MFA_ENCRYPTION_KEY" if _MFA_ENCRYPTION_KEY_ENV else "JWT_SECRET_KEY (fallback)"
-    )
 
 
 def derive_mfa_fernet_key(secret: str) -> bytes:
@@ -951,13 +930,19 @@ class AppConfig:
     DATABASE_ENGINE_KWARGS = DatabaseConfig.get_engine_kwargs()
 
     # JWT
-    JWT_SECRET_KEY = JWTConfig.SECRET_KEY
     ACCESS_TOKEN_EXPIRES_MINUTES = JWTConfig.ACCESS_TOKEN_EXPIRES_MINUTES
     REFRESH_TOKEN_EXPIRES_DAYS = JWTConfig.REFRESH_TOKEN_EXPIRES_DAYS
     MFA_ENCRYPTION_KEY = JWTConfig.MFA_ENCRYPTION_KEY
 
     # Derived Fernet key (32 bytes urlsafe base64 encoded)
-    MFA_KEY: bytes = derive_mfa_fernet_key(JWTConfig.MFA_ENCRYPTION_KEY)
+    # Empty when the key is not configured, never a key derived from "": the API
+    # refuses to start in that state (main.py), and a key anyone can compute must
+    # not exist to be used by mistake.
+    MFA_KEY: bytes = (
+        derive_mfa_fernet_key(JWTConfig.MFA_ENCRYPTION_KEY)
+        if JWTConfig.MFA_ENCRYPTION_KEY
+        else b""
+    )
 
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT

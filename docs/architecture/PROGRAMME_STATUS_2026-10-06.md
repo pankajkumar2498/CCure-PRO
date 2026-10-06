@@ -22,10 +22,10 @@ one is superseded it carries a banner pointing here or to `CLAUDE.md`.
 
 ## 2. Prepared, not live
 
-| Item                              | What is missing                                                                                                                                                                                                                         |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Deployment of the Phase 9 cleanup | The running containers still carry the old compose definition. Needs the order in `CLAUDE.md` ("Deploying it"): rebuild `gateway-auth`, then recreate `api`, `worker`, `beat`, `web-worker`. **Not deployed; no service was restarted** |
-| Phase 18 database isolation       | Design, bootstrap SQL, generated grants, isolation proof and a guarded rehearsal script exist (`PHASE18_DATABASE_ISOLATION.md`). **Nothing has been run against any database**; the rehearsal on a restored copy is the next step       |
+| Item                                  | What is missing                                                                                                                                                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Deployment of the Phase 9 cleanup~~ | **Done later the same day** (~09:47 IST, from `3920908`; see `CLAUDE.md`, "Deployed 6 Oct 2026"). `gateway-auth`, `api`, `worker`, `beat`, `web-worker` and the frontend were recreated; the database was not touched             |
+| Phase 18 database isolation           | Design, bootstrap SQL, generated grants, isolation proof and a guarded rehearsal script exist (`PHASE18_DATABASE_ISOLATION.md`). **Nothing has been run against any database**; the rehearsal on a restored copy is the next step |
 
 ## 2a. Known failures that are not regressions
 

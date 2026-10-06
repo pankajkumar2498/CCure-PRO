@@ -77,3 +77,18 @@ def test_workers_cannot_read_the_dotenv_file_through_the_backend_mount():
         assert "/dev/null:/app/.env:ro" in volumes, service
         assert volumes.index("./Backend:/app") < volumes.index("/dev/null:/app/.env:ro")
         assert _env(service)["SKIP_DOTENV_LOAD"] == "1"
+
+
+def test_no_secret_bearing_dotenv_copy_sits_in_the_mounted_backend_directory():
+    """The workers mount ./Backend, and only ``/app/.env`` is masked. A ``.env.bak-*``
+    left beside it carries the same secrets and is readable from every worker, so
+    backups of dotenv files live outside the tree (6 Oct 2026: seven were moved to a
+    private directory when this was found)."""
+    from testpaths import BACKEND_ROOT
+
+    stray = sorted(
+        p.name
+        for p in BACKEND_ROOT.glob(".env*")
+        if p.name not in {".env", ".env.example", ".env.test"}
+    )
+    assert not stray, f"secret-bearing copies in Backend/: {stray}"

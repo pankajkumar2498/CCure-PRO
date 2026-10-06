@@ -302,7 +302,10 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - **Workers hold no secrets of this kind.** `worker`, `beat` and `web-worker`
     get neither `JWT_SECRET_KEY` (gone) nor `MFA_ENCRYPTION_KEY`, set
     `SKIP_DOTENV_LOAD=1`, and have `/app/.env` masked by a `/dev/null` bind so
-    the `./Backend` mount cannot hand them `Backend/.env`.
+    the `./Backend` mount cannot hand them `Backend/.env`. **Masking one file is not
+    enough**: any `Backend/.env.bak-*` is readable from every worker and holds the same
+    secrets, so dotenv backups live outside the tree (`~/ccure-secret-backups/`, mode
+    700) and a test fails if one reappears.
 - **Routes annotate the authenticated user as `ccure_platform.api.CurrentUser`**
   (step 8.5) and take `require_authorized` /
   `current_user_flexible` from the API, never from `auth.*` or `db.models`.

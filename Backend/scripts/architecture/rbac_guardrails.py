@@ -93,7 +93,7 @@ EXEMPT_FILES = frozenset(
 class Site:
     path: str
     line: int
-    kind: str  # "role_literal" | "role_identity_compare" | "require_role"
+    kind: str  # "role_literal" | "role_identity_compare" | "role_set_compare" | "legacy_role_read" | "require_role"
     what: str
 
 
@@ -114,7 +114,62 @@ def _is_identity_expr(node: ast.AST) -> bool:
             return True
         if isinstance(sub, ast.Name) and (sub.id in ("role_name", "role_key")):
             return True
+        if isinstance(sub, ast.Call) and _call_name(sub) in _ROLE_HELPER_NAMES:
+            return True
     return False
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    return func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+
+
+#: A helper that returns a role's identity (``_role_name(user)``): comparing its
+#: result is the same decision as comparing ``role.name``, one call removed.
+_ROLE_HELPER_NAMES = frozenset(
+    {"role_name", "_role_name", "get_role_name", "role_key", "_role_key", "user_role"}
+)
+
+
+def _looks_like_role_set(collection: ast.AST) -> bool:
+    """Two or more role names, or one that only a role can be (``superadmin``,
+    ``org_admin``, ``platform.*``): a lone ``viewer`` in a word list is a word."""
+    lits = {lit.lower() for lit in _literals(collection)}
+    distinctive = {"superadmin", "org_admin"}
+    return (
+        len(lits) >= 2
+        or bool(lits & distinctive)
+        or any(lit.startswith("platform.") for lit in lits)
+    )
+
+
+def _named_role_sets(tree: ast.AST) -> set[str]:
+    """Names bound to a collection holding a legacy role name or system role key
+    (``_ORG_WIDE_ROLES = {"superadmin", "org_admin"}``). Testing membership in one is
+    a role-identity decision however far from the literals it is written."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if value is None:
+            continue
+        if isinstance(value, ast.Call) and _call_name(value) in (
+            "frozenset",
+            "set",
+            "tuple",
+            "list",
+        ):
+            collection = value.args[0] if value.args else None
+        else:
+            collection = value
+        if not isinstance(collection, (ast.Set, ast.Tuple, ast.List)):
+            continue
+        if not _looks_like_role_set(collection):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        names.update(t.id for t in targets if isinstance(t, ast.Name))
+    return names
 
 
 def _role_attr_expr(node: ast.AST) -> bool:
@@ -144,9 +199,17 @@ def scan_legacy_source(path: str, source: str) -> list[Site]:
     except SyntaxError:
         return []
     sites: list[Site] = []
+    role_sets = _named_role_sets(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Compare):
             operands = [node.left, *node.comparators]
+            used = {
+                o.id for o in operands if isinstance(o, ast.Name) and o.id in role_sets
+            }
+            if used:
+                sites.append(
+                    Site(path, node.lineno, "role_set_compare", ",".join(sorted(used)))
+                )
             if any(_is_identity_expr(o) for o in operands):
                 lits = [lit for o in operands for lit in _literals(o)]
                 if lits:
@@ -167,7 +230,41 @@ def scan_legacy_source(path: str, source: str) -> list[Site]:
                 sites.append(
                     Site(path, node.lineno, "require_role", "require_role(...)")
                 )
+            if (
+                name == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "role"
+                and _is_account_expr(node.args[0])
+            ):
+                sites.append(
+                    Site(path, node.lineno, "legacy_role_read", ast.unparse(node)[:80])
+                )
+        elif (
+            isinstance(node, ast.Attribute)
+            and node.attr == "role"
+            and _is_account_expr(node.value)
+        ):
+            sites.append(
+                Site(path, node.lineno, "legacy_role_read", ast.unparse(node)[:80])
+            )
     return sites
+
+
+_ACCOUNT_NAMES = frozenset(
+    {"user", "current_user", "current", "account", "principal", "actor", "me"}
+)
+
+
+def _is_account_expr(node: ast.AST) -> bool:
+    """``user`` / ``current_user`` / ``self.user`` …: the signed-in account, whose
+    legacy ``role`` relationship was removed (revision d4f8b2c6e0a1). Reading it
+    yields nothing on a native account, so whatever decides on it decides wrongly."""
+    if isinstance(node, ast.Name):
+        return node.id in _ACCOUNT_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in _ACCOUNT_NAMES
+    return False
 
 
 def scan_new_source(path: str, source: str) -> list[Site]:

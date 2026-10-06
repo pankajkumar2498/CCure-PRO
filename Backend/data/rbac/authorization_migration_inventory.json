@@ -15,8 +15,8 @@
     "legacy_atoms": "kept only in migration history, documentation, audit data and historical migrations"
   },
   "summary": {
-    "total": 233,
-    "migrated": 229,
+    "total": 235,
+    "migrated": 231,
     "display-only": 2,
     "compatibility-history": 2,
     "legacy": 0,
@@ -2397,7 +2397,27 @@
     },
     {
       "file": "routers/topology.py",
-      "line": 85,
+      "line": 32,
+      "function": "_resolve_org",
+      "mechanism": "resolve_active_organisation",
+      "permission": null,
+      "status": "migrated",
+      "reason": "organisation scope (platform-scope switch grant)",
+      "site_id": "routers/topology.py::_resolve_org::resolve_active_organisation::#1"
+    },
+    {
+      "file": "routers/topology.py",
+      "line": 38,
+      "function": "_can_read_all",
+      "mechanism": "has_permission",
+      "permission": "audit.scan.read_all",
+      "status": "migrated",
+      "reason": "in-handler permission check",
+      "site_id": "routers/topology.py::_can_read_all::has_permission::audit.scan.read_all#1"
+    },
+    {
+      "file": "routers/topology.py",
+      "line": 99,
       "function": "get_topology_map",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",
@@ -2407,7 +2427,7 @@
     },
     {
       "file": "routers/topology.py",
-      "line": 122,
+      "line": 139,
       "function": "get_topology_map_by_scan",
       "mechanism": "require_authorized",
       "permission": "audit.scan.read",

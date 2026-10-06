@@ -37,6 +37,13 @@ from collections import Counter
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+if str(BACKEND_ROOT) not in sys.path:  # run as a file as well as ``-m``
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from scripts.architecture import (
+    rbac_guardrails,
+)  # noqa: E402  (pure ``ast``, no app code)
+
 INVENTORY = BACKEND_ROOT / "data" / "rbac" / "authorization_migration_inventory.json"
 ROLE_NAME_HISTORY = BACKEND_ROOT / "data" / "rbac" / "role_name_site_decisions.json"
 
@@ -262,7 +269,7 @@ def build() -> dict:
             "authority": "Platform RBAC (ccure_platform.rbac) is the only application "
             "authorization model",
             "legacy_calls_remaining": counts.get("legacy", 0),
-            "role_name_decisions_remaining": 0,
+            "role_name_decisions_remaining": len(rbac_guardrails.legacy_sites()),
             "legacy_tables": LEGACY_TABLES,
             "users_role_id": "absent from runtime model; removed by forward revision d4f8b2c6e0a1",
             "legacy_atoms": "kept only in migration history, documentation, audit data and "

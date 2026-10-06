@@ -191,3 +191,72 @@ def test_seed_migration_tooling_and_test_contexts_are_exempt_by_design():
 def test_no_file_of_the_package_is_exempt_as_legacy_authority():
     assert rg.RBAC_LEGACY_FILES == frozenset()
     assert rg.measure_new() == []
+
+
+# ── helper-mediated, named-set and legacy-relationship decisions ──────────────
+# routers/topology.py decided by `_role_name(user) == "superadmin"` and
+# `_role_name(user) not in _ORG_WIDE_ROLES`, reading a `user.role` relationship that
+# native accounts no longer have. The ratchet was blind to both shapes and reported 0.
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        # the helper returns a role's name; comparing its result is the same decision
+        'if _role_name(user) == "superadmin": pass',
+        'if get_role_name(u) in ("org_admin", "superadmin"): pass',
+        # a named set of roles, tested from anywhere
+        '_WIDE = {"superadmin", "org_admin"}\nif who not in _WIDE: pass',
+        '_WIDE: frozenset = frozenset({"platform.org_admin"})\nok = x in _WIDE',
+        # the removed legacy relationship
+        "n = user.role.name",
+        "r = current_user.role",
+        'r = getattr(user, "role", None)',
+    ],
+)
+def test_helper_mediated_and_named_set_role_decisions_are_detected(src):
+    assert legacy(src), src
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        # a word list that happens to hold one role-like word is not a role set
+        '_WORDS = {"viewer", "home", "pro"}\nok = t in _WORDS',
+        "x = message.role",  # a chat message's role, not an account's
+        'if _role_name_of_field(x) == "a": pass',
+    ],
+)
+def test_the_wider_detection_does_not_flag_unrelated_code(src):
+    assert legacy(src) == [], src
+
+
+def test_the_old_topology_helpers_would_have_been_caught():
+    old = """
+_ORG_WIDE_ROLES = {"superadmin", "org_admin"}
+def _role_name(user):
+    return (getattr(getattr(user, "role", None), "name", "") or "").lower()
+def _resolve_org(user, requested_org):
+    if _role_name(user) == "superadmin" and requested_org:
+        return requested_org
+def _authorize_scan(user, scan):
+    if _role_name(user) not in _ORG_WIDE_ROLES and scan.created_by != user.id:
+        raise PermissionError
+"""
+    kinds = {k for k, _ in legacy(old, "routers/topology.py")}
+    assert {"role_identity_compare", "role_set_compare", "legacy_role_read"} <= kinds
+
+
+def test_the_inventory_derives_the_role_name_decision_count_from_source():
+    import json
+
+    from scripts.rbac import build_migration_inventory as inv
+
+    built = inv.build()["final_state"]["role_name_decisions_remaining"]
+    assert built == len(rg.legacy_sites()) == 0
+    assert (
+        json.loads(inv.INVENTORY.read_text())["final_state"][
+            "role_name_decisions_remaining"
+        ]
+        == built
+    )

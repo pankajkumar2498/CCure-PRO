@@ -1,5 +1,11 @@
 # RBAC foundation (RBAC-1, RBAC-2, RBAC-3)
 
+> **Historical (superseded).** The status below describes RBAC-1…RBAC-3, when the capability
+> was dark or shadow-only beside a legacy check. Platform RBAC has been the **only**
+> authorization model since RBAC-8, and the legacy tables were removed on 4 Oct 2026
+> (`d4f8b2c6e0a1`; `backups/native_clean_reset_20261004/final-report.md`). Current state:
+> `CLAUDE.md`, "RBAC capability".
+
 **Status: dark.** RBAC-1 built the independent RBAC capability and wired it to
 nothing; RBAC-2 populated its permission catalogue and role model and mapped every
 legacy atom onto them (§10, and [RBAC_PERMISSION_CATALOG.md](RBAC_PERMISSION_CATALOG.md)).

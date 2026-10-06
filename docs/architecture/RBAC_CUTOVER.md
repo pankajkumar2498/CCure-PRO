@@ -1,5 +1,13 @@
 # RBAC-8 — final cutover: Platform RBAC is the only authorization model
 
+> **Historical record (superseded 4 Oct 2026).** This describes the RBAC-8 plan to migrate an
+> existing installation. It was never executed: the development installation was instead
+> **reset to a native-only state** (`backups/native_clean_reset_20261004/final-report.md`,
+> revision `d4f8b2c6e0a1`), which removed the legacy tables, `users.role_id`, `cutover.py`,
+> the golden mapping and the cutover checklist. The "prepared, not executed" status below
+> is therefore a statement about that moment, not the current state. Current state: `CLAUDE.md`,
+> "RBAC capability".
+
 Status: **code complete and verified in disposable databases; production cutover prepared,
 not executed.** Nothing in this phase touched the live database, deployed, or enabled
 anything in production. The exact approvals the operator still needs are in §9.

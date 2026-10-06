@@ -1,5 +1,16 @@
 # Audit vocabulary inside `ccure_platform` (backend alignment, follow-up 3)
 
+> **Update, 6 Oct 2026.** Rows marked below are **historical** where the later work changed
+> them: (a) the AMT permission mismatch and the denied-route fallback, recorded as "not touched",
+> are **resolved** (AMT is `audit.asset.import_amt` in backend and frontend; denied platform
+> routes render `AccessDenied`); (b) item 5, the Audit-shaped permission **atoms in the
+> platform's tables**, no longer exists — the legacy `permissions`/`roles` tables were removed
+> (`d4f8b2c6e0a1`) and Audit's 37 permissions are declared by Audit's own manifest; (c) item 8's
+> backend branding (reset email subject, TOTP issuer) is **already "CCure"**; only the
+> frontend sign-in screens remain Audit-branded; (d) items 6 and 7 are the approved **Phase 8.4
+> Option A** (plan stays on `organizations` behind platform APIs), not unfinished work.
+> The executable baseline in `tests/repo/test_platform_audit_vocabulary.py` is current.
+
 |              |                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Status**   | Inventory and classification, 3 Oct 2026. Item 1 (`default_scan_type`) was **resolved by follow-up 4** (preference namespacing, §7); the rest unchanged. One ratchet test (`tests/repo/test_platform_audit_vocabulary.py`).                                                                                                                                                                       |

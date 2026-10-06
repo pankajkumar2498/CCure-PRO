@@ -234,10 +234,13 @@ Do not start dependency cleanup for its own sake: Phase 3's objective
   - `ccure_platform.api` may export only `PLATFORM_API_SURFACE`.
   - The package may import no Audit code or model
     (`platform-is-shared-foundation`).
-  - Audit's quotas and scan scope (`max_assets`, `max_scans_per_day`,
-    `max_concurrent_scans`, `scan_scope_cidrs`) are Audit's. They leave
-    `organizations` in step 8.4, and the 11 mentions in identity's own code
-    are a baseline that reaches zero there.
+  - The organisation plan (`max_assets`, `max_scans_per_day`, `max_concurrent_scans`,
+    `scan_scope_cidrs`) is **platform-owned and stays on `organizations`**: step 8.4 chose
+    Option A (a platform plan boundary over the existing columns,
+    `docs/architecture/PHASE8_4_ORGANISATION_PLAN.md` §3). Audit consumes it through
+    `core.quota`, `core.scan_scope` and `core.remediation.sla` only, and module code names
+    no plan column. The earlier plan to move them off `organizations` (Option B) was **not
+    adopted**; do not start it.
 - **Owner (D6):** the Project Owner. `.github/CODEOWNERS` (Phase 11) records it,
   with placeholder handles until real ones are supplied — see "Core modules".
 - **Tokens are signed and verified only in `ccure_platform.identity.tokens`**
@@ -434,15 +437,22 @@ final cutover, [`docs/architecture/RBAC_CUTOVER.md`](docs/architecture/RBAC_CUTO
 no legacy fallback, no authority switch (`RBAC_AUTHORITY_*` are gone), no shadow mode, no
 `require_permission` / `require_role` / `user_has_permission`, no role-name decision (the
 role-name ratchet is **empty and stays empty**) and no read of `users.role_id`.
-`tests/repo/test_rbac_final_ratchet.py` fails if any of it returns. **Production is not yet
-cut over**: the live database has no `rbac_*` tables; the cutover is prepared
-(`scripts/rbac/cutover.py`, `bootstrap_admin.py`, `data/rbac/cutover_checklist.json`) and needs
-operator/DBA approval. Do not describe production as running RBAC until that is recorded.
+`tests/repo/test_rbac_final_ratchet.py` fails if any of it returns.
 
-- **Legacy tables.** `users.role_id` is deprecated, nullable and non-authoritative (migration
-  `c9e3a7b5d1f2`); `roles`, `permissions`, `role_permissions` are retained as history and as
-  reconciliation input, never read by a decision. Atoms exist only in migrations, docs, audit
-  data and the golden mapping. **Never write a decision on any of them.**
+**Current state (native RBAC, since the clean development reset of 4 Oct 2026).** The
+installation in `ccure_db` is explicitly a **development** installation, and it was
+reset on purpose: record `backups/native_clean_reset_20261004/final-report.md`, revision
+`d4f8b2c6e0a1`. The database now holds **1 organisation** (`CCURE Development`,
+`org_development`), **1 user** (the bootstrap platform administrator), the six `rbac_*`
+tables with **5 system roles, 67 permissions and 1 assignment**, and no scans or assets.
+`users.role_id` and the legacy `roles`, `permissions`, `role_permissions` and
+`rbac_legacy_map` tables **no longer exist**; historical Alembic migrations that created
+them are unchanged and are history. There is no cutover to perform: `cutover.py`, the
+golden mapping and the cutover checklist were removed with the legacy model. Anything
+below that says "legacy atoms" or "golden mapping" describes how the catalogue was
+derived and is **historical**. A production installation would be created native, not
+migrated.
+
 - **Provisioning** (`rbac/provisioning.py`): a self-registered account gets the configured
   `rbac_default_roles` role only if it is valid (active, organisation-assignable,
   non-privileged) — otherwise **no role**; the first platform administrator is made only by
@@ -528,7 +538,7 @@ operator/DBA approval. Do not describe production as running RBAC until that is 
   cross-organisation). Switch, denied scope and refused escalation are audited
   (`rbac.org_switch.entered`, `rbac.scope.denied`, `rbac.escalation.refused`). Missing,
   inactive or unknown organisations fail closed. Paths `scope.active_organisation`,
-  `scope.cross_organisation`, `scope.assign_role`. 9 role-name sites remain (RBAC-7/8).
+  `scope.cross_organisation`, `scope.assign_role`. (At RBAC-5, 9 role-name sites remained; RBAC-7/8 removed them and the topology router's, found later, went on 6 Oct 2026.)
 - **RBAC-6/8 = frontend authorization** (`docs/architecture/RBAC_FRONTEND_AUTHORIZATION.md`).
   `/auth/me` carries `authorization` (`rbac/authorization_view.py`): permission keys by scope,
   the validated active organisation, `can_switch_organisation` and display-only assignments (no
@@ -680,8 +690,10 @@ each folder's `README.md` says what belongs in it.
   `modules/audit/config/notificationPresentation.js`, handed to the shell by the
   composition root (`NotificationPresentationProvider`).
 - **The AMT page's permission is one constant**, `AMT_PERMISSION`
-  (`modules/audit/config/permissions.js`): `settings:update`, which the backend
-  also requires, shared by the sidebar item and the route.
+  (`modules/audit/config/permissions.js`): **`audit.asset.import_amt`**, which the backend
+  also requires (`routers/assets.py`), shared by the sidebar item and the route. AMT is
+  Audit's page, not a platform one, so `/admin/amt` is Audit-owned despite its address.
+  (It was `settings:update` before the native RBAC work; that mismatch is resolved.)
 - **Tests that read source import anchors from `src/__tests__/testPaths.js`**;
   never count `..` — the frontend twin of the backend's `testpaths` rule.
 - **Shared platform capabilities live in the shell, not in a product** (owner

@@ -27,13 +27,15 @@ one is superseded it carries a banner pointing here or to `CLAUDE.md`.
 | ~~Deployment of the Phase 9 cleanup~~ | **Done later the same day** (~09:47 IST, from `3920908`; see `CLAUDE.md`, "Deployed 6 Oct 2026"). `gateway-auth`, `api`, `worker`, `beat`, `web-worker` and the frontend were recreated; the database was not touched             |
 | Phase 18 database isolation           | Design, bootstrap SQL, generated grants, isolation proof and a guarded rehearsal script exist (`PHASE18_DATABASE_ISOLATION.md`). **Nothing has been run against any database**; the rehearsal on a restored copy is the next step |
 
-## 2a. Known failures that are not regressions
+## 2a. Known failures that are not regressions — all resolved
 
-| Gate                                                                                                           | Result                                                             | Why it is not from this work                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues` | fails on the disposable `ccure_pytest_db`                          | `audit_retention.retention_holds` does not exist there (the retention DBA bootstrap was never applied to that scratch database). Failed identically before any Phase 9 change                                                                    |
-| `tests/repo/test_gateway_route_policy.py`                                                                      | errors (`/openapi.json` not represented by the gateway policy)     | Fails identically on clean `HEAD`; run from the api container, where docs routes differ. Deselected in the full run                                                                                                                              |
-| `npm run test:browser` (Playwright)                                                                            | pages that need a signed-in session land on "Sign in" and time out | Reproduced on a build of `5465d60`, the commit before this work: the harness fixtures predate the native `/auth/me` contract. **The browser gate is therefore not a usable signal until its fixtures are updated**; it was not run to completion |
+All three were resolved by 7 Oct 2026; none remains open.
+
+| Gate                                                                                                           | Was                                                                | Resolution                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/rbac/test_development_reset.py::test_reset_bootstraps_native_administrator_without_touching_catalogues` | failed on a scratch database without the retention DBA bootstrap   | **Resolved** in `2af5071`: the test skips, with that reason, when `audit_retention` is not installed; the bootstrap requirement is documented in `Backend/tests/README.md` (`57614ea`)                                                    |
+| `tests/repo/test_gateway_route_policy.py`                                                                      | errored on FastAPI's documentation routes in a development session | **Resolved** in `57614ea`: the test builds the production application (`ENV=production`), which the gateway policy describes. No assertion changed                                                                                        |
+| `npm run test:browser` (Playwright)                                                                            | signed-in pages landed on "Sign in" and timed out                  | **Resolved** in `57614ea`: the harness personas speak the native `/auth/me` contract. Chromium, Firefox and WebKit 119/119 each on 7 Oct (§6), and the full gate again for the UX4G 3.0.2 upgrade (`docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md`) |
 
 ## 3. Open decisions (the owner's)
 
@@ -86,3 +88,22 @@ AMT alignment; the denied-route fallback.
 deployed: native RBAC is the only authorization model, tokens are ES256 with a `kid` from the
 platform keyset, HS256 and the JWT secret no longer exist anywhere in the runtime path, and the
 MFA key is explicit. No `.env.bak-*` copy of the retired secret remains on this host.
+
+## 7. 7 Oct 2026, evening: CI, UX4G 3.0.2 and a full redeploy
+
+- **CI** (`d90bb51`, `76238d5`): the failing Security and Images jobs were reproduced
+  locally and fixed (axios, urllib3, base-image `openssl`/`pcre2`/`libexpat`, the
+  backend smoke test's token keyset, Frontend Validation's timeout). The frontend
+  Trivy exception that expired on 8 Oct was made unnecessary by patching `libexpat`;
+  `trivy-frontend.yaml` is empty. The backend exceptions expire **24 Oct**.
+- **UX4G 3.0.2** (`15f8c7c`): reviewed and adopted. Upstream renamed its dark-theme
+  selector and removed the alert variant rules without saying so; both were measured
+  and absorbed. Record: `docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md`.
+- **Redeploy from `15f8c7c`**: frontend, then `api`, then `worker`, `beat`,
+  `web-worker`. The backend image was rebuilt for the first time since 16 Sep. Gates
+  before deploy: Trivy and smoke on both images; frontend unit 3117 and browser 420/420
+  (three engines); the backend suite inside the new image, 7003 passed, 239 skipped,
+  none failed once its environment matched the api (a compliance key and `/docs`).
+  After deploy: api, gateway and edge answer as the 7 Oct acceptance expects; workers
+  hold no secrets; the scanner's scapy and nmap work over loopback. Details and
+  rollback in `CLAUDE.md`.

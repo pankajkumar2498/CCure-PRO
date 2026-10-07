@@ -395,8 +395,10 @@ each module's `README.md` is the guide its team works from.
 - **Policy Pro and Rank ship no routes, tables or tasks.** Nothing may be added
   to them outside their teams' own work; 93 rate-limited routes, 21 tasks at
   import and 11 beat entries are the regression gate for any change here. The
-  route count is **274** since Phase 12.1 added the platform's own
-  `GET /platform/modules` — 273 through Phase 11.
+  application has **282 API routes** (`docs/architecture/phase10/route_table.json`,
+  7 Oct 2026); `len(app.routes)` is 286 in this development installation, which
+  also serves FastAPI's four documentation routes. It was 274 after Phase 12.1
+  added the platform's own `GET /platform/modules`, 273 through Phase 11.
 - **CCure Home's product list comes from the registry** (Phase 12,
   [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md)).
   Each module's identity carries a `description` and an `entry_path`; CCure IR
@@ -749,11 +751,21 @@ each folder's `README.md` says what belongs in it.
     built; they have no shell yet and load no Audit state.
   - **Guarded by** `__tests__/shell/navigationIsolation.test.jsx`. Record and
     follow-ups: `docs/architecture/PLATFORM_SHARED_NAVIGATION.md` §8.
-- **Production** runs frontend `6b60061`
-  (`ccure-audit-pro-frontend:platform-shell-6b60061`, digest
-  `sha256:8cbee255…347ff3`, since 2 Oct 2026 15:53 IST), a frontend-only
-  deployment. Rollback image `pre-platform-shell` (`d8647be`, `c09e5833`);
-  backup `backups/ccure_db_20261002_155234_ops.dump`.
+- **The VM runs `15f8c7c`** since 7 Oct 2026 (frontend 23:08 IST, backend
+  23:24–23:25 IST), deployed with the same compose files and variables as
+  6 Oct (below, "Deployed 6 Oct 2026"):
+  - frontend `ccure-audit-pro-frontend:15f8c7c` (`9a5fe2ce5bd4`), UX4G 3.0.2;
+  - backend `ccure-audit-pro-backend:15f8c7c` = `:latest` (`94ff785bcd29`) on
+    `api`, `worker`, `beat` and `web-worker`. **The first backend image rebuild
+    since 16 Sep** (`4de065370b9b`): every deploy in between reused that image
+    because the code is bind-mounted. It carries the 24 Sep image restructuring,
+    the 7 Oct security patches and the unpinned transitive dependencies resolved
+    since (scapy 2.8.0, billiard 4.3.1, …). Validated by the full backend suite
+    run inside the image against a disposable database;
+  - `gateway-auth` unchanged (`ccure-gateway-auth:10.5`); no database change.
+  - **Rollback:** the `pre-redeploy-20261007` tag on each image (backend
+    `4de065370b9b`, frontend `67637dfbdc4e`) plus `git revert`. Backup
+    `backups/ccure_db_20261007_230801_ops.dump`.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 
@@ -952,7 +964,7 @@ and it went unnoticed because none was ever restored. The full dump is both
 the self-contained recovery point and where an ops dump borrows its catalogue.
 
 Both tiers are pushed to the Windows workstation
-(`pankaj@10.180.6.14:D:/ccure-backups`, key `~/.ssh/ccure_backup_ed25519`,
+(`pankaj@10.180.6.30:D:/ccure-backups` — the workstation moved from `.14`; key `~/.ssh/ccure_backup_ed25519`,
 expired there after 30 days). A failed push is exit 2 with the local dump
 intact — look for `ERROR: remote copy` in the log. The dump itself is written
 to a `.part` and renamed only after the matching `pg_restore -l` has listed
@@ -1424,10 +1436,10 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
   plus a lookup that runs an address through the live guard and names the rule
   or list that matched. **Platform-scope permissions
   (`platform.email_domain.read` / `.manage`), held only by the superadmin role — never a role name.** The rules are platform-wide, so an org_admin reaching them could
-  block another tenant's customers; and a permission check cannot express this
-  anyway, because superadmin holds every permission and any permission an
-  org_admin also has would let them through. `AppLayout`'s `canSeeNavItem` grew
-  a `superadminOnly` flag for the same reason.
+  block another tenant's customers, which is why the keys are platform-scope
+  rather than organisation-scope. (Before native RBAC this was a
+  `superadminOnly` navigation flag; RBAC-6 removed it, and the sidebar asks for
+  `platform.email_domain.read` like every other item in `shell/admin/adminNav.js`.)
 
   `POST /admin/users/{id}/approve` is the deliberate exception: it can create an
   ALLOW rule under `users:update`, but only ever allows, and only the domain of
@@ -4044,7 +4056,7 @@ docker start ccure-nuclei-target   # nginx on 127.0.0.1:8099 serving .env and .g
 ```
 
 `ccure-nuclei-target` exists because neither real host triggers a Nuclei
-template — 10.180.6.14 is a Windows workstation with no web server, and a
+template — the Windows workstation (10.180.6.30, formerly .14) has no web server, and a
 scanner that finds nothing there looks identical to one that is broken. It
 serves a deliberately exposed `.env` and `.git/config`, which must produce
 **4 findings, all Confirmed at QoD 99**. Zero from it is a regression.
@@ -4659,5 +4671,6 @@ dump. That is why the backup check is a hard refusal rather than a warning.
   serves the stored file and only regenerates when it is missing — do not make
   generation unconditional again (it orphaned a PDF pair per download and bumped
   `scans.updated_at`, which corrupted the Scan History date).
-- No Excel/XLSX export exists in the scan modules. DOCX exists only in
+- XLSX is `?fmt=XLSX` on the download route and `GET /reports/export/{id}`
+  (`reporting/xlsx_generator.py`; see "Exports"). DOCX exists only in
   Compliance.

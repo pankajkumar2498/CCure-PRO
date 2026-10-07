@@ -144,7 +144,23 @@ jobs:
           # Each core module has its own branch (Phase 11.3), so the history has
           # several heads and a bare `downgrade -1` is ambiguous: step back from
           # each head by name instead.
+          #
+          # A migration that deliberately cannot be reversed is listed here
+          # and skipped, never worked around: its downgrade() raises on
+          # purpose, so rolling back from it would fail the build for a
+          # reason that is the migration's design, not a regression.
+          #   d4f8b2c6e0a1  removes the legacy RBAC tables (4 Oct 2026); the
+          #                 data is gone and only a recovery snapshot has it.
+          # Reversibility is only exercised above such a revision; the
+          # forward upgrade below still runs through all of them.
+          IRREVERSIBLE_REVISIONS="d4f8b2c6e0a1"
           for rev in $(alembic heads | awk '{print $1}'); do
+            case " ${IRREVERSIBLE_REVISIONS} " in
+              *" ${rev} "*)
+                echo "Skipping rollback of ${rev}: recorded as irreversible."
+                continue
+                ;;
+            esac
             alembic downgrade "${rev}@-1"
           done
           alembic upgrade heads

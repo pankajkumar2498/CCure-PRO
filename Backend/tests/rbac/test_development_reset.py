@@ -186,6 +186,16 @@ def test_reset_bootstraps_native_administrator_without_touching_catalogues(
     from db import migrate_production_schema as initializer
     from ccure_platform.rbac.provisioning import assign_default_role
     from ccure_platform.rbac.catalogue import ensure_system_roles, ensure_default_roles
+    from core.audit_retention import retention_installed
+
+    # The reset tool preserves and fingerprints the audit_retention schema,
+    # which only a DBA bootstrap creates. On a database without it (a fresh CI
+    # service) this is NOT VERIFIED, reported as a skip rather than a pass.
+    if not retention_installed(rbac_db.connection())["installed"]:
+        pytest.skip(
+            "audit retention is not installed in this database (DBA bootstrap). "
+            "NOT VERIFIED, not passing."
+        )
 
     monkeypatch.setattr(initializer, "DEFAULT_ORG_NAME", "CCure Development")
     monkeypatch.setattr(initializer, "DEFAULT_ORG_SLUG", "development")

@@ -1,7 +1,9 @@
 # Base images are pinned by digest, so a rebuild of the same commit starts from
-# the same bytes; Dependabot (docker ecosystem) proposes updates when the tags
-# move. CI builds this once per commit and tags it with the commit SHA — see
-# .github/workflows/images.yml and docs/ci/CONTAINER_IMAGES.md.
+# the same bytes; Dependabot (docker ecosystem) proposes a new digest when the
+# image behind the tag is rebuilt. Moving to another Node or nginx version is a
+# deliberate edit of the tag, not a Dependabot PR. CI builds this once per
+# commit and tags it with the commit SHA — see .github/workflows/images.yml and
+# docs/ci/CONTAINER_IMAGES.md.
 # ── Build Stage ────────────────────────────────────────────────────────────
 # Node 22, the version CI tests and lints the frontend with. The image used to
 # build on 20, so what shipped was compiled by a toolchain CI never ran.

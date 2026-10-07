@@ -20,9 +20,19 @@ updates:
 
   # The Dockerfiles pin their base images by digest, which makes a rebuild of
   # one commit reproducible and also freezes the base's security patches. This
-  # is the other half: a PR whenever python:3.11-slim, node:22-slim or
-  # nginx:stable-alpine moves, which images.yml then builds, scans and
-  # smoke-tests like any other change.
+  # is the other half: a PR whenever the image behind python:3.11-slim,
+  # node:22-slim or nginx:stable-alpine is rebuilt — a new digest on the SAME
+  # tag, which is how upstream ships security fixes — and images.yml builds,
+  # scans and smoke-tests it like any other change.
+  #
+  # Version lines are not Dependabot's to move. Without the `ignore` below its
+  # first run proposed python 3.11 -> 3.14 and node 22 -> 25 (an odd-numbered,
+  # non-LTS release). Python 3.14 has no wheels for this repository's pinned
+  # Pillow 10.3.0 or psycopg2-binary 2.9.9, so pip compiles them from source and
+  # fails (`KeyError: '__version__'` in Pillow's setup.py under 3.13+); the
+  # Images gate rejected it, correctly. Changing a runtime's version is an
+  # upgrade with its own testing, made deliberately by editing the tag.
+  # Python's minor versions are language releases, hence minor as well as major.
   - package-ecosystem: "docker"
     directories:
       - "/Backend"
@@ -30,6 +40,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     commit-message:
       prefix: "build"
     labels:

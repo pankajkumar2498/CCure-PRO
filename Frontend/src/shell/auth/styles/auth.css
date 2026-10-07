@@ -1,4 +1,189 @@
-/* Authentication spacing only; shared adapters own controls and surfaces. */
+/* Authentication composition only. Shared UX4G adapters own all primitives.
+   The auth-layout scope overrides retained auth rules without changing the
+   global forms, Platform Shell, or any product module. */
+.auth-split-wrapper.auth-layout {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ccure-space-2xl) var(--ccure-space-3xl);
+  background: var(--ccure-surface-sunken);
+}
+
+.auth-platform-header,
+.auth-workspace,
+.auth-platform-footer {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.auth-platform-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-lg) var(--ccure-space-2xl);
+  padding-bottom: var(--ccure-space-xl);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.auth-platform-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+}
+
+.auth-platform-brand svg {
+  flex-shrink: 0;
+}
+
+.auth-platform-description {
+  max-width: 32rem;
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-normal);
+}
+
+.auth-workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: var(--ccure-space-3xl);
+  padding-block: var(--ccure-space-3xl);
+}
+
+.auth-layout .auth-hero-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 28rem;
+  padding: var(--ccure-space-3xl);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-lg);
+  background: var(--ccure-surface);
+  color: var(--ccure-text);
+}
+
+.auth-hero-eyebrow {
+  margin-bottom: var(--ccure-space-2xl);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-layout .auth-hero-headline {
+  margin-bottom: var(--ccure-space-3xl);
+  font-size: var(--ccure-text-3xl);
+  font-weight: var(--ccure-weight-semibold);
+  line-height: var(--ccure-leading-tight);
+  letter-spacing: -0.025em;
+  overflow-wrap: normal;
+}
+
+.auth-layout .auth-hero-context {
+  margin: 0;
+  padding-top: var(--ccure-space-2xl);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+.auth-hero-context-title {
+  margin-bottom: var(--ccure-space-sm);
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.auth-layout .auth-hero-subheadline {
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-relaxed);
+}
+
+.auth-layout .auth-form-panel {
+  min-width: 0;
+  padding: 0;
+}
+
+.auth-layout .auth-card {
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.auth-layout .auth-card > .cc-card__body {
+  padding: var(--ccure-space-3xl);
+}
+
+.auth-layout .auth-title {
+  text-align: left;
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.auth-layout .auth-sub {
+  text-align: left;
+  margin-bottom: var(--ccure-space-2xl);
+  font-size: var(--ccure-text-base);
+}
+
+.auth-layout .auth-switch {
+  margin-top: var(--ccure-space-2xl);
+  padding-top: var(--ccure-space-lg);
+  border-top: 1px solid var(--ccure-border-subtle);
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-normal);
+}
+
+.auth-platform-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm) var(--ccure-space-xl);
+  padding-top: var(--ccure-space-lg);
+  border-top: 1px solid var(--ccure-border-subtle);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+}
+
+@media (max-width: 900px) {
+  .auth-split-wrapper.auth-layout {
+    padding: var(--ccure-space-2xl) var(--ccure-space-lg);
+  }
+  .auth-platform-header,
+  .auth-workspace,
+  .auth-platform-footer {
+    max-width: 32rem;
+  }
+  .auth-platform-header {
+    gap: var(--ccure-space-sm);
+  }
+  .auth-platform-description {
+    flex-basis: 100%;
+  }
+  .auth-workspace {
+    flex: none;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 0;
+    padding-block: var(--ccure-space-2xl);
+  }
+  .auth-layout .auth-hero-panel {
+    display: none;
+  }
+  .auth-layout .auth-card > .cc-card__body {
+    padding: var(--ccure-space-2xl);
+  }
+  .auth-platform-footer {
+    margin-top: auto;
+  }
+}
+
+@media (max-width: 375px) {
+  .auth-split-wrapper.auth-layout {
+    padding-inline: var(--ccure-space-md);
+  }
+  .auth-layout .auth-card > .cc-card__body {
+    padding: var(--ccure-space-xl);
+  }
+}
 
 /* Vertical rhythm inside a form. Replaces `.auth-form`'s own 20px gap for the
    migrated pages; `.auth-form` is kept on the element so nothing that reads it

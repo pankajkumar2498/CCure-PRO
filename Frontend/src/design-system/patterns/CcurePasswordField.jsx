@@ -21,10 +21,8 @@ import CcureInput from "../components/CcureInput";
  *
  * Three deliberate non-changes:
  *
- *   * the toggle stays out of the tab order (`tabIndex={-1}`). It is a
- *     convenience for a sighted mouse user; putting it between the password
- *     field and the submit button costs every keyboard user a tab stop on
- *     every sign-in, and the field's contents are reachable without it.
+ *   * the existing default tab order is preserved. Authentication opts into
+ *     a keyboard-reachable reveal control with visibilityToggleTabIndex={0}.
  *   * `type` flips between "password" and "text" exactly as before. Nothing
  *     here changes what is submitted.
  *   * the strength grading is passed in rather than computed, because the two
@@ -83,6 +81,8 @@ export default function CcurePasswordField({
       password gets refused, and there is no cost to a user who is not
       affected. */
   capsLockWarning = true,
+  /** Auth forms opt into keyboard reveal without changing other consumers. */
+  visibilityToggleTabIndex = -1,
   hint,
   error,
   className = "",
@@ -128,8 +128,7 @@ export default function CcurePasswordField({
         adornment={
           <button
             type="button"
-            /* Out of the tab order deliberately — see the note above. */
-            tabIndex={-1}
+            tabIndex={visibilityToggleTabIndex}
             className="cc-password__toggle"
             /* The name states the action; aria-pressed states the current
                condition. Together they answer "what does this do" and "what is

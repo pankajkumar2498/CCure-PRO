@@ -4,29 +4,21 @@
  * build requires. There is no older-backend fallback: the UI says so instead of
  * guessing what the account may do.
  */
-import { CcureAlert, CcureCard } from "../../design-system";
+import { CcureAlert } from "../../design-system";
+import AuthLayout from "./components/AuthLayout";
+import AuthErrorBoundary from "./components/AuthErrorBoundary";
 
 export default function IncompatibleBackend({ message }) {
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        display: "grid",
-        placeItems: "center",
-        padding: "var(--ccure-space-xl)",
-      }}
-    >
-      <CcureCard style={{ maxWidth: "32rem", width: "100%" }}>
-        <h1
-          style={{
-            fontSize: "var(--ccure-text-xl)",
-            marginBottom: "var(--ccure-space-md)",
-          }}
-        >
-          Backend not compatible
-        </h1>
+    <AuthErrorBoundary>
+      <AuthLayout pageType="unavailable" title="Account access unavailable">
+        <h1 className="auth-title">Account access unavailable</h1>
+        <p className="auth-sub">
+          CCure cannot complete sign-in with this backend. Contact your
+          administrator.
+        </p>
         <CcureAlert variant="danger">{message}</CcureAlert>
-      </CcureCard>
-    </main>
+      </AuthLayout>
+    </AuthErrorBoundary>
   );
 }

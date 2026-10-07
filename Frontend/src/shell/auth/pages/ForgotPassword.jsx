@@ -27,14 +27,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { forgotPassword } from "@shell/api/auth";
-import AuthHeroPanel from "../components/AuthHeroPanel";
-import { ShieldLogoIcon } from "../components/AuthIcons";
-import {
-  CcureAlert,
-  CcureButton,
-  CcureInput,
-  CcureCard,
-} from "../../../design-system";
+import AuthLayout from "../components/AuthLayout";
+import { CcureAlert, CcureButton, CcureInput } from "../../../design-system";
 import "../styles/forgot-password.css";
 
 export default function ForgotPassword() {
@@ -72,82 +66,64 @@ export default function ForgotPassword() {
   };
 
   return (
-    <main className="auth-split-wrapper">
-      {/* Left Enterprise Showcase Panel */}
-      <AuthHeroPanel pageType="forgot" />
+    <AuthLayout pageType="forgot" title="Reset password">
+      <h1 className="auth-title">Reset password</h1>
+      <p className="auth-sub">
+        Enter your account email or username to request a reset link.
+      </p>
 
-      {/* Shared auth surfaces follow the application theme. */}
-      <div className="auth-form-panel">
-        <CcureCard as="div" className="auth-card">
-          {/* Mobile Brand Header */}
-          <div className="auth-brand">
-            <ShieldLogoIcon size={24} />
-            <div className="auth-brand-text">
-              <span className="auth-brand-name">CCure</span>
-            </div>
-          </div>
+      {error && (
+        <CcureAlert variant="danger" className="fp-message">
+          {error}
+        </CcureAlert>
+      )}
 
-          <h1 className="auth-title">Reset password</h1>
-          <p className="auth-sub">
-            Enter your email or username to receive an encrypted reset link
-          </p>
+      {success ? (
+        // `variant="success"` gives role="status" — polite, matching the
+        // previous markup. It must stay polite: this is a confirmation,
+        // and it is the same confirmation either way.
+        <CcureAlert variant="success" className="fp-message">
+          {success}
+        </CcureAlert>
+      ) : (
+        <form onSubmit={handleSubmit} className="auth-form fp-form">
+          <CcureInput
+            id="emailOrUsername"
+            name="emailOrUsername"
+            label="Email or Username"
+            // type="text", not "email": the endpoint takes either, and
+            // type="email" would make the browser reject a username before
+            // the request was ever made.
+            type="text"
+            required
+            autoComplete="username"
+            value={emailOrUsername}
+            onChange={(e) => setEmailOrUsername(e.target.value)}
+            placeholder="name@company.com or username"
+            // A placeholder disappears the moment the user types, so it
+            // cannot be the only guidance. The hint is wired through
+            // aria-describedby by CcureInput.
+            hint="Enter the email address or username on your account."
+          />
 
-          {error && (
-            <CcureAlert variant="danger" className="fp-message">
-              {error}
-            </CcureAlert>
-          )}
+          <CcureButton type="submit" loading={loading} block size="lg">
+            {loading ? "Sending recovery link..." : "Send recovery link →"}
+          </CcureButton>
+        </form>
+      )}
 
-          {success ? (
-            // `variant="success"` gives role="status" — polite, matching the
-            // previous markup. It must stay polite: this is a confirmation,
-            // and it is the same confirmation either way.
-            <CcureAlert variant="success" className="fp-message">
-              {success}
-            </CcureAlert>
-          ) : (
-            <form onSubmit={handleSubmit} className="auth-form fp-form">
-              <CcureInput
-                id="emailOrUsername"
-                name="emailOrUsername"
-                label="Email or Username"
-                // type="text", not "email": the endpoint takes either, and
-                // type="email" would make the browser reject a username before
-                // the request was ever made.
-                type="text"
-                required
-                autoComplete="username"
-                value={emailOrUsername}
-                onChange={(e) => setEmailOrUsername(e.target.value)}
-                placeholder="name@company.com or username"
-                // A placeholder disappears the moment the user types, so it
-                // cannot be the only guidance. The hint is wired through
-                // aria-describedby by CcureInput.
-                hint="Enter the email address or username on your account."
-              />
-
-              <CcureButton type="submit" loading={loading} block size="lg">
-                {loading ? "Sending recovery link..." : "Send recovery link →"}
-              </CcureButton>
-            </form>
-          )}
-
-          <p className="auth-switch">
-            Remember your password?{" "}
-            <CcureButton
-              as={Link}
-              variant="ghost"
-              size="sm"
-              to="/login"
-              className="auth-link"
-            >
-              Sign in
-            </CcureButton>
-          </p>
-
-          {/* Reusable Enterprise Security Trust Footer */}
-        </CcureCard>
-      </div>
-    </main>
+      <p className="auth-switch">
+        Remember your password?{" "}
+        <CcureButton
+          as={Link}
+          variant="ghost"
+          size="sm"
+          to="/login"
+          className="auth-link"
+        >
+          Sign in
+        </CcureButton>
+      </p>
+    </AuthLayout>
   );
 }

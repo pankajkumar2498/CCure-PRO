@@ -1,44 +1,50 @@
+import { useId } from "react";
+
 /**
  * src/components/auth/AuthIcons.jsx
  * Reusable zero-dependency SVG icons for authentication components.
  */
 
-export const ShieldLogoIcon = ({ size = 28 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={{ filter: "drop-shadow(0 0 8px rgba(14, 165, 233, 0.6))" }}
-  >
-    <path
-      d="M12 2L3 6.5V11.5C3 16.8 6.84 21.74 12 23C17.16 21.74 21 16.8 21 11.5V6.5L12 2Z"
-      fill="url(#brand-shield-grad-shared)"
-      stroke="#38bdf8"
-      strokeWidth="1.5"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M12 7.5L15.5 11L12 14.5L8.5 11L12 7.5Z"
-      fill="#ffffff"
-      opacity="0.9"
-    />
-    <defs>
-      <linearGradient
-        id="brand-shield-grad-shared"
-        x1="3"
-        y1="2"
-        x2="21"
-        y2="23"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop stopColor="#0ea5e9" />
-        <stop offset="1" stopColor="#0369a1" />
-      </linearGradient>
-    </defs>
-  </svg>
-);
+export const ShieldLogoIcon = ({ size = 28 }) => {
+  const gradientId = useId();
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M12 2L3 6.5V11.5C3 16.8 6.84 21.74 12 23C17.16 21.74 21 16.8 21 11.5V6.5L12 2Z"
+        fill={`url(#${gradientId})`}
+        stroke="#38bdf8"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 7.5L15.5 11L12 14.5L8.5 11L12 7.5Z"
+        fill="#ffffff"
+        opacity="0.9"
+      />
+      <defs>
+        <linearGradient
+          id={gradientId}
+          x1="3"
+          y1="2"
+          x2="21"
+          y2="23"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#0ea5e9" />
+          <stop offset="1" stopColor="#0369a1" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+};
 
 export const EyeIcon = () => (
   <svg

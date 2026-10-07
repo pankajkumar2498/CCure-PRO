@@ -1,6 +1,6 @@
 /**
  * src/pages/Login.jsx
- * Dark-themed auth page consistent with the dashboard brand.
+ * CCure account sign-in and MFA challenge.
  * API: POST /auth/login -> { access_token, user }
  *
  * ── Security contract, unchanged by the Checkpoint 3C migration ─────────────
@@ -26,15 +26,13 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
-import AuthHeroPanel from "../components/AuthHeroPanel";
-import { ShieldLogoIcon } from "../components/AuthIcons";
+import AuthLayout from "../components/AuthLayout";
 import {
   CcureAlert,
   CcureButton,
   CcureInput,
   CcureCheckbox,
   CcurePasswordField,
-  CcureCard,
 } from "../../../design-system";
 import {
   verifyMfa as verifyMfaApi,
@@ -234,181 +232,168 @@ export default function Login() {
   };
 
   return (
-    <main className="auth-split-wrapper">
-      {/* Left Enterprise Showcase Panel */}
-      <AuthHeroPanel pageType="login" />
+    <AuthLayout
+      pageType={showMfa ? "mfa" : "login"}
+      title={showMfa ? "Verify your identity" : "Sign in"}
+    >
+      {showMfa ? (
+        <>
+          <h1 className="auth-title">Verification Code</h1>
+          <p className="auth-sub">
+            Use your authenticator, recovery code, or email code.
+          </p>
 
-      {/* Shared auth surfaces follow the application theme. */}
-      <div className="auth-form-panel">
-        <CcureCard as="div" className="auth-card">
-          {/* Mobile Brand Header */}
-          <div className="auth-brand">
-            <ShieldLogoIcon size={24} />
-            <div className="auth-brand-text">
-              <span className="auth-brand-name">CCure</span>
-            </div>
-          </div>
-
-          {showMfa ? (
-            <>
-              <h1 className="auth-title">Verification Code</h1>
-              <p className="auth-sub">Enter your security verification code</p>
-
-              {error && (
-                <CcureAlert variant="danger" className="auth-message">
-                  {error}
-                </CcureAlert>
-              )}
-
-              {emailSent && (
-                <CcureAlert variant="success" className="auth-message">
-                  Verification code sent to your email!
-                </CcureAlert>
-              )}
-
-              <form onSubmit={handleMfaSubmit} className="auth-form auth-stack">
-                <CcureInput
-                  id="mfaCode"
-                  name="mfaCode"
-                  label="Verification Code"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder="Enter code"
-                  required
-                  autoFocus
-                  maxLength={12}
-                />
-
-                <div className="auth-inline-action">
-                  <CcureButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSendEmailOtp}
-                    disabled={resendCooldown > 0}
-                  >
-                    {resendCooldown > 0
-                      ? `Resend code in ${resendCooldown}s`
-                      : "Send code to email"}
-                  </CcureButton>
-                </div>
-
-                <CcureButton type="submit" loading={loading} block size="lg">
-                  {loading ? "Verifying..." : "Verify Code →"}
-                </CcureButton>
-              </form>
-
-              <p className="auth-switch">
-                <CcureButton
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToLogin}
-                >
-                  ← Back to credentials login
-                </CcureButton>
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="auth-title">Sign in</h1>
-              <p className="auth-sub">
-                Enter your credentials to access your workspace
-              </p>
-
-              {error && (
-                <CcureAlert variant="danger" className="auth-message">
-                  {error}
-                </CcureAlert>
-              )}
-
-              {!error && noticeMessage && (
-                <CcureAlert variant="info" className="auth-message">
-                  {noticeMessage}
-                </CcureAlert>
-              )}
-
-              <form onSubmit={handleSubmit} className="auth-form auth-stack">
-                <CcureInput
-                  id="emailOrUsername"
-                  name="emailOrUsername"
-                  label="Email or Username"
-                  // type="text", not "email": the endpoint resolves
-                  // or_(email_matches, username_matches), and type="email"
-                  // would make the browser reject a username before the
-                  // request was ever made.
-                  type="text"
-                  autoComplete="username"
-                  value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
-                  placeholder="name@company.com or username"
-                  required
-                />
-
-                <CcurePasswordField
-                  id="password"
-                  name="password"
-                  label="Password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
-
-                {/* Remember Me & Forgot Password Row */}
-                <div className="auth-checkbox-row">
-                  <CcureCheckbox
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  >
-                    Remember me
-                  </CcureCheckbox>
-                  <CcureButton
-                    as={Link}
-                    variant="ghost"
-                    size="sm"
-                    to="/forgot-password"
-                    className="auth-link"
-                  >
-                    Forgot password?
-                  </CcureButton>
-                </div>
-
-                <CcureButton type="submit" loading={loading} block size="lg">
-                  {loading ? "Signing in..." : "Sign In →"}
-                </CcureButton>
-              </form>
-
-              {selfRegAllowed === true && (
-                <p className="auth-switch">
-                  No account?{" "}
-                  <CcureButton
-                    as={Link}
-                    variant="ghost"
-                    size="sm"
-                    to="/register"
-                    className="auth-link"
-                  >
-                    Register here
-                  </CcureButton>
-                </p>
-              )}
-              {selfRegAllowed === false && (
-                <p className="auth-switch">
-                  Accounts are created by your administrator. Contact them to
-                  request access.
-                </p>
-              )}
-            </>
+          {error && (
+            <CcureAlert variant="danger" className="auth-message">
+              {error}
+            </CcureAlert>
           )}
 
-          {/* Reusable Enterprise Security Trust Footer */}
-        </CcureCard>
-      </div>
-    </main>
+          {emailSent && (
+            <CcureAlert variant="success" className="auth-message">
+              Verification code sent to your email.
+            </CcureAlert>
+          )}
+
+          <form onSubmit={handleMfaSubmit} className="auth-form auth-stack">
+            <CcureInput
+              key="mfa-code"
+              id="mfaCode"
+              name="mfaCode"
+              label="Verification Code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              placeholder="Enter code"
+              required
+              autoFocus
+              maxLength={12}
+            />
+
+            <div className="auth-inline-action">
+              <CcureButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleSendEmailOtp}
+                disabled={resendCooldown > 0}
+              >
+                {resendCooldown > 0
+                  ? `Resend code in ${resendCooldown}s`
+                  : "Send code to email"}
+              </CcureButton>
+            </div>
+
+            <CcureButton type="submit" loading={loading} block size="lg">
+              {loading ? "Verifying..." : "Verify Code →"}
+            </CcureButton>
+          </form>
+
+          <p className="auth-switch">
+            <CcureButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleBackToLogin}
+            >
+              ← Back to credentials
+            </CcureButton>
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="auth-title">Sign in</h1>
+          <p className="auth-sub">Use your account credentials to continue.</p>
+
+          {error && (
+            <CcureAlert variant="danger" className="auth-message">
+              {error}
+            </CcureAlert>
+          )}
+
+          {!error && noticeMessage && (
+            <CcureAlert variant="info" className="auth-message">
+              {noticeMessage}
+            </CcureAlert>
+          )}
+
+          <form onSubmit={handleSubmit} className="auth-form auth-stack">
+            <CcureInput
+              id="emailOrUsername"
+              name="emailOrUsername"
+              label="Email or Username"
+              // type="text", not "email": the endpoint resolves
+              // or_(email_matches, username_matches), and type="email"
+              // would make the browser reject a username before the
+              // request was ever made.
+              type="text"
+              autoComplete="username"
+              value={emailOrUsername}
+              onChange={(e) => setEmailOrUsername(e.target.value)}
+              placeholder="name@company.com or username"
+              required
+            />
+
+            <CcurePasswordField
+              visibilityToggleTabIndex={0}
+              id="password"
+              name="password"
+              label="Password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+
+            {/* Remember Me & Forgot Password Row */}
+            <div className="auth-checkbox-row">
+              <CcureCheckbox
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              >
+                Remember me
+              </CcureCheckbox>
+              <CcureButton
+                as={Link}
+                variant="ghost"
+                size="sm"
+                to="/forgot-password"
+                className="auth-link"
+              >
+                Forgot password?
+              </CcureButton>
+            </div>
+
+            <CcureButton type="submit" loading={loading} block size="lg">
+              {loading ? "Signing in..." : "Sign In →"}
+            </CcureButton>
+          </form>
+
+          {selfRegAllowed === true && (
+            <p className="auth-switch">
+              No account?{" "}
+              <CcureButton
+                as={Link}
+                variant="ghost"
+                size="sm"
+                to="/register"
+                className="auth-link"
+              >
+                Register here
+              </CcureButton>
+            </p>
+          )}
+          {selfRegAllowed === false && (
+            <p className="auth-switch">
+              Accounts are created by your administrator. Contact them to
+              request access.
+            </p>
+          )}
+        </>
+      )}
+    </AuthLayout>
   );
 }

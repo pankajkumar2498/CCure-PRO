@@ -47,6 +47,7 @@ import Register from "@shell/auth/pages/Register";
 import VerifyEmail from "@shell/auth/pages/VerifyEmail";
 import ForgotPassword from "@shell/auth/pages/ForgotPassword";
 import ResetPassword from "@shell/auth/pages/ResetPassword";
+import AuthErrorBoundary from "@shell/auth/components/AuthErrorBoundary";
 import Dashboard from "@audit/pages/Dashboard"; // scan launcher → /scan
 import ScanHistory from "@audit/pages/ScanHistory";
 import ScanSchedules from "@audit/pages/scan/ScanSchedules";
@@ -151,13 +152,15 @@ export default function App() {
       <ProductPresentation>
         <Routes>
           {/* ── Public ── */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          {/* Target of the emailed verification link. Public by necessity: the
-            whole point is that the visitor cannot authenticate yet. */}
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route element={<AuthErrorBoundary />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            {/* Target of the emailed verification link. Public by necessity: the
+              whole point is that the visitor cannot authenticate yet. */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+          </Route>
 
           {/* Development-only, see the declaration above. Absent from every
             production build. */}

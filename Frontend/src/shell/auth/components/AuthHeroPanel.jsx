@@ -1,35 +1,51 @@
 /**
  * src/shell/auth/components/AuthHeroPanel.jsx
- * The panel beside every sign-in screen. A platform screen: it names the platform
- * ("CCure") and no product, and it states no capability, figure or status it
- * cannot back — the earlier panel carried invented usage figures and a hardcoded
- * status badge, none of which was measured from anything (UI semantic integrity: an absent answer is not a
- * reassuring one). Product wording is the owner's (D12-9); none is written here.
+ * Platform identity and task context beside the authentication form.
+ * No measured status, certification, or product-specific branding belongs here.
  */
 import { CcureBadge } from "../../../design-system";
-import { ShieldLogoIcon } from "./AuthIcons";
 
 const HERO_CONTENT = {
   login: {
-    badge: "SECURE SIGN-IN",
-    headline: "Sign in to CCure",
-    subheadline: "Use your CCure account to continue.",
+    badge: "Account access",
+    heading: "Your CCure workspace",
+    subheadline:
+      "Use your CCure account to continue to your organization's security workspace.",
   },
   register: {
-    badge: "ACCOUNT REQUEST",
-    headline: "Request a CCure account",
-    subheadline: "Register your organization to get started.",
+    badge: "Account registration",
+    heading: "Access starts with your account",
+    subheadline:
+      "Create your account and verify your email. An administrator reviews new accounts before sign-in is enabled.",
   },
   forgot: {
-    badge: "SECURE RECOVERY",
-    headline: "Recover your account",
+    badge: "Account recovery",
+    heading: "Restore access to CCure",
     subheadline: "Reset your password with a link sent to your email address.",
   },
   reset: {
-    badge: "ACCESS RESTORATION",
-    headline: "Set a new password",
+    badge: "Password reset",
+    heading: "Restore access to CCure",
     subheadline:
       "Choose a new password to restore access to your CCure account.",
+  },
+  mfa: {
+    badge: "Identity verification",
+    heading: "Complete your sign-in",
+    subheadline:
+      "Enter a code from your authenticator, a recovery code, or request a code by email.",
+  },
+  verify: {
+    badge: "Email verification",
+    heading: "Confirm your email address",
+    subheadline:
+      "Email verification is one step in account registration. Administrator approval is required before you can sign in.",
+  },
+  unavailable: {
+    badge: "Account access",
+    heading: "Access needs attention",
+    subheadline:
+      "Contact your administrator with the message shown to resolve this access issue.",
   },
 };
 
@@ -37,30 +53,20 @@ export default function AuthHeroPanel({ pageType = "login" }) {
   const content = HERO_CONTENT[pageType] || HERO_CONTENT.login;
 
   return (
-    <div className="auth-hero-panel">
+    <aside className="auth-hero-panel cc-theme-dark" aria-label="About CCure">
       <div className="auth-hero-content">
-        {/* Brand Header */}
-        <div className="auth-hero-brand">
-          <ShieldLogoIcon size={36} />
-          <span className="auth-hero-brand-title">CCure</span>
-        </div>
-
-        {/* Dynamic Context Section */}
+        <p className="auth-hero-eyebrow">CCure platform</p>
+        <h2 className="auth-hero-headline">
+          Enterprise security &amp; vulnerability management
+        </h2>
         <div className="auth-hero-context">
-          <CcureBadge variant="info" className="auth-hero-badge">
+          <CcureBadge variant="neutral" className="auth-hero-badge">
             {content.badge}
           </CcureBadge>
-          {/* h2, not h1. Every auth page renders its own <h1> in the card —
-              the page's actual name — and this panel is decorative marketing
-              copy beside it. Two level-1 headings gave each of the five auth
-              pages two competing document titles, which is what a screen
-              reader announces when the user asks what page they are on.
-              The class carries every visual property and theme.css zeroes UA
-              margins globally, so the change is visually inert. */}
-          <h2 className="auth-hero-headline">{content.headline}</h2>
+          <p className="auth-hero-context-title">{content.heading}</p>
           <p className="auth-hero-subheadline">{content.subheadline}</p>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }

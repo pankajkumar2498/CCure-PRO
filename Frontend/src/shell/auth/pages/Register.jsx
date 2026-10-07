@@ -1,6 +1,6 @@
 /**
  * src/pages/Register.jsx
- * Dark-themed registration form matching CAST design.
+ * CCure account registration and approval guidance.
  *
  * API: POST /auth/register → 202 { detail, status: "pending_verification" }
  *
@@ -29,8 +29,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useLegalDocuments } from "../legalDocuments";
 import { useAuth } from "@shell/auth/AuthContext";
-import AuthHeroPanel from "../components/AuthHeroPanel";
-import { ShieldLogoIcon } from "../components/AuthIcons";
+import AuthLayout from "../components/AuthLayout";
 import {
   CcureAlert,
   CcureButton,
@@ -39,7 +38,6 @@ import {
   CcureModal,
   CcurePasswordField,
   gradePassword,
-  CcureCard,
 } from "../../../design-system";
 import {
   checkEmail,
@@ -244,26 +242,19 @@ export default function Register() {
     }
   };
 
-  const brandHeader = (
-    <div className="auth-brand">
-      <ShieldLogoIcon size={24} />
-      <div className="auth-brand-text">
-        <span className="auth-brand-name">CCure</span>
-      </div>
-    </div>
-  );
-
-  /* Shared auth surfaces follow the application theme and design-system tokens. */
   const shell = (body) => (
-    <main className="auth-split-wrapper">
-      <AuthHeroPanel pageType="register" />
-      <div className="auth-form-panel">
-        <CcureCard as="div" className="auth-card">
-          {brandHeader}
-          {body}
-        </CcureCard>
-      </div>
-    </main>
+    <AuthLayout
+      pageType="register"
+      title={
+        selfRegAllowed === false
+          ? "Account registration unavailable"
+          : submitted
+            ? "Check your email"
+            : "Create account"
+      }
+    >
+      {body}
+    </AuthLayout>
   );
 
   // ── Self-registration disabled for this deployment ───────────────────────
@@ -373,7 +364,10 @@ export default function Register() {
       {shell(
         <>
           <h1 className="auth-title">Create account</h1>
-          <p className="auth-sub">Register your organization to get started</p>
+          <p className="auth-sub">
+            Create your CCure account. Email verification and administrator
+            approval are required.
+          </p>
 
           {error && (
             <CcureAlert variant="danger" className="auth-message">
@@ -391,7 +385,7 @@ export default function Register() {
               maxLength={255}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. John Doe"
+              placeholder="Enter your full name"
               required
             />
 
@@ -427,6 +421,7 @@ export default function Register() {
             />
 
             <CcurePasswordField
+              visibilityToggleTabIndex={0}
               id="password"
               name="password"
               label="Password"
@@ -436,9 +431,11 @@ export default function Register() {
               placeholder="••••••••"
               required
               showStrength
+              hint="12+ characters with a capital letter, a number, and a symbol."
             />
 
             <CcurePasswordField
+              visibilityToggleTabIndex={0}
               id="confirm"
               name="confirm"
               label="Confirm password"

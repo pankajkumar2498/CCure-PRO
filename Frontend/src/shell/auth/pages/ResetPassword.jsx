@@ -26,13 +26,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { resetPassword } from "@shell/api/auth";
-import AuthHeroPanel from "../components/AuthHeroPanel";
-import { ShieldLogoIcon } from "../components/AuthIcons";
+import AuthLayout from "../components/AuthLayout";
 import {
   CcureAlert,
   CcureButton,
   CcurePasswordField,
-  CcureCard,
 } from "../../../design-system";
 import "../styles/auth.css";
 
@@ -119,95 +117,78 @@ export default function ResetPassword() {
   const confirmMismatch = confirm && confirm !== password;
 
   return (
-    <main className="auth-split-wrapper">
-      {/* Left Enterprise Showcase Panel */}
-      <AuthHeroPanel pageType="reset" />
+    <AuthLayout pageType="reset" title="Set new password">
+      <h1 className="auth-title">Set new password</h1>
+      <p className="auth-sub">Choose a new password for your CCure account.</p>
 
-      {/* Shared auth surfaces follow the application theme. */}
-      <div className="auth-form-panel">
-        <CcureCard as="div" className="auth-card">
-          {/* Mobile Brand Header */}
-          <div className="auth-brand">
-            <ShieldLogoIcon size={24} />
-            <div className="auth-brand-text">
-              <span className="auth-brand-name">CCure</span>
-            </div>
-          </div>
+      {error && (
+        <CcureAlert variant="danger" className="auth-message">
+          {error}
+        </CcureAlert>
+      )}
 
-          <h1 className="auth-title">Set new password</h1>
-          <p className="auth-sub">
-            Set a high-entropy password for your account
-          </p>
+      {success ? (
+        <CcureAlert variant="success" className="auth-message">
+          {success}
+        </CcureAlert>
+      ) : !token ? (
+        <div className="auth-inline-action">
+          <CcureButton as={Link} to="/forgot-password" block size="lg">
+            Request new reset link →
+          </CcureButton>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="auth-form auth-stack">
+          <CcurePasswordField
+            visibilityToggleTabIndex={0}
+            id="password"
+            name="password"
+            label="New Password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            showStrength
+            hint="12+ characters with a capital letter, a number, and a symbol."
+          />
 
-          {error && (
-            <CcureAlert variant="danger" className="auth-message">
-              {error}
-            </CcureAlert>
-          )}
+          <CcurePasswordField
+            visibilityToggleTabIndex={0}
+            id="confirm"
+            name="confirm"
+            label="Confirm Password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="••••••••"
+            required
+            error={confirmMismatch ? "Passwords don't match" : undefined}
+            hint={
+              confirm && confirm === password && password
+                ? "Passwords match"
+                : undefined
+            }
+          />
 
-          {success ? (
-            <CcureAlert variant="success" className="auth-message">
-              {success}
-            </CcureAlert>
-          ) : !token ? (
-            <div className="auth-inline-action">
-              <CcureButton as={Link} to="/forgot-password" block size="lg">
-                Request new reset link →
-              </CcureButton>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="auth-form auth-stack">
-              <CcurePasswordField
-                id="password"
-                name="password"
-                label="New Password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                showStrength
-              />
+          <CcureButton type="submit" loading={loading} block size="lg">
+            {loading ? "Saving password..." : "Save password →"}
+          </CcureButton>
+        </form>
+      )}
 
-              <CcurePasswordField
-                id="confirm"
-                name="confirm"
-                label="Confirm Password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="••••••••"
-                required
-                error={confirmMismatch ? "Passwords don't match" : undefined}
-                hint={
-                  confirm && confirm === password && password
-                    ? "Passwords match"
-                    : undefined
-                }
-              />
-
-              <CcureButton type="submit" loading={loading} block size="lg">
-                {loading ? "Saving password..." : "Save password →"}
-              </CcureButton>
-            </form>
-          )}
-
-          <p className="auth-switch">
-            Back to{" "}
-            <CcureButton
-              as={Link}
-              variant="ghost"
-              size="sm"
-              to="/login"
-              className="auth-link"
-            >
-              Sign in
-            </CcureButton>
-          </p>
-
-          {/* Reusable Enterprise Security Trust Footer */}
-        </CcureCard>
-      </div>
-    </main>
+      <p className="auth-switch">
+        Back to{" "}
+        <CcureButton
+          as={Link}
+          variant="ghost"
+          size="sm"
+          to="/login"
+          className="auth-link"
+        >
+          Sign in
+        </CcureButton>
+      </p>
+    </AuthLayout>
   );
 }

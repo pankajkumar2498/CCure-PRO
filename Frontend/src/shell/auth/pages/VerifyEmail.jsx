@@ -28,13 +28,11 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import AuthHeroPanel from "../components/AuthHeroPanel";
-import { ShieldLogoIcon } from "../components/AuthIcons";
+import AuthLayout from "../components/AuthLayout";
 import {
   CcureAlert,
   CcureButton,
   CcureInput,
-  CcureCard,
   CcureLoader,
 } from "../../../design-system";
 import { verifyEmail, resendVerification } from "@shell/api/auth";
@@ -93,22 +91,10 @@ export default function VerifyEmail() {
   };
 
   const shell = (title, body) => (
-    <main className="auth-split-wrapper">
-      <AuthHeroPanel pageType="register" />
-      {/* Shared auth surfaces follow the application theme and design-system tokens. */}
-      <div className="auth-form-panel">
-        <CcureCard as="div" className="auth-card">
-          <div className="auth-brand">
-            <ShieldLogoIcon size={24} />
-            <div className="auth-brand-text">
-              <span className="auth-brand-name">CCure</span>
-            </div>
-          </div>
-          <h1 className="auth-title">{title}</h1>
-          {body}
-        </CcureCard>
-      </div>
-    </main>
+    <AuthLayout pageType="verify" title={title}>
+      <h1 className="auth-title">{title}</h1>
+      {body}
+    </AuthLayout>
   );
 
   if (state === "working") {

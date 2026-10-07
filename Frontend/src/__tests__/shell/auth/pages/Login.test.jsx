@@ -548,12 +548,12 @@ describe("Login — password field", () => {
     );
   });
 
-  it("keeps the toggle out of the tab order", () => {
+  it("makes password visibility reachable in the Authentication tab order", () => {
     renderPage();
 
     expect(
       screen.getByRole("button", { name: /toggle password visibility/i }),
-    ).toHaveAttribute("tabindex", "-1");
+    ).toHaveAttribute("tabindex", "0");
   });
 
   it("does not submit the form from the toggle", async () => {

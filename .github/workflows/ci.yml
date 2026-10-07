@@ -218,7 +218,11 @@ jobs:
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The browser matrix (three engines, 420 checks) takes about 15 minutes on
+    # an 8-core workstation; a hosted runner has a quarter of the cores, and
+    # 30 minutes cancelled this job mid-run on 8 Oct 2026. Hung runs are still
+    # bounded, just not at a budget the suite cannot meet.
+    timeout-minutes: 75
 
     steps:
       - name: Checkout Repository

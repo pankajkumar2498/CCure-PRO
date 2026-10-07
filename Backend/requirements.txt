@@ -152,7 +152,7 @@ dnspython>=2.6.0
 
 # ── Dev / test ────────────────────────────────────────────────────────────────
 requests==2.33.1
-urllib3==2.6.3
+urllib3==2.8.0
 charset-normalizer==3.4.7
 
 pytest==7.4.4

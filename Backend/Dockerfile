@@ -57,6 +57,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# The pinned base image carries openssl and pcre2 builds that Debian has since
+# fixed (CVE-2026-75804, CVE-2026-84782, CVE-2026-103111). Upgrade exactly
+# those packages; --only-upgrade installs nothing new and leaves every other
+# package at the base's version. Drop this once the digest moves to a base that
+# already carries them.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade \
+    libssl3t64 \
+    openssl \
+    openssl-provider-legacy \
+    libpcre2-8-0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # ── Dependency Stage ───────────────────────────────────────────────────────

@@ -40,7 +40,13 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import wawoff2 from "wawoff2";
-import { loadBaseline, sha256, verifyVendorInput } from "./ux4g-baseline.mjs";
+import {
+  APP_DARK_SELECTOR,
+  UPSTREAM_DARK_SELECTOR,
+  loadBaseline,
+  sha256,
+  verifyVendorInput,
+} from "./ux4g-baseline.mjs";
 import {
   ASSET_LAYOUT,
   assetPaths,
@@ -119,7 +125,10 @@ const DATA_URI_RE =
 
 /** `:root{` but not `:root[…]{` and not ` .foo :root{` — the bare token blocks. */
 const ROOT_BLOCK_RE = /:root\{([\s\S]*?)\}/g;
-const DARK_BLOCK_RE = /:root\[data-theme=dark\]\{([\s\S]*?)\}/g;
+const DARK_BLOCK_RE = new RegExp(
+  `${UPSTREAM_DARK_SELECTOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\{([\\s\\S]*?)\\}`,
+  "g",
+);
 
 const slug = (family) =>
   family
@@ -303,11 +312,11 @@ async function main() {
       (m) => `:root{${m[1]}}`,
     );
     const darks = [...source.matchAll(DARK_BLOCK_RE)].map(
-      (m) => `:root[data-theme=dark]{${m[1]}}`,
+      (m) => `${APP_DARK_SELECTOR}{${m[1]}}`,
     );
     if (roots.length === 0 || darks.length === 0) {
       throw new Error(
-        `Expected :root and :root[data-theme=dark] blocks; found ` +
+        `Expected :root and ${UPSTREAM_DARK_SELECTOR} blocks; found ` +
           `${roots.length} and ${darks.length}. Upstream restructured its tokens.`,
       );
     }

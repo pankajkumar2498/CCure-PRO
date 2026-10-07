@@ -11,7 +11,8 @@ future contributors/AI agents and is enforced through CI.
 ## Approved release and upgrade process
 
 `Frontend/ux4g-baseline.json` is the executable release/provenance authority.
-The approved package remains **`ux4g-web-components@3.0.0`**. The package's
+The approved package is **`ux4g-web-components@3.0.2`** since 7 Oct 2026
+([B.11 upgrade review](B11_UX4G_3_0_2_UPGRADE.md); 3.0.0 before that). The package's
 version, the UX4G design-family version and the separately published CDN version
 are different identifiers; do not substitute one for another. B.1–B.6 records
 retain their historical evidence. No existing commit is rewritten.

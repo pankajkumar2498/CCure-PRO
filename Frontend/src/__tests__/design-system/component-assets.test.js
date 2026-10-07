@@ -34,6 +34,20 @@ describe("official component subset", () => {
       ),
     ).toContain("unapproved component CSS at-rule: font-face");
   });
+  it("mirrors upstream dark tokens onto scoped dark surfaces only", () => {
+    const css = readFileSync(assetPaths().components, "utf8");
+    expect(css).toContain(
+      ":where(.cc-ux4g):where(.cc-theme-dark),:where(.cc-theme-dark) :where(.cc-ux4g){--ux4g-text-neutral-primary:",
+    );
+    expect(css).not.toContain("data-mode");
+    expect(css).not.toMatch(/(^|[\s,{}])\.dark[\s,{]/);
+  });
+  it("refuses a source whose dark theme block is missing", () => {
+    // Without the block the authentication surfaces would keep light tokens.
+    expect(() =>
+      componentCss(":root{--ux4g-a:1}.ux4g-btn{color:red}", loadBaseline()),
+    ).toThrow(/Upstream restructured its dark theme/);
+  });
   it("generates the same official subset from the same verified source", () => {
     const baseline = loadBaseline();
     const source = readFileSync(

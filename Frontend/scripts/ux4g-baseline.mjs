@@ -11,6 +11,23 @@ export const FRONTEND_ROOT = path.resolve(
 export const sha256 = (bytes) =>
   createHash("sha256").update(bytes).digest("hex");
 
+/**
+ * Upstream's dark-theme selector for the approved release. 3.0.1 renamed it
+ * from `:root[data-theme=dark]` without a changelog entry
+ * (docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md). Matched exactly, so a further rename
+ * fails the build rather than silently shipping light tokens in dark mode.
+ */
+export const UPSTREAM_DARK_SELECTOR =
+  ".dark,:root[data-mode=dark],[data-mode=dark]";
+
+/**
+ * The application's dark-mode contract: PreferencesContext sets
+ * `data-theme="dark"` on <html>, and every authored stylesheet keys on it.
+ * Upstream's `.dark` class and `[data-mode]` are never emitted; a bare `.dark`
+ * would restyle any element that happened to carry that class.
+ */
+export const APP_DARK_SELECTOR = ":root[data-theme=dark]";
+
 export function readJson(filename) {
   return JSON.parse(readFileSync(filename, "utf8"));
 }

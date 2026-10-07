@@ -127,9 +127,17 @@ describe("the runtime is not adopted", () => {
 describe("dark mode rides the existing attribute", () => {
   it("UX4G themes on :root[data-theme=dark]", () => {
     // The same attribute PreferencesContext already writes from the
-    // server-persisted preference. If upstream ever moves to a class or a
-    // media query this fails, and Phase 10's conclusion has to be revisited.
+    // server-persisted preference. Upstream moved to `.dark` / `[data-mode]`
+    // in 3.0.1; the generator re-emits that block under this attribute
+    // (docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md). A media query would still fail.
     expect(generated).toMatch(/:root\[data-theme=["']?dark["']?\]/);
+  });
+
+  it("never emits upstream's own dark selectors", () => {
+    // A bare `.dark` would restyle any element carrying that class, and
+    // nothing in the application sets `data-mode`.
+    expect(generated).not.toMatch(/(^|[\s,{}])\.dark[\s,{]/);
+    expect(generated).not.toContain("data-mode");
   });
 
   it("UX4G ships no prefers-color-scheme rule", () => {

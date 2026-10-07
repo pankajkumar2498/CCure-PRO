@@ -1,5 +1,6 @@
 /** Official component CSS subset, confined to CCure adapters. No vendor JS/reset. */
 import postcss from "postcss";
+import { UPSTREAM_DARK_SELECTOR } from "./ux4g-baseline.mjs";
 
 export const COMPONENT_FAMILIES = Object.freeze([
   "btn",
@@ -83,13 +84,21 @@ export function componentCss(source, baseline) {
   extract(tree, result);
   // Scoped-dark surfaces predate root preferences (notably authentication).
   // Mirror official dark variables on adapters there, preserving that contract.
+  // A missing block is an error: skipping it would quietly leave those
+  // surfaces on light tokens, which is what an upstream rename used to do.
+  let darkBlocks = 0;
   tree.walkRules((rule) => {
-    if (rule.selector === ":root[data-theme=dark]") {
+    if (rule.selectors.join(",") === UPSTREAM_DARK_SELECTOR) {
       const theme = rule.clone();
       theme.selector = `${scope}:where(.cc-theme-dark),:where(.cc-theme-dark) ${scope}`;
       result.prepend(theme);
+      darkBlocks++;
     }
   });
+  if (darkBlocks === 0)
+    throw new Error(
+      `No ${UPSTREAM_DARK_SELECTOR} block in the UX4G source. Upstream restructured its dark theme.`,
+    );
   tree.walkAtRules(/keyframes$/, (node) => {
     if (animations.has(node.params)) result.append(node.clone());
   });

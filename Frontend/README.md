@@ -16,8 +16,9 @@ module design systems and competing frameworks require explicit approval.
 Custom replacements for an official equivalent need a documented technical
 reason. These rules apply equally to developers and AI coding assistants.
 
-[B.1](../docs/ux4g/B1_VERSION_FOUNDATION.md) establishes the reviewed exact
-`ux4g-web-components@3.0.0` release. The
+[B.1](../docs/ux4g/B1_VERSION_FOUNDATION.md) established the reviewed exact
+release pin, now `ux4g-web-components@3.0.2`
+([B.11 upgrade review](../docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md)). The
 [B.2 pipeline](../docs/ux4g/B2_ASSET_PIPELINE.md) verifies tokens, self-hosted
 fonts and provenance. [Group 1: B.3/B.4](../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md)
 adds a scoped official component subset, shared React adapters and the Platform

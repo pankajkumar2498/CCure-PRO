@@ -62,3 +62,23 @@ one is superseded it carries a banner pointing here or to `CLAUDE.md`.
 
 Plan columns on `organizations`; native RBAC removal; backend email/TOTP branding;
 AMT alignment; the denied-route fallback.
+
+## 6. Final acceptance, 7 Oct 2026
+
+- **Live authentication** against the deployed stack
+  (`scripts/security/verify_live_authentication.sh`, run by the operator): login, ES256
+  token with a `kid`, `/auth/me` without legacy role fields, RBAC on the administration
+  endpoints, organization switching (own organization accepted, unknown organization
+  refused with 404), topology, a tampered and a signature-stripped token refused,
+  refresh and a refreshed token accepted, logout, and refresh refused after logout:
+  **23/23 passed**. The account has no MFA enrolled, so MFA was not exercised live (it is
+  covered by `tests/auth/test_mfa*.py` and the key-continuity proof).
+- **Browsers:** Chromium 119/119, Firefox 119/119, WebKit 119/119. WebKit ran with
+  userland libraries (`Frontend/scripts/ux4g-harness/webkit-userland-deps.sh`) because
+  root was unavailable; Playwright's pre-flight was skipped, not any test.
+- **Backend** 7431 passed; **gateway** 133; **frontend** 3110.
+- **Sign-in claims** ("SOC2 Compliant", "256-bit AES", "TLS 1.3 Secured") removed; a test
+  keeps certification, cipher and protocol claims out of `src/shell/auth`.
+- **Still the owner's:** Terms/Privacy wording (verbatim, "CCure Audit PRO"); three
+  pre-existing root `.env.bak-*` files; the operator password used for verification
+  appeared in a chat transcript and should be rotated.

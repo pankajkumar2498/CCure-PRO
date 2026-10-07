@@ -79,6 +79,10 @@ AMT alignment; the denied-route fallback.
 - **Backend** 7431 passed; **gateway** 133; **frontend** 3110.
 - **Sign-in claims** ("SOC2 Compliant", "256-bit AES", "TLS 1.3 Secured") removed; a test
   keeps certification, cipher and protocol claims out of `src/shell/auth`.
-- **Still the owner's:** Terms/Privacy wording (verbatim, "CCure Audit PRO"); three
-  pre-existing root `.env.bak-*` files; the operator password used for verification
+- **Still the owner's:** Terms/Privacy wording (verbatim, "CCure Audit PRO"); the operator password used for verification
   appeared in a chat transcript and should be rotated.
+
+**Final status: GO (7 Oct 2026).** The new RBAC and authentication migration is complete and
+deployed: native RBAC is the only authorization model, tokens are ES256 with a `kid` from the
+platform keyset, HS256 and the JWT secret no longer exist anywhere in the runtime path, and the
+MFA key is explicit. No `.env.bak-*` copy of the retired secret remains on this host.

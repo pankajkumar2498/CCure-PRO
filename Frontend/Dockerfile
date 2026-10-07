@@ -30,11 +30,12 @@ RUN npm run ux4g:check -- --dependencies-only && npm run build
 # ── Production Stage ───────────────────────────────────────────────────────
 FROM nginx:stable-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b AS runtime
 
-# Patch the one base-image package the scan flags with a published fix
-# (pcre2 10.48-r0 -> 10.49-r0, CVE-2026-103111). Scoped to that package so the
-# pinned base stays otherwise untouched; drop this once the digest moves to an
-# nginx build that already carries 10.49.
-RUN apk upgrade --no-cache pcre2
+# Patch the base-image packages the scan flags with a published fix:
+# pcre2 10.48-r0 -> 10.49-r0 (CVE-2026-103111) and libexpat 2.8.4-r0 -> 2.8.5-r0
+# (CVE-2026-93990, previously a dated exception in trivy-frontend.yaml). Scoped
+# to those packages so the pinned base stays otherwise untouched; drop each
+# once the digest moves to an nginx build that already carries the fix.
+RUN apk upgrade --no-cache pcre2 libexpat
 
 # Copy build artifacts from build stage
 COPY --from=build /app/dist /usr/share/nginx/html

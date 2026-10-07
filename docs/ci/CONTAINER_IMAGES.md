@@ -114,6 +114,23 @@ The scanner-tool exceptions are the largest item. These binaries talk to hosts
 under assessment, which are untrusted by definition, so upgrading them is the
 first follow-up.
 
+### Base-image packages patched in the Dockerfiles (7 Oct 2026)
+
+Both base images are pinned by digest, so a fix the distribution publishes
+after the pin never arrives on its own. Where the gate flags a base-image
+package that has a published fix, the Dockerfile upgrades **that package
+only** and leaves the rest of the base as pinned:
+
+| Image    | Packages                                                    | Advisories                                      | Step                                    |
+| -------- | ----------------------------------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| frontend | `pcre2` 10.48-r0 → 10.49-r0, `libexpat` 2.8.4-r0 → 2.8.5-r0 | CVE-2026-103111, CVE-2026-93990                 | `apk upgrade --no-cache pcre2 libexpat` |
+| backend  | `openssl` and `pcre2` packages                              | CVE-2026-75804, CVE-2026-84782, CVE-2026-103111 | `apt-get install --only-upgrade …`      |
+
+The frontend libexpat entry above was an exception until this patch made it
+unnecessary; it was removed a day before it expired, and
+`trivy-frontend.yaml` holds no exceptions now. Drop each upgrade once the
+digest moves to a base that already carries the fix.
+
 ## Changes made, with the evidence for each
 
 Measured on this VM on 24 Sep 2026, building from the committed tree.

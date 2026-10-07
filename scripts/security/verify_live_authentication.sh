@@ -92,6 +92,22 @@ else
   row "no legacy role fields in /auth/me" "FAIL"
 fi
 
+# ── RBAC, organization switching, topology and token rejection, with the real token ──
+AUTH=(-H "Authorization: Bearer $TOKEN")
+want "RBAC: users administration /admin/users" "$(code "${AUTH[@]}" "$API/admin/users")" 200
+want "RBAC: roles /platform/rbac/roles" "$(code "${AUTH[@]}" "$API/platform/rbac/roles")" 200
+want "RBAC: permission catalogue" "$(code "${AUTH[@]}" "$API/platform/rbac/permissions")" 200
+want "RBAC: no token on an admin route" "$(code "$API/admin/users")" 403
+code "${AUTH[@]}" "$API/auth/me" >/dev/null
+OWN="$(jget "d['authorization']['active_org_id']")"
+want "org switching: own organization" "$(code "${AUTH[@]}" "$API/auth/me?org_id=$OWN")" 200
+want "org switching: unknown organization fails closed" "$(code "${AUTH[@]}" "$API/auth/me?org_id=org_does_not_exist")" 404
+want "topology: organization-wide map" "$(code "${AUTH[@]}" "$API/topology/map")" 200
+want "topology: unknown scan" "$(code "${AUTH[@]}" "$API/topology/map/does-not-exist")" 404
+HEADP="${TOKEN%%.*}"; REST="${TOKEN#*.}"; BODYP="${REST%%.*}"; SIGP="${REST#*.}"
+want "tampered real token is refused" "$(code -H "Authorization: Bearer $HEADP.${BODYP:0:${#BODYP}-3}AAA.$SIGP" "$API/auth/me")" 401
+want "token with its signature cut is refused" "$(code -H "Authorization: Bearer $HEADP.$BODYP." "$API/auth/me")" 401
+
 want "refresh (cookie session)" "$(code -X POST "$API/auth/refresh")" 200
 NEW="$(jget "d.get('access_token')")"
 want "refreshed token works" "$(code -H "Authorization: Bearer ${NEW:-x}" "$API/auth/me")" 200

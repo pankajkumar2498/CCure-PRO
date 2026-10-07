@@ -96,3 +96,13 @@ it passes whether the session runs as `development` or `production`.
 Build exactly as `docs/ux4g/UX4G_STANDARD.md` says — `VITE_API_BASE_URL=/api npm run build`.
 A build made with the developer's `Frontend/.env.local` calls `http://localhost:8000`,
 which the harness's CSP blocks, and every page then lands on "Sign in".
+
+## WebKit in the browser suite
+
+`npm run test:browser` runs Chromium, Firefox and WebKit. WebKit needs host libraries;
+the supported way is `sudo npx playwright install-deps`. Where root is not available,
+`Frontend/scripts/ux4g-harness/webkit-userland-deps.sh` places the libraries inside
+Playwright's own cache (no system change) and the suite is then run with
+`PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1`, because Playwright's pre-flight looks
+for `libx264.so` in the system `ldconfig` cache. The pre-flight is skipped, not the
+tests: WebKit still has to launch and render.

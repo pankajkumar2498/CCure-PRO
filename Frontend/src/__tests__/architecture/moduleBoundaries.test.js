@@ -349,6 +349,26 @@ describe("ESLint repeats the alias rules", () => {
     expect(Object.keys(PENDING)).toEqual([]);
   });
 
+  it("the sign-in screens claim no certification, cipher or protocol they cannot back", () => {
+    // A page-wide badge says nothing about a given connection or what is stored:
+    // "SOC2 Compliant" had no basis at all, "256-bit AES" is true of stored scan
+    // credentials only, and "TLS 1.3" is offered but not guaranteed (TLS 1.2 is
+    // allowed, and the loopback frontend is plain HTTP). Removed 7 Oct 2026.
+    const walk = (dir) =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? walk(path.join(dir, e.name))
+          : /\.(jsx?|css)$/.test(e.name)
+            ? [path.join(dir, e.name)]
+            : [],
+      );
+    for (const file of walk(path.join(FRONT, "src/shell/auth"))) {
+      expect(readFileSync(file, "utf8"), file).not.toMatch(
+        /SOC\s?2|256-bit|TLS\s?1\.[23]|ISO\s?27001|FIPS|certified|\bcompliant\b|All Systems Operational/i,
+      );
+    }
+  });
+
   it("the sign-in screens are the shell's and name no product", () => {
     const dir = path.join(FRONT, "src/shell/auth");
     for (const f of [
@@ -358,7 +378,6 @@ describe("ESLint repeats the alias rules", () => {
       "pages/ForgotPassword.jsx",
       "pages/ResetPassword.jsx",
       "components/AuthHeroPanel.jsx",
-      "components/AuthTrustFooter.jsx",
     ]) {
       const code = readFileSync(path.join(dir, f), "utf8");
       // Nothing here names a product. The Terms of Service and Privacy Policy

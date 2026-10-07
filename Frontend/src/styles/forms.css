@@ -157,24 +157,6 @@
 .auth-link {
   max-width: 100%;
 }
-.auth-trust-footer {
-  margin-top: var(--ccure-space-xl);
-  padding-top: var(--ccure-space-md);
-  border-top: 1px solid var(--ccure-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--ccure-space-sm);
-  color: var(--ccure-text-secondary);
-  font-size: var(--ccure-text-sm);
-  text-align: center;
-}
-.auth-trust-item {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-}
 @media (max-width: 960px) {
   .auth-split-wrapper {
     grid-template-columns: minmax(0, 1fr);

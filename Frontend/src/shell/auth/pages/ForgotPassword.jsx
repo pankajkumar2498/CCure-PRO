@@ -28,7 +28,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { forgotPassword } from "@shell/api/auth";
 import AuthHeroPanel from "../components/AuthHeroPanel";
-import AuthTrustFooter from "../components/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/AuthIcons";
 import {
   CcureAlert,
@@ -147,7 +146,6 @@ export default function ForgotPassword() {
           </p>
 
           {/* Reusable Enterprise Security Trust Footer */}
-          <AuthTrustFooter />
         </CcureCard>
       </div>
     </main>

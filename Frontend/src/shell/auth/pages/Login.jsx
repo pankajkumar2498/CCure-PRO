@@ -27,7 +27,6 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
 import AuthHeroPanel from "../components/AuthHeroPanel";
-import AuthTrustFooter from "../components/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/AuthIcons";
 import {
   CcureAlert,
@@ -408,7 +407,6 @@ export default function Login() {
           )}
 
           {/* Reusable Enterprise Security Trust Footer */}
-          <AuthTrustFooter />
         </CcureCard>
       </div>
     </main>

@@ -30,7 +30,6 @@ import { Link } from "react-router-dom";
 import { useLegalDocuments } from "../legalDocuments";
 import { useAuth } from "@shell/auth/AuthContext";
 import AuthHeroPanel from "../components/AuthHeroPanel";
-import AuthTrustFooter from "../components/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/AuthIcons";
 import {
   CcureAlert,
@@ -262,7 +261,6 @@ export default function Register() {
         <CcureCard as="div" className="auth-card">
           {brandHeader}
           {body}
-          <AuthTrustFooter />
         </CcureCard>
       </div>
     </main>

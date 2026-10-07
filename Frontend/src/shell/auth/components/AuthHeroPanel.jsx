@@ -2,9 +2,8 @@
  * src/shell/auth/components/AuthHeroPanel.jsx
  * The panel beside every sign-in screen. A platform screen: it names the platform
  * ("CCure") and no product, and it states no capability, figure or status it
- * cannot back — the earlier panel carried an invented "10,000+ assets audited",
- * "99.9% scan precision" and a hardcoded "All Systems Operational", none of which
- * was measured from anything (UI semantic integrity: an absent answer is not a
+ * cannot back — the earlier panel carried invented usage figures and a hardcoded
+ * status badge, none of which was measured from anything (UI semantic integrity: an absent answer is not a
  * reassuring one). Product wording is the owner's (D12-9); none is written here.
  */
 import { CcureBadge } from "../../../design-system";

@@ -29,7 +29,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import AuthHeroPanel from "../components/AuthHeroPanel";
-import AuthTrustFooter from "../components/AuthTrustFooter";
 import { ShieldLogoIcon } from "../components/AuthIcons";
 import {
   CcureAlert,
@@ -107,7 +106,6 @@ export default function VerifyEmail() {
           </div>
           <h1 className="auth-title">{title}</h1>
           {body}
-          <AuthTrustFooter />
         </CcureCard>
       </div>
     </main>

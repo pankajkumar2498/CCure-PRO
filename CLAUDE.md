@@ -669,6 +669,10 @@ CI/documentation gates: `ux4g:architecture`, authorization inventory and
 Current Policy/Rank/IR entry placeholders use this same foundation; future
 product functionality must extend the regression catalogue. Do not expand
 exception baselines or suppress accessibility/overflow failures to pass a gate.
+Every page inside a shell is `CcurePage` + `CcurePageHeader` (one `<h1>`, the
+shared inset and title size), and icons are `CcureIcon`, never emoji. A glyph an
+API returns is translated in `modules/audit/utils/backendIcons.js`. Unit
+ratchets enforce both (B.13, `docs/ux4g/B13_APPLICATION_PAGE_STANDARD.md`).
 
 One React application holds the four products. Record:
 [`docs/architecture/PHASE12_FRONTEND_SHELL.md`](docs/architecture/PHASE12_FRONTEND_SHELL.md);
@@ -751,10 +755,20 @@ each folder's `README.md` says what belongs in it.
     built; they have no shell yet and load no Audit state.
   - **Guarded by** `__tests__/shell/navigationIsolation.test.jsx`. Record and
     follow-ups: `docs/architecture/PLATFORM_SHARED_NAVIGATION.md` §8.
-- **The VM runs `15f8c7c`** since 7 Oct 2026 (frontend 23:08 IST, backend
-  23:24–23:25 IST), deployed with the same compose files and variables as
-  6 Oct (below, "Deployed 6 Oct 2026"):
-  - frontend `ccure-audit-pro-frontend:15f8c7c` (`9a5fe2ce5bd4`), UX4G 3.0.2;
+- **The VM runs backend `15f8c7c`** since 7 Oct 2026 (23:24–23:25 IST), deployed
+  with the same compose files and variables as 6 Oct (below, "Deployed 6 Oct
+  2026"), **and frontend `902614f`** since 8 Oct 2026 (20:49 IST):
+  - frontend `ccure-audit-pro-frontend:902614f` = `:latest` (`2f817b54d9bf`):
+    UX4G 3.0.2 with the B.12 Audit restoration and the B.13 page standard.
+    - **Gates:** Trivy (0 fixable critical/high), the image smoke test, unit
+      3,128 and browser 198/198 in each of three engines.
+    - **How it was started:** `docker compose up -d --no-deps --force-recreate
+      frontend` with the base file, as the container had been created. The
+      development overlay changes only the frontend's build context, and plain
+      `up -d` answered `Running` without recreating.
+    - **Before it:** from 19:57 IST a build of the uncommitted tree ran
+      (`77016afbbaa5`, tagged `uncommitted-20261008-1957`). It serves
+      byte-identical files.
   - backend `ccure-audit-pro-backend:15f8c7c` = `:latest` (`94ff785bcd29`) on
     `api`, `worker`, `beat` and `web-worker`. **The first backend image rebuild
     since 16 Sep** (`4de065370b9b`): every deploy in between reused that image
@@ -763,9 +777,10 @@ each folder's `README.md` says what belongs in it.
     since (scapy 2.8.0, billiard 4.3.1, …). Validated by the full backend suite
     run inside the image against a disposable database;
   - `gateway-auth` unchanged (`ccure-gateway-auth:10.5`); no database change.
-  - **Rollback:** the `pre-redeploy-20261007` tag on each image (backend
-    `4de065370b9b`, frontend `67637dfbdc4e`) plus `git revert`. Backup
-    `backups/ccure_db_20261007_230801_ops.dump`.
+  - **Rollback, frontend:** `pre-902614f` (`9a5fe2ce5bd4`, the 7 Oct `15f8c7c`
+    image) plus `git revert 902614f`.
+  - **Rollback, backend:** the `pre-redeploy-20261007` tag (`4de065370b9b`) plus
+    `git revert`. Backup `backups/ccure_db_20261007_230801_ops.dump`.
 
 ## Integration contracts (`Backend/ccure_contracts/`) — Phase 4, draft
 

@@ -107,3 +107,21 @@ MFA key is explicit. No `.env.bak-*` copy of the retired secret remains on this 
   After deploy: api, gateway and edge answer as the 7 Oct acceptance expects; workers
   hold no secrets; the scanner's scapy and nmap work over loopback. Details and
   rollback in `CLAUDE.md`.
+
+## 8. 8 Oct 2026: Audit UI restoration, one page standard, frontend redeploy
+
+- **B.12, Audit UI restoration** (`902614f`): the UX4G 3.0.2 component CSS is
+  unlayered and outranked CCure's legacy layout on Audit pages. Fixed once in the
+  shared adapters. Record: `docs/ux4g/B12_AUDIT_UI_RESTORATION.md`.
+- **B.13, one page structure** (`902614f`): `CcurePage`, `CcurePageHeader` and
+  `CcureIcon` in the design system; 43 pages across Common, Audit and web scanning
+  use them, and emoji icons are gone. On all 61 measured page states the title is
+  22.5 px / 700 at a 30 px inset. Unit and browser ratchets hold it. Record:
+  `docs/ux4g/B13_APPLICATION_PAGE_STANDARD.md`.
+- **Frontend redeploy from `902614f`** (20:49 IST): frontend only, with no backend,
+  gateway or database change.
+  - **Gates:** Trivy and smoke on the image; frontend unit 3,128; browser 594/594
+    (198 in each of three engines).
+  - **After deploy:** the edge serves the new bundle with its CSP, and `/api/`
+    answers.
+  - **Rollback:** see `CLAUDE.md`.

@@ -539,14 +539,24 @@ pre-commit run --all-files
 
 `.pre-commit-config.yaml` hooks:
 
-| Hook                                                                                | Scope                        | Configuration                                                            |
-| ----------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------ |
-| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                          | pre-commit-hooks v4.6.0                                                  |
-| `black`                                                                             | `^Backend/`                  | 24.4.2                                                                   |
-| `ruff`                                                                              | `^Backend/`                  | v0.4.8, `--fix`, ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821` |
-| `bandit`                                                                            | `^Backend/`                  | 1.7.9, `-lll`, excluding `tests`, skipping `B324,B501,B507`              |
-| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)` | prettier@3.2.5                                                           |
-| `eslint`                                                                            | `^Frontend/`                 | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                  |
+| Hook                                                                                | Scope                                                             | Configuration                                                                                                                                                          |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                                                               | pre-commit-hooks v4.6.0                                                                                                                                                |
+| `black`                                                                             | `^Backend/`                                                       | 24.4.2                                                                                                                                                                 |
+| `ruff`                                                                              | `^Backend/`                                                       | v0.4.8, `--fix`, ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821`                                                                                               |
+| `bandit`                                                                            | `^Backend/`                                                       | 1.7.9, `-lll`, excluding `tests`, skipping `B324,B501,B507`                                                                                                            |
+| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)`                                      | prettier@3.2.5                                                                                                                                                         |
+| `eslint`                                                                            | `^Frontend/`                                                      | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                                                                                                                |
+| `openapi-contract` (local, runs last)                                               | backend `.py` except `tests/`, `openapi.json`, `requirements.txt` | regenerates `Backend/openapi.json` exactly as CI does and stages it if it changed; needs `Backend/.venv` with `requirements.txt` installed (or `CCURE_BACKEND_PYTHON`) |
+
+> **The API contract is regenerated for you.** When a commit touches backend
+> code, `openapi-contract` rebuilds `Backend/openapi.json` from what is being
+> committed, stages it if it changed and names the operations added or
+> removed. If it cannot (no backend environment, a FastAPI or Pydantic version
+> other than the pins, or the application fails to import) the commit stops
+> with the reason. `SKIP=openapi-contract git commit …` commits without it,
+> and CI's OpenAPI Schema Diff Check still compares the contract. By hand:
+> `cd Backend && python -m scripts.openapi.generate` (or `--check`).
 
 > **NOTE:** Prettier covers `docs/*.md`, so this documentation set is
 > auto-formatted on commit.

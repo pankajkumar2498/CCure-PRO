@@ -96,3 +96,27 @@ repos:
           - eslint@8.57.0
           - eslint-plugin-react@7.34.1
           - eslint-plugin-react-hooks@4.6.2
+
+  # The API contract. CI fails a PR whose Backend/openapi.json differs by one
+  # byte from what the code generates, and the file used to go stale whenever
+  # a route or a docstring changed: about twenty catch-up commits in its
+  # history. This regenerates it from the code being committed and stages it,
+  # last, after the formatters. It runs only when backend code, requirements
+  # or the contract are staged, and needs the backend's own Python environment
+  # (Backend/.venv, or CCURE_BACKEND_PYTHON), which it finds itself; that is
+  # why it is a local hook rather than an isolated one. A failure stops the
+  # commit. CI's check is unchanged and stays the backstop for --no-verify and
+  # for clones without the hooks installed.
+  # Backend/scripts/openapi/precommit_hook.py says how it works.
+  - repo: local
+    hooks:
+      - id: openapi-contract
+        name: regenerate the API contract (Backend/openapi.json)
+        language: python
+        entry: python Backend/scripts/openapi/precommit_hook.py
+        pass_filenames: false
+        require_serial: true
+        # pre-commit hides a passing hook's output; this is how the author sees
+        # "regenerated and staged … (added GET /x)" when the contract moved.
+        verbose: true
+        files: ^Backend/(?!tests/).+\.py$|^Backend/(openapi\.json|requirements\.txt)$

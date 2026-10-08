@@ -424,9 +424,9 @@ To enable the CI/CD pipeline to catch breaking API changes, generate the baselin
 powershell
 # Move to the Backend folder
 cd "c:\Users\pankaj\Downloads\Automation Tool\CCure-Audit-PRO\Backend"
-# Generate the initial schema definition file
-python -c "import json; from main import app; print(json.dumps(app.openapi()))" > openapi.json
-Verification: This creates a file named openapi.json in your Backend/ folder. Add and commit this file to your git repository (git add openapi.json). Any future PR that changes paths or formats will now be checked against this file in CI.
+# Generate the schema definition file exactly as CI does
+python -m scripts.openapi.generate
+Verification: This writes openapi.json in your Backend/ folder, byte-for-byte what CI's OpenAPI Schema Diff Check generates (sorted keys, two-space indent, UTF-8, LF). Add and commit it (git add openapi.json). Any future PR that changes paths or formats will now be checked against this file in CI. Once the pre-commit hooks are installed (Step 2), the openapi-contract hook regenerates and stages it automatically whenever backend code is committed. Do not redirect print(json.dumps(app.openapi())) into the file: without sort_keys, indent and ensure_ascii=False, and with the console's encoding and line endings, it produces a file CI rejects.
 
 Step 4: Verify CI/CD Automation
 To verify the GitHub Actions setup, simply push your changes to a branch or open a Pull Request. GitHub will automatically spin up PostgreSQL and Redis service containers, run the Alembic migration integrity loops, perform the security/dependency audits, and run the test suite inside the test container.

@@ -10,3 +10,9 @@ CSP, API/auth/RBAC/routing contracts. Run the documented frontend CI checks.
 Read [CLAUDE.md](CLAUDE.md) for repository operational rules before backend,
 database or deployment work. Frontend-only validation uses synthetic API fixtures;
 do not run destructive backend tests against the live application database.
+
+**Commits, for every change:** an AI coding agent creating a Git commit must not
+add itself as a co-author. Do not add `Claude`, `Anthropic`, `Codex`, `OpenAI`,
+`Copilot`, or any other AI identity as a `Co-authored-by` trailer. Preserve the
+legitimate human author/committer information and any explicitly required human
+co-authors. Defined in [CLAUDE.md](CLAUDE.md), "Commits made by AI agents".

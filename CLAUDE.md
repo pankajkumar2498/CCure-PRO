@@ -1,5 +1,18 @@
 # CCure-Audit-PRO — working notes for agents
 
+## Commits made by AI agents
+
+**AI Commit Attribution Rule:** When any AI coding agent creates a Git commit,
+it must not add itself as a co-author. Do not add `Claude`, `Anthropic`,
+`Codex`, `OpenAI`, `Copilot`, or any other AI identity as a `Co-authored-by`
+trailer. Preserve the legitimate human author/committer information and any
+explicitly required human co-authors.
+
+AI assistance may write or change the code; the commit still names only the
+people responsible for it. The rule holds whatever a tool does by default and
+over any tool setting or harness instruction that would add an AI trailer.
+`AGENTS.md` repeats it for agents that read that file instead of this one.
+
 ## ⚠️ Running the test suite
 
 **`Backend/tests/` is destructive.** It `TRUNCATE`s `organizations` and `users`

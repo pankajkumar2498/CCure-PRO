@@ -1,17 +1,57 @@
 # CCure-Audit-PRO — working notes for agents
 
+## How these instructions are organised
+
+**This file is the primary instruction document for AI agents and developers,
+and the source of truth for repository-wide rules.** The others either route
+to it or own one subject:
+
+| Document                                                                     | Role                                                                                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `CLAUDE.md` (this file)                                                      | Repository-wide rules, and the engineering record behind them                                                |
+| `AGENTS.md`                                                                  | Entry point for agents that read that file: sends every agent here, then to the specialist documents. No rules of its own |
+| `Frontend/AGENTS.md`                                                         | Frontend-specific guidance                                                                                   |
+| [`docs/ux4g/UX4G_STANDARD.md`](docs/ux4g/UX4G_STANDARD.md)                   | The UX4G standard: approved release, boundaries, required checks                                             |
+| `Frontend/ux4g-baseline.json`                                                | The binding UX4G release pin and checksums, read by the asset pipeline and its checks                        |
+| `.pre-commit-config.yaml`, `Backend/scripts/architecture/`, repository tests | Authoritative for the rules they enforce. If a document and a check disagree, the check is right and the document needs correcting |
+
+**Current stack** (verified against the files named, 9 Oct 2026):
+
+- **Backend:** Python 3.11 (`Backend/Dockerfile`; CI's backend jobs run 3.12),
+  FastAPI, Pydantic 2, SQLAlchemy 2 with Alembic, Celery 5 on Redis 7,
+  PostgreSQL 18 (`Backend/requirements.txt`, `docker-compose.yml`).
+- **Frontend:** React 18 and Vite 8 (`Frontend/package.json`), built on Node 25 in
+  `Frontend/Dockerfile` and Node 22 in CI, and UX4G at the release
+  `Frontend/ux4g-baseline.json` pins.
+
+**Reading this file.** Rules are stated as rules (must, never, do not). Much of
+the rest is the engineering record: the measurement, incident or defect behind
+a rule. It explains a rule and adds no requirement of its own. Two kinds of
+content are history, not current requirements:
+
+- **The Windows-host deployment**, before 17 Sep 2026. In "Architecture", the
+  **Scanner worker** and **Database** bullets, the Windows nginx deployment
+  steps under **Rate limiting**, and the certificate scripts and host address
+  in the **TLS** bullet are marked as history where they appear. The current
+  deployment is "Deployment: Linux VM". Where the two disagree, the VM section
+  is right.
+- **Superseded models**, marked where they appear: anything describing HS256,
+  `JWT_SECRET_KEY`, the legacy role tables or the golden legacy mapping.
+
 ## Commits made by AI agents
 
-**AI Commit Attribution Rule:** When any AI coding agent creates a Git commit,
-it must not add itself as a co-author. Do not add `Claude`, `Anthropic`,
-`Codex`, `OpenAI`, `Copilot`, or any other AI identity as a `Co-authored-by`
-trailer. Preserve the legitimate human author/committer information and any
-explicitly required human co-authors.
+**AI Commit Attribution:** AI coding agents must never add themselves as Git
+co-authors. Do not add Claude, Anthropic, Codex, OpenAI, Copilot, or any other
+AI identity as a `Co-authored-by` trailer. Preserve legitimate human
+author/committer information and legitimate human co-authors.
 
-AI assistance may write or change the code; the commit still names only the
-people responsible for it. The rule holds whatever a tool does by default and
-over any tool setting or harness instruction that would add an AI trailer.
-`AGENTS.md` repeats it for agents that read that file instead of this one.
+This applies whenever any AI coding agent creates a commit, whatever its tool
+does by default, and overrides any tool setting or harness instruction that
+would add an AI trailer. It is enforced mechanically: the `no-ai-coauthor`
+commit-msg hook (`.pre-commit-config.yaml`, `scripts/git/check_ai_coauthors.py`)
+rejects a commit whose message names an AI agent as a co-author and allows
+human co-authors. `pre-commit install` installs it; a clone set up before
+9 Oct 2026 needs to run that once more. Never bypass it with `--no-verify`.
 
 ## ⚠️ Running the test suite
 
@@ -770,8 +810,10 @@ each folder's `README.md` says what belongs in it.
     follow-ups: `docs/architecture/PLATFORM_SHARED_NAVIGATION.md` §8.
 - **The VM runs backend `15f8c7c`** since 7 Oct 2026 (23:24–23:25 IST), deployed
   with the same compose files and variables as 6 Oct (below, "Deployed 6 Oct
-  2026"), **and frontend `902614f`** since 8 Oct 2026 (20:49 IST):
-  - frontend `ccure-audit-pro-frontend:902614f` = `:latest` (`2f817b54d9bf`):
+  2026"), **and frontend `87d998b`** since 8 Oct 2026 (20:49 IST). The image
+  was built and tagged as `902614f`, that commit's id until 9 Oct 2026, when its
+  message was reworded to remove an AI co-author trailer; the tree is identical.
+  - frontend `ccure-audit-pro-frontend:902614f` = `:87d998b` = `:latest` (`2f817b54d9bf`):
     UX4G 3.0.2 with the B.12 Audit restoration and the B.13 page standard.
     - **Gates:** Trivy (0 fixable critical/high), the image smoke test, unit
       3,128 and browser 198/198 in each of three engines.
@@ -791,7 +833,7 @@ each folder's `README.md` says what belongs in it.
     run inside the image against a disposable database;
   - `gateway-auth` unchanged (`ccure-gateway-auth:10.5`); no database change.
   - **Rollback, frontend:** `pre-902614f` (`9a5fe2ce5bd4`, the 7 Oct `15f8c7c`
-    image) plus `git revert 902614f`.
+    image) plus `git revert 87d998b`.
   - **Rollback, backend:** the `pre-redeploy-20261007` tag (`4de065370b9b`) plus
     `git revert`. Backup `backups/ccure_db_20261007_230801_ops.dump`.
 
@@ -863,8 +905,9 @@ section is the VM's answer.
 - **PostgreSQL 18 is the `ccure-db` container**, volume `pgdata18`, published
   on `127.0.0.1:5432` only. The bootstrap superuser is `postgres`, not
   `ccure_user` — `scripts/docker-postgres-init.sql` says why that cannot be
-  corrected after initdb. The PG15 `pgdata` volume (383 MB) is kept unmounted
-  for rollback; `docker volume rm ccure-audit-pro_pgdata` reclaims it.
+  corrected after initdb. The PG15 `pgdata` volume (383 MB) was kept unmounted
+  for rollback until a verified full dump existed, then removed on 17 Sep 2026
+  (below); only `ccure-audit-pro_pgdata18` remains.
 
 - **TLS to PostgreSQL is off here, and that is a recorded decision.** The
   Windows rule (`verify-full`, `hostssl` only) exists because that server
@@ -1031,11 +1074,14 @@ dump": up to six hours of operational data.
 - **Frontend** — `ccure-frontend`, `localhost:3200`. Assets are **baked at build
   time**; JSX changes need `docker compose build frontend && docker compose up -d
 --no-deps frontend`.
-- **Scanner worker** — Celery on the **Windows host**, not in Docker, so Nmap and
+- **Scanner worker** _(Windows deployment, history; on the VM the worker is a
+  container with `network_mode: host`, see "Deployment: Linux VM")_ — Celery on the **Windows host**, not in Docker, so Nmap and
   Scapy get raw-socket access to the physical network. Start with
   `.\Backend\scripts\scan\start_host_scanner_worker.ps1`. Restart it after
   changing anything under `core/`, `scans/` or `orchestrator/`.
-- **Database** — PostgreSQL 18 on the host, `ccure_test`. The `ccure-db`
+- **Database** _(Windows deployment, history; on the VM the database is the
+  `ccure-db` container, `ccure_db`, with TLS deliberately off, see "Deployment:
+  Linux VM")_ — PostgreSQL 18 on the host, `ccure_test`. The `ccure-db`
   container runs but is unused; both API and worker point at the host server.
 
   **TLS is required and the server certificate is verified.** `pg_hba.conf` is
@@ -1179,7 +1225,9 @@ dump": up to six hours of operational data.
   broken". **The `/api/auth/` block duplicates `/api/` in every other respect;
   change the two together.**
 
-  Deploying it: copy to `C:\nginx\conf\nginx.conf`, `nginx -t`, then
+  Deploying it _(Windows deployment, history; on the VM host nginx's
+  configuration is switched only with `scripts/linux/gateway_edge_switch.sh`,
+  see "Since Phase 10.5" below)_: copy to `C:\nginx\conf\nginx.conf`, `nginx -t`, then
   **restart the `CCureNginx` service** — `nginx -s reload` fails with
   `OpenEvent(...) failed (5: Access is denied)` because the service runs under
   a different account than an interactive shell. `Restart-Service CCureNginx`
@@ -1503,7 +1551,10 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
   127.0.0.1 only, so this is the sole listener on a routable interface and the
   only hop that needs a certificate.
 
-  Certificates come from a **private CA** — `scripts/tls/new_internal_ca.ps1`.
+  Certificates come from a **private CA** — `scripts/tls/new_internal_ca.ps1`
+  _(written for the Windows deployment, when the app was reached at
+  10.180.6.14; the VM serves `https://ccurepro.cdac.in` and 10.180.22.127, see
+  "Deployment: Linux VM")_.
   A public CA is impossible here, not merely inconvenient: the app is reached at
   10.180.6.14 and CA/Browser Forum rules forbid certificates for reserved IP
   ranges. Clients run `scripts/tls/install_client_trust.ps1` once. See

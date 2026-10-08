@@ -825,22 +825,27 @@ Test configuration lives in the same file: `globals: true`, `environment: "jsdom
 | `npm run preview` | Serve the built bundle locally                  |
 | `npm test`        | `vitest run`                                    |
 
-There is **no `lint` script** in `package.json`, although `.eslintrc.json` exists
-and both pre-commit and CI invoke ESLint. CI's `npm run lint` step is written as
-`npm run lint || echo "Lint warnings found"`, so the missing script does not fail
-the build.
+`npm run lint` runs ESLint (`.eslintrc.json`) over `src/`, the browser tests and
+the harness scripts with `--max-warnings=0`. CI's Frontend Validation runs it as a
+blocking step, and pre-commit runs ESLint on the staged files.
 
 ### Container build
 
 ```dockerfile
-FROM node:20-slim AS build
-COPY package*.json ./ && RUN npm install
-COPY . . && ARG VITE_API_BASE_URL=/api && RUN npm run build
+FROM node:25-slim@sha256:… AS build
+COPY package.json package-lock.json ./ && RUN npm ci --no-audit --no-fund
+COPY . . && ARG VITE_API_BASE_URL=/api
+RUN npm run ux4g:check -- --dependencies-only && npm run build
 
-FROM nginx:stable-alpine AS runtime
+FROM nginx:stable-alpine@sha256:… AS runtime
+RUN apk upgrade --no-cache pcre2 libexpat
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 ```
+
+Abridged from `Frontend/Dockerfile`, which is authoritative. Both base images are
+pinned by digest, and the `apk upgrade` line patches only the base-image packages
+the image scan flagged (`docs/ci/CONTAINER_IMAGES.md`).
 
 `nginx.conf` provides the SPA history fallback so a deep link like
 `/scan/:id/phase2` reloads correctly.

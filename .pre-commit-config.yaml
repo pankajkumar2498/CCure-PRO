@@ -1,3 +1,11 @@
+# `pre-commit install` installs both hook types: pre-commit (the checks below)
+# and commit-msg (the AI co-author check). Every hook runs at the pre-commit
+# stage unless it names another, so the commit-msg stage runs only the hook
+# written for it. The `pre-commit` stage name needs pre-commit 3.2 or later.
+minimum_pre_commit_version: "3.2.0"
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
 repos:
   # Secret detection. This is here because the repository shipped a live
   # Gmail app password and the production JWT signing key in .env.example —
@@ -96,6 +104,19 @@ repos:
           - eslint@8.57.0
           - eslint-plugin-react@7.34.1
           - eslint-plugin-react-hooks@4.6.2
+
+  # No AI agent as a commit co-author (CLAUDE.md, "Commits made by AI agents").
+  # Runs on the commit message, not the files: it rejects a Co-authored-by
+  # trailer naming Claude, Anthropic, Codex, OpenAI, Copilot or another AI
+  # agent, and allows human co-authors. It is the mechanical half of a rule
+  # that otherwise depends on every agent having read the instructions.
+  - repo: local
+    hooks:
+      - id: no-ai-coauthor
+        name: no AI agent listed as a commit co-author
+        language: python
+        entry: python scripts/git/check_ai_coauthors.py
+        stages: [commit-msg]
 
   # The API contract. CI fails a PR whose Backend/openapi.json differs by one
   # byte from what the code generates, and the file used to go stale whenever

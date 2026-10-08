@@ -1,6 +1,8 @@
 # System Architecture
 
 > **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+>
+> **The service table and diagram predate the Phase 10 gateway (live 30 Sep 2026).** Since then the `api` publishes no port and is reached only through `api-gateway` and `gateway-auth`. The table has no row for either, nor for `beat` (described below). Current topology: `CLAUDE.md`, "Since Phase 10.5" and "Deployment: Linux VM". Image and framework versions in this document were corrected on 9 Oct 2026 (PostgreSQL 18, Node 25, Vite 8).
 
 **CCure-Audit-PRO** — network, web-application and compliance auditing platform.
 
@@ -45,7 +47,7 @@ graph TB
         WRK["worker (profile: container-scanner)<br/>celery: scanner,default,compliance"]
         WEB["web-worker (profile: container-scanner)<br/>celery: web_recon,web_crawl,web_dast,web_audit"]
         RDS["redis:7-alpine<br/>broker + result backend + pub/sub"]
-        DB[("db — postgres:15-alpine<br/>application schema")]
+        DB[("db — postgres:18-alpine<br/>application schema")]
     end
 
     subgraph "Windows host (out of Docker)"
@@ -72,11 +74,11 @@ graph TB
 | Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                       |
 | ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                     |
-| `db`         | `ccure-db`         | `postgres:15-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                                |
+| `db`         | `ccure-db`         | `postgres:18-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                                |
 | `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro`  |
 | `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                      |
 | `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`          |
-| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:20-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**           |
+| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:25-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**           |
 | `gateway`    | `ccure-gateway`    | `nginx:stable-alpine`   | `127.0.0.1:${GATEWAY_PORT:-8082}:80`            | `./nginx/gateway.conf`; opt-in only, behind the `alt-gateway` profile. Host Nginx is the entry point on 443 |
 
 Both scanner workers sit behind the `container-scanner` Compose profile, so
@@ -527,7 +529,7 @@ Full engine-by-engine treatment: [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIV
 
 ## 9. Frontend architecture summary
 
-React 18 + Vite 5, no TypeScript, no Redux — state is React Context plus
+React 18 + Vite 8, no TypeScript, no Redux — state is React Context plus
 `sessionStorage`/`localStorage`.
 
 ```mermaid

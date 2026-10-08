@@ -10,17 +10,17 @@ the repository's actual scripts, Dockerfiles, CI workflow and configuration file
 
 ## 1. Prerequisites
 
-| Requirement             | Version                                | Why                                                                                                                                                  |
-| ----------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Python**              | **3.11** (host worker) / **3.12** (CI) | The Backend image is `python:3.11-slim`; the `start_host_scanner_worker.ps1` error message says `py -3.11 -m venv .venv`; GitHub Actions uses `3.12` |
-| **Node.js**             | **20** (image) / **22** (CI)           | `Frontend/Dockerfile` uses `node:20-slim`; CI's `setup-node` pins `22`                                                                               |
-| **npm**                 | Bundled with Node                      | `package-lock.json` is committed; CI uses `npm ci`                                                                                                   |
-| **PostgreSQL**          | 15 (container) or 18 (host)            | Compose ships `postgres:15-alpine`; the reference host deployment runs PostgreSQL 18                                                                 |
-| **Redis**               | 7                                      | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                         |
-| **Docker + Compose v2** | current                                | The `docker compose` (space) form is used throughout                                                                                                 |
-| **Nmap**                | any recent                             | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                           |
-| **Npcap**               | current                                | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                    |
-| **Git**                 | any                                    |                                                                                                                                                      |
+| Requirement             | Version                                | Why                                                                                                                                                             |
+| ----------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Python**              | **3.11** (host worker) / **3.12** (CI) | The Backend image is `python:3.11-slim`; the `start_host_scanner_worker.ps1` error message says `py -3.11 -m venv .venv`; GitHub Actions uses `3.12`            |
+| **Node.js**             | **25** (image) / **22** (CI)           | `Frontend/Dockerfile` builds on `node:25-slim` (pinned by digest); CI's `setup-node` pins `22`                                                                  |
+| **npm**                 | Bundled with Node                      | `package-lock.json` is committed; CI uses `npm ci`                                                                                                              |
+| **PostgreSQL**          | **18**                                 | Compose ships `postgres:18-alpine` (the VM's `ccure-db`) and CI uses the same; `Backend/tests/repo/test_ci_postgres_version.py` keeps them on one major version |
+| **Redis**               | 7                                      | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                                    |
+| **Docker + Compose v2** | current                                | The `docker compose` (space) form is used throughout                                                                                                            |
+| **Nmap**                | any recent                             | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                                      |
+| **Npcap**               | current                                | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                               |
+| **Git**                 | any                                    |                                                                                                                                                                 |
 
 Optional external binaries — each absent tool is a **coverage gap, not an error**,
 except Nuclei in the DAST pipeline where it is essential:
@@ -537,17 +537,23 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+`pre-commit install` installs two hook types, `pre-commit` and `commit-msg`
+(`default_install_hook_types`). A clone set up before 9 Oct 2026 has only the
+first: run `pre-commit install` once more to add the commit-message check.
+
 `.pre-commit-config.yaml` hooks:
 
-| Hook                                                                                | Scope                                                             | Configuration                                                                                                                                                          |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                                                               | pre-commit-hooks v4.6.0                                                                                                                                                |
-| `black`                                                                             | `^Backend/`                                                       | 24.4.2                                                                                                                                                                 |
-| `ruff`                                                                              | `^Backend/`                                                       | v0.4.8, `--fix`, ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821`                                                                                               |
-| `bandit`                                                                            | `^Backend/`                                                       | 1.7.9, `-lll`, excluding `tests`, skipping `B324,B501,B507`                                                                                                            |
-| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)`                                      | prettier@3.2.5                                                                                                                                                         |
-| `eslint`                                                                            | `^Frontend/`                                                      | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                                                                                                                |
-| `openapi-contract` (local, runs last)                                               | backend `.py` except `tests/`, `openapi.json`, `requirements.txt` | regenerates `Backend/openapi.json` exactly as CI does and stages it if it changed; needs `Backend/.venv` with `requirements.txt` installed (or `CCURE_BACKEND_PYTHON`) |
+| Hook                                                                                | Scope                                                             | Configuration                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitleaks`                                                                          | all                                                               | v8.30.1, secret detection on the staged changes                                                                                                                                       |
+| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                                                               | pre-commit-hooks v4.6.0                                                                                                                                                               |
+| `black`                                                                             | `^Backend/`                                                       | 24.4.2                                                                                                                                                                                |
+| `ruff`                                                                              | `^Backend/`                                                       | v0.4.8, `--fix`, `--select=E,F,W` (the selection CI runs), ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821,E501`                                                               |
+| `bandit`                                                                            | `^Backend/`                                                       | 1.9.4, `-lll`, excluding `tests`; no rule skipped (exceptions are `# nosec` on the line)                                                                                              |
+| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)`                                      | prettier@3.2.5                                                                                                                                                                        |
+| `eslint`                                                                            | `^Frontend/`                                                      | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                                                                                                                               |
+| `no-ai-coauthor` (local, commit-msg stage)                                          | the commit message                                                | rejects a `Co-authored-by` trailer naming an AI agent (Claude, Anthropic, Codex, OpenAI, Copilot, …); human co-authors pass. `scripts/git/check_ai_coauthors.py`; rule in `CLAUDE.md` |
+| `openapi-contract` (local, runs last)                                               | backend `.py` except `tests/`, `openapi.json`, `requirements.txt` | regenerates `Backend/openapi.json` exactly as CI does and stages it if it changed; needs `Backend/.venv` with `requirements.txt` installed (or `CCURE_BACKEND_PYTHON`)                |
 
 > **The API contract is regenerated for you.** When a commit touches backend
 > code, `openapi-contract` rebuilds `Backend/openapi.json` from what is being
@@ -609,7 +615,7 @@ pytest tests/repo/test_docs_integrity.py -v
 
 ### `backend-validation` (ubuntu-latest, Python 3.12)
 
-Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
+Services: `postgres:18-alpine` and `redis:7-alpine` with health checks.
 
 1. Install `requirements.txt` plus `pytest==7.4.4`, `pytest-cov`,
    `pytest-rerunfailures`, `bandit`, `ruff`.

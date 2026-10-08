@@ -1,5 +1,8 @@
 # Frontend development standard
 
+Repository-wide rules, commits included, are in [`../CLAUDE.md`](../CLAUDE.md);
+read it first. This file adds the frontend standard.
+
 The permanent rule and required gates are in
 [`../docs/ux4g/UX4G_STANDARD.md`](../docs/ux4g/UX4G_STANDARD.md).
 Apply it to every frontend change, including all future contributors/AI agents.
@@ -8,7 +11,8 @@ Read `../docs/FRONTEND_ARCHITECTURE.md` and
 `../docs/ux4g/B1_VERSION_FOUNDATION.md` and
 `../docs/ux4g/B2_ASSET_PIPELINE.md` and
 `../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md` and
-`../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md` before changing frontend infrastructure.
+`../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md` and
+`../docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md` before changing frontend infrastructure.
 
 - `ux4g-baseline.json` is the one approved UX4G release/provenance definition.
   Use the latest officially published/recommended stable release applicable to

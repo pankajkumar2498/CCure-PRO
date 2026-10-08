@@ -36,15 +36,18 @@ import {
   CcureTable,
   CcureToastProvider,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/credentialed-results.css";
 
 const STAGES = [
-  { id: "connecting", label: "Connection", icon: "🔌" },
-  { id: "detection", label: "OS Detection", icon: "🔍" },
-  { id: "collection", label: "Collection", icon: "📦" },
-  { id: "analysis", label: "CVE Analysis", icon: "🧠" },
-  { id: "syncing", label: "Finalizing", icon: "💾" },
+  { id: "connecting", label: "Connection", icon: "link" },
+  { id: "detection", label: "OS Detection", icon: "search" },
+  { id: "collection", label: "Collection", icon: "package" },
+  { id: "analysis", label: "CVE Analysis", icon: "cpu" },
+  { id: "syncing", label: "Finalizing", icon: "hard-drive" },
 ];
 
 /**
@@ -435,13 +438,11 @@ export default function CredentialedResults() {
 
     return (
       <AppLayout pageTitle="Credentialed Scan In Progress">
-        <div className="cr-page">
-          <header className="cr-header">
-            <div className="cr-header__text">
-              <h1 className="cr-title">
-                <Glyph>🔐</Glyph> Credentialed Scan In Progress
-              </h1>
-              <p className="cr-subtitle">
+        <CcurePage className="cr-page">
+          <CcurePageHeader
+            title="Credentialed Scan In Progress"
+            subtitle={
+              <>
                 Target:{" "}
                 <code className="cr-code">
                   {stateResult?.target || scanIdParam}
@@ -450,9 +451,9 @@ export default function CredentialedResults() {
                   {" "}
                   · Scan No. {stateResult?.scan_no || "-"}
                 </span>
-              </p>
-            </div>
-          </header>
+              </>
+            }
+          />
 
           <section className="cr-progress">
             <div className="cr-progress__intro">
@@ -482,7 +483,7 @@ export default function CredentialedResults() {
                     aria-current={isActive ? "step" : undefined}
                   >
                     <span className="cr-stage__marker" aria-hidden="true">
-                      {isDone ? "✓" : s.icon}
+                      {isDone ? "✓" : <CcureIcon name={s.icon} />}
                     </span>
                     <span className="cr-stage__label">{s.label}</span>
                     {isDone ? (
@@ -525,7 +526,7 @@ export default function CredentialedResults() {
               </div>
             </div>
           </section>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -534,28 +535,30 @@ export default function CredentialedResults() {
   if (noReport && !result) {
     return (
       <AppLayout pageTitle="Credentialed Results">
-        <div className="cr-page">
-          <header className="cr-header">
-            <h1 className="cr-title">Credentialed Scan Results</h1>
-            <div className="cr-header__actions">
-              <CcureButton
-                variant="secondary"
-                onClick={() => navigate("/history")}
-              >
-                History
-              </CcureButton>
-              <CcureButton onClick={() => navigate("/scan/credentialed")}>
-                New Scan
-              </CcureButton>
-            </div>
-          </header>
+        <CcurePage className="cr-page">
+          <CcurePageHeader
+            title="Credentialed Scan Results"
+            actions={
+              <div className="cr-header__actions">
+                <CcureButton
+                  variant="secondary"
+                  onClick={() => navigate("/history")}
+                >
+                  History
+                </CcureButton>
+                <CcureButton onClick={() => navigate("/scan/credentialed")}>
+                  New Scan
+                </CcureButton>
+              </div>
+            }
+          />
 
           <CcureAlert variant="info" title="No credentialed report">
             This scan completed, and it recorded no authenticated collection for
             any host. That is not the same as a host with no findings — nothing
             was assessed over a credentialed session here.
           </CcureAlert>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -570,21 +573,23 @@ export default function CredentialedResults() {
 
     return (
       <AppLayout pageTitle="Credentialed Results">
-        <div className="cr-page">
-          <header className="cr-header">
-            <h1 className="cr-title">Credentialed Scan Results</h1>
-            <div className="cr-header__actions">
-              <CcureButton
-                variant="secondary"
-                onClick={() => navigate("/history")}
-              >
-                History
-              </CcureButton>
-              <CcureButton onClick={() => navigate("/scan/credentialed")}>
-                New Scan
-              </CcureButton>
-            </div>
-          </header>
+        <CcurePage className="cr-page">
+          <CcurePageHeader
+            title="Credentialed Scan Results"
+            actions={
+              <div className="cr-header__actions">
+                <CcureButton
+                  variant="secondary"
+                  onClick={() => navigate("/history")}
+                >
+                  History
+                </CcureButton>
+                <CcureButton onClick={() => navigate("/scan/credentialed")}>
+                  New Scan
+                </CcureButton>
+              </div>
+            }
+          />
 
           {isUnreachable ? (
             <CcureAlert
@@ -611,7 +616,7 @@ export default function CredentialedResults() {
               Try Again
             </CcureButton>
           </div>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -728,7 +733,6 @@ export default function CredentialedResults() {
   })();
 
   const osLabel = detected_os === "windows" ? "Windows" : "Linux";
-  const osIcon = detected_os === "windows" ? "🪟" : "🐧";
 
   const overallRisk = (() => {
     if (severity_summary.Critical > 0) return "Critical";
@@ -929,7 +933,7 @@ export default function CredentialedResults() {
                 <span>Yes</span>
               ) : (
                 <span className="cr-tone-warning">
-                  <Glyph>⚠</Glyph> No
+                  <CcureIcon name="alert-triangle" /> No
                 </span>
               ),
           },
@@ -973,7 +977,7 @@ export default function CredentialedResults() {
             cell: (u) =>
               u.is_root ? (
                 <span className="cr-tone-danger">
-                  <Glyph>⚠</Glyph> root
+                  <CcureIcon name="alert-triangle" /> root
                 </span>
               ) : u.is_system ? (
                 <span className="cr-muted">system</span>
@@ -993,14 +997,12 @@ export default function CredentialedResults() {
 
   return (
     <AppLayout pageTitle="Credentialed Results">
-      <div className="cr-page">
+      <CcurePage className="cr-page">
         {/* Page header */}
-        <header className="cr-header">
-          <div className="cr-header__text">
-            <h1 className="cr-title">
-              <Glyph>🔐</Glyph> Credentialed Scan Results
-            </h1>
-            <p className="cr-subtitle">
+        <CcurePageHeader
+          title="Credentialed Scan Results"
+          subtitle={
+            <>
               <code className="cr-code">{target}</code>
               {username && (
                 <span className="cr-muted"> · user: {username}</span>
@@ -1019,12 +1021,12 @@ export default function CredentialedResults() {
               )}
               {os_type_was_auto && (
                 <CcureBadge variant="info" className="cr-os-badge">
-                  <Glyph>{osIcon}</Glyph> {osLabel} (auto-detected)
+                  <CcureIcon name="monitor" /> {osLabel} (auto-detected)
                 </CcureBadge>
               )}
               {access?.transport && (
                 <CcureBadge variant="success" className="cr-os-badge">
-                  <Glyph>🔒</Glyph> Authenticated over{" "}
+                  <CcureIcon name="lock" /> Authenticated over{" "}
                   {String(access.transport).toUpperCase()} on port {access.port}
                   {access.how === "discovered" ? " (detected)" : ""}
                 </CcureBadge>
@@ -1058,55 +1060,58 @@ export default function CredentialedResults() {
                       : "not recorded"}
                 </CcureBadge>
               )}
-            </p>
-            {/* What else was tried. The badge alone says which service
+            </>
+          }
+          actions={
+            <div className="cr-header__actions">
+              {/* The comparison is a question about this scan, so it is reached
+                from this scan rather than from a separate destination the
+                operator has to find and re-identify the scan in. */}
+              <CcureButton
+                variant="secondary"
+                onClick={() =>
+                  navigate(
+                    `/scan/comparison?scan_id=${encodeURIComponent(scan_id)}`,
+                  )
+                }
+              >
+                <Glyph>⇄</Glyph> Compare with a previous scan
+              </CcureButton>
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/scan/credentialed")}
+              >
+                <Glyph>←</Glyph> New Scan
+              </CcureButton>
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/history")}
+              >
+                History
+              </CcureButton>
+            </div>
+          }
+        >
+          {/* What else was tried. The badge alone says which service
                 accepted the credential and silently loses the fact that
                 another was probed and refused -- which is the half an
                 operator needs when the answer surprises them ("why SMB? I
                 thought WinRM was on"). Shown only when there is something to
                 say, so the ordinary single-candidate case stays quiet. */}
-            {access?.considered?.length > 1 && (
-              <p className="cr-muted cr-access-considered">
-                Services probed:{" "}
-                {access.considered
-                  .map(
-                    (c) =>
-                      `${String(c.transport).toUpperCase()} — ${
-                        c.resolved ? "used" : "no answer"
-                      }`,
-                  )
-                  .join(" · ")}
-              </p>
-            )}
-          </div>
-          <div className="cr-header__actions">
-            {/* The comparison is a question about this scan, so it is reached
-                from this scan rather than from a separate destination the
-                operator has to find and re-identify the scan in. */}
-            <CcureButton
-              variant="secondary"
-              onClick={() =>
-                navigate(
-                  `/scan/comparison?scan_id=${encodeURIComponent(scan_id)}`,
+          {access?.considered?.length > 1 && (
+            <p className="cr-muted cr-access-considered">
+              Services probed:{" "}
+              {access.considered
+                .map(
+                  (c) =>
+                    `${String(c.transport).toUpperCase()} — ${
+                      c.resolved ? "used" : "no answer"
+                    }`,
                 )
-              }
-            >
-              <Glyph>⇄</Glyph> Compare with a previous scan
-            </CcureButton>
-            <CcureButton
-              variant="secondary"
-              onClick={() => navigate("/scan/credentialed")}
-            >
-              <Glyph>←</Glyph> New Scan
-            </CcureButton>
-            <CcureButton
-              variant="secondary"
-              onClick={() => navigate("/history")}
-            >
-              History
-            </CcureButton>
-          </div>
-        </header>
+                .join(" · ")}
+            </p>
+          )}
+        </CcurePageHeader>
 
         {/* Summary */}
         <ul className="cr-summary" aria-label="Summary">
@@ -1147,7 +1152,7 @@ export default function CredentialedResults() {
             )}
           {brute_force_warning && (
             <li className="cr-summary__item cr-tone-danger">
-              <Glyph>⚠</Glyph> Brute-force activity detected
+              <CcureIcon name="alert-triangle" /> Brute-force activity detected
             </li>
           )}
         </ul>
@@ -1220,7 +1225,7 @@ export default function CredentialedResults() {
         {/* Assessment coverage — what this scan did and did not examine */}
         {Object.keys(coverage).length > 0 && (
           <Section
-            icon="🧭"
+            icon={<CcureIcon name="compass" />}
             title="Assessment coverage — what this scan examined"
           >
             <p className="cr-note">
@@ -1314,7 +1319,7 @@ export default function CredentialedResults() {
         {/* System Info */}
         {unserved.length > 0 && (
           <Section
-            icon="🚫"
+            icon={<CcureIcon name="slash" />}
             title={`Not assessed (${unserved.length})`}
             defaultOpen
           >
@@ -1353,7 +1358,11 @@ export default function CredentialedResults() {
           </Section>
         )}
 
-        <Section icon="🖥" title="System Information" defaultOpen>
+        <Section
+          icon={<CcureIcon name="monitor" />}
+          title="System Information"
+          defaultOpen
+        >
           <dl className="cr-kv-grid">
             <KV k="OS" v={system_info.os_name || "—"} />
             <KV k="Version" v={system_info.os_version_id || "—"} />
@@ -1436,7 +1445,11 @@ export default function CredentialedResults() {
 
         {/* CVEs */}
         {cve_count > 0 && (
-          <Section icon="⚠" title={`CVE Findings (${cve_count})`} defaultOpen>
+          <Section
+            icon={<CcureIcon name="alert-triangle" />}
+            title={`CVE Findings (${cve_count})`}
+            defaultOpen
+          >
             <FindingsListSection
               cves={filteredCvesSource}
               severitySummary={severity_summary}
@@ -1452,7 +1465,7 @@ export default function CredentialedResults() {
             disappears when an audit did not run tells the operator nothing
             about why. */}
         <Section
-          icon="🧾"
+          icon={<CcureIcon name="file-text" />}
           title={
             config_audit && config_audit.assessed !== false
               ? `Configuration Audit (${config_audit.checks_assessed ?? (config_audit.results || []).length} assessed)`
@@ -1466,13 +1479,13 @@ export default function CredentialedResults() {
         </Section>
 
         {/* Package coverage — the denominator for every package finding. */}
-        <Section icon="📊" title="Package Coverage">
+        <Section icon={<CcureIcon name="bar-chart" />} title="Package Coverage">
           <PackageCoverageSection coverage={package_coverage} />
         </Section>
 
         {/* The whole inventory, not only the packages that matched a CVE. */}
         <Section
-          icon="📦"
+          icon={<CcureIcon name="package" />}
           title={`Installed Software (${Number(packages_enumerated ?? packages.length).toLocaleString()})`}
         >
           <PackageInventorySection
@@ -1486,14 +1499,21 @@ export default function CredentialedResults() {
             record rather than the policy row it names, because the policy may
             have been edited, versioned, archived or deleted since and none of
             that changes what this scan did. */}
-        <Section icon="📋" title="Scan policy — what this scan assessed">
+        <Section
+          icon={<CcureIcon name="clipboard" />}
+          title="Scan policy — what this scan assessed"
+        >
           <ScanPolicySnapshot scanId={scan_id} />
         </Section>
 
         {/* Reports and exports. Placed after the findings and before the
             supporting detail: an operator who has read the verdict is the one
             who wants to take it away. */}
-        <Section icon="📤" title="Reports & Export" defaultOpen={false}>
+        <Section
+          icon={<CcureIcon name="upload" />}
+          title="Reports & Export"
+          defaultOpen={false}
+        >
           {/* This app mounts no global toast provider -- each page that wants
               to announce brings its own, as SecurityReports does. The panel
               announces the outcome of a download, so it supplies one here.
@@ -1506,7 +1526,7 @@ export default function CredentialedResults() {
 
         {/* Candidates evaluated and then ruled out. */}
         <Section
-          icon="🚫"
+          icon={<CcureIcon name="slash" />}
           title={`Suppressed Findings (${(suppressed_cves || []).length})`}
         >
           <SuppressedFindingsSection
@@ -1518,7 +1538,7 @@ export default function CredentialedResults() {
 
         {/* Security Audit */}
         <Section
-          icon="🔒"
+          icon={<CcureIcon name="lock" />}
           title="Security Audit"
           defaultOpen={security_issues.length > 0 || sudo_nopasswd}
         >
@@ -1537,7 +1557,8 @@ export default function CredentialedResults() {
               v={
                 sudo_nopasswd ? (
                   <>
-                    <Glyph>⚠</Glyph> YES — any command without password
+                    <CcureIcon name="alert-triangle" /> YES — any command
+                    without password
                   </>
                 ) : (
                   "No"
@@ -1563,7 +1584,7 @@ export default function CredentialedResults() {
                   {brute_force_warning && (
                     <>
                       {" "}
-                      <Glyph>⚠</Glyph> possible brute force
+                      <CcureIcon name="alert-triangle" /> possible brute force
                     </>
                   )}
                 </>
@@ -1631,7 +1652,7 @@ export default function CredentialedResults() {
         {/* Running Services */}
         {running_services.length > 0 && (
           <Section
-            icon="⚙️"
+            icon={<CcureIcon name="settings" />}
             title={`Running Services (${running_services.length})`}
           >
             <div className="cr-toolbar">
@@ -1710,7 +1731,7 @@ export default function CredentialedResults() {
         {/* Listening sockets — read from the host, not from a port scan */}
         {open_ports_credentialed.length > 0 && (
           <Section
-            icon="🔌"
+            icon={<CcureIcon name="link" />}
             title={`Listening sockets — host socket table (${open_ports_credentialed.length})`}
           >
             <p className="cr-note">
@@ -1906,7 +1927,10 @@ export default function CredentialedResults() {
 
         {/* Users */}
         {users.length > 0 && (
-          <Section icon="👤" title={`Users (${filteredUsers.length})`}>
+          <Section
+            icon={<CcureIcon name="user" />}
+            title={`Users (${filteredUsers.length})`}
+          >
             <div className="cr-toolbar cr-toolbar--split">
               <CcureInput
                 type="search"
@@ -1942,7 +1966,10 @@ export default function CredentialedResults() {
 
         {/* Local Groups */}
         {local_groups.length > 0 && (
-          <Section icon="👤" title={`Local Groups (${local_groups.length})`}>
+          <Section
+            icon={<CcureIcon name="user" />}
+            title={`Local Groups (${local_groups.length})`}
+          >
             <CcureTable
               caption="Local groups"
               density="compact"
@@ -1979,7 +2006,7 @@ export default function CredentialedResults() {
           suspicious_scheduled_tasks?.length > 0) ||
           (detected_os !== "windows" && cron_info_raw)) && (
           <Section
-            icon="📅"
+            icon={<CcureIcon name="calendar" />}
             title={
               detected_os === "windows"
                 ? `Scheduled Tasks (${suspicious_scheduled_tasks.length})`
@@ -2043,7 +2070,7 @@ export default function CredentialedResults() {
 
         {/* Login History */}
         {failed_login_count > 0 && (
-          <Section icon="📋" title="Login History">
+          <Section icon={<CcureIcon name="clipboard" />} title="Login History">
             <dl className="cr-kv-grid">
               <KV
                 k="Failed Logins"
@@ -2055,7 +2082,7 @@ export default function CredentialedResults() {
                 v={
                   brute_force_warning ? (
                     <>
-                      <Glyph>⚠</Glyph> YES
+                      <CcureIcon name="alert-triangle" /> YES
                     </>
                   ) : (
                     "No"
@@ -2178,8 +2205,8 @@ export default function CredentialedResults() {
             {env_vars_flagged.length > 0 && (
               <div className="cr-subsection">
                 <h3 className="cr-subheading cr-tone-warning">
-                  <Glyph>⚠</Glyph> Sensitive Environment Variables (
-                  {env_vars_flagged.length})
+                  <CcureIcon name="alert-triangle" /> Sensitive Environment
+                  Variables ({env_vars_flagged.length})
                 </h3>
                 <ul className="cr-env">
                   {env_vars_flagged.map((v, i) => (
@@ -2234,11 +2261,11 @@ export default function CredentialedResults() {
               View History
             </CcureButton>
             <CcureButton onClick={() => navigate("/scan/credentialed")}>
-              <Glyph>↺</Glyph> New Scan
+              <CcureIcon name="rotate-ccw" /> New Scan
             </CcureButton>
           </div>
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

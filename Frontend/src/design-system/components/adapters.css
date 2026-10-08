@@ -30,6 +30,17 @@
 .cc-icon-button > span:last-child {
   display: contents;
 }
+/* A field is a block that takes the width its container gives it, as
+   `.cc-field` always was: the whole column in a stacked form or a grid cell,
+   its own content width in a flex-row toolbar. The official input container and
+   select are `width: 100%`, which made every filter in every toolbar a
+   full-width line. Single-class on purpose: it outranks the official rule (it
+   loads later) and still yields to a page's own sizing class (which loads
+   later again). */
+.cc-field {
+  display: flex;
+  width: auto;
+}
 .cc-field.cc-ux4g {
   color: var(--ccure-text);
 }
@@ -85,20 +96,49 @@
 .cc-card.cc-ux4g {
   width: 100%;
 }
+/* Heading at the start, actions at the end, as `.cc-card__header` has always
+   been. The official header is a column, and because the legacy row sits in
+   `@layer ccure-legacy` the column won: every card's actions ("View All",
+   status badges) dropped beneath its title. Wrapping keeps narrow widths. */
 .cc-card.cc-ux4g .cc-card__header {
+  flex-direction: row;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: var(--ccure-space-md);
 }
-.cc-card.cc-ux4g .cc-card__body--flush,
-.cc-card.cc-card--flush .cc-card__header,
-.cc-card.cc-card--flush .cc-card__footer {
+.cc-card.cc-ux4g .cc-card__heading {
+  flex: 1 1 12rem;
+}
+.cc-card.cc-ux4g .cc-card__body--flush {
   padding: 0;
+}
+/* A flush card sits inside a surface that already draws the frame, so it has
+   no border, radius, fill or shadow of its own — but its header and footer keep
+   their padding. The official outline border otherwise outranked the layered
+   legacy rule, framing each section twice and pressing its title to the edge. */
+.cc-card.cc-card--flush {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .cc-alert.cc-ux4g {
   border-radius: var(--ccure-radius-md);
+  align-items: flex-start;
 }
 .cc-alert.cc-ux4g .ux4g-alert-message {
   overflow-wrap: anywhere;
+}
+/* A titled alert reads title, then message. The official desktop alert sets
+   them side by side, which suits a one-line banner; CcureAlert's message is
+   any content — lists, paragraphs, links — and inline it ran the title into
+   the first bullet. This is the layout the official alert already uses below
+   768px, applied at every width. */
+.cc-alert.cc-alert--titled .cc-alert__body {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ccure-space-3xs);
 }
 .cc-badge.cc-ux4g {
   display: inline-flex;
@@ -109,9 +149,22 @@
   font-weight: var(--ccure-weight-medium);
   white-space: nowrap;
 }
+/* The strip spans its container and starts at the inline start. The official
+   `.ux4g-tab` is a column and the legacy `.cc-tabs` centres its items, so the
+   list was centred and its underline only as wide as the tabs. */
+.cc-tabs.cc-ux4g {
+  align-items: stretch;
+}
 .cc-tabs.cc-ux4g .ux4g-tab-list {
   max-width: 100%;
   overflow-x: auto;
+  /* `overflow-x: auto` makes `overflow-y` compute to auto, and the official
+     underline tab sits 1px below the list (`bottom: -1px`). The list therefore
+     overflowed by a pixel and Windows drew a vertical scrollbar beside every
+     tab strip. The padding gives the indicator that pixel, so nothing is
+     clipped; `hidden` stops sub-pixel rounding bringing the scrollbar back. */
+  overflow-y: hidden;
+  padding-bottom: 1px;
 }
 .cc-tab {
   font: inherit;
@@ -128,6 +181,28 @@
 .cc-table.cc-ux4g {
   width: 100%;
   border-collapse: collapse;
+}
+/* A row header (`<th scope="row">`) is a body cell that names its row. The
+   official `th` rule is written for column headers, so row headers were drawn
+   12px, secondary, unwrapped and on the header fill, and kept a bottom border
+   on the last row where every `td` drops it. */
+.cc-table.cc-ux4g tbody th {
+  color: var(--ccure-text);
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-regular);
+  line-height: var(--ccure-leading-normal);
+  background-color: transparent;
+  white-space: normal;
+  vertical-align: middle;
+}
+.cc-table.cc-ux4g tbody tr:last-child th {
+  border-bottom: none;
+}
+.cc-pagination__size > label {
+  white-space: nowrap;
+}
+.cc-pagination__controls {
+  flex-wrap: wrap;
 }
 .cc-table-wrap {
   min-width: 0;

@@ -326,7 +326,7 @@ describe("ComplianceWorkspace gap analysis and pagination — contract", () => {
       expect(gapReads()).toEqual([GAP_URL("cfw_iso27001_2022", "cfw_nis2")]);
       expect(box).toBeTruthy();
       const text = squash(box);
-      expect(text).toMatch(/ISO27001 ➔.*NIS2/);
+      expect(text).toMatch(/ISO27001 .*to NIS2/);
       expect(text).toContain(
         "Estimated baseline compliance posture for EU NIS 2 Directive based on existing ISO/IEC 27001:2022 scan findings.",
       );
@@ -461,7 +461,7 @@ describe("ComplianceWorkspace gap analysis and pagination — contract", () => {
       expect(squash(dialog())).toContain("25%");
       await act(async () => pending.resolve({ data: GAP_NIST }));
       await flush();
-      expect(squash(dialog())).toMatch(/ISO27001 ➔.*NIST_CSF_2/);
+      expect(squash(dialog())).toMatch(/ISO27001 .*to NIST_CSF_2/);
       expect(squash(dialog())).toContain("100%");
       expect(controlRows(dialog())).toHaveLength(2);
       expect(recalcButton(dialog())).toBeEnabled();

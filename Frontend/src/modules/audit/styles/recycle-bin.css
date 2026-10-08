@@ -4,9 +4,8 @@
    Layout and one semantic colour. Everything else on this page is either a
    CCure primitive (CcureTable, CcureButton, CcureBadge, CcureAlert,
    CcureLoader, CcureEmptyState), a security pattern (CcureScanStatus,
-   CcureConfirmDialog), or the shared application shell (`.page-inner`,
-   `.page-title-row`, `.page-title`, `.page-subtitle`), which many other pages
-   depend on and which is therefore untouched.
+   CcureConfirmDialog), or
+   the shared page structure (`CcurePage`, `CcurePageHeader`; B.13).
 
    Nothing was deleted from the legacy stylesheets for this page. Every class it
    used — `.data-table`, `.table-wrap`, `.action-btn`, `.action-btns`,
@@ -22,13 +21,6 @@
 .rb-toolbar {
   display: flex;
   gap: var(--ccure-space-sm);
-}
-
-/* The count line was inline `fontFamily: var(--mono)`. It is tabular
-   information beside a table, so it keeps the monospace treatment — expressed
-   once, here, rather than in the JSX. */
-.rb-count {
-  font-family: var(--ccure-font-mono, var(--mono));
 }
 
 .rb-loading {

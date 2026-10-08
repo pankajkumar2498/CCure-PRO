@@ -31,6 +31,9 @@ import {
   CcureInput,
   CcureLoader,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/amt-integration.css";
 
@@ -330,24 +333,26 @@ export default function AMTIntegration() {
 
   return (
     <AppLayout pageTitle="AMT Integration">
-      <div className="amt-page">
-        <header className="amt-header">
-          <div>
-            <h1 className="amt-title">AMT Integration &amp; Reconciliation</h1>
-            <p className="amt-subtitle">
+      <CcurePage className="amt-page">
+        <CcurePageHeader
+          title="AMT Integration & Reconciliation"
+          subtitle={
+            <>
               Configure and analyze CMDB coverage maps, Rogue Devices (Shadow
               IT), and scan gaps.
-            </p>
-          </div>
-          <CcureButton
-            variant="ghost"
-            size="sm"
-            onClick={loadStats}
-            disabled={loading}
-          >
-            <span aria-hidden="true">↻</span> Refresh Stats
-          </CcureButton>
-        </header>
+            </>
+          }
+          actions={
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              onClick={loadStats}
+              disabled={loading}
+            >
+              <CcureIcon name="refresh-cw" /> Refresh Stats
+            </CcureButton>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="amt-alert">
@@ -388,7 +393,7 @@ export default function AMTIntegration() {
                 />
                 <label htmlFor={fileInputId} className="amt-drop__zone">
                   <span className="amt-drop__icon" aria-hidden="true">
-                    📁
+                    <CcureIcon name="folder" />
                   </span>
                   <span id={fileStatusId} className="amt-drop__status">
                     <span className="amt-drop__name">
@@ -447,7 +452,7 @@ export default function AMTIntegration() {
             >
               {!stats?.configured ? (
                 <CcureEmptyState
-                  icon="🔌"
+                  icon={<CcureIcon name="link" />}
                   title="CMDB Integration Inactive"
                   description="Please upload an assets.json file to map owner records, audit location parameters, and locate unmanaged devices on your networks."
                 />
@@ -521,7 +526,7 @@ export default function AMTIntegration() {
                                   title={c.help}
                                   aria-hidden="true"
                                 >
-                                  ℹ
+                                  <CcureIcon name="info" />
                                 </span>
                               )}
                             </span>{" "}
@@ -558,7 +563,7 @@ export default function AMTIntegration() {
               className="amt-card"
               title={
                 <>
-                  <span aria-hidden="true">🛡</span> CMDB Best Practices
+                  <CcureIcon name="shield" /> CMDB Best Practices
                 </>
               }
             >
@@ -593,7 +598,7 @@ export default function AMTIntegration() {
                 onClick={handleCsvExport}
                 disabled={exporting || drilldownLoading || totalCount === 0}
               >
-                <span aria-hidden="true">📥</span>{" "}
+                <CcureIcon name="download" />{" "}
                 {exporting ? "Exporting CSV..." : "Export CSV"}
               </CcureButton>
             }
@@ -773,7 +778,7 @@ export default function AMTIntegration() {
             )}
           </CcureCard>
         )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

@@ -26,6 +26,7 @@ import {
   CcureLoader,
   CcureRadio,
   CcureSwitch,
+  CcureIcon,
 } from "../../design-system";
 import "./settings-drawer.css";
 
@@ -245,8 +246,16 @@ export default function SettingsDrawer({
                 id="shs-theme"
                 label="Theme"
                 options={[
-                  { value: "light", label: "☀ Light" },
-                  { value: "dark", label: "🌙 Dark" },
+                  {
+                    value: "light",
+                    label: "Light",
+                    icon: <CcureIcon name="sun" />,
+                  },
+                  {
+                    value: "dark",
+                    label: "Dark",
+                    icon: <CcureIcon name="moon" />,
+                  },
                 ]}
                 value={prefs.theme}
                 onChange={set("theme")}

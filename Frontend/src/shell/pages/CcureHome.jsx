@@ -19,6 +19,8 @@ import {
   CcureBadge,
   CcureButton,
   CcureCard,
+  CcurePage,
+  CcurePageHeader,
 } from "../../design-system";
 import PlatformLayout from "../layout/PlatformLayout";
 import useProductList from "../products/useProductList";
@@ -95,10 +97,10 @@ function HomeContent() {
 
   return (
     <>
-      <h1 className="pl-title">CCure Home</h1>
-      <p className="pl-lead">
-        The CCure products and what each is responsible for. Choose where to go.
-      </p>
+      <CcurePageHeader
+        title="CCure Home"
+        subtitle="The CCure products and what each is responsible for. Choose where to go."
+      />
 
       {status === "loading" ? <ProductListLoading /> : null}
 
@@ -129,9 +131,9 @@ function HomeContent() {
 export default function CcureHome() {
   return (
     <PlatformLayout>
-      <div className="page-inner">
+      <CcurePage>
         <HomeContent />
-      </div>
+      </CcurePage>
     </PlatformLayout>
   );
 }

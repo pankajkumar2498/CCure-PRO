@@ -136,34 +136,6 @@
   background: var(--bg-app);
 }
 
-.page-inner {
-  padding: 28px 32px 48px;
-  width: 100%;
-  max-width: none;
-}
-
-.page-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-title {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-.page-subtitle {
-  font-size: 0.84rem;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
    RESPONSIVE BREAKPOINTS
    ────────────────────────────────────────────────────────────────────────── */

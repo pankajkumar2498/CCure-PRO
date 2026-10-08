@@ -53,6 +53,8 @@ import {
   CcureSkeleton,
   normalizeSeverity,
   CcureButton,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -161,23 +163,21 @@ export default function FindingsExplorer() {
 
   return (
     <AppLayout pageTitle="Findings Explorer">
-      <div className="page-inner wsp-page wsp-page--wide">
+      <CcurePage>
         {actionError && (
           <CcureAlert variant="danger" onClose={() => setActionError("")}>
             {actionError}
           </CcureAlert>
         )}
-        <div className="wsp-header">
-          <div>
+        <CcurePageHeader
+          title="Findings Explorer"
+          subtitle={<>Vulnerabilities discovered during this assessment</>}
+          breadcrumb={
             <Link to={`/web-scans/${id}`} className="wsp-back">
               ← Back to Scan Detail
             </Link>
-            <h1 className="page-title">Findings Explorer</h1>
-            <p className="page-subtitle">
-              Vulnerabilities discovered during this assessment
-            </p>
-          </div>
-        </div>
+          }
+        />
 
         {activeChips.length > 0 && (
           <div className="wsp-meta wsp-filter-bar">
@@ -422,7 +422,7 @@ export default function FindingsExplorer() {
             )}
           </div>
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

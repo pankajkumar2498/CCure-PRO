@@ -40,6 +40,8 @@ import {
   CcureCard,
   CcureSeverityBadge,
   CcureSkeleton,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -117,28 +119,26 @@ export default function WebDashboard() {
 
   return (
     <AppLayout pageTitle="Web Application Scanning">
-      <div className="page-inner wsp-page">
-        <div className="wsp-header">
-          <div>
-            <h1 className="page-title">Web Application Security</h1>
-            <p className="page-subtitle">
-              Dynamic Application Security Testing (DAST) Overview
-            </p>
-          </div>
-          <div className="wsp-actions">
-            <CcureButton
-              variant="secondary"
-              onClick={() => navigate("/web-scans/list")}
-            >
-              View All Scans
-            </CcureButton>
-            {canLaunch && (
-              <CcureButton onClick={() => navigate("/web-scans/new")}>
-                + New Web Scan
+      <CcurePage>
+        <CcurePageHeader
+          title="Web Application Security"
+          subtitle={<>Dynamic Application Security Testing (DAST) Overview</>}
+          actions={
+            <div className="wsp-actions">
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/web-scans/list")}
+              >
+                View All Scans
               </CcureButton>
-            )}
-          </div>
-        </div>
+              {canLaunch && (
+                <CcureButton onClick={() => navigate("/web-scans/new")}>
+                  + New Web Scan
+                </CcureButton>
+              )}
+            </div>
+          }
+        />
 
         {loading ? (
           <div className="wsp-loading" role="status" aria-live="polite">
@@ -296,7 +296,7 @@ export default function WebDashboard() {
             </div>
           </>
         )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

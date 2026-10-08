@@ -54,6 +54,8 @@ import {
   CcureLoader,
   CcurePagination,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import "../styles/deleted-users.css";
 
@@ -312,39 +314,42 @@ export default function DeletedUsers() {
 
   return (
     <ProductFrame pageTitle="Deleted Users">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">Deleted Users</h2>
-            <p className="page-subtitle">
+      <CcurePage>
+        <CcurePageHeader
+          title="Deleted Users"
+          subtitle={
+            <>
               {users.length} deleted user{users.length !== 1 ? "s" : ""}{" "}
               available for restore or permanent deletion
-            </p>
-            <p className="page-note">
-              This works like the scan Recycle Bin. Only deleted users in your
-              allowed organization scope appear here.
-            </p>
-          </div>
-          <div className="du-toolbar">
-            <CcureButton
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("/admin/users")}
-              disabled={busyId !== null}
-            >
-              Active users
-            </CcureButton>
-            <CcureButton
-              variant="ghost"
-              size="sm"
-              onClick={loadData}
-              loading={loading}
-              disabled={busyId !== null}
-            >
-              Refresh
-            </CcureButton>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="du-toolbar">
+              <CcureButton
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/admin/users")}
+                disabled={busyId !== null}
+              >
+                Active users
+              </CcureButton>
+              <CcureButton
+                variant="ghost"
+                size="sm"
+                onClick={loadData}
+                loading={loading}
+                disabled={busyId !== null}
+              >
+                Refresh
+              </CcureButton>
+            </div>
+          }
+        >
+          <p>
+            This works like the scan Recycle Bin. Only deleted users in your
+            allowed organization scope appear here.
+          </p>
+        </CcurePageHeader>
 
         {error && (
           <CcureAlert variant="danger" className="du-message">
@@ -401,7 +406,7 @@ export default function DeletedUsers() {
             </>
           )}
         </div>
-      </div>
+      </CcurePage>
 
       <CcureConfirmDialog
         open={Boolean(confirmConfig)}

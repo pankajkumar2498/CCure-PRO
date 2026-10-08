@@ -51,6 +51,9 @@ import {
   normalizeSeverity,
   CcureCheckbox,
   CcureCard,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/phase2-results.css";
 
@@ -655,10 +658,10 @@ export default function Phase2Results() {
   if (hydrating) {
     return (
       <AppLayout pageTitle="Port Scan Results">
-        <div className="p2-page">
-          <h1 className="p2-title">Port Scan Results</h1>
+        <CcurePage className="p2-page">
+          <CcurePageHeader title="Port Scan Results" />
           <CcureLoader label="Loading scan results…" />
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -666,15 +669,15 @@ export default function Phase2Results() {
   if (hydrateError) {
     return (
       <AppLayout pageTitle="Port Scan Results">
-        <div className="p2-page">
-          <h1 className="p2-title">Port Scan Results</h1>
+        <CcurePage className="p2-page">
+          <CcurePageHeader title="Port Scan Results" />
           <CcureAlert variant="danger" className="p2-alert">
             {hydrateError}
           </CcureAlert>
           <CcureButton as={Link} to="/history" variant="secondary">
             <span aria-hidden="true">←</span> Back to Scan History
           </CcureButton>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -729,26 +732,28 @@ export default function Phase2Results() {
     <AppLayout pageTitle="Port Scan Results" saveStatus={saveStatus}>
       <ScanStepper current={stepperCurrent} />
 
-      <div className="p2-page">
-        <header className="p2-header">
-          <div>
-            <h1 className="p2-title">Port Scan Results</h1>
-            <p className="p2-subtitle">
+      <CcurePage className="p2-page">
+        <CcurePageHeader
+          title="Port Scan Results"
+          subtitle={
+            <>
               Target: <code className="p2-mono">{target}</code>
               {scanId && (
                 <span className="p2-muted"> · Scan No. {scanNo ?? "—"}</span>
               )}
-            </p>
-          </div>
-          <CcureButton
-            as={Link}
-            to="/scan/host-discovery"
-            variant="ghost"
-            size="sm"
-          >
-            <span aria-hidden="true">←</span> Back
-          </CcureButton>
-        </header>
+            </>
+          }
+          actions={
+            <CcureButton
+              as={Link}
+              to="/scan/host-discovery"
+              variant="ghost"
+              size="sm"
+            >
+              <span aria-hidden="true">←</span> Back
+            </CcureButton>
+          }
+        />
 
         {unreachable && (
           <CcureAlert
@@ -888,7 +893,7 @@ export default function Phase2Results() {
                 className="p2-summary__item p2-summary__item--info"
                 title={summary.custom_ports}
               >
-                <span aria-hidden="true">🔌</span> Custom Ports:{" "}
+                <CcureIcon name="link" /> Custom Ports:{" "}
                 <strong>
                   {summary.custom_ports.length > 25
                     ? summary.custom_ports.substring(0, 22) + "..."
@@ -907,7 +912,7 @@ export default function Phase2Results() {
 
         {hasResults && activeResults.length === 0 && (
           <CcureEmptyState
-            icon="🔍"
+            icon={<CcureIcon name="search" />}
             title="No active hosts returned open ports"
             className="p2-empty"
           />
@@ -1116,7 +1121,7 @@ export default function Phase2Results() {
                             {host.firewall_likely && (
                               <Fact label="Firewall:">
                                 <CcureBadge variant="warning">
-                                  <span aria-hidden="true">🛡</span> Detected (
+                                  <CcureIcon name="shield" /> Detected (
                                   {host.firewall_confidence})
                                 </CcureBadge>
                               </Fact>
@@ -1271,7 +1276,7 @@ export default function Phase2Results() {
             </CcureButton>
           </div>
         )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

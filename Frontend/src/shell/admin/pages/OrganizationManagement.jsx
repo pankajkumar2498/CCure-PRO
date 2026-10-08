@@ -65,6 +65,9 @@ import {
   CcureLoader,
   CcureModal,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/organization-management.css";
 
@@ -332,7 +335,7 @@ export default function OrganizationManagement() {
                    four pairs. */
                 aria-label={`View users in ${org.name}`}
               >
-                <span aria-hidden="true">👥</span> Users
+                <CcureIcon name="users" /> Users
               </CcureButton>
             )}
             <CcureButton
@@ -342,7 +345,7 @@ export default function OrganizationManagement() {
               disabled={busy}
               aria-label={`Edit ${org.name}`}
             >
-              <span aria-hidden="true">✏️</span> Edit
+              <CcureIcon name="edit" /> Edit
             </CcureButton>
             <CcureButton
               variant="secondary"
@@ -351,7 +354,7 @@ export default function OrganizationManagement() {
               disabled={busy}
               aria-label={`${org.is_active ? "Deactivate" : "Activate"} ${org.name}`}
             >
-              <span aria-hidden="true">{org.is_active ? "⏻" : "▶"}</span>{" "}
+              <CcureIcon name={org.is_active ? "power" : "play"} />{" "}
               {org.is_active ? "Deactivate" : "Activate"}
             </CcureButton>
             {canDeleteOrganizations && (
@@ -362,7 +365,7 @@ export default function OrganizationManagement() {
                 disabled={busy}
                 aria-label={`Delete ${org.name}`}
               >
-                <span aria-hidden="true">🗑️</span> Delete
+                <CcureIcon name="trash" /> Delete
               </CcureButton>
             )}
           </div>
@@ -374,47 +377,48 @@ export default function OrganizationManagement() {
   if (loading) {
     return (
       <ProductFrame pageTitle="Organization Management">
-        <div className="page-inner">
+        <CcurePage>
+          <CcurePageHeader title="Organizations" />
           <div className="om-loading">
             <CcureLoader label="Loading organizations…" />
           </div>
-        </div>
+        </CcurePage>
       </ProductFrame>
     );
   }
 
   return (
     <ProductFrame pageTitle="Organization Management">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">Organizations</h2>
-            <p className="page-subtitle">
-              Manage multi-tenant organizations and their subscription plans
-            </p>
-          </div>
-          <div className="om-toolbar">
-            <CcureButton
-              variant="ghost"
-              size="sm"
-              onClick={() => loadData(true)}
-              loading={refreshing}
-              disabled={busy}
-            >
-              Refresh
-            </CcureButton>
-            {canCreateOrganizations && (
+      <CcurePage>
+        <CcurePageHeader
+          title="Organizations"
+          subtitle={
+            <>Manage multi-tenant organizations and their subscription plans</>
+          }
+          actions={
+            <div className="om-toolbar">
               <CcureButton
-                variant="primary"
+                variant="ghost"
                 size="sm"
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => loadData(true)}
+                loading={refreshing}
                 disabled={busy}
               >
-                + New Organization
+                Refresh
               </CcureButton>
-            )}
-          </div>
-        </div>
+              {canCreateOrganizations && (
+                <CcureButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  disabled={busy}
+                >
+                  + New Organization
+                </CcureButton>
+              )}
+            </div>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="om-message">
@@ -430,7 +434,7 @@ export default function OrganizationManagement() {
           density="comfortable"
           emptyMessage="No organizations are available yet. Create one to get started."
         />
-      </div>
+      </CcurePage>
 
       {/* Create Org dialog — CcureModal + OrganizationForm. This page was the
           last consumer of the legacy shared Modal, which is now deleted;

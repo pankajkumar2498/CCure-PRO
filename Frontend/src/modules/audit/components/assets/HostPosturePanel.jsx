@@ -106,7 +106,7 @@ export default function HostPosturePanel({ customAttributes }) {
 
   return (
     <CcureCard
-      title="🔐 Authenticated posture"
+      title="Authenticated posture"
       subtitle="What a credentialed scan established about this host"
       headingLevel={2}
     >

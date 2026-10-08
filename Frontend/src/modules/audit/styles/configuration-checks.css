@@ -1,32 +1,3 @@
-/* ============================================================================
-   Configuration checks — page-specific layout
-   ----------------------------------------------------------------------------
-   This page carried 35 inline style objects and 38 colour literals, all of them
-   a light-theme palette: `#fee2e2`/`#991b1b` severity pills, `#dcfce7`/`#166534`
-   absence pills, `#e2e8f0` borders, `#fff` card backgrounds. On a page that
-   renders in whichever theme the account chose, a dark surface got light pills.
-
-   The severity and absence pills are CcureBadge now, so the vocabulary is the
-   product's rather than this file's, and nothing here defines a colour that
-   carries meaning — the meaning is in the label text.
-
-   Nothing was deleted from a shared stylesheet: the page was inline-styled
-   rather than class-based, so there were no shared selectors to consider.
-   ============================================================================ */
-
-.cfg-page {
-  padding-bottom: var(--ccure-space-4xl);
-}
-
-.cfg-lede {
-  max-width: 52rem;
-}
-
-.cfg-lede a {
-  color: var(--ccure-text-link);
-  text-decoration: underline;
-}
-
 /* ── Platform switch ──────────────────────────────────────────────────────── */
 
 .cfg-platforms {
@@ -80,6 +51,20 @@
   text-align: start;
   font: inherit;
   color: var(--ccure-text);
+  justify-content: flex-start;
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span, so the row's own layout —
+   severity, title taking the free space, then type, policy and caret — is laid
+   out there. Without it the span was content-sized and centred in the row. */
+.cfg-row-toggle.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  width: 100%;
 }
 
 .cfg-row-toggle:hover {
@@ -94,7 +79,9 @@
 /* The title carries the row's accessible name, so it must not be truncated out
    of the accessibility tree — it wraps rather than ellipsing. */
 .cfg-row-title {
-  flex: 1;
+  /* A basis, so on a narrow row the badges wrap beneath the title instead of
+     squeezing it into a one-word column. */
+  flex: 1 1 12rem;
   font-weight: var(--ccure-weight-semibold);
   min-width: 0;
 }
@@ -152,10 +139,12 @@
 
 /* ── Phase 6: filters, capability matrix, lookup and the rule validator ──── */
 
+/* Top-aligned: every filter has a label, so the controls line up, and the
+   search field's hint hangs below without lifting its input above the rest. */
 .cfg-filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: var(--ccure-space-sm);
   margin-bottom: var(--ccure-space-sm);
 }
@@ -181,18 +170,18 @@
 
 .cfg-lookup {
   margin-top: var(--ccure-space-xl);
-  border-top: 1px solid var(--ccure-color-border);
+  border-top: 1px solid var(--ccure-border);
   padding-top: var(--ccure-space-md);
 }
 
 .cfg-lookup__h {
-  font-size: var(--ccure-font-size-lg);
+  font-size: var(--ccure-text-lg);
   margin: 0 0 var(--ccure-space-3xs);
 }
 
 .cfg-lookup__lede {
-  color: var(--ccure-color-text-secondary);
-  font-size: var(--ccure-font-size-sm);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
   margin: 0 0 var(--ccure-space-sm);
 }
 
@@ -235,19 +224,16 @@
 .cfg-collect__label {
   display: block;
   margin-bottom: var(--ccure-space-3xs);
-  font-size: var(--ccure-font-size-sm);
-  color: var(--ccure-color-text-secondary);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
 }
 
+/* JSON is read by its indentation and brackets, so it is set in the mono face.
+   The field chrome is the shared textarea's. */
 .cfg-collect__area {
-  width: 100%;
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-sm);
-  color: var(--ccure-color-text-primary);
-  background: var(--ccure-color-surface);
-  border: 1px solid var(--ccure-color-border);
-  border-radius: var(--ccure-radius-sm);
-  padding: var(--ccure-space-xs);
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-normal);
 }
 
 .cfg-result {
@@ -255,7 +241,7 @@
 }
 
 .cfg-result__h {
-  font-size: var(--ccure-font-size-md);
+  font-size: var(--ccure-text-md);
   margin: var(--ccure-space-sm) 0 var(--ccure-space-3xs);
 }
 
@@ -268,9 +254,9 @@
 .cfg-result__json {
   overflow-x: auto;
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-xs);
-  background: var(--ccure-color-surface-sunken, var(--ccure-color-surface));
-  border: 1px solid var(--ccure-color-border);
+  font-size: var(--ccure-text-xs);
+  background: var(--ccure-surface-sunken, var(--ccure-surface));
+  border: 1px solid var(--ccure-border);
   border-radius: var(--ccure-radius-sm);
   padding: var(--ccure-space-sm);
 }

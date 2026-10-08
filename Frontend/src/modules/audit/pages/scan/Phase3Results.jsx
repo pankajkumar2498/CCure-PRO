@@ -41,6 +41,9 @@ import {
   CcureProgress,
   CcureSeverityBadge,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/phase3-results.css";
 
@@ -107,20 +110,20 @@ async function waitForPhase(scanId, phase, signal) {
 
 // GAP-07: device category → { icon, label } for the device badge
 const DEVICE_CAT_META = {
-  router: { icon: "🔀", label: "Router" },
-  switch: { icon: "🔗", label: "Switch" },
-  firewall: { icon: "🛡", label: "Firewall" },
-  wireless_ap: { icon: "📡", label: "Wireless AP" },
-  printer: { icon: "🖨", label: "Printer" },
-  iot: { icon: "⚙", label: "IoT/ICS" },
-  server: { icon: "🖥", label: "Server" },
-  endpoint: { icon: "💻", label: "Endpoint" },
-  voip: { icon: "📞", label: "VoIP" },
-  storage: { icon: "💾", label: "Storage" },
-  network_appliance: { icon: "🔌", label: "Net Appliance" },
-  scada_ics: { icon: "🏭", label: "Industrial/OT" },
-  virtual_machine: { icon: "🌐", label: "Virtual Machine" },
-  unknown: { icon: "❓", label: "Unknown" },
+  router: { icon: "shuffle", label: "Router" },
+  switch: { icon: "link", label: "Switch" },
+  firewall: { icon: "shield", label: "Firewall" },
+  wireless_ap: { icon: "radio", label: "Wireless AP" },
+  printer: { icon: "printer", label: "Printer" },
+  iot: { icon: "settings", label: "IoT/ICS" },
+  server: { icon: "monitor", label: "Server" },
+  endpoint: { icon: "monitor", label: "Endpoint" },
+  voip: { icon: "phone", label: "VoIP" },
+  storage: { icon: "hard-drive", label: "Storage" },
+  network_appliance: { icon: "link", label: "Net Appliance" },
+  scada_ics: { icon: "settings", label: "Industrial/OT" },
+  virtual_machine: { icon: "globe", label: "Virtual Machine" },
+  unknown: { icon: "help-circle", label: "Unknown" },
 };
 
 // GAP-06 + Deep Probes: count all active exploit / misconfiguration conditions on a host
@@ -273,45 +276,49 @@ const misconfigurationBadges = (host) => {
   const tls = host.tls_info || {};
 
   if (host.heartbleed_info?.vulnerable)
-    badges.push({ label: "Heartbleed", tone: "danger", icon: "💉" });
+    badges.push({ label: "Heartbleed", tone: "danger", icon: "alert-octagon" });
   if (host.smb_ms17010_info?.ms17010_likely)
-    badges.push({ label: "EternalBlue", tone: "danger", icon: "💣" });
+    badges.push({
+      label: "EternalBlue",
+      tone: "danger",
+      icon: "alert-octagon",
+    });
   if (host.ldap_info?.anonymous_bind?.allowed)
-    badges.push({ label: "LDAP Anon Bind", tone: "warning", icon: "🔓" });
+    badges.push({ label: "LDAP Anon Bind", tone: "warning", icon: "unlock" });
   if (host.dns_info?.zone_transfer?.vulnerable)
-    badges.push({ label: "DNS Zone Transfer", tone: "warning", icon: "📡" });
+    badges.push({ label: "DNS Zone Transfer", tone: "warning", icon: "radio" });
   if (ftp.anonymous_login)
-    badges.push({ label: "FTP Anon Login", tone: "warning", icon: "📂" });
+    badges.push({ label: "FTP Anon Login", tone: "warning", icon: "folder" });
   if (ftp.write_access)
-    badges.push({ label: "FTP Write Access", tone: "danger", icon: "✍️" });
+    badges.push({ label: "FTP Write Access", tone: "danger", icon: "edit" });
   if (ftp.weak_credentials?.length)
     badges.push({
       label: `FTP Weak Creds (${ftp.weak_credentials.length})`,
       tone: "warning",
-      icon: "🔑",
+      icon: "key",
     });
   if (http.exposed_paths?.length)
     badges.push({
       label: `Exposed Paths (${http.exposed_paths.length})`,
       tone: "warning",
-      icon: "📁",
+      icon: "folder",
     });
   if (http.admin_panels?.length)
     badges.push({
       label: `Admin Panels (${http.admin_panels.length})`,
       tone: "warning",
-      icon: "⚙️",
+      icon: "settings",
     });
   if (http.dangerous_methods?.length)
     badges.push({
       label: "Dangerous HTTP Methods",
       tone: "warning",
-      icon: "🔧",
+      icon: "tool",
     });
   if (smb.open && smb.null_session)
-    badges.push({ label: "SMB Null Session", tone: "warning", icon: "🗂" });
+    badges.push({ label: "SMB Null Session", tone: "warning", icon: "folder" });
   if (tls.cert_expired)
-    badges.push({ label: "TLS Cert Expired", tone: "warning", icon: "🔒" });
+    badges.push({ label: "TLS Cert Expired", tone: "warning", icon: "lock" });
   return badges;
 };
 
@@ -410,7 +417,7 @@ function RiskReport({
 
       <section className="p3-report__block">
         <h3 className="p3-report__heading">
-          <Glyph>📊</Glyph> Scan Timeline
+          <CcureIcon name="bar-chart" /> Scan Timeline
         </h3>
         <dl className="p3-timeline">
           <div className="p3-timeline__item">
@@ -440,7 +447,8 @@ function RiskReport({
 
       <section className="p3-report__block">
         <h3 className="p3-report__heading">
-          <Glyph>⚠️</Glyph> Vulnerability Severity Distribution
+          <CcureIcon name="alert-triangle" /> Vulnerability Severity
+          Distribution
         </h3>
         <ul className="p3-distribution">
           {[
@@ -465,7 +473,7 @@ function RiskReport({
 
       <section className="p3-report__block">
         <h3 className="p3-report__heading">
-          <Glyph>🖥️</Glyph> Affected Hosts ({hosts.length} total)
+          <CcureIcon name="monitor" /> Affected Hosts ({hosts.length} total)
         </h3>
         <CcureTable
           caption="Affected hosts"
@@ -530,7 +538,7 @@ function RiskReport({
 
       <section className="p3-report__block">
         <h3 className="p3-report__heading">
-          <Glyph>🔍</Glyph> Detailed Vulnerability Analysis
+          <CcureIcon name="search" /> Detailed Vulnerability Analysis
         </h3>
         {hostsWithCves.map((host) => {
           const badges = misconfigurationBadges(host);
@@ -552,13 +560,13 @@ function RiskReport({
                 {badges.length > 0 && (
                   <div className="p3-findings">
                     <p className="p3-findings__label">
-                      <Glyph>⚡</Glyph> Active Misconfiguration Findings
+                      <CcureIcon name="zap" /> Active Misconfiguration Findings
                     </p>
                     <ul className="p3-badges">
                       {badges.map((b, i) => (
                         <li key={i}>
                           <CcureBadge variant={b.tone}>
-                            <Glyph>{b.icon}</Glyph> {b.label}
+                            <CcureIcon name={b.icon} /> {b.label}
                           </CcureBadge>
                         </li>
                       ))}
@@ -569,7 +577,7 @@ function RiskReport({
                 {host.ftp_info?.open && (
                   <div className="p3-probe p3-probe--ftp">
                     <p className="p3-probe__title">
-                      <Glyph>📂</Glyph> FTP Service
+                      <CcureIcon name="folder" /> FTP Service
                     </p>
                     {truncateEvidence(host.ftp_info.banner) && (
                       <p className="p3-probe__line">
@@ -610,7 +618,7 @@ function RiskReport({
                     host.http_audit.issues?.length) && (
                     <div className="p3-probe p3-probe--http">
                       <p className="p3-probe__title">
-                        <Glyph>🌐</Glyph> HTTP Service
+                        <CcureIcon name="globe" /> HTTP Service
                       </p>
                       {truncateEvidence(host.http_audit.server_header) && (
                         <p className="p3-probe__line">
@@ -642,7 +650,7 @@ function RiskReport({
                                   {p.note?.includes("directory") ? (
                                     <>
                                       {" "}
-                                      <Glyph>📂</Glyph>
+                                      <CcureIcon name="folder" />
                                     </>
                                   ) : null}
                                 </code>
@@ -659,7 +667,8 @@ function RiskReport({
                           <ul className="p3-probe__issues">
                             {host.http_audit.admin_panels.map((p, i) => (
                               <li key={i}>
-                                <Glyph>⚙️</Glyph> <strong>{p.product}</strong> @{" "}
+                                <CcureIcon name="settings" />{" "}
+                                <strong>{p.product}</strong> @{" "}
                                 <code className="p3-code">{p.path}</code> (HTTP{" "}
                                 {p.status})
                               </li>
@@ -728,7 +737,7 @@ function RiskReport({
 
       <section className="p3-report__block p3-report__summary">
         <h3 className="p3-report__heading">
-          <Glyph>📈</Glyph> Report Summary
+          <CcureIcon name="trending-up" /> Report Summary
         </h3>
         <ul className="p3-report__list">
           <li>
@@ -772,9 +781,9 @@ function RiskReport({
       </section>
 
       <p className="p3-tip">
-        <Glyph>📄</Glyph> <strong>Tip:</strong> Close this modal and navigate to
-        Scan History to export full PDF/XML reports with additional formatting
-        and charts.
+        <CcureIcon name="file-text" /> <strong>Tip:</strong> Close this modal
+        and navigate to Scan History to export full PDF/XML reports with
+        additional formatting and charts.
       </p>
     </CcureModal>
   );
@@ -1200,27 +1209,32 @@ export default function Phase3Results() {
     <AppLayout pageTitle="Vulnerability Audit" saveStatus={saveStatus}>
       <ScanStepper current={currentStep} />
 
-      <div className="p3-page">
+      <CcurePage className="p3-page">
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <header className="p3-header">
-          <div className="p3-header__text">
-            <h1 className="p3-title">Vulnerability Audit</h1>
-            <p className="p3-subtitle">
+        <CcurePageHeader
+          title="Vulnerability Audit"
+          subtitle={
+            <>
               Full pipeline execution from{" "}
               <code className="p3-code">{target}</code>
-            </p>
-          </div>
-          <div className="p3-header__actions">
-            {isScanning && (
-              <CcureButton variant="danger" onClick={handleCancel}>
-                <Glyph>✕</Glyph> Cancel Scan
+            </>
+          }
+          actions={
+            <div className="p3-header__actions">
+              {isScanning && (
+                <CcureButton variant="danger" onClick={handleCancel}>
+                  <Glyph>✕</Glyph> Cancel Scan
+                </CcureButton>
+              )}
+              <CcureButton
+                variant="secondary"
+                onClick={() => navigate("/scan")}
+              >
+                <Glyph>←</Glyph> Back
               </CcureButton>
-            )}
-            <CcureButton variant="secondary" onClick={() => navigate("/scan")}>
-              <Glyph>←</Glyph> Back
-            </CcureButton>
-          </div>
-        </header>
+            </div>
+          }
+        />
 
         {/* PHASE 4: Unreachable Banner */}
         {isUnreachable && (
@@ -1272,10 +1286,10 @@ export default function Phase3Results() {
             </CcureAlert>
             <div className="p3-actions">
               <CcureButton onClick={handleRetry}>
-                <Glyph>↻</Glyph> Retry from {failedPhaseLabel}
+                <CcureIcon name="refresh-cw" /> Retry from {failedPhaseLabel}
               </CcureButton>
               <CcureButton variant="secondary" onClick={handleRestart}>
-                <Glyph>↺</Glyph> Restart Full Pipeline
+                <CcureIcon name="rotate-ccw" /> Restart Full Pipeline
               </CcureButton>
             </div>
           </div>
@@ -1289,7 +1303,7 @@ export default function Phase3Results() {
             </CcureAlert>
             <div className="p3-actions">
               <CcureButton onClick={handleRestart}>
-                <Glyph>↺</Glyph> Restart Pipeline
+                <CcureIcon name="rotate-ccw" /> Restart Pipeline
               </CcureButton>
               <CcureButton
                 variant="secondary"
@@ -1511,7 +1525,7 @@ export default function Phase3Results() {
               </li>
               {phase3Summary?.credentialed_hosts > 0 && (
                 <li className="p3-summary__item p3-summary__item--success">
-                  <Glyph>🔐</Glyph>{" "}
+                  <CcureIcon name="lock" />{" "}
                   <strong>{phase3Summary.credentialed_hosts}</strong>{" "}
                   Authenticated
                 </li>
@@ -1524,7 +1538,7 @@ export default function Phase3Results() {
             {phase3Summary?.credentialed_hosts !== undefined && (
               <div className="p3-coverage">
                 <p className="p3-coverage__title">
-                  <Glyph>🔐</Glyph> Authenticated checks
+                  <CcureIcon name="lock" /> Authenticated checks
                 </p>
                 <p className="p3-coverage__text">
                   {phase3Summary.credentialed_hosts} host
@@ -1601,7 +1615,7 @@ export default function Phase3Results() {
                                 : "Authenticated audit of the installed package inventory"
                             }
                           >
-                            <Glyph>🔐</Glyph> AUTH
+                            <CcureIcon name="lock" /> AUTH
                           </CcureBadge>
                         )}
                         {hName && hName !== "Unknown" ? (
@@ -1627,7 +1641,7 @@ export default function Phase3Results() {
                         variant="neutral"
                         title={`Classified via: ${host.device_category_signal || "unknown"}`}
                       >
-                        <Glyph>{catMeta.icon}</Glyph> {catMeta.label}
+                        <CcureIcon name={catMeta.icon} /> {catMeta.label}
                       </CcureBadge>
                     ) : (
                       <Muted />
@@ -1659,7 +1673,7 @@ export default function Phase3Results() {
                             className="p3-active"
                             title="Active exploit conditions detected (Heartbleed, EternalBlue, LDAP anon, default creds, etc.)"
                           >
-                            <Glyph>⚡</Glyph>
+                            <CcureIcon name="zap" />
                             {activeFindings} active
                           </CcureBadge>
                         )}
@@ -1687,11 +1701,11 @@ export default function Phase3Results() {
         {isDone && localVulnResults.length > 0 && (
           <div className="p3-cta">
             <CcureButton size="lg" onClick={proceedToReport}>
-              <Glyph>📊</Glyph> View Risk Report <Glyph>→</Glyph>
+              <CcureIcon name="bar-chart" /> View Risk Report <Glyph>→</Glyph>
             </CcureButton>
           </div>
         )}
-      </div>
+      </CcurePage>
 
       {/* ════════════════════════════════════════════════════════════════════════ */}
       {/* RISK REPORT MODAL                                                       */}

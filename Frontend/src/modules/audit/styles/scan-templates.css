@@ -42,10 +42,25 @@
   color: var(--ccure-text);
   cursor: pointer;
   min-height: 10.625rem;
+  /* A tile's description is prose; the button default keeps a label on one
+     line. */
+  white-space: normal;
   transition:
     box-shadow var(--ccure-duration-base) var(--ccure-ease),
     border-color var(--ccure-duration-base) var(--ccure-ease),
     transform var(--ccure-duration-fast) var(--ccure-ease);
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so the icon / title / description column is laid out there. The
+   tile was a native <button> before the shared-primitive migration; without
+   this the three ran together on one line, past the tile's edges. */
+.tpl-card.cc-btn > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  width: 100%;
 }
 
 .tpl-card:focus-visible {

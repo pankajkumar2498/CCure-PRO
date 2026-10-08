@@ -196,7 +196,7 @@ function PlatformFrame({ children }) {
   return (
     <>
       <CcureAppShell
-        brand={{ name: "CCure", sub: "Platform", mark: "◈" }}
+        brand={{ name: "CCure", sub: "Platform" }}
         sections={platformSections(user, productList)}
         currentPath={pathname}
         onNavigate={(route) => navigate(route)}

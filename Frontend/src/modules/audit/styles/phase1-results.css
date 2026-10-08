@@ -14,10 +14,10 @@
 
 /* ── Page frame ───────────────────────────────────────────────────────────── */
 .p1-page {
+  --ccure-page-gap: var(--ccure-space-md);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
 }
 
@@ -25,27 +25,6 @@
    "Back to Scan History" action on the load-error view) to the full width. */
 .p1-page > .cc-btn {
   align-self: flex-start;
-}
-
-.p1-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-lg);
-}
-
-.p1-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.p1-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 .p1-loading {
@@ -561,15 +540,6 @@
 
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .p1-page {
-    padding: var(--ccure-space-lg) var(--ccure-space-md) var(--ccure-space-3xl);
-  }
-
-  .p1-header {
-    flex-direction: column;
-    gap: var(--ccure-space-sm);
-  }
-
   .p1-portscan {
     padding: var(--ccure-space-md);
   }

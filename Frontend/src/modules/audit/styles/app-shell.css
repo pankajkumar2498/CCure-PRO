@@ -20,7 +20,7 @@
    Noto Sans 13.125px on all 34 batch-11 states). Pages keep inheriting from
    <body> exactly as before; the chrome opts into the design-system type on
    its own elements. `.cc-main` padding is zeroed for the same reason — pages
-   own their `.page-inner` padding. */
+   own their inset through `CcurePage` (B.13). */
 .cc-shell.sh-shell {
   font-family: inherit;
   font-size: inherit;
@@ -179,6 +179,19 @@
   font-weight: var(--ccure-weight-medium);
   color: var(--ccure-text);
   cursor: pointer;
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.shh-faq-q.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
 }
 
 .shh-faq-q:hover {

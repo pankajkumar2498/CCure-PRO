@@ -26,6 +26,7 @@ import {
   CcureTabPanel,
   CcureAlert,
   CcureEmptyState,
+  CcureIcon,
 } from "../../../../design-system";
 
 /* ── Icons (decorative) ──────────────────────────────────────────────────── */
@@ -129,12 +130,12 @@ const FAQ_DATA = [
 
 /* ── Quick links ─────────────────────────────────────────────────────────── */
 const QUICK_LINKS = [
-  { title: "Getting Started Guide", emoji: "🚀", url: "#" },
-  { title: "Scan Types Explained", emoji: "🔍", url: "#" },
-  { title: "Understanding CVEs", emoji: "🛡", url: "#" },
-  { title: "API Documentation", emoji: "📖", url: "#" },
-  { title: "Admin Guide", emoji: "⚙", url: "#" },
-  { title: "Release Notes", emoji: "📋", url: "#" },
+  { title: "Getting Started Guide", icon: "play", url: "#" },
+  { title: "Scan Types Explained", icon: "search", url: "#" },
+  { title: "Understanding CVEs", icon: "shield", url: "#" },
+  { title: "API Documentation", icon: "book-open", url: "#" },
+  { title: "Admin Guide", icon: "settings", url: "#" },
+  { title: "Release Notes", icon: "clipboard", url: "#" },
 ];
 
 /* ── What's New ──────────────────────────────────────────────────────────── */
@@ -221,7 +222,8 @@ function SupportForm() {
       <h4 className="shh-section-title">Contact Support</h4>
       {sent ? (
         <CcureAlert variant="success">
-          ✅ Message sent! We&apos;ll get back to you soon.
+          <CcureIcon name="check-circle" /> Message sent! We&apos;ll get back to
+          you soon.
         </CcureAlert>
       ) : (
         <>
@@ -378,7 +380,7 @@ export default function HelpPanel({ id = "sh-help", onClose }) {
                 rel="noreferrer"
               >
                 <span className="shh-link-emoji" aria-hidden="true">
-                  {l.emoji}
+                  <CcureIcon name={l.icon} />
                 </span>
                 <span className="shh-link-title">{l.title}</span>
                 <IcoExtLink />

@@ -58,6 +58,8 @@ import {
   CcureInput,
   CcureSelect,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -160,30 +162,26 @@ export default function NewWebScan() {
   if (!canLaunch) {
     return (
       <AppLayout pageTitle="New Web Scan">
-        <div className="page-inner wsp-page wsp-page--form">
-          <div className="wsp-form-intro">
-            <h1 className="page-title">Configure Web Scan</h1>
-          </div>
+        <CcurePage className="wsp-page--form">
+          <CcurePageHeader title="Configure Web Scan" />
           <CcureAlert variant="info" className="wsp-form-message">
             Your role cannot launch web scans. A web scan sends active test
             traffic (SQL injection, fuzzing and template probes) at the target,
             so it requires the <code>Run scans</code> permission. Ask an
             organisation administrator if you need it.
           </CcureAlert>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
 
   return (
     <AppLayout pageTitle="New Web Scan">
-      <div className="page-inner wsp-page wsp-page--form">
-        <div className="wsp-form-intro">
-          <h1 className="page-title">Configure Web Scan</h1>
-          <p className="page-subtitle">
-            Set up target, authentication, and crawling depth.
-          </p>
-        </div>
+      <CcurePage className="wsp-page--form">
+        <CcurePageHeader
+          title="Configure Web Scan"
+          subtitle={<>Set up target, authentication, and crawling depth.</>}
+        />
 
         {/* `CcureAlert variant="danger"` carries role="alert". The previous
             plain <div> meant a refused launch was never announced — on the one
@@ -359,7 +357,7 @@ export default function NewWebScan() {
             </CcureButton>
           </div>
         </form>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

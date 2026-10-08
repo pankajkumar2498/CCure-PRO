@@ -34,7 +34,7 @@ export function RemediationStateBadge({ state }) {
  * deadline.
  */
 export function SlaStateBadge({ state }) {
-  if (!state) return <span className="rm-muted">—</span>;
+  if (!state) return <span className="rmd-muted">—</span>;
   const key = String(state);
   return (
     <CcureBadge variant={SLA_TONE[key] || "neutral"}>
@@ -54,7 +54,7 @@ const SEVERITY_TONE = {
 
 /** Severity, which is also the SLA basis, so the two must read the same. */
 export function SeverityBadge({ severity }) {
-  if (!severity) return <span className="rm-muted">Unscored</span>;
+  if (!severity) return <span className="rmd-muted">Unscored</span>;
   const key = String(severity).toLowerCase();
   return (
     <CcureBadge variant={SEVERITY_TONE[key] || "neutral"}>

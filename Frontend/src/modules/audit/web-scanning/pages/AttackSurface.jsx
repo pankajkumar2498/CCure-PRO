@@ -18,6 +18,8 @@ import {
   CcureEmptyState,
   CcureSkeleton,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -255,18 +257,18 @@ export default function AttackSurface() {
 
   return (
     <AppLayout pageTitle="Attack Surface">
-      <div className="page-inner wsp-page wsp-page--wide">
-        <div className="wsp-header">
-          <div>
+      <CcurePage>
+        <CcurePageHeader
+          title="Attack Surface"
+          subtitle={
+            <>Parameters, forms and API operations discovered on this target</>
+          }
+          breadcrumb={
             <Link to={`/web-scans/${id}`} className="wsp-back">
               ← Back to Scan Detail
             </Link>
-            <h1 className="page-title">Attack Surface</h1>
-            <p className="page-subtitle">
-              Parameters, forms and API operations discovered on this target
-            </p>
-          </div>
-        </div>
+          }
+        />
 
         {loading ? (
           <div className="wsp-loading" role="status" aria-live="polite">
@@ -376,7 +378,7 @@ export default function AttackSurface() {
             </CcureCard>
           </>
         )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

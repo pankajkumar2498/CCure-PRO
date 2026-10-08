@@ -1,4 +1,4 @@
-/* Common Platform: shared UX4G shell, fluid pages, and Audit-aligned gutters. */
+/* Common Platform: the platform shell around the shared CcurePage structure. */
 
 .pl-shell {
   grid-template-columns: var(--ccure-sidebar-width) minmax(0, 1fr);
@@ -11,41 +11,8 @@
   box-sizing: border-box;
 }
 
-.pl-main > .page-inner {
-  min-width: 0;
-  padding: calc(var(--ccure-space-md) + var(--ccure-space-lg))
-    calc(2 * var(--ccure-space-lg)) calc(3 * var(--ccure-space-lg));
-}
-
-.pl-main .page-title-row {
-  gap: var(--ccure-space-md);
-  margin-bottom: var(--ccure-space-xl);
-}
-
-.pl-main .page-title-row > div {
-  min-width: 0;
-}
-
-.pl-main .page-title,
-.pl-title {
-  margin: 0 0 var(--ccure-space-xs);
-  font-family: var(--ccure-font-display);
-  font-size: var(--ccure-text-2xl);
-  font-weight: var(--ccure-weight-bold);
-}
-
-.pl-main .page-subtitle {
-  margin: var(--ccure-space-2xs) 0 0;
-  font-size: var(--ccure-text-base);
-  color: var(--ccure-text-secondary);
-  line-height: var(--ccure-leading-relaxed);
-}
-
-.pl-lead {
-  margin: 0 0 var(--ccure-space-xl);
-  color: var(--ccure-text-secondary);
-  line-height: var(--ccure-leading-relaxed);
-}
+/* The page inset, header and title styles that used to be scoped here are the
+   design system's CcurePage / CcurePageHeader (B.13), shared by every module. */
 
 /* ── CCure Home ─────────────────────────────────────────────────────────── */
 
@@ -74,9 +41,6 @@
 @media (max-width: 768px) {
   .pl-shell {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .pl-main > .page-inner {
-    padding: var(--ccure-space-lg) var(--ccure-space-lg) var(--ccure-space-3xl);
   }
 }
 

@@ -62,6 +62,8 @@ const iconOf = (type) =>
     .getByText(`title ${type}`)
     .closest(".shn-item")
     .querySelector(".shn-item-icon");
+// B.13: the panel draws CcureIcon; the icon's name is what was the emoji.
+const glyph = (type) => iconOf(type).querySelector("svg")?.dataset.icon;
 const tabs = () => screen.getAllByRole("tab").map((t) => t.textContent);
 
 const withAudit = (ui) =>
@@ -78,13 +80,13 @@ describe("without a product's presentation (the platform alone)", () => {
   it("knows its own types and shows everything else neutrally", async () => {
     render(<NotificationsPanel onClose={() => {}} />);
     await screen.findByText("title system_message");
-    expect(iconOf("system_message").textContent).toBe("ℹ️");
-    expect(iconOf("admin_notice").textContent).toBe("🔔");
+    expect(glyph("system_message")).toBe("info");
+    expect(glyph("admin_notice")).toBe("bell");
     for (const t of ["scan_completed", "scan_failed", "vulnerability_found"]) {
-      expect(iconOf(t).textContent).toBe("📢");
+      expect(glyph(t)).toBe("message-square");
       expect(iconOf(t).className).toContain("shn-item-icon--neutral");
     }
-    expect(iconOf("something_from_a_future_product").textContent).toBe("📢");
+    expect(glyph("something_from_a_future_product")).toBe("message-square");
   });
 
   it("offers only the platform's category tabs", async () => {
@@ -98,16 +100,16 @@ describe("with Audit's presentation, as the composition root provides it", () =>
   it("renders Audit's types exactly as before", async () => {
     withAudit(<NotificationsPanel onClose={() => {}} />);
     await screen.findByText("title scan_completed");
-    expect(iconOf("scan_completed").textContent).toBe("✅");
+    expect(glyph("scan_completed")).toBe("check-circle");
     expect(iconOf("scan_completed").className).toContain("--success");
-    expect(iconOf("scan_failed").textContent).toBe("❌");
+    expect(glyph("scan_failed")).toBe("x-circle");
     expect(iconOf("scan_failed").className).toContain("--danger");
-    expect(iconOf("scan_paused").textContent).toBe("⏸");
+    expect(glyph("scan_paused")).toBe("pause-circle");
     expect(iconOf("scan_paused").className).toContain("--warning");
-    expect(iconOf("vulnerability_found").textContent).toBe("🚨");
+    expect(glyph("vulnerability_found")).toBe("alert-octagon");
     expect(iconOf("vulnerability_found").className).toContain("--danger");
-    expect(iconOf("system_message").textContent).toBe("ℹ️");
-    expect(iconOf("admin_notice").textContent).toBe("🔔");
+    expect(glyph("system_message")).toBe("info");
+    expect(glyph("admin_notice")).toBe("bell");
   });
 
   it("keeps the original tab order, with Scans after All", async () => {
@@ -119,20 +121,20 @@ describe("with Audit's presentation, as the composition root provides it", () =>
   it("still renders a type nobody described, safely", async () => {
     withAudit(<NotificationsPanel onClose={() => {}} />);
     await screen.findByText("title something_from_a_future_product");
-    expect(iconOf("something_from_a_future_product").textContent).toBe("📢");
+    expect(glyph("something_from_a_future_product")).toBe("message-square");
   });
 
   it("cannot restyle the platform's own notifications", async () => {
     render(
       <NotificationPresentationProvider
-        types={{ admin_notice: { emoji: "💥", tone: "danger" } }}
+        types={{ admin_notice: { icon: "zap", tone: "danger" } }}
         categories={[{ id: "admin", label: "Hijacked" }]}
       >
         <NotificationsPanel onClose={() => {}} />
       </NotificationPresentationProvider>,
     );
     await screen.findByText("title admin_notice");
-    expect(iconOf("admin_notice").textContent).toBe("🔔");
+    expect(glyph("admin_notice")).toBe("bell");
     expect(tabs()).toEqual(["All", "Security", "System", "Admin"]);
   });
 });

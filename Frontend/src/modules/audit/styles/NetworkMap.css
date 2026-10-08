@@ -46,35 +46,11 @@
   --nmap-neutral-ink: var(--ccure-text-secondary);
   --nmap-neutral-fill: var(--ccure-surface-sunken);
 
+  --ccure-page-gap: var(--ccure-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
-}
-
-/* ── Header ───────────────────────────────────────────────────────────────── */
-.nmap-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-}
-
-.nmap-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.nmap-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-family: var(--ccure-font-mono);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 .nmap-header__actions {
@@ -659,10 +635,6 @@
 }
 
 @media (max-width: 640px) {
-  .nmap-page {
-    padding: var(--ccure-space-md) var(--ccure-space-md) var(--ccure-space-2xl);
-  }
-
   .nmap-toolbar__fields {
     flex-direction: column;
     align-items: stretch;

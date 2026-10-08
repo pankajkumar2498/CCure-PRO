@@ -21,15 +21,6 @@
    consider.
    ============================================================================ */
 
-.edr-page {
-  padding-bottom: var(--ccure-space-4xl);
-}
-
-.edr-lede {
-  max-width: 48rem;
-  margin-bottom: var(--ccure-space-lg);
-}
-
 /* ── Corpus health banner ─────────────────────────────────────────────────── */
 
 .edr-corpus {

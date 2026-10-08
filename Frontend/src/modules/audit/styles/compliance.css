@@ -262,7 +262,7 @@
 
 .compliance-form label {
   font-weight: 600;
-  color: var(--text-dark, #1e293b);
+  color: var(--ccure-text);
   font-size: 0.85rem;
   margin-bottom: -0.35rem;
 }
@@ -271,7 +271,7 @@
 .compliance-form select,
 .compliance-form textarea {
   background: var(--bg-white);
-  border: 1px solid var(--border-light, #cbd5e1);
+  border: 1px solid var(--ccure-border);
   color: var(--text);
   padding: 0.65rem 0.85rem;
   border-radius: 0.5rem;

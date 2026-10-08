@@ -14,6 +14,10 @@
  * the `db-tabs` / `db-btn` borrowings from dashboard.css are gone; every
  * colour comes from a CCure token, so the timeline follows the theme.
  */
+import {
+  iconForBackendGlyph,
+  TIMELINE_CATEGORY_ICON,
+} from "../../utils/backendIcons";
 import { useId, useState } from "react";
 import {
   CcureLoader,
@@ -23,6 +27,7 @@ import {
   CcureSeverityBadge,
   CcureTabs,
   CcureTabPanel,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/audit-timeline.css";
 
@@ -71,7 +76,12 @@ function EventRow({ event, rawEvent }) {
   return (
     <div className="audit-event-row">
       <div className="audit-event-indicator" aria-hidden="true">
-        {event.icon || "📌"}
+        <CcureIcon
+          name={
+            TIMELINE_CATEGORY_ICON[event.category] ||
+            iconForBackendGlyph(event.icon)
+          }
+        />
       </div>
 
       <div className="audit-event-content">
@@ -228,7 +238,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
   if (timeline.length === 0 && raw_changelog?.length === 0) {
     return (
       <CcureEmptyState
-        icon="📭"
+        icon={<CcureIcon name="inbox" />}
         title="No Audit Logs"
         description="No activity or changes have been recorded for this asset yet."
         className="audit-empty"
@@ -286,7 +296,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
                   onClick={() => setActiveCategory("all")}
                 >
                   <span className="audit-filter-icon" aria-hidden="true">
-                    🔍
+                    <CcureIcon name="search" />
                   </span>{" "}
                   All Events
                 </CcureButton>
@@ -304,7 +314,12 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
                       onClick={() => setActiveCategory(catId)}
                     >
                       <span className="audit-filter-icon" aria-hidden="true">
-                        {meta.icon}
+                        <CcureIcon
+                          name={
+                            TIMELINE_CATEGORY_ICON[catId] ||
+                            iconForBackendGlyph(meta.icon)
+                          }
+                        />
                       </span>{" "}
                       {meta.label}
                     </CcureButton>
@@ -317,7 +332,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
             <div className="audit-groups">
               {filteredTimeline.length === 0 ? (
                 <CcureEmptyState
-                  icon="🗂️"
+                  icon={<CcureIcon name="folder" />}
                   title="No events match filter"
                   description="Try selecting a different category or viewing all events."
                   className="audit-empty"
@@ -346,7 +361,7 @@ export default function AuditTimeline({ changelogData, headingLevel = 3 }) {
           <div className="audit-admin-trail">
             {!admin_logs || admin_logs.length === 0 ? (
               <CcureEmptyState
-                icon="🛡️"
+                icon={<CcureIcon name="shield" />}
                 title="No Administrative Actions"
                 description="No users have performed administrative actions on this asset."
                 className="audit-empty"

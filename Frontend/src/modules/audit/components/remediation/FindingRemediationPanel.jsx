@@ -65,10 +65,10 @@ const when = (iso) => {
 };
 
 const Row = ({ label, children }) => (
-  <div className="rm-kv">
-    <dt className="rm-kv__key">{label}</dt>
-    <dd className="rm-kv__val">
-      {children ?? <span className="rm-muted">—</span>}
+  <div className="rmd-kv">
+    <dt className="rmd-kv__key">{label}</dt>
+    <dd className="rmd-kv__val">
+      {children ?? <span className="rmd-muted">—</span>}
     </dd>
   </div>
 );
@@ -76,7 +76,7 @@ const Row = ({ label, children }) => (
 /** A value that is genuinely absent reads as absent, never as a zero. */
 const Text = ({ value }) =>
   value === null || value === undefined || value === "" ? (
-    <span className="rm-muted">—</span>
+    <span className="rmd-muted">—</span>
   ) : (
     <span>{String(value)}</span>
   );
@@ -173,13 +173,13 @@ export default function FindingRemediationPanel({
   const exc = finding.exception || {};
 
   return (
-    <div className="rm-panel">
-      <div className="rm-panel__head">
+    <div className="rmd-panel">
+      <div className="rmd-panel__head">
         <div>
-          <div className="rm-panel__id">{finding.vuln_id}</div>
-          <div className="rm-panel__sub">{hostLabel || finding.asset_id}</div>
+          <div className="rmd-panel__id">{finding.vuln_id}</div>
+          <div className="rmd-panel__sub">{hostLabel || finding.asset_id}</div>
         </div>
-        <div className="rm-panel__badges">
+        <div className="rmd-panel__badges">
           <SeverityBadge severity={finding.severity} />
           <RemediationStateBadge state={rem.state} />
           <SlaStateBadge state={sla.state} />
@@ -192,10 +192,10 @@ export default function FindingRemediationPanel({
         </CcureAlert>
       ) : null}
 
-      <div className="rm-sections">
-        <section className="rm-section">
-          <h4 className="rm-section__h">Detection</h4>
-          <dl className="rm-kvs">
+      <div className="rmd-sections">
+        <section className="rmd-section">
+          <h4 className="rmd-section__h">Detection</h4>
+          <dl className="rmd-kvs">
             {/* Kept beside the workflow state and never merged with it:
                 "absent from the last scan" and "somebody confirmed a fix" are
                 different claims. */}
@@ -210,9 +210,9 @@ export default function FindingRemediationPanel({
           </dl>
         </section>
 
-        <section className="rm-section">
-          <h4 className="rm-section__h">Ownership</h4>
-          <dl className="rm-kvs">
+        <section className="rmd-section">
+          <h4 className="rmd-section__h">Ownership</h4>
+          <dl className="rmd-kvs">
             <Row label="Owner">
               <Text value={rem.owner} />
             </Row>
@@ -228,9 +228,9 @@ export default function FindingRemediationPanel({
           </dl>
         </section>
 
-        <section className="rm-section">
-          <h4 className="rm-section__h">Deadline</h4>
-          <dl className="rm-kvs">
+        <section className="rmd-section">
+          <h4 className="rmd-section__h">Deadline</h4>
+          <dl className="rmd-kvs">
             <Row label="Due">{when(sla.due_at)}</Row>
             <Row label="Position">{dueDescription(sla)}</Row>
             <Row label="Basis">
@@ -244,16 +244,16 @@ export default function FindingRemediationPanel({
           </dl>
         </section>
 
-        <section className="rm-section">
-          <h4 className="rm-section__h">Verification</h4>
-          <dl className="rm-kvs">
+        <section className="rmd-section">
+          <h4 className="rmd-section__h">Verification</h4>
+          <dl className="rmd-kvs">
             <Row label="Verified at">{when(ver.verified_at)}</Row>
             <Row label="Verified by scan">
               <Text value={ver.verified_scan_id} />
             </Row>
           </dl>
           {!ver.verified_at ? (
-            <p className="rm-note">
+            <p className="rmd-note">
               A finding becomes verified fixed when a later scan stops detecting
               it. No action on this screen can set that.
             </p>
@@ -261,17 +261,17 @@ export default function FindingRemediationPanel({
         </section>
 
         {accepted || wasAccepted ? (
-          <section className="rm-section rm-section--wide">
-            <h4 className="rm-section__h">
+          <section className="rmd-section rmd-section--wide">
+            <h4 className="rmd-section__h">
               {accepted ? "Accepted risk" : "Accepted risk (withdrawn)"}
             </h4>
             {wasAccepted ? (
-              <p className="rm-note">
+              <p className="rmd-note">
                 This acceptance is no longer in force. The reason and approver
                 are kept as the record of a decision that was taken.
               </p>
             ) : null}
-            <dl className="rm-kvs">
+            <dl className="rmd-kvs">
               <Row label="Reason">
                 <Text value={exc.reason} />
               </Row>
@@ -285,7 +285,7 @@ export default function FindingRemediationPanel({
                 ) : accepted ? (
                   "Does not expire"
                 ) : (
-                  <span className="rm-muted">—</span>
+                  <span className="rmd-muted">—</span>
                 )}
               </Row>
               <Row label="Indefinite">{exc.indefinite ? "Yes" : "No"}</Row>
@@ -295,12 +295,12 @@ export default function FindingRemediationPanel({
       </div>
 
       {canUpdate || canAcceptRisk ? (
-        <div className="rm-actions">
-          <h4 className="rm-section__h">Remediation actions</h4>
+        <div className="rmd-actions">
+          <h4 className="rmd-section__h">Remediation actions</h4>
 
           {canUpdate ? (
             <>
-              <div className="rm-actionrow">
+              <div className="rmd-actionrow">
                 <CcureSelect
                   label="Move to"
                   value={targetState}
@@ -343,7 +343,7 @@ export default function FindingRemediationPanel({
                 </CcureButton>
               </div>
 
-              <ul className="rm-unavailable">
+              <ul className="rmd-unavailable">
                 {Object.entries(HUMAN_UNREACHABLE_STATES).map(([s, why]) => (
                   <li key={s}>
                     <strong>{STATE_LABELS[s]}</strong> — {why}
@@ -351,7 +351,7 @@ export default function FindingRemediationPanel({
                 ))}
               </ul>
 
-              <div className="rm-actionrow">
+              <div className="rmd-actionrow">
                 <CcureInput
                   label="Add a note"
                   value={note}
@@ -378,7 +378,7 @@ export default function FindingRemediationPanel({
 
           {canAcceptRisk ? (
             accepted ? (
-              <div className="rm-actionrow">
+              <div className="rmd-actionrow">
                 <CcureButton
                   variant="secondary"
                   disabled={busy}
@@ -393,7 +393,7 @@ export default function FindingRemediationPanel({
                 </CcureButton>
               </div>
             ) : (
-              <div className="rm-actionrow">
+              <div className="rmd-actionrow">
                 <CcureInput
                   label="Accept the risk — reason"
                   value={reason}
@@ -438,27 +438,27 @@ export default function FindingRemediationPanel({
         </div>
       ) : null}
 
-      <section className="rm-section rm-section--wide">
-        <h4 className="rm-section__h">History</h4>
+      <section className="rmd-section rmd-section--wide">
+        <h4 className="rmd-section__h">History</h4>
         {history.length === 0 ? (
-          <p className="rm-muted">
+          <p className="rmd-muted">
             No remediation events recorded for this finding.
           </p>
         ) : (
-          <ol className="rm-timeline">
+          <ol className="rmd-timeline">
             {history.map((e) => (
-              <li key={e.id} className="rm-timeline__item">
-                <div className="rm-timeline__head">
+              <li key={e.id} className="rmd-timeline__item">
+                <div className="rmd-timeline__head">
                   <strong>{EVENT_LABELS[e.event_type] || e.event_type}</strong>
                   {e.from_state || e.to_state ? (
-                    <span className="rm-timeline__move">
+                    <span className="rmd-timeline__move">
                       {STATE_LABELS[e.from_state] || e.from_state || "—"} →{" "}
                       {STATE_LABELS[e.to_state] || e.to_state || "—"}
                     </span>
                   ) : null}
-                  <span className="rm-muted">{when(e.occurred_at)}</span>
+                  <span className="rmd-muted">{when(e.occurred_at)}</span>
                 </div>
-                <div className="rm-timeline__by">
+                <div className="rmd-timeline__by">
                   {/* One of these is set and the other is not: a system event
                       carries a label rather than an identity, so a scan's
                       verdict is never presented as a person's decision. */}
@@ -470,10 +470,10 @@ export default function FindingRemediationPanel({
                   {e.scan_id ? <span> · scan {e.scan_id}</span> : null}
                 </div>
                 {e.note ? (
-                  <div className="rm-timeline__note">{e.note}</div>
+                  <div className="rmd-timeline__note">{e.note}</div>
                 ) : null}
                 {e.details && Object.keys(e.details).length ? (
-                  <dl className="rm-timeline__details">
+                  <dl className="rmd-timeline__details">
                     {Object.entries(e.details).map(([k, v]) => (
                       <div key={k}>
                         <dt>{k.replace(/_/g, " ")}</dt>

@@ -15,37 +15,11 @@
 
 /* ── Page frame ───────────────────────────────────────────────────────────── */
 .p3-page {
+  --ccure-page-gap: var(--ccure-space-md);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
-}
-
-.p3-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-}
-
-.p3-header__text {
-  min-width: 0;
-}
-
-.p3-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.p3-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 .p3-header__actions,
@@ -697,10 +671,6 @@
 
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .p3-page {
-    padding: var(--ccure-space-md) var(--ccure-space-md) var(--ccure-space-2xl);
-  }
-
   .p3-section,
   .p3-running,
   .p3-summary {

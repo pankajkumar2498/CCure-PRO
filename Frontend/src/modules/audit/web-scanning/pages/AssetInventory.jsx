@@ -34,6 +34,8 @@ import {
   CcureInput,
   CcureSkeleton,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -191,26 +193,26 @@ export default function AssetInventory() {
 
   return (
     <AppLayout pageTitle="Asset Inventory">
-      <div className="page-inner wsp-page">
-        <div className="wsp-header">
-          <div>
+      <CcurePage>
+        <CcurePageHeader
+          title="Asset Inventory"
+          subtitle={<>Discovered endpoints, APIs, and technologies</>}
+          breadcrumb={
             <Link to={`/web-scans/${id}`} className="wsp-back">
               ← Back to Scan Detail
             </Link>
-            <h1 className="page-title">Asset Inventory</h1>
-            <p className="page-subtitle">
-              Discovered endpoints, APIs, and technologies
-            </p>
-          </div>
-          <CcureInput
-            type="search"
-            label="Search assets"
-            placeholder="Search URLs or Content-Types..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            fieldClassName="wsp-search"
-          />
-        </div>
+          }
+          actions={
+            <CcureInput
+              type="search"
+              label="Search assets"
+              placeholder="Search URLs or Content-Types..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              fieldClassName="wsp-search"
+            />
+          }
+        />
 
         <div className="wsp-panel">
           {loading ? (
@@ -237,7 +239,7 @@ export default function AssetInventory() {
             />
           )}
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

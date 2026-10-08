@@ -111,6 +111,13 @@ beforeEach(() => {
 /* ══════════════════════════════════════════════════════════════════════════
    FUNCTIONAL
    ══════════════════════════════════════════════════════════════════════════ */
+
+/* The reveal control is found by the eye it draws (B.13: a CcureIcon, where it
+   was an emoji), not by its name — its name is what the accessibility test
+   checks. */
+const isRevealToggle = (b) =>
+  Boolean(b.querySelector('[data-icon="eye"], [data-icon="eye-off"]'));
+
 describe("CredentialedScan — functional", () => {
   it("renders the configuration form", () => {
     const { container } = renderPage();
@@ -425,7 +432,7 @@ describe("CredentialedScan — credential handling", () => {
        accessibility group. */
     const { container } = renderPage();
     const buttons = [...container.querySelectorAll("button")];
-    const toggle = buttons.find((b) => /👁|🙈/.test(b.textContent));
+    const toggle = buttons.find(isRevealToggle);
     expect(toggle).toBeTruthy();
   });
 });
@@ -453,8 +460,8 @@ describe("CredentialedScan — accessibility", () => {
 
   it("gives the password reveal control an accessible name and pressed state", () => {
     const { container } = renderPage();
-    const toggle = [...container.querySelectorAll("button")].find((b) =>
-      /👁|🙈/.test(b.textContent),
+    const toggle = [...container.querySelectorAll("button")].find(
+      isRevealToggle,
     );
     const named =
       toggle?.getAttribute("aria-label") ||

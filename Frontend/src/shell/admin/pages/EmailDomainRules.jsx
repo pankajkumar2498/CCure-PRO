@@ -55,6 +55,9 @@ import {
   CcurePagination,
   CcureSelect,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/email-domain-rules.css";
 
@@ -324,15 +327,19 @@ export default function EmailDomainRules() {
     <ProductFrame>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
 
-      <div className="page-inner edr-page">
-        <h1 className="page-title">Email Domain Rules</h1>
-        <p className="page-subtitle edr-lede">
-          Decides which email domains may create an account.{" "}
-          <strong>ALLOW always wins</strong> — it overrides both a DENY rule and
-          the disposable-domain blocklist, and it is how you unblock a real
-          customer whose domain an upstream list got wrong. Rules apply to every
-          organisation and take effect immediately.
-        </p>
+      <CcurePage>
+        <CcurePageHeader
+          title="Email Domain Rules"
+          subtitle={
+            <>
+              Decides which email domains may create an account.{" "}
+              <strong>ALLOW always wins</strong> — it overrides both a DENY rule
+              and the disposable-domain blocklist, and it is how you unblock a
+              real customer whose domain an upstream list got wrong. Rules apply
+              to every organisation and take effect immediately.
+            </>
+          }
+        />
 
         {/* Corpus health. First, because an empty blocklist is silent. */}
         {stats && (
@@ -363,8 +370,8 @@ export default function EmailDomainRules() {
               </span>
               {!stats.corpus_healthy && (
                 <strong className="edr-corpus-warning">
-                  ⚠ The blocklist is empty — nothing is being screened. Run the
-                  disposable-domain sync.
+                  <CcureIcon name="alert-triangle" /> The blocklist is empty —
+                  nothing is being screened. Run the disposable-domain sync.
                 </strong>
               )}
             </span>
@@ -527,7 +534,7 @@ export default function EmailDomainRules() {
             />
           </>
         )}
-      </div>
+      </CcurePage>
 
       <CcureConfirmDialog
         open={Boolean(confirm)}

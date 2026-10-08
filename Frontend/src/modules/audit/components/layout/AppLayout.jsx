@@ -10,6 +10,7 @@ import {
   CcureInput,
   CcureProgress,
   CcureIconButton,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/app-shell.css";
 // The platform's shared header pieces (Phase 12 navigation refactor). Imported
@@ -31,77 +32,29 @@ import renderAuditSettings from "./auditSettings";
 import { AMT_PERMISSION } from "../../config/permissions";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
-// Every icon is decorative — the control's text or aria-label carries the
-// meaning — so they are hidden from assistive technology.
-const Icon = ({ d, size = 16, viewBox = "0 0 24 24", fill = "none" }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox={viewBox}
-    fill={fill}
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d={d} />
-  </svg>
-);
-
-const IcoDashboard = () => (
-  <Icon d="M3 13h8V3H3v10zM13 21h8V11h-8v10zM13 3v6h8V3h-8zM3 21h8v-6H3v6z" />
-);
-const IcoFileText = () => (
-  <Icon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8" />
-);
-const IcoGrid = () => (
-  <Icon d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-);
-const IcoFile = () => (
-  <Icon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" />
-);
-const IcoArchive = () => <Icon d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />;
-const IcoTrash = () => <Icon d="M3 6h18M19 6l-1 14H6L5 6M9 6V4h6v2" />;
-const IcoAlert = () => (
-  <Icon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" />
-);
-const IcoMonitor = () => <Icon d="M2 3h20v14H2zM8 21h8M12 17v4" />;
-const IcoServer = () => (
-  <Icon d="M2 5h20v4H2zm0 10h20v4H2zm6-10v4m8-4v4m-8 10v4m8-4v4" />
-);
-const IcoLock = () => (
-  <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 11V7" />
-);
-const IcoChart = () => <Icon d="M18 20V10M12 20V4M6 20v-6M2 20h20" />;
-const IcoCheckCircle = () => (
-  <Icon d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" />
-);
-const IcoTrendUp = () => <Icon d="M23 6l-9.5 9.5-5-5L1 18M17 6h6v6" />;
-const IcoSettings = () => (
-  <Icon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.65.22 1h.38a2 2 0 1 1 0 4h-.38c0 .35-.08.69-.22 1z" />
-);
-const IcoHelp = () => (
-  <Icon d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.09 9a3 3 0 1 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
-);
-const IcoPlus = () => (
-  <svg
-    width={14}
-    height={14}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-const IcoTopology = () => (
-  <Icon d="M12 2a3 3 0 0 0-3 3c0 1.1.6 2 1.5 2.6L9 10l-4 2-2.5-1.5A3 3 0 0 0 0 13a3 3 0 0 0 5 2.2l4-2L12 15l3-1.8 4 2A3 3 0 0 0 24 13a3 3 0 0 0-2.5-2.5L19 12l-4-2-1.5-2.4A3 3 0 0 0 15 5a3 3 0 0 0-3-3z" />
-);
+// The application's shared icon set (design-system CcureIcon). Every icon is
+// decorative — the control's text or aria-label carries the meaning.
+const nav = (name) => {
+  const NavIcon = () => <CcureIcon name={name} size={16} />;
+  return NavIcon;
+};
+const IcoDashboard = nav("dashboard");
+const IcoFileText = nav("file-text");
+const IcoGrid = nav("grid");
+const IcoFile = nav("file");
+const IcoArchive = nav("archive");
+const IcoTrash = nav("trash");
+const IcoAlert = nav("alert-triangle");
+const IcoMonitor = nav("monitor");
+const IcoServer = nav("server");
+const IcoLock = nav("lock");
+const IcoChart = nav("bar-chart");
+const IcoCheckCircle = nav("check-circle");
+const IcoTrendUp = nav("trending-up");
+const IcoSettings = nav("settings");
+const IcoHelp = nav("help-circle");
+const IcoPlus = () => <CcureIcon name="plus" size={14} strokeWidth={2.5} />;
+const IcoTopology = nav("topology");
 
 // ── Sidebar Definition ───────────────────────────────────────────────────────
 
@@ -306,9 +259,7 @@ const SIDEBAR_SECTIONS = [
 const hasPermission = (user, permission) => canPermission(user, permission);
 
 // ── Header pieces ────────────────────────────────────────────────────────────
-const IcoSearch = () => (
-  <Icon d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" size={14} />
-);
+const IcoSearch = () => <CcureIcon name="search" size={14} />;
 
 // ── Main Layout Component ────────────────────────────────────────────────────
 export default function AppLayout({ children, saveStatus = "", onNewScan }) {
@@ -723,7 +674,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   return (
     <>
       <CcureAppShell
-        brand={{ name: "CCure Audit", sub: "PRO", mark: "🛡" }}
+        brand={{ name: "CCure Audit", sub: "PRO" }}
         sections={sections}
         currentPath={pathname}
         onNavigate={(route) => navigate(route)}

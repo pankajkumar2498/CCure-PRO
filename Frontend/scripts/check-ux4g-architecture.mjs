@@ -100,7 +100,7 @@ export function cssProblems(filename, text, approvedImportant = []) {
       selector
         .split(",")
         .some((s) =>
-          /^(?:html|body|:root|\*|\.cc-shell|\.cc-main|\.page-inner)$/.test(
+          /^(?:html|body|:root|\*|\.cc-shell|\.cc-main|\.cc-page)$/.test(
             s.trim(),
           ),
         )

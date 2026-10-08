@@ -16,11 +16,11 @@ import { createContext, useContext, useMemo } from "react";
 
 /** `tone` resolves to a token pair in app-shell.css (shn-item-icon--<tone>). */
 const PLATFORM_TYPES = {
-  system_message: { emoji: "ℹ️", tone: "info" },
-  admin_notice: { emoji: "🔔", tone: "primary" },
+  system_message: { icon: "info", tone: "info" },
+  admin_notice: { icon: "bell", tone: "primary" },
 };
 
-const UNKNOWN_TYPE = { emoji: "📢", tone: "neutral" };
+const UNKNOWN_TYPE = { icon: "message-square", tone: "neutral" };
 
 const ALL = { id: "all", label: "All" };
 const PLATFORM_CATEGORIES = [
@@ -37,7 +37,7 @@ const DEFAULT = Object.freeze({
 const NotificationPresentationContext = createContext(DEFAULT);
 
 /**
- * `types`: `{ <type>: { emoji, tone } }`. `categories`: `[{ id, label }]`, shown
+ * `types`: `{ <type>: { icon, tone } }`, `icon` a CcureIcon name. `categories`: `[{ id, label }]`, shown
  * after "All" and before the platform's own, in the order given. Platform
  * entries win a clash: a product cannot restyle the platform's notifications.
  */

@@ -36,6 +36,8 @@ import {
   CcureSelect,
   CcureTable,
   CcureTextarea,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../../styles/scan-credentials.css";
 import {
@@ -95,11 +97,11 @@ function ResultBanner({ result }) {
     <CcureAlert
       variant={style.variant}
       title={`${style.label}${result.target ? ` — ${result.target}` : ""}`}
-      className="sc-result"
+      className="scr-result"
     >
       {result.authenticated_as && <div>as {result.authenticated_as}</div>}
       {style.hint && <div>{style.hint}</div>}
-      {result.detail && <div className="sc-detail">{result.detail}</div>}
+      {result.detail && <div className="scr-detail">{result.detail}</div>}
     </CcureAlert>
   );
 }
@@ -251,16 +253,16 @@ export default function ScanCredentials() {
       key: "name",
       header: "Name",
       isRowHeader: true,
-      cell: (c) => <span className="sc-name">{c.name}</span>,
+      cell: (c) => <span className="scr-name">{c.name}</span>,
     },
     { key: "credential_type", header: "Type", cell: (c) => c.credential_type },
     {
       key: "principal",
       header: "Account",
       cell: (c) => (
-        <span className="sc-account">
-          <code className="sc-principal">{c.principal}</code>
-          <span className="sc-account-meta">
+        <span className="scr-account">
+          <code className="scr-principal">{c.principal}</code>
+          <span className="scr-account-meta">
             {c.auth_method}
             {c.has_secret ? "" : " · no secret stored"}
           </span>
@@ -275,7 +277,7 @@ export default function ScanCredentials() {
       align: "end",
       nowrap: true,
       cell: (c) => (
-        <div className="sc-actions">
+        <div className="scr-actions">
           <CcureButton
             variant="secondary"
             size="sm"
@@ -318,23 +320,25 @@ export default function ScanCredentials() {
           toast could not be dismissed by clicking it. */}
       <ToastContainer toasts={toasts} dismiss={removeToast} />
 
-      <div className="page-inner sc-page">
-        <div className="sc-header">
-          <h1 className="page-title">Scan Credentials</h1>
-          <CcureButton onClick={openNew}>New credential</CcureButton>
-        </div>
-
-        <p className="page-subtitle sc-lede">
-          Credentials used by authenticated scans. Secrets are encrypted at rest
-          and never returned — scans and schedules reference a credential by id,
-          so no password is stored on a scan or passed to a worker.{" "}
-          <strong>Windows targets need no agent and no OpenSSH</strong>:
-          collection uses WinRM, the remote-management service Windows already
-          ships.
-        </p>
+      <CcurePage className="scr-page">
+        <CcurePageHeader
+          title="Scan Credentials"
+          subtitle={
+            <>
+              Credentials used by authenticated scans. Secrets are encrypted at
+              rest and never returned — scans and schedules reference a
+              credential by id, so no password is stored on a scan or passed to
+              a worker.{" "}
+              <strong>Windows targets need no agent and no OpenSSH</strong>:
+              collection uses WinRM, the remote-management service Windows
+              already ships.
+            </>
+          }
+          actions={<CcureButton onClick={openNew}>New credential</CcureButton>}
+        />
 
         {loading ? (
-          <div className="sc-loading">
+          <div className="scr-loading">
             <CcureLoader label="Loading credentials…" />
           </div>
         ) : credentials.length === 0 ? (
@@ -353,9 +357,9 @@ export default function ScanCredentials() {
         )}
 
         {validatingFor && (
-          <section className="sc-panel" aria-labelledby="sc-validate-heading">
-            <div className="sc-panel-head">
-              <h2 id="sc-validate-heading" className="sc-panel-title">
+          <section className="scr-panel" aria-labelledby="sc-validate-heading">
+            <div className="scr-panel-head">
+              <h2 id="sc-validate-heading" className="scr-panel-title">
                 Validate &quot;{validatingFor.name}&quot;
               </h2>
               <CcureButton
@@ -366,17 +370,17 @@ export default function ScanCredentials() {
                 Close
               </CcureButton>
             </div>
-            <p className="sc-panel-note">
+            <p className="scr-panel-note">
               This makes a real authentication attempt against the host you
               name. A credential is not valid or invalid on its own.
             </p>
-            <div className="sc-validate-row">
+            <div className="scr-validate-row">
               <CcureInput
                 label="Host or IP to test against"
                 placeholder="Host or IP to test against"
                 value={validateTarget}
                 onChange={(e) => setValidateTarget(e.target.value)}
-                fieldClassName="sc-validate-field"
+                fieldClassName="scr-validate-field"
               />
               <CcureButton
                 onClick={runValidate}
@@ -411,12 +415,12 @@ export default function ScanCredentials() {
           }
         >
           {formError && (
-            <CcureAlert variant="danger" className="sc-form-error">
+            <CcureAlert variant="danger" className="scr-form-error">
               {formError}
             </CcureAlert>
           )}
 
-          <div className="sc-form">
+          <div className="scr-form">
             <CcureInput
               label="Name"
               value={form.name}
@@ -484,7 +488,7 @@ export default function ScanCredentials() {
               <CcureTextarea
                 label="Private key"
                 id="sc-private-key"
-                className="cc-field__control sc-key"
+                className="cc-field__control scr-key"
                 rows={4}
                 value={form.privateKey}
                 onChange={(e) =>
@@ -535,7 +539,7 @@ export default function ScanCredentials() {
           onConfirm={doDelete}
           onCancel={() => setConfirmDelete(null)}
         />
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

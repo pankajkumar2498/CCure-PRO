@@ -15,6 +15,8 @@ import {
   CcureInput,
   CcureSkeleton,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -123,26 +125,26 @@ export default function AllEndpoints() {
 
   return (
     <AppLayout pageTitle="Discovered Endpoints">
-      <div className="page-inner wsp-page wsp-page--wide">
-        <div className="wsp-header">
-          <div>
+      <CcurePage>
+        <CcurePageHeader
+          title="Discovered Endpoints"
+          subtitle={<>Every endpoint discovered across scans</>}
+          breadcrumb={
             <Link to="/web-scans/dashboard" className="wsp-back">
               ← Back to Dashboard
             </Link>
-            <h1 className="page-title">Discovered Endpoints</h1>
-            <p className="page-subtitle">
-              Every endpoint discovered across scans
-            </p>
-          </div>
-          <CcureInput
-            type="search"
-            label="Search endpoints"
-            placeholder="Search URLs…"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            fieldClassName="wsp-search"
-          />
-        </div>
+          }
+          actions={
+            <CcureInput
+              type="search"
+              label="Search endpoints"
+              placeholder="Search URLs…"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              fieldClassName="wsp-search"
+            />
+          }
+        />
 
         <div className="wsp-panel">
           {loading ? (
@@ -174,7 +176,7 @@ export default function AllEndpoints() {
             </CcureCard>
           )}
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

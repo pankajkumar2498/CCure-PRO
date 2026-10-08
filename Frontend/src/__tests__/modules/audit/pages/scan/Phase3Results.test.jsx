@@ -1158,18 +1158,22 @@ describe("Phase3Results — contract", () => {
         "Risk",
       ]);
       const rows = cellsOf(table());
-      expect(rows[0][0]).toMatch(/^10\.50\.0\.11\s*🔐\s*AUTH\s*web-01$/);
-      expect(rows[0][1]).toMatch(/^🖥\s*Server$/);
+      expect(rows[0][0]).toMatch(/^10\.50\.0\.11\s*AUTH\s*web-01$/);
+      expect(rows[0][1]).toBe("Server");
       expect(rows[0][2]).toBe("Ubuntu 22.04");
-      expect(rows[0][3]).toMatch(/^5\s*⚡\s*10 active$/);
+      expect(rows[0][3]).toMatch(/^5\s*10 active$/);
       expect(rows[0][4]).toBe("Critical");
-      expect(rows[1]).toEqual([
-        "10.50.0.12",
-        expect.stringMatching(/^🖨\s*Printer$/),
-        "Unknown",
-        "0",
-        "Low",
-      ]);
+      expect(rows[1]).toEqual(["10.50.0.12", "Printer", "Unknown", "0", "Low"]);
+      // B.13: the device and active-findings marks are icons, where they were
+      // 🖥, 🖨 and ⚡.
+      const drawn = (row, col) => {
+        const tr = table().querySelectorAll("tbody tr")[row];
+        const cell = tr.querySelectorAll("td, th")[col];
+        return cell.querySelector("[data-icon]")?.dataset.icon;
+      };
+      expect(drawn(0, 1)).toBe("monitor");
+      expect(drawn(0, 3)).toBe("zap");
+      expect(drawn(1, 1)).toBe("printer");
       expect(
         screen.getByText(/AUTH/).closest("[title]").getAttribute("title"),
       ).toBe(
@@ -1354,10 +1358,21 @@ describe("Phase3Results — contract", () => {
       }
       expect(text).not.toContain("Missing Permissions-Policy");
       expect(text).toMatch(
-        /Exposed Paths:\s*\/\.git\/config \[200\]\s*\/backup\/ \[200\]\s*📂/,
+        /Exposed Paths:\s*\/\.git\/config \[200\]\s*\/backup\/ \[200\]/,
       );
+      // A directory listing is marked with the folder icon (B.13; was 📂).
+      const paths = [...document.querySelectorAll(".p3-paths li")];
+      expect(
+        paths.map((li) => [
+          li.textContent.trim(),
+          Boolean(li.querySelector('[data-icon="folder"]')),
+        ]),
+      ).toEqual([
+        ["/.git/config [200]", false],
+        ["/backup/ [200]", true],
+      ]);
       expect(text).toMatch(
-        /Admin Panels Detected:\s*⚙️?\s*Tomcat Manager @ \/manager\/html \(HTTP 401\)/,
+        /Admin Panels Detected:\s*Tomcat Manager @ \/manager\/html \(HTTP 401\)/,
       );
       expect(text).toMatch(/Dangerous Methods:\s*PUT \| DELETE/);
       expect(text).toMatch(/CVEs/);

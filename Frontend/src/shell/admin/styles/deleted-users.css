@@ -4,9 +4,7 @@
    Layout and two semantic colours. Everything else is a CCure primitive
    (CcureTable, CcurePagination, CcureInput, CcureButton, CcureAlert,
    CcureLoader, CcureEmptyState), a security pattern (CcureConfirmDialog), or
-   the shared application shell (`.page-inner`, `.page-title-row`,
-   `.page-title`, `.page-subtitle`, `.page-note`), which many other pages
-   depend on and which is therefore untouched.
+   the shared page structure (`CcurePage`, `CcurePageHeader`; B.13).
 
    Almost nothing was deleted from the legacy stylesheets. `.card--admin-table`,
    `.table-card-header`, `.card-title`, `.card-subtitle`, `.search-icon`,

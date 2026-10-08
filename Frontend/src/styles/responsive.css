@@ -8,16 +8,8 @@
     display: none;
   }
 
-  .page-inner {
-    padding: 16px 16px 40px;
-  }
-
   .scan-type-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .ns-info-grid {
-    grid-template-columns: 1fr;
   }
 
   .detail-meta {

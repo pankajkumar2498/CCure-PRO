@@ -45,6 +45,8 @@ import {
   CcureInput,
   CcureSelect,
   CcureTextarea,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import {
   configAuditErrorMessage,
@@ -188,17 +190,20 @@ export default function ConfigurationRuleValidator() {
 
   return (
     <AppLayout>
-      <div className="page-inner cfg-page">
-        <h1 className="page-title">Rule validator</h1>
-
-        <p className="page-subtitle cfg-lede">
-          Check that a configuration rule definition is well-formed and that
-          this build can execute it, without contacting any host. Nothing is
-          saved: rules are authored through the seeders, and this answers the
-          question a seed file cannot — whether the check type you named has a
-          collector here.{" "}
-          <Link to="/configuration-checks">Back to the catalogue</Link>.
-        </p>
+      <CcurePage>
+        <CcurePageHeader
+          title="Rule validator"
+          subtitle={
+            <>
+              Check that a configuration rule definition is well-formed and that
+              this build can execute it, without contacting any host. Nothing is
+              saved: rules are authored through the seeders, and this answers
+              the question a seed file cannot — whether the check type you named
+              has a collector here.{" "}
+              <Link to="/configuration-checks">Back to the catalogue</Link>.
+            </>
+          }
+        />
 
         {capsError ? (
           <CcureAlert variant="danger" className="cfg-error">
@@ -291,6 +296,7 @@ export default function ConfigurationRuleValidator() {
         <CcureTextarea
           label="What to collect (JSON, shape decided by the check type)"
           fieldClassName="cfg-collect"
+          className="cfg-collect__area"
           rows={8}
           spellCheck={false}
           value={form.collect}
@@ -360,7 +366,7 @@ export default function ConfigurationRuleValidator() {
             ) : null}
           </div>
         ) : null}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

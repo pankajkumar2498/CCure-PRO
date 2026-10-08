@@ -57,6 +57,8 @@ import {
   CcureScanProgress,
   CcureScanStatus,
   CcureSkeleton,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -130,11 +132,7 @@ export default function ScanDetail() {
   if (loading && !scan) {
     return (
       <AppLayout pageTitle="Scan Details">
-        <div
-          className="page-inner wsp-page sd-loading"
-          role="status"
-          aria-live="polite"
-        >
+        <CcurePage className="sd-loading" role="status" aria-live="polite">
           <span className="cc-sr-only">Loading scan details…</span>
           <CcureSkeleton height="60px" radius="8px" />
           <CcureSkeleton height="150px" radius="12px" />
@@ -148,7 +146,7 @@ export default function ScanDetail() {
             <CcureSkeleton height="120px" radius="12px" />
             <CcureSkeleton height="120px" radius="12px" />
           </div>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -156,11 +154,11 @@ export default function ScanDetail() {
   if (error) {
     return (
       <AppLayout pageTitle="Scan Details">
-        <div className="page-inner wsp-page">
+        <CcurePage>
           {/* Was a plain <div>. A scan detail that could not be loaded is now
               announced rather than merely coloured red. */}
           <CcureAlert variant="danger">{error}</CcureAlert>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -260,16 +258,16 @@ export default function ScanDetail() {
 
   return (
     <AppLayout pageTitle={`Scan: ${scan.scan_name}`}>
-      <div className="page-inner wsp-page">
+      <CcurePage>
         {actionError && (
           <CcureAlert variant="danger" onClose={() => setActionError("")}>
             {actionError}
           </CcureAlert>
         )}
-        <div className="wsp-header">
-          <div>
-            <div className="sd-title-row">
-              <h1 className="page-title">{scan.scan_name}</h1>
+        <CcurePageHeader
+          title={scan.scan_name}
+          badges={
+            <>
               {/* The canonical vocabulary. The previous badge was a two-way
                   branch — complete, else "info" — so an unrecognised status was
                   dressed as an active scan. CcureScanStatus reports an unknown
@@ -283,8 +281,10 @@ export default function ScanDetail() {
               >
                 {liveStatusLabel}
               </CcureBadge>
-            </div>
-            <p className="page-subtitle">
+            </>
+          }
+          subtitle={
+            <>
               Target:{" "}
               {/* Preserved as a link, including target/rel, because changing it
                   would change this page's navigation behaviour. */}
@@ -296,26 +296,27 @@ export default function ScanDetail() {
               >
                 {scan.target_url}
               </a>
-            </p>
-          </div>
-
-          <div className="wsp-actions">
-            {isActiveScan && canCancel && (
-              <CcureButton variant="danger" onClick={handleCancel}>
-                Cancel Scan
-              </CcureButton>
-            )}
-            {isCompleteScan && (
-              <CcureButton
-                onClick={handleDownload}
-                loading={downloading}
-                aria-busy={downloading ? "true" : undefined}
-              >
-                {downloading ? "Generating PDF..." : "Download Report"}
-              </CcureButton>
-            )}
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="wsp-actions">
+              {isActiveScan && canCancel && (
+                <CcureButton variant="danger" onClick={handleCancel}>
+                  Cancel Scan
+                </CcureButton>
+              )}
+              {isCompleteScan && (
+                <CcureButton
+                  onClick={handleDownload}
+                  loading={downloading}
+                  aria-busy={downloading ? "true" : undefined}
+                >
+                  {downloading ? "Generating PDF..." : "Download Report"}
+                </CcureButton>
+              )}
+            </div>
+          }
+        />
 
         <CcureCard title="Pipeline Progress" headingLevel={2}>
           {isActiveScan && (
@@ -518,7 +519,7 @@ export default function ScanDetail() {
           onConfirm={performCancel}
           onCancel={() => setConfirmCancel(false)}
         />
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

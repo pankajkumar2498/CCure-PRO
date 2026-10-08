@@ -30,6 +30,9 @@ import {
   CcureSelect,
   CcureCard,
   CcureModal,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/asset-registry.css";
 import {
@@ -430,48 +433,52 @@ export default function AssetRegistry() {
 
   return (
     <AppLayout pageTitle="Asset Registry" onNewScan={() => navigate("/scan")}>
-      <div className="ar-page">
+      <CcurePage className="ar-page">
         {/* Header */}
-        <div className="ar-page-header">
-          <div>
-            <h1 className="ar-page-title">
+        <CcurePageHeader
+          title={
+            <>
               {currentTab === "services"
                 ? "Services & Ports Inventory"
                 : currentTab === "tls"
                   ? "TLS / Certificates Inventory"
                   : "Asset Registry"}
-            </h1>
-            <div className="ar-page-subtitle">
+            </>
+          }
+          subtitle={
+            <>
               {currentTab === "services"
                 ? `${servicesTotal.toLocaleString()} services discovered · Global View`
                 : currentTab === "tls"
                   ? `${certsTotal.toLocaleString()} certificates discovered · Global View`
                   : `${total.toLocaleString()} total assets discovered · RBAC-scoped`}
+            </>
+          }
+          actions={
+            <div className="ar-header-actions">
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={
+                  currentTab === "tls"
+                    ? loadCertificates
+                    : currentTab === "services"
+                      ? loadServices
+                      : load
+                }
+              >
+                <CcureIcon name="refresh-cw" /> Refresh
+              </CcureButton>
+              <CcureButton
+                variant="primary"
+                size="sm"
+                onClick={() => navigate("/scan")}
+              >
+                + New Scan
+              </CcureButton>
             </div>
-          </div>
-          <div className="ar-header-actions">
-            <CcureButton
-              variant="secondary"
-              size="sm"
-              onClick={
-                currentTab === "tls"
-                  ? loadCertificates
-                  : currentTab === "services"
-                    ? loadServices
-                    : load
-              }
-            >
-              <span aria-hidden="true">↻</span> Refresh
-            </CcureButton>
-            <CcureButton
-              variant="primary"
-              size="sm"
-              onClick={() => navigate("/scan")}
-            >
-              + New Scan
-            </CcureButton>
-          </div>
-        </div>
+          }
+        />
 
         {/* Was `<div onClick>` — no role, no tabindex, no key handler, so
             two of the three views were unreachable without a mouse. CcureTabs
@@ -498,7 +505,7 @@ export default function AssetRegistry() {
           {(!searchParams.get("tab") || searchParams.get("tab") === "") && (
             <>
               {/* Filters */}
-              <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
+              <div className="ar-filterbar ar-flex ar-gap-sm ar-wrap ar-ai-center">
                 <CcureInput
                   aria-label="Search assets"
                   type="text"
@@ -569,7 +576,7 @@ export default function AssetRegistry() {
               </div>
 
               {/* Table */}
-              <div className="ar-p-md-xl">
+              <div className="ar-results">
                 {error && (
                   <CcureAlert variant="danger" className="ar-mb-sm">
                     <span className="ar-alert-row">
@@ -741,7 +748,15 @@ export default function AssetRegistry() {
                                 }`}
                                 onClick={(e) => handleToggleManaged(a, e)}
                               >
-                                {a.is_managed ? "✔ Managed" : "✗ Unmanaged"}
+                                {a.is_managed ? (
+                                  <>
+                                    <CcureIcon name="check" /> Managed
+                                  </>
+                                ) : (
+                                  <>
+                                    <CcureIcon name="x" /> Unmanaged
+                                  </>
+                                )}
                               </CcureButton>
                             ) : (
                               <span
@@ -749,7 +764,15 @@ export default function AssetRegistry() {
                                   a.is_managed ? "on" : "off"
                                 }`}
                               >
-                                {a.is_managed ? "✔ Managed" : "✗ Unmanaged"}
+                                {a.is_managed ? (
+                                  <>
+                                    <CcureIcon name="check" /> Managed
+                                  </>
+                                ) : (
+                                  <>
+                                    <CcureIcon name="x" /> Unmanaged
+                                  </>
+                                )}
                               </span>
                             )}
                           </td>
@@ -790,7 +813,7 @@ export default function AssetRegistry() {
           {searchParams.get("tab") === "services" && (
             <>
               {/* Filters */}
-              <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
+              <div className="ar-filterbar ar-flex ar-gap-sm ar-wrap ar-ai-center">
                 <CcureInput
                   aria-label="Search services"
                   type="text"
@@ -875,7 +898,7 @@ export default function AssetRegistry() {
               </div>
 
               {/* Table */}
-              <div className="ar-p-md-xl">
+              <div className="ar-results">
                 {servicesError && (
                   <CcureAlert variant="danger" className="ar-mb-sm">
                     <span className="ar-alert-row">
@@ -1021,7 +1044,7 @@ export default function AssetRegistry() {
           {searchParams.get("tab") === "tls" && (
             <>
               {/* Filters */}
-              <div className="ar-p-sm-xl ar-bg-surface ar-border-b ar-flex ar-gap-sm ar-wrap ar-ai-center">
+              <div className="ar-filterbar ar-flex ar-gap-sm ar-wrap ar-ai-center">
                 <CcureInput
                   aria-label="Search certificates"
                   type="text"
@@ -1038,7 +1061,7 @@ export default function AssetRegistry() {
               </div>
 
               {/* Table */}
-              <div className="ar-p-md-xl">
+              <div className="ar-results">
                 {certsError && (
                   <CcureAlert variant="danger" className="ar-mb-sm">
                     <span className="ar-alert-row">
@@ -1423,7 +1446,7 @@ export default function AssetRegistry() {
             </div>
           </CcureModal>
         )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

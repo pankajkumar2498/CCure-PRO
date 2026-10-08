@@ -54,6 +54,8 @@ import {
   CcureLoader,
   CcureScanStatus,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import "../styles/recycle-bin.css";
 
@@ -276,24 +278,26 @@ export default function RecycleBin() {
 
   return (
     <AppLayout pageTitle="Recycle Bin">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">Recycle Bin</h2>
-            <p className="page-subtitle rb-count">
+      <CcurePage>
+        <CcurePageHeader
+          title="Recycle Bin"
+          subtitle={
+            <>
               {total} scan{total !== 1 ? "s" : ""} ready for permanent deletion
               - {user?.username}
-            </p>
-          </div>
-          <div className="rb-toolbar">
-            <CcureButton variant="ghost" onClick={() => navigate("/history")}>
-              My Scan Jobs
-            </CcureButton>
-            <CcureButton variant="ghost" onClick={load} loading={loading}>
-              Refresh
-            </CcureButton>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="rb-toolbar">
+              <CcureButton variant="ghost" onClick={() => navigate("/history")}>
+                My Scan Jobs
+              </CcureButton>
+              <CcureButton variant="ghost" onClick={load} loading={loading}>
+                Refresh
+              </CcureButton>
+            </div>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="rb-message">
@@ -327,7 +331,7 @@ export default function RecycleBin() {
             density="comfortable"
           />
         )}
-      </div>
+      </CcurePage>
 
       <CcureConfirmDialog
         open={Boolean(modal)}

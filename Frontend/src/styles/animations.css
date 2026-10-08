@@ -156,11 +156,7 @@
   }
 }
 
-/* ── 1. PAGE ENTRY — fade-up for all page-inner ───────────────────────────── */
-
-.page-inner {
-  animation: fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+/* ── 1. PAGE ENTRY — now the design system's CcurePage (patterns/page.css) ── */
 
 /* ── 2. TABLE ROW STAGGER — pure CSS nth-child delays ─────────────────────── */
 
@@ -582,12 +578,6 @@
 .scan-card--active:hover .scan-card-icon {
   transform: scale(1.08);
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* ── 12. PAGE TITLE ROW ───────────────────────────────────────────────────── */
-
-.page-title-row {
-  animation: fadeUp 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ── 13. PHASE FOOTER ─────────────────────────────────────────────────────── */

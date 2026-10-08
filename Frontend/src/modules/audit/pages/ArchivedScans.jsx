@@ -39,6 +39,8 @@ import {
   CcureLoader,
   CcureScanStatus,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import "../styles/archived-scans.css";
 
@@ -247,23 +249,25 @@ export default function ArchivedScans() {
 
   return (
     <AppLayout pageTitle="Archived Scans">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h2 className="page-title">Archived Scans</h2>
-            <p className="page-subtitle as-count">
+      <CcurePage>
+        <CcurePageHeader
+          title="Archived Scans"
+          subtitle={
+            <>
               {total} archived scan{total !== 1 ? "s" : ""} - {user?.username}
-            </p>
-          </div>
-          <div className="as-toolbar">
-            <CcureButton variant="ghost" onClick={() => navigate("/history")}>
-              My Scan Jobs
-            </CcureButton>
-            <CcureButton variant="ghost" onClick={load} loading={loading}>
-              Refresh
-            </CcureButton>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="as-toolbar">
+              <CcureButton variant="ghost" onClick={() => navigate("/history")}>
+                My Scan Jobs
+              </CcureButton>
+              <CcureButton variant="ghost" onClick={load} loading={loading}>
+                Refresh
+              </CcureButton>
+            </div>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="as-message">
@@ -297,7 +301,7 @@ export default function ArchivedScans() {
             density="comfortable"
           />
         )}
-      </div>
+      </CcurePage>
       <ToastContainer toasts={toasts} dismiss={dismissToast} />
     </AppLayout>
   );

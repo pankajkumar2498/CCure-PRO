@@ -24,6 +24,8 @@ import {
   CcureLoader,
   CcureModal,
   CcureSelect,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import ReauthDialog from "../components/ReauthDialog";
 import RolePermissionEditor from "../components/RolePermissionEditor";
@@ -190,38 +192,41 @@ export default function RoleManagement() {
   if (loading) {
     return (
       <ProductFrame pageTitle="Roles & Permissions">
-        <div className="page-inner">
+        <CcurePage>
+          <CcurePageHeader title="Roles & Permissions" />
           <CcureLoader label="Loading roles…" />
-        </div>
+        </CcurePage>
       </ProductFrame>
     );
   }
 
   return (
     <ProductFrame pageTitle="Roles & Permissions">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h1 className="page-title">Roles &amp; Permissions</h1>
-            <p className="page-subtitle">
+      <CcurePage>
+        <CcurePageHeader
+          title="Roles & Permissions"
+          subtitle={
+            <>
               Manage roles, their permissions and their lifecycle. Names are
               labels; what a role can do is its permissions.
-            </p>
-          </div>
-          <div className="rm-toolbar">
-            <CcureCheckbox
-              checked={showRetired}
-              onChange={(e) => setShowRetired(e.target.checked)}
-            >
-              Show retired roles
-            </CcureCheckbox>
-            {canCreate && (
-              <CcureButton type="button" onClick={() => setCreating(true)}>
-                New custom role
-              </CcureButton>
-            )}
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="rm-toolbar">
+              <CcureCheckbox
+                checked={showRetired}
+                onChange={(e) => setShowRetired(e.target.checked)}
+              >
+                Show retired roles
+              </CcureCheckbox>
+              {canCreate && (
+                <CcureButton type="button" onClick={() => setCreating(true)}>
+                  New custom role
+                </CcureButton>
+              )}
+            </div>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="rm-alert">
@@ -440,7 +445,7 @@ export default function RoleManagement() {
             </CcureCard>
           )}
         </div>
-      </div>
+      </CcurePage>
 
       <CcureModal
         open={creating}

@@ -21,7 +21,7 @@ test("Common modules use the full available shell width on desktop", async ({
     for (const width of [1280, 1920]) {
       await page.setViewportSize({ width, height: 1000 });
       const difference = await page
-        .locator("main > .page-inner")
+        .locator("main > .cc-page")
         .evaluate((inner) =>
           Math.abs(
             inner.getBoundingClientRect().width -

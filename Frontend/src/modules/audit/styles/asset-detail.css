@@ -12,15 +12,10 @@
 
 /* ── Page frame ──────────────────────────────────────────────────────────── */
 .ad-page {
-  padding: var(--ccure-space-md) var(--ccure-space-xl) var(--ccure-space-2xl);
+  --ccure-page-gap: var(--ccure-space-md);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-md);
-}
-
-.ad-page--loading,
-.ad-page--error {
-  padding: var(--ccure-space-2xl);
+  gap: var(--ccure-page-gap);
 }
 
 .ad-body {
@@ -42,9 +37,6 @@
 @media (max-width: 960px) {
   .ad-body {
     grid-template-columns: 1fr;
-  }
-  .ad-page {
-    padding: var(--ccure-space-md);
   }
 }
 
@@ -123,29 +115,6 @@
   background: var(--ccure-surface-sunken);
   padding: 0 var(--ccure-space-3xs);
   border-radius: var(--ccure-radius-sm);
-}
-
-/* ── Header ──────────────────────────────────────────────────────────────── */
-.ad-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--ccure-space-lg);
-  flex-wrap: wrap;
-}
-
-.ad-address {
-  font-family: var(--ccure-font-mono);
-  font-size: var(--ccure-text-2xl);
-  font-weight: var(--ccure-weight-bold);
-  color: var(--ccure-text);
-  margin: 0;
-}
-
-.ad-hostname {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 .ad-hostname-name {
@@ -759,7 +728,7 @@
 }
 
 .ad-posture__h {
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin: var(--ccure-space-xs) 0 var(--ccure-space-3xs);
@@ -782,7 +751,7 @@
   /* Reset the basis when the row stacks. */
   flex: 1 1 14rem;
   min-width: 0;
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
 }
 
 .ad-posture__kv {
@@ -790,7 +759,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-xs) var(--ccure-space-lg);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
 }
 
 .ad-posture__kv > div {
@@ -808,11 +777,11 @@
 
 .ad-posture__alert {
   color: var(--ccure-danger-text, inherit);
-  font-weight: var(--ccure-font-weight-bold, 700);
+  font-weight: var(--ccure-weight-bold, 700);
 }
 
 .ad-posture__tasks {
   margin: 0;
   padding-left: var(--ccure-space-md);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-xs);
 }

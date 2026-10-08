@@ -44,6 +44,8 @@ import {
   CcureSeverityBadge,
   CcureSkeleton,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -171,18 +173,20 @@ export default function ScanList() {
 
   return (
     <AppLayout pageTitle="Web Scans">
-      <div className="page-inner wsp-page">
-        <div className="wsp-header">
-          <div>
-            <h1 className="page-title">Web Scans</h1>
-            <p className="page-subtitle">Manage and monitor DAST assessments</p>
-          </div>
-          {canLaunch && (
-            <CcureButton onClick={() => navigate("/web-scans/new")}>
-              + New Scan
-            </CcureButton>
-          )}
-        </div>
+      <CcurePage>
+        <CcurePageHeader
+          title="Web Scans"
+          subtitle={<>Manage and monitor DAST assessments</>}
+          actions={
+            <>
+              {canLaunch && (
+                <CcureButton onClick={() => navigate("/web-scans/new")}>
+                  + New Scan
+                </CcureButton>
+              )}
+            </>
+          }
+        />
 
         <div className="wsp-panel">
           {loading ? (
@@ -212,7 +216,7 @@ export default function ScanList() {
             />
           )}
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

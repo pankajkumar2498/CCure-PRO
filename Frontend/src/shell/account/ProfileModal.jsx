@@ -63,6 +63,7 @@ import {
   CcurePasswordField,
   CcureTabPanel,
   CcureTabs,
+  CcureIcon,
 } from "../../design-system";
 import "./account-dialog.css";
 
@@ -173,7 +174,7 @@ function ProfileTab({ profile, onProfileUpdated }) {
           <div className="ac-identity__meta">
             <CcureBadge variant="primary">{profile.role_name}</CcureBadge>
             <span className="ac-identity__org">
-              <span aria-hidden="true">🏢 </span>
+              <CcureIcon name="briefcase" />
               {profile.organization_name}
             </span>
           </div>
@@ -553,7 +554,7 @@ function SecurityTab({ onOpenChangePassword }) {
             aria-labelledby="ac-mfa-done-title"
           >
             <h4 className="ac-section__title" id="ac-mfa-done-title">
-              <span aria-hidden="true">🎉 </span>
+              <CcureIcon name="check-circle" />
               Multi-Factor Authentication Enabled!
             </h4>
             <p className="ac-section__desc">

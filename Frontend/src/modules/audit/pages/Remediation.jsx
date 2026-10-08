@@ -46,6 +46,8 @@ import {
   CcureCheckbox,
   CcureTabs,
   CcureTabPanel,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
@@ -218,10 +220,12 @@ export default function Remediation() {
   if (!canRead) {
     return (
       <AppLayout>
-        <CcureAlert variant="warning">
-          {denyMessage} Viewing remediation needs the{" "}
-          <strong>findings:read</strong> permission.
-        </CcureAlert>
+        <CcurePage>
+          <CcureAlert variant="warning">
+            {denyMessage} Viewing remediation needs the{" "}
+            <strong>findings:read</strong> permission.
+          </CcureAlert>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -259,7 +263,7 @@ export default function Remediation() {
           variant="ghost"
           size="sm"
           type="button"
-          className="rm-link"
+          className="rmd-link"
           onClick={() => {
             const next = new URLSearchParams(params);
             next.set("finding_id", row.finding_id);
@@ -292,7 +296,7 @@ export default function Remediation() {
         row.remediation?.owner ? (
           ownerLabel(row.remediation.owner)
         ) : (
-          <span className="rm-muted">Unassigned</span>
+          <span className="rmd-muted">Unassigned</span>
         ),
     },
     {
@@ -304,9 +308,9 @@ export default function Remediation() {
       key: "sla",
       header: "SLA",
       cell: (row) => (
-        <div className="rm-slacell">
+        <div className="rmd-slacell">
           <SlaStateBadge state={row.sla?.state} />
-          <small className="rm-muted">{dueDescription(row.sla)}</small>
+          <small className="rmd-muted">{dueDescription(row.sla)}</small>
         </div>
       ),
     },
@@ -340,14 +344,11 @@ export default function Remediation() {
 
   return (
     <AppLayout>
-      <div className="rm-page">
-        <header className="rm-head">
-          <h1>Remediation</h1>
-          <p className="rm-muted">
-            Who owns a finding, when it is due, and whether a scan has agreed it
-            was fixed.
-          </p>
-        </header>
+      <CcurePage className="rmd-page">
+        <CcurePageHeader
+          title="Remediation"
+          subtitle="Who owns a finding, when it is due, and whether a scan has agreed it was fixed."
+        />
 
         {notice ? (
           <CcureAlert variant={notice.variant} onClose={() => setNotice(null)}>
@@ -360,42 +361,42 @@ export default function Remediation() {
         ) : null}
 
         {summary ? (
-          <section className="rm-summary">
+          <section className="rmd-summary">
             {/* Printed as the backend assembled it. The report renders the
                 same string, and two places computing it separately is how
                 they come to disagree. */}
-            <p className="rm-summary__line">{summary.summary_line}</p>
+            <p className="rmd-summary__line">{summary.summary_line}</p>
 
-            <div className="rm-metrics">
+            <div className="rmd-metrics">
               {REMEDIATION_STATES.map((s) => (
-                <div className="rm-metric" key={s}>
-                  <div className="rm-metric__n">
+                <div className="rmd-metric" key={s}>
+                  <div className="rmd-metric__n">
                     {summary.by_state?.[s] ?? 0}
                   </div>
-                  <div className="rm-metric__l">{STATE_LABELS[s]}</div>
+                  <div className="rmd-metric__l">{STATE_LABELS[s]}</div>
                 </div>
               ))}
             </div>
 
-            <div className="rm-metrics">
-              <div className="rm-metric rm-metric--bad">
-                <div className="rm-metric__n">{summary.overdue}</div>
-                <div className="rm-metric__l">Overdue</div>
+            <div className="rmd-metrics">
+              <div className="rmd-metric rmd-metric--bad">
+                <div className="rmd-metric__n">{summary.overdue}</div>
+                <div className="rmd-metric__l">Overdue</div>
               </div>
-              <div className="rm-metric">
-                <div className="rm-metric__n">{summary.within_sla}</div>
-                <div className="rm-metric__l">Within SLA</div>
+              <div className="rmd-metric">
+                <div className="rmd-metric__n">{summary.within_sla}</div>
+                <div className="rmd-metric__l">Within SLA</div>
               </div>
-              <div className="rm-metric">
-                <div className="rm-metric__n">{summary.no_sla}</div>
+              <div className="rmd-metric">
+                <div className="rmd-metric__n">{summary.no_sla}</div>
                 {/* Deliberately not folded into "within SLA": having no
                     deadline and being comfortably inside one are different
                     facts, and the backend counts them apart. */}
-                <div className="rm-metric__l">No deadline applies</div>
+                <div className="rmd-metric__l">No deadline applies</div>
               </div>
             </div>
 
-            <p className="rm-note">
+            <p className="rmd-note">
               The SLA figures cover active findings only. Counts by state are
               over every finding in the organisation.{" "}
               <strong>
@@ -407,11 +408,11 @@ export default function Remediation() {
           </section>
         ) : null}
 
-        <section className="rm-queues">
+        <section className="rmd-queues">
           <CcureTabs
             id="remediation-queues"
             label="Remediation queues"
-            className="rm-tabs"
+            className="rmd-tabs"
             value={queueKey}
             onChange={(next) => {
               setQueueKey(next);
@@ -435,12 +436,13 @@ export default function Remediation() {
             }))}
           />
           <CcureTabPanel id={queueKey} tabsId="remediation-queues" active>
-            <p className="rm-note">{queue.blurb}</p>
+            <p className="rmd-note">{queue.blurb}</p>
 
-            <div className="rm-toolbar">
+            <div className="rmd-toolbar">
               {canListUsers ? (
                 <CcureSelect
                   label="Owner"
+                  fieldClassName="rmd-owner-field"
                   value={ownerFilter}
                   onChange={(e) => {
                     setOwnerFilter(e.target.value);
@@ -457,6 +459,7 @@ export default function Remediation() {
               ) : (
                 <CcureInput
                   label="Owner id"
+                  fieldClassName="rmd-owner-field"
                   value={ownerFilter}
                   onChange={(e) => {
                     setOwnerFilter(e.target.value);
@@ -507,11 +510,11 @@ export default function Remediation() {
           </CcureTabPanel>
         </section>
 
-        <section className="rm-slasection">
+        <section className="rmd-slasection">
           <h2>SLA policy</h2>
           <SlaPolicyPanel canEdit={canEditSla} />
         </section>
-      </div>
+      </CcurePage>
 
       <CcureModal
         open={assignOpen}

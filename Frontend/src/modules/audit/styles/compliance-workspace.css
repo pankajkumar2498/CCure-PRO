@@ -11,10 +11,9 @@
    out. Everything resolves through `--ccure-*` tokens in both themes.
    ============================================================================ */
 
-.cwh-page {
-  min-height: 100%;
-  padding-bottom: var(--ccure-space-2xl);
-}
+/* The page is a CcurePage with the shared CcurePageHeader (B.13): its inset,
+   title and the header's bottom spacing are the application's. The header band
+   and padded tab strip it used to draw are gone with them. */
 
 /* ── The loading bar ──────────────────────────────────────────────────────────
    A thin bar along the top of the window, as before, so a read does not push
@@ -40,37 +39,6 @@
 .cwh-loading .cc-progress__track {
   height: 3px;
   border-radius: 0;
-}
-
-/* ── The header ───────────────────────────────────────────────────────────── */
-.cwh-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--ccure-space-md) var(--ccure-space-lg);
-  padding: var(--ccure-space-lg) var(--ccure-space-xl) var(--ccure-space-md);
-  background: var(--ccure-surface);
-  border-bottom: 1px solid var(--ccure-border);
-}
-
-.cwh-heading {
-  flex: 1 1 16rem;
-  min-width: 0;
-}
-
-.cwh-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.cwh-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 /* The choices wrap as the chosen framework adds its own filters. */
@@ -112,14 +80,7 @@
 
 /* ── The tab bar and the chosen tab ───────────────────────────────────────── */
 .cc-tabs.cwh-tabs {
-  padding: 0 var(--ccure-space-xl);
   margin-bottom: var(--ccure-space-xl);
-  background: var(--ccure-surface);
-  overflow-x: auto;
-}
-
-.cc-tabpanel.cwh-content {
-  padding: 0 var(--ccure-space-xl);
 }
 
 .cwh-error {
@@ -135,10 +96,6 @@
 
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .cwh-header {
-    padding: var(--ccure-space-md);
-  }
-
   .cwh-toolbar {
     justify-content: flex-start;
     width: 100%;
@@ -148,21 +105,13 @@
     flex: 1 1 100%;
     min-width: 0;
   }
-
-  .cc-tabs.cwh-tabs {
-    padding: 0 var(--ccure-space-md);
-  }
-
-  .cc-tabpanel.cwh-content {
-    padding: 0 var(--ccure-space-md);
-  }
 }
 
 /* ── P1-3: the evidence behind a verdict ─────────────────────────────────── */
 
 .cwh-ev-kv {
   margin: 0 0 var(--ccure-space-sm);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
 }
 
 .cwh-ev-row {
@@ -177,7 +126,7 @@
      one term pinned at a width the others no longer share. */
   flex: 0 0 11rem;
   min-width: 0;
-  color: var(--ccure-color-text-secondary, var(--ccure-text-secondary));
+  color: var(--ccure-text-secondary, var(--ccure-text-secondary));
 }
 
 .cwh-ev-row dd {
@@ -188,7 +137,7 @@
 }
 
 .cwh-ev-h {
-  font-size: var(--ccure-font-size-md);
+  font-size: var(--ccure-text-md);
   margin: var(--ccure-space-md) 0 var(--ccure-space-2xs);
 }
 
@@ -213,7 +162,7 @@
 .cwh-ev-raw {
   overflow-x: auto;
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-xs);
   padding: var(--ccure-space-xs);
   border: 1px solid var(--ccure-border, currentColor);
   border-radius: var(--ccure-radius-sm);
@@ -221,14 +170,14 @@
 }
 
 .cwh-ev-muted {
-  color: var(--ccure-color-text-secondary, var(--ccure-text-secondary));
+  color: var(--ccure-text-secondary, var(--ccure-text-secondary));
 }
 
 /* ── P3-2: compliance schedules and the waiver decision ──────────────────── */
 
 .cwh-sch__lede {
   color: var(--ccure-text-secondary);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   margin: 0 0 var(--ccure-space-sm);
 }
 

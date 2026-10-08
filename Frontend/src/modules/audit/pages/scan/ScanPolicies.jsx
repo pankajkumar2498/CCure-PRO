@@ -44,6 +44,8 @@ import {
   CcureToastProvider,
   useCcureToast,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import { useAuth } from "@shell/auth/AuthContext";
 import { can, denyMessage } from "@shell/auth/permissions";
@@ -400,33 +402,41 @@ function PolicyWorkspace() {
 
   if (!canRead) {
     return (
-      <div className="sp-page">
+      <CcurePage className="sp-page">
+        <CcurePageHeader title="Scan Policies" />
         <CcureAlert variant="info" title="Scan policies unavailable">
           {denyMessage} Viewing scan policies needs{" "}
           <code>scan_policies:read</code>, which is separate from permission to
           run a scan.
         </CcureAlert>
-      </div>
+      </CcurePage>
     );
   }
 
   return (
-    <div className="sp-page">
-      <header className="sp-header">
-        <div>
-          <h1 className="sp-title">Scan Policies</h1>
-          <p className="sp-subtitle">
+    <CcurePage className="sp-page">
+      <CcurePageHeader
+        title="Scan Policies"
+        subtitle={
+          <>
             What a scan assesses, as a reusable named configuration. A scan
             keeps its own copy, so editing a policy never changes a completed
             scan&apos;s record.
-          </p>
-        </div>
-        {canCreate && (
-          <CcureButton variant="primary" onClick={() => openEditor("create")}>
-            New policy
-          </CcureButton>
-        )}
-      </header>
+          </>
+        }
+        actions={
+          <>
+            {canCreate && (
+              <CcureButton
+                variant="primary"
+                onClick={() => openEditor("create")}
+              >
+                New policy
+              </CcureButton>
+            )}
+          </>
+        }
+      />
 
       {error ? (
         <CcureAlert variant="danger" title="Could not load policies">
@@ -902,7 +912,7 @@ function PolicyWorkspace() {
           </div>
         </CcureModal>
       ) : null}
-    </div>
+    </CcurePage>
   );
 }
 

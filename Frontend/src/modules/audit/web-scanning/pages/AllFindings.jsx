@@ -17,6 +17,8 @@ import {
   CcureSeverityBadge,
   CcureSkeleton,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../styles/web-scanning-pages.css";
 
@@ -116,20 +118,22 @@ export default function AllFindings() {
 
   return (
     <AppLayout pageTitle="Findings">
-      <div className="page-inner wsp-page wsp-page--wide">
-        <div className="wsp-header">
-          <div>
-            <Link to="/web-scans/dashboard" className="wsp-back">
-              ← Back to Dashboard
-            </Link>
-            <h1 className="page-title">Findings</h1>
-            <p className="page-subtitle">
+      <CcurePage>
+        <CcurePageHeader
+          title="Findings"
+          subtitle={
+            <>
               {Object.keys(activeFilters).length
                 ? "Filtered from the dashboard"
                 : "All discovered vulnerabilities across scans"}
-            </p>
-          </div>
-        </div>
+            </>
+          }
+          breadcrumb={
+            <Link to="/web-scans/dashboard" className="wsp-back">
+              ← Back to Dashboard
+            </Link>
+          }
+        />
 
         {Object.keys(activeFilters).length > 0 && (
           <div className="wsp-meta wsp-filter-bar">
@@ -172,7 +176,7 @@ export default function AllFindings() {
             </CcureCard>
           )}
         </div>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

@@ -23,6 +23,7 @@
  * refresh and permission check is unchanged.
  */
 
+import { iconForBackendGlyph } from "../utils/backendIcons";
 import { useState, useEffect, useCallback, useId } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import AppLayout from "@audit/components/layout/AppLayout";
@@ -58,6 +59,9 @@ import {
   CcureCard,
   CcureDropdown,
   CcureMenuItem,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/security-dashboard.css";
 
@@ -302,21 +306,21 @@ function MetricCards({ summary, loading }) {
   const d = sev.deltas || {};
 
   const getVulnTrend = (val) => {
-    if (val > 0) return { label: `🔺 +${val} from last scan`, tone: "bad" };
+    if (val > 0) return { label: `▲ +${val} from last scan`, tone: "bad" };
     if (val < 0)
-      return { label: `🔻 ${Math.abs(val)} remediated`, tone: "good" };
+      return { label: `▼ ${Math.abs(val)} remediated`, tone: "good" };
     return { label: "— unchanged", tone: "neutral" };
   };
 
   const getRiskTrend = (val) => {
-    if (val > 0) return { label: `🔺 +${val} pts vs last week`, tone: "bad" };
+    if (val > 0) return { label: `▲ +${val} pts vs last week`, tone: "bad" };
     if (val < 0)
-      return { label: `🔻 ${Math.abs(val)} pts vs last week`, tone: "good" };
+      return { label: `▼ ${Math.abs(val)} pts vs last week`, tone: "good" };
     return { label: "— stable", tone: "neutral" };
   };
 
   const getAssetTrend = (val) => {
-    if (val > 0) return { label: `🔺 +${val} new hosts`, tone: "good" };
+    if (val > 0) return { label: `▲ +${val} new hosts`, tone: "good" };
     return { label: "— unchanged", tone: "neutral" };
   };
 
@@ -725,11 +729,11 @@ function FindingsDonut({ summary, breakdown, loading }) {
 // ── 5. Scan Activity ──────────────────────────────────────────────────────────
 
 const MODE_ICON = {
-  basic: "📡",
-  asset: "🔍",
-  advanced: "⚡",
-  vulnerability_audit: "⚡",
-  credentialed: "🔑",
+  basic: "radio",
+  asset: "search",
+  advanced: "zap",
+  vulnerability_audit: "zap",
+  credentialed: "key",
 };
 const MODE_LABEL = {
   basic: "Basic",
@@ -762,7 +766,10 @@ function ScanActivity({ scans, loading }) {
   return (
     <Panel title={title} icon={icon} subtitle={subtitle}>
       {scanList.length === 0 && (
-        <CcureEmptyState icon="📡" title="No recent scans" />
+        <CcureEmptyState
+          icon={<CcureIcon name="radio" />}
+          title="No recent scans"
+        />
       )}
 
       {scanList.length > 0 && (
@@ -771,7 +778,7 @@ function ScanActivity({ scans, loading }) {
             const isCredentialed = scan.scan_type === "credentialed";
             const modeIcon = isCredentialed
               ? MODE_ICON.credentialed
-              : MODE_ICON[scan.pipeline_mode] || "📡";
+              : MODE_ICON[scan.pipeline_mode] || "radio";
 
             return (
               <li key={scan.id} className="sd-feed__row">
@@ -779,7 +786,7 @@ function ScanActivity({ scans, loading }) {
                   className={`sd-feed__icon sd-feed__icon--${activityTone(scan.status)}`}
                   aria-hidden="true"
                 >
-                  {modeIcon}
+                  <CcureIcon name={modeIcon} />
                 </span>
                 <div className="sd-feed__body">
                   <div className="sd-feed__title">
@@ -865,7 +872,7 @@ function TopAssetsTable({ assets, loading, onNavigate }) {
   return (
     <Panel
       flush
-      icon="🖥"
+      icon={<CcureIcon name="monitor" />}
       title="Top Vulnerable Assets"
       subtitle="Ranked by composite risk score · click to drill into asset"
       action={
@@ -986,7 +993,7 @@ function TopCVEsTable({ cves, loading, onNavigate }) {
   return (
     <Panel
       flush
-      icon="🔥"
+      icon={<CcureIcon name="alert-octagon" />}
       title="Critical & High CVEs"
       subtitle="Sorted by priority score — P0 KEV first"
     >
@@ -1080,18 +1087,16 @@ function TopCVEsTable({ cves, loading, onNavigate }) {
 
 // ── 8. Asset Breakdown ────────────────────────────────────────────────────────
 
+/* One outline mark for every operating system: the family is the label beside
+   it. Brand logos are not part of the icon set. */
 const OS_ICON = {
-  Linux: "🐧",
-  Windows: "🪟",
-  macOS: "🍎",
-  BSD: "🐡",
-  Unknown: "❓",
+  Unknown: "help-circle",
 };
 
 function AssetBreakdownPanel({ assetBreakdown, loading }) {
   if (loading)
     return (
-      <Panel icon="🖥" title="Asset Inventory">
+      <Panel icon={<CcureIcon name="monitor" />} title="Asset Inventory">
         <CcureSkeleton height={80} />
       </Panel>
     );
@@ -1102,7 +1107,7 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
 
   return (
     <Panel
-      icon="🖥"
+      icon={<CcureIcon name="monitor" />}
       title="Asset Inventory"
       subtitle={`${fmt(t.total)} total assets`}
     >
@@ -1110,7 +1115,7 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
         {os.slice(0, 6).map((o) => (
           <li key={o.os_family} className="sd-os__item">
             <span className="sd-os__icon" aria-hidden="true">
-              {OS_ICON[o.os_family] || "💻"}
+              <CcureIcon name={OS_ICON[o.os_family] || "monitor"} />
             </span>
             <span className="sd-os__count">{o.count}</span>
             <span className="sd-os__name">{o.os_family}</span>
@@ -1166,7 +1171,7 @@ function AssetBreakdownPanel({ assetBreakdown, loading }) {
 function ServiceExposurePanel({ services, loading }) {
   if (loading)
     return (
-      <Panel icon="🔓" title="Top Exposed Services">
+      <Panel icon={<CcureIcon name="unlock" />} title="Top Exposed Services">
         <CcureSkeleton height={160} />
       </Panel>
     );
@@ -1176,7 +1181,7 @@ function ServiceExposurePanel({ services, loading }) {
 
   return (
     <Panel
-      icon="🔓"
+      icon={<CcureIcon name="unlock" />}
       title="Top Exposed Services"
       subtitle="Open ports across all assets"
     >
@@ -1220,7 +1225,7 @@ const coverageTone = (p) =>
 function TLSHealthPanel({ tlsHealth, httpHeaders, loading }) {
   if (loading)
     return (
-      <Panel icon="🔐" title="TLS & HTTP Security">
+      <Panel icon={<CcureIcon name="lock" />} title="TLS & HTTP Security">
         <CcureSkeleton height={140} />
       </Panel>
     );
@@ -1236,13 +1241,14 @@ function TLSHealthPanel({ tlsHealth, httpHeaders, loading }) {
 
   return (
     <Panel
-      icon="🔐"
+      icon={<CcureIcon name="lock" />}
       title="TLS & HTTP Security"
       subtitle={
         <>
           {tls.expiring_in_30d > 0 ? (
             <span className="sd-strong sd-tone--danger">
-              ⚠ {tls.expiring_in_30d} certs expiring in 30d ·{" "}
+              <CcureIcon name="alert-triangle" /> {tls.expiring_in_30d} certs
+              expiring in 30d ·{" "}
             </span>
           ) : null}
           {tls.total_tls_services || 0} TLS services
@@ -1317,7 +1323,11 @@ function CompliancePanel({ compliance, loading }) {
 
   if (loading)
     return (
-      <Panel icon="✅" title="Compliance Posture" action={action}>
+      <Panel
+        icon={<CcureIcon name="check-circle" />}
+        title="Compliance Posture"
+        action={action}
+      >
         <div className="sd-frameworks">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <CcureSkeleton key={i} height={70} />
@@ -1330,7 +1340,7 @@ function CompliancePanel({ compliance, loading }) {
 
   return (
     <Panel
-      icon="✅"
+      icon={<CcureIcon name="check-circle" />}
       title="Compliance Posture"
       subtitle="Derived from scan findings · frameworks updated on each scan"
       action={action}
@@ -1374,7 +1384,7 @@ function InsightsStrip({ insights }) {
           className={`sd-insight sd-insight--${ins.severity || "medium"}`}
         >
           <span className="sd-insight__icon" aria-hidden="true">
-            {ins.icon}
+            <CcureIcon name={iconForBackendGlyph(ins.icon, "alert-triangle")} />
           </span>
           <div className="sd-insight__body">
             <div className="sd-insight__title">{ins.title}</div>
@@ -1389,16 +1399,16 @@ function InsightsStrip({ insights }) {
 // ── 13. Audit Timeline ────────────────────────────────────────────────────────
 
 const ACTION_ICON = {
-  scan_started: "📡",
-  scan_completed: "✅",
-  scan_failed: "❌",
-  vulnerability_found: "🚨",
-  user_created: "👤",
-  user_login: "🔑",
-  asset_updated: "🖥",
-  finding_accepted: "✔",
-  finding_fixed: "🛠",
-  report_generated: "📄",
+  scan_started: "radio",
+  scan_completed: "check-circle",
+  scan_failed: "x-circle",
+  vulnerability_found: "alert-octagon",
+  user_created: "user",
+  user_login: "key",
+  asset_updated: "monitor",
+  finding_accepted: "check",
+  finding_fixed: "tool",
+  report_generated: "file-text",
 };
 
 const ACTION_TONE = {
@@ -1427,7 +1437,7 @@ function AuditTimeline() {
 
   return (
     <Panel
-      icon="📋"
+      icon={<CcureIcon name="clipboard" />}
       title="Activity & Audit Timeline"
       subtitle="Immutable · SOC 2 / ISO 27001 ready"
       action={
@@ -1444,7 +1454,10 @@ function AuditTimeline() {
       {loading && <SkeletonRows count={5} />}
 
       {!loading && logs.length === 0 && (
-        <CcureEmptyState icon="📋" title="No audit events yet" />
+        <CcureEmptyState
+          icon={<CcureIcon name="clipboard" />}
+          title="No audit events yet"
+        />
       )}
 
       {!loading && logs.length > 0 && (
@@ -1455,7 +1468,7 @@ function AuditTimeline() {
                 className={`sd-feed__icon sd-feed__icon--${ACTION_TONE[log.action] || "neutral"}`}
                 aria-hidden="true"
               >
-                {ACTION_ICON[log.action] || "📌"}
+                <CcureIcon name={ACTION_ICON[log.action] || "flag"} />
               </span>
               <div className="sd-feed__body">
                 <div className="sd-feed__title">
@@ -1482,11 +1495,11 @@ function AuditTimeline() {
 // ── 14. Notification Center ───────────────────────────────────────────────────
 
 const TYPE_ICON = {
-  scan_completed: "📡",
-  scan_failed: "❌",
-  vulnerability_found: "🚨",
-  system_message: "ℹ️",
-  admin_notice: "👤",
+  scan_completed: "radio",
+  scan_failed: "x-circle",
+  vulnerability_found: "alert-octagon",
+  system_message: "info",
+  admin_notice: "user",
 };
 
 const TYPE_TONE = {
@@ -1513,7 +1526,7 @@ function NotifCenter() {
 
   return (
     <Panel
-      icon="🔔"
+      icon={<CcureIcon name="bell" />}
       title="Notification Center"
       action={
         <CcureButton
@@ -1530,7 +1543,10 @@ function NotifCenter() {
       {loading && <SkeletonRows count={3} />}
 
       {!loading && notifs.length === 0 && (
-        <CcureEmptyState icon="🔔" title="No unread notifications" />
+        <CcureEmptyState
+          icon={<CcureIcon name="bell" />}
+          title="No unread notifications"
+        />
       )}
 
       {!loading && notifs.length > 0 && (
@@ -1541,7 +1557,7 @@ function NotifCenter() {
                 className={`sd-feed__icon sd-feed__icon--${TYPE_TONE[n.type] || "neutral"}`}
                 aria-hidden="true"
               >
-                {TYPE_ICON[n.type] || "📌"}
+                <CcureIcon name={TYPE_ICON[n.type] || "flag"} />
               </span>
               <div className="sd-feed__body">
                 <div className="sd-feed__title">
@@ -1690,7 +1706,7 @@ function DateRangeControl({ value, onChange }) {
           size="sm"
           aria-label={`Date range: ${value}`}
         >
-          <span aria-hidden="true">📅</span> {value}{" "}
+          <CcureIcon name="calendar" /> {value}{" "}
           <span aria-hidden="true">▼</span>
         </CcureButton>
       )}
@@ -1769,45 +1785,47 @@ export default function SecurityDashboard() {
       pageTitle="Security Dashboard"
       onNewScan={() => navigate("/scan")}
     >
-      <div className="sd-page">
+      <CcurePage className="sd-page">
         {/* Always mounted, so there is something to observe changing. */}
         <div role="status" aria-live="polite" className="cc-sr-only">
           {db.loading ? "Loading dashboard…" : ""}
         </div>
 
         {/* ── Page Header ── */}
-        <div className="sd-page-header">
-          <div>
-            <h1 className="sd-page-title">Security Dashboard</h1>
-            <p className="sd-page-subtitle">
+        <CcurePageHeader
+          title="Security Dashboard"
+          subtitle={
+            <>
               <span className="sd-live-dot" aria-hidden="true" />
               Last updated: {lastUpdated} · {db.summary?.scans?.running || 0}{" "}
               scans running
-            </p>
-          </div>
-          <div className="sd-header-actions">
-            <DateRangeControl
-              value={dateRange}
-              onChange={(range) => {
-                setDateRange(range);
-                db.refresh();
-              }}
-            />
-            {canReports && (
-              <CcureButton
-                as={Link}
-                to="/reports"
-                variant="secondary"
-                size="sm"
-              >
-                <span aria-hidden="true">⬇</span> Export PDF
+            </>
+          }
+          actions={
+            <div className="sd-header-actions">
+              <DateRangeControl
+                value={dateRange}
+                onChange={(range) => {
+                  setDateRange(range);
+                  db.refresh();
+                }}
+              />
+              {canReports && (
+                <CcureButton
+                  as={Link}
+                  to="/reports"
+                  variant="secondary"
+                  size="sm"
+                >
+                  <span aria-hidden="true">⬇</span> Export PDF
+                </CcureButton>
+              )}
+              <CcureButton as={Link} to="/scan" variant="primary" size="sm">
+                + New Scan
               </CcureButton>
-            )}
-            <CcureButton as={Link} to="/scan" variant="primary" size="sm">
-              + New Scan
-            </CcureButton>
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* ── Tab Bar ── Buttons with an "active" class and no tab semantics
             before; CcureTabs is the WAI-ARIA pattern, arrows included. */}
@@ -2104,7 +2122,7 @@ export default function SecurityDashboard() {
           }
         >
           <div className="sd-welcome__icon" aria-hidden="true">
-            🛡️
+            <CcureIcon name="shield" />
           </div>
           <p className="sd-welcome__text">
             Your account has been successfully created. You&apos;re ready to
@@ -2112,7 +2130,7 @@ export default function SecurityDashboard() {
             enterprise compliance posture.
           </p>
         </CcureModal>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

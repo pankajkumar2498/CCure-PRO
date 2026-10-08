@@ -101,21 +101,21 @@
     },
     {
       "file": "src/modules/audit/components/layout/AppLayout.jsx",
-      "line": 198,
+      "line": 151,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "Audit navigation/route gate resolved by the central helper"
     },
     {
       "file": "src/modules/audit/components/layout/AppLayout.jsx",
-      "line": 205,
+      "line": 158,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "Audit navigation/route gate resolved by the central helper"
     },
     {
       "file": "src/modules/audit/components/layout/AppLayout.jsx",
-      "line": 306,
+      "line": 259,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -143,84 +143,70 @@
     },
     {
       "file": "src/modules/audit/pages/ArchivedScans.jsx",
-      "line": 77,
+      "line": 79,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ArchivedScans.jsx",
-      "line": 78,
+      "line": 80,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/AssetDetail.jsx",
-      "line": 672,
+      "line": 695,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/AssetDetail.jsx",
-      "line": 1241,
+      "line": 1274,
       "kind": "role_literal",
       "status": "display-only",
       "reason": "a provenance source value ('analyst' edited the owner), a label, not a role check"
     },
     {
       "file": "src/modules/audit/pages/AssetRegistry.jsx",
-      "line": 151,
+      "line": 154,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 739,
+      "line": 742,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 747,
+      "line": 750,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/ComplianceWorkspace.jsx",
-      "line": 751,
+      "line": 754,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/RecycleBin.jsx",
-      "line": 92,
+      "line": 94,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/RecycleBin.jsx",
-      "line": 93,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/Remediation.jsx",
-      "line": 98,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/Remediation.jsx",
-      "line": 99,
+      "line": 95,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -247,22 +233,15 @@
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
-      "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 721,
+      "file": "src/modules/audit/pages/Remediation.jsx",
+      "line": 103,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
-      "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 722,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/ScanHistory.jsx",
-      "line": 723,
+      "file": "src/modules/audit/pages/Remediation.jsx",
+      "line": 104,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -270,6 +249,27 @@
     {
       "file": "src/modules/audit/pages/ScanHistory.jsx",
       "line": 724,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/ScanHistory.jsx",
+      "line": 725,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/ScanHistory.jsx",
+      "line": 726,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/ScanHistory.jsx",
+      "line": 727,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -283,112 +283,98 @@
     },
     {
       "file": "src/modules/audit/pages/SecurityDashboard.jsx",
-      "line": 1730,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
-      "line": 1743,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
-      "line": 1744,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
-      "line": 1745,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
       "line": 1746,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
-      "file": "src/modules/audit/pages/SecurityReports.jsx",
-      "line": 123,
+      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
+      "line": 1759,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
+      "line": 1760,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
+      "line": 1761,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/SecurityDashboard.jsx",
+      "line": 1762,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/SecurityReports.jsx",
-      "line": 124,
+      "line": 126,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/SecurityReports.jsx",
+      "line": 127,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/VulnerabilityBrowser.jsx",
-      "line": 606,
+      "line": 612,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/VulnerabilityBrowser.jsx",
-      "line": 610,
+      "line": 616,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/scan/CredentialedScan.jsx",
-      "line": 88,
+      "line": 91,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/scan/NewScan.jsx",
-      "line": 814,
+      "line": 826,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/scan/Phase1Results.jsx",
-      "line": 123,
+      "line": 126,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/scan/Phase2Results.jsx",
-      "line": 362,
+      "line": 365,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/pages/scan/Phase3Results.jsx",
-      "line": 789,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/scan/ScanPolicies.jsx",
-      "line": 222,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/pages/scan/ScanPolicies.jsx",
-      "line": 223,
+      "line": 798,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
@@ -408,50 +394,64 @@
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
-      "file": "src/modules/audit/web-scanning/pages/FindingsExplorer.jsx",
-      "line": 74,
+      "file": "src/modules/audit/pages/scan/ScanPolicies.jsx",
+      "line": 226,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/pages/scan/ScanPolicies.jsx",
+      "line": 227,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
       "file": "src/modules/audit/web-scanning/pages/FindingsExplorer.jsx",
-      "line": 75,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/web-scanning/pages/NewWebScan.jsx",
-      "line": 74,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/web-scanning/pages/ScanDetail.jsx",
-      "line": 86,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/web-scanning/pages/ScanList.jsx",
-      "line": 55,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
-    },
-    {
-      "file": "src/modules/audit/web-scanning/pages/WebDashboard.jsx",
       "line": 76,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
     },
     {
+      "file": "src/modules/audit/web-scanning/pages/FindingsExplorer.jsx",
+      "line": 77,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/web-scanning/pages/NewWebScan.jsx",
+      "line": 76,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/web-scanning/pages/ScanDetail.jsx",
+      "line": 88,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/web-scanning/pages/ScanList.jsx",
+      "line": 57,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
+      "file": "src/modules/audit/web-scanning/pages/WebDashboard.jsx",
+      "line": 78,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "Audit action gate resolved by the central helper from the backend's permission keys"
+    },
+    {
       "file": "src/shell/account/ProfileModal.jsx",
-      "line": 174,
+      "line": 175,
       "kind": "role_name_read",
       "status": "display-only",
       "reason": "the role badge on the profile"
@@ -472,105 +472,91 @@
     },
     {
       "file": "src/shell/admin/pages/AuditLogs.jsx",
-      "line": 65,
+      "line": 68,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/AuditLogs.jsx",
-      "line": 69,
+      "line": 72,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/DeletedUsers.jsx",
-      "line": 83,
+      "line": 85,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/OrganizationManagement.jsx",
-      "line": 95,
+      "line": 98,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/OrganizationManagement.jsx",
-      "line": 99,
+      "line": 102,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/OrganizationManagement.jsx",
-      "line": 104,
+      "line": 107,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 36,
+      "line": 38,
       "kind": "atom_check",
       "status": "display-only",
       "reason": "documentation comment"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 62,
+      "line": 64,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 154,
+      "line": 156,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 155,
+      "line": 157,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 161,
+      "line": 163,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 164,
+      "line": 166,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
     },
     {
       "file": "src/shell/admin/pages/RoleManagement.jsx",
-      "line": 165,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
-    },
-    {
-      "file": "src/shell/admin/pages/UserManagement.jsx",
-      "line": 176,
-      "kind": "atom_check",
-      "status": "migrated",
-      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
-    },
-    {
-      "file": "src/shell/admin/pages/UserManagement.jsx",
-      "line": 177,
+      "line": 167,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"
@@ -585,6 +571,20 @@
     {
       "file": "src/shell/admin/pages/UserManagement.jsx",
       "line": 179,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
+    },
+    {
+      "file": "src/shell/admin/pages/UserManagement.jsx",
+      "line": 180,
+      "kind": "atom_check",
+      "status": "migrated",
+      "reason": "platform-administration gate resolved by the central helper from platform permission keys"
+    },
+    {
+      "file": "src/shell/admin/pages/UserManagement.jsx",
+      "line": 181,
       "kind": "atom_check",
       "status": "migrated",
       "reason": "platform-administration gate resolved by the central helper from platform permission keys"

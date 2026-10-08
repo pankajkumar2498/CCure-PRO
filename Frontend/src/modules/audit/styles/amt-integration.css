@@ -12,33 +12,11 @@
 
 /* ── Page frame ───────────────────────────────────────────────────────────── */
 .amt-page {
+  --ccure-page-gap: var(--ccure-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
-}
-
-.amt-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-}
-
-.amt-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.amt-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
 }
 
 .amt-alert {
@@ -174,6 +152,20 @@
   padding: var(--ccure-space-sm);
   border: 1px solid transparent;
   border-radius: var(--ccure-radius-md);
+  justify-content: flex-start;
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.amt-ring.cc-btn > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  width: 100%;
 }
 
 .amt-ring:hover {
@@ -282,6 +274,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  white-space: normal;
+  height: auto;
   gap: var(--ccure-space-sm);
   width: 100%;
   padding: var(--ccure-space-xs) var(--ccure-space-sm);
@@ -291,6 +285,17 @@
   font-size: var(--ccure-text-sm);
   color: var(--ccure-text-secondary);
   text-align: start;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.amt-category.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
 }
 
 .amt-categories__item:last-child .amt-category {
@@ -429,10 +434,6 @@
 }
 
 @media (max-width: 640px) {
-  .amt-page {
-    padding: var(--ccure-space-md) var(--ccure-space-md) var(--ccure-space-2xl);
-  }
-
   .amt-metrics,
   .amt-filters {
     grid-template-columns: minmax(0, 1fr);

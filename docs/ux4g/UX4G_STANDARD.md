@@ -36,6 +36,12 @@ mutable `latest` tag, download a CDN or upgrade a production dependency.
   colors, focus and responsive behavior. Keep scrolling tables/graphs inside
   their own named, keyboard-reachable regions. Never suppress page overflow
   with global `overflow-x: hidden`/`clip` or add mass `!important` overrides.
+- Every page inside a shell is `CcurePage` + `CcurePageHeader` (B.13): one
+  `<h1>`, drawn by the header, at the shared inset and title size, with breadcrumb,
+  badges, subtitle and actions in the header's slots. A page that lays out its
+  children with a gap declares it as `--ccure-page-gap`. Icons are `CcureIcon`,
+  never emoji; glyphs an API returns are translated in the frontend. See
+  [`B13_APPLICATION_PAGE_STANDARD.md`](B13_APPLICATION_PAGE_STANDARD.md).
 - Domain content such as CVEs, scan evidence, topology and risk charts stays
   within Audit. The shared surrounding controls remain mandatory.
 - Three native file inputs are documented compatibility exceptions:

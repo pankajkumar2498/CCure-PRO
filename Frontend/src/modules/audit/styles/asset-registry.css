@@ -120,14 +120,8 @@
 .ar-p-md-2xs {
   padding: var(--ccure-space-md) var(--ccure-space-2xs);
 }
-.ar-p-md-xl {
-  padding: var(--ccure-space-md) var(--ccure-space-xl);
-}
 .ar-p-sm-md {
   padding: var(--ccure-space-sm) var(--ccure-space-md);
-}
-.ar-p-sm-xl {
-  padding: var(--ccure-space-sm) var(--ccure-space-xl);
 }
 .ar-p-xs-sm {
   padding: var(--ccure-space-xs) var(--ccure-space-sm);
@@ -160,39 +154,6 @@
   flex-wrap: wrap;
 }
 
-/* ── Page frame ───────────────────────────────────────────────────────────────
-   Batch 16: `.db-page`, `.db-page-header`, `.db-page-title`,
-   `.db-page-subtitle`, `.db-header-actions` and `.db-card` from dashboard.css,
-   in tokens. */
-.ar-page {
-  background: var(--ccure-bg);
-  min-height: 100%;
-  padding-bottom: var(--ccure-space-4xl);
-}
-
-.ar-page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-md);
-  border-bottom: 1px solid var(--ccure-border);
-  background: var(--ccure-surface);
-}
-
-.ar-page-title {
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  color: var(--ccure-text);
-  line-height: var(--ccure-leading-tight);
-}
-
-.ar-page-subtitle {
-  margin-top: var(--ccure-space-3xs);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
-
 .ar-header-actions {
   display: flex;
   align-items: center;
@@ -203,14 +164,6 @@
 /* dashboard.css stacks the header on a narrow screen. Without this the actions
    keep their width beside the title, and at 390px the page scrolled sideways —
    the harness's mobile state caught it. */
-@media (max-width: 768px) {
-  .ar-page-header {
-    flex-direction: column;
-    gap: var(--ccure-space-sm);
-    padding: var(--ccure-space-md) var(--ccure-space-lg);
-  }
-}
-
 /* `position: relative` is load-bearing. The C / H / M headers carry their full
    word in a visually hidden, absolutely positioned span. The legacy `th` was
    `position: sticky`, which contained it; CcureTable's header cells are not
@@ -423,6 +376,16 @@
 
 .ar-tabs {
   margin-bottom: var(--ccure-space-lg);
+}
+
+/* Filters and results sit inside the page inset (CcurePage). They used to be
+   full-bleed bands carrying their own padding and fill. */
+.ar-filterbar {
+  margin-bottom: var(--ccure-space-md);
+}
+
+.ar-results {
+  min-width: 0;
 }
 
 .ar-input--w80 {

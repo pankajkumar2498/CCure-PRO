@@ -44,6 +44,9 @@ import {
   CcureSwitch,
   CcureRadio,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
@@ -52,7 +55,7 @@ const DISCOVERY_INTENSITIES = [
   {
     value: "light",
     label: "Light",
-    icon: "⚡",
+    icon: "zap",
     desc: "Fastest — may miss firewalled hosts",
     badge: "Fastest",
     badgeVariant: "info",
@@ -60,7 +63,7 @@ const DISCOVERY_INTENSITIES = [
   {
     value: "normal",
     label: "Normal",
-    icon: "⚖",
+    icon: "sliders",
     desc: "Fast-first with coverage fallback",
     badge: "Recommended",
     badgeVariant: "success",
@@ -68,7 +71,7 @@ const DISCOVERY_INTENSITIES = [
   {
     value: "deep",
     label: "Deep",
-    icon: "🔬",
+    icon: "crosshair",
     desc: "Max coverage — best for firewalled nets",
     badge: "Thorough",
     badgeVariant: "warning",
@@ -79,30 +82,35 @@ const SCAN_INTENSITIES = [
   {
     value: "light",
     label: "Light",
-    icon: "🏃",
+    icon: "fast-forward",
     desc: "Fast scan, fewer ports",
   },
   {
     value: "normal",
     label: "Normal",
-    icon: "⚖",
-    desc: "Balanced port coverage",
-  },
-  { value: "deep", label: "Deep", icon: "🔭", desc: "Full port range scan" },
-];
-
-const PORT_SCAN_INTENSITIES = [
-  { value: "light", label: "Light", icon: "⚡", desc: "Quick top-ports only" },
-  {
-    value: "normal",
-    label: "Normal",
-    icon: "⚖",
+    icon: "sliders",
     desc: "Balanced port coverage",
   },
   {
     value: "deep",
     label: "Deep",
-    icon: "🔭",
+    icon: "layers",
+    desc: "Full port range scan",
+  },
+];
+
+const PORT_SCAN_INTENSITIES = [
+  { value: "light", label: "Light", icon: "zap", desc: "Quick top-ports only" },
+  {
+    value: "normal",
+    label: "Normal",
+    icon: "sliders",
+    desc: "Balanced port coverage",
+  },
+  {
+    value: "deep",
+    label: "Deep",
+    icon: "layers",
     desc: "Full port range — comprehensive",
   },
 ];
@@ -348,32 +356,36 @@ function ActiveMission({
   }[tone];
 
   return (
-    <div className={`ns-mission ns-mission--${tone}`}>
-      <header className="ns-mission__bar">
-        <div className="ns-mission__heading">
-          <span className="ns-live-dot" aria-hidden="true" />
-          <h1 className="ns-mission__title">Active Mission</h1>
-          {scanNo && (
-            <CcureBadge variant="neutral" mono>
-              #{scanNo}
-            </CcureBadge>
-          )}
-        </div>
-        <div className="ns-mission__actions">
-          {!isComplete && !isFailed && !isUnreachable && (
-            <CcureButton
-              variant="secondary"
-              size="sm"
-              onClick={onRunInBackground}
-            >
-              <Glyph>📥</Glyph> Run in Background
+    <CcurePage className={`ns-mission ns-mission--${tone}`}>
+      <CcurePageHeader
+        title="Active Mission"
+        badges={
+          <>
+            <span className="ns-live-dot" aria-hidden="true" />
+            {scanNo && (
+              <CcureBadge variant="neutral" mono>
+                #{scanNo}
+              </CcureBadge>
+            )}
+          </>
+        }
+        actions={
+          <div className="ns-mission__actions">
+            {!isComplete && !isFailed && !isUnreachable && (
+              <CcureButton
+                variant="secondary"
+                size="sm"
+                onClick={onRunInBackground}
+              >
+                <CcureIcon name="download" /> Run in Background
+              </CcureButton>
+            )}
+            <CcureButton variant="secondary" size="sm" onClick={onNewScan}>
+              <Glyph>←</Glyph> New Scan
             </CcureButton>
-          )}
-          <CcureButton variant="secondary" size="sm" onClick={onNewScan}>
-            <Glyph>←</Glyph> New Scan
-          </CcureButton>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       <CcureCard as={"div"} bodyFlush className="ns-mission__card">
         <div className="ns-console">
@@ -467,7 +479,7 @@ function ActiveMission({
           <div className="ns-hosts__header">
             <div className="ns-hosts__heading">
               <h2 id={hostsTitleId} className="ns-hosts__title">
-                <Glyph>🖥</Glyph> Discovered Systems
+                <CcureIcon name="monitor" /> Discovered Systems
               </h2>
               {discoveredHosts.length > 0 && (
                 <CcureBadge variant="primary">
@@ -528,7 +540,7 @@ function ActiveMission({
                 size="sm"
                 onClick={onRunInBackground}
               >
-                <Glyph>📥</Glyph> Run in Background
+                <CcureIcon name="download" /> Run in Background
               </CcureButton>
             )}
             {/* Stop is only offered while the scan is actually running.
@@ -546,7 +558,7 @@ function ActiveMission({
                   "Stopping…"
                 ) : (
                   <>
-                    <Glyph>⏹</Glyph> Stop Scan
+                    <CcureIcon name="stop-circle" /> Stop Scan
                   </>
                 )}
               </CcureButton>
@@ -558,7 +570,7 @@ function ActiveMission({
             )}
             {(isFailed || isCancelled || isUnreachable) && (
               <CcureButton variant="secondary" size="sm" onClick={onNewScan}>
-                <Glyph>↩</Glyph> Try Again
+                <CcureIcon name="rotate-ccw" /> Try Again
               </CcureButton>
             )}
           </div>
@@ -572,7 +584,7 @@ function ActiveMission({
           {outcomeMessage || error}
         </CcureAlert>
       )}
-    </div>
+    </CcurePage>
   );
 }
 
@@ -610,7 +622,7 @@ function ChoiceGroup({
             onClick={() => onChange(option.value)}
             disabled={disabled}
           >
-            <Glyph>{option.icon}</Glyph> {option.label}
+            <CcureIcon name={option.icon} /> {option.label}
           </CcureButton>
         ))}
       </div>
@@ -665,13 +677,13 @@ function OptionRow({
 const SCAN_MODELS = [
   {
     mode: "intensity",
-    icon: "⚡",
+    icon: "zap",
     title: "Intensity-Based Scan",
     desc: "Predefined scan depths (Light, Normal, Deep) without selecting individual ports.",
   },
   {
     mode: "port",
-    icon: "🔌",
+    icon: "link",
     title: "Port-Based Scan",
     desc: "Select predefined templates (IT, SCADA, Web, Database, Remote) or input custom ports.",
   },
@@ -697,7 +709,7 @@ function ScanModelChoice({ value, onChange }) {
             onChange={() => onChange(model.mode)}
           >
             <span className="ns-model__icon" aria-hidden="true">
-              {model.icon}
+              <CcureIcon name={model.icon} />
             </span>
             <span className="ns-model__title">{model.title}</span>
             <span className="ns-model__desc">{model.desc}</span>
@@ -749,7 +761,7 @@ function TargetField({
             onClick={onBrowse}
             disabled={disabled}
           >
-            <Glyph>📂</Glyph> Upload File
+            <CcureIcon name="folder" /> Upload File
           </CcureButton>
         </div>
       </CcureField>
@@ -1985,28 +1997,31 @@ export default function NewScan() {
 
   return (
     <AppLayout pageTitle="New Scan">
-      <div className="ns-page">
-        <header className="ns-hero">
-          <CcureButton
-            variant="ghost"
-            size="sm"
-            className="ns-back"
-            onClick={() => navigate("/audit-dashboard")}
-          >
-            <Glyph>←</Glyph> Back
-          </CcureButton>
-          <CcureBadge variant={badgeMeta.variant} className="ns-hero__badge">
-            {badgeMeta.label}
-          </CcureBadge>
-          <h1 className="ns-title">{pipeline.label}</h1>
-          <p className="ns-sub">{pipeline.description}</p>
-        </header>
+      <CcurePage className="ns-page">
+        <CcurePageHeader
+          title={pipeline.label}
+          subtitle={pipeline.description}
+          badges={
+            <CcureBadge variant={badgeMeta.variant}>
+              {badgeMeta.label}
+            </CcureBadge>
+          }
+          breadcrumb={
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/audit-dashboard")}
+            >
+              <Glyph>←</Glyph> Back
+            </CcureButton>
+          }
+        />
         <ScanQuotaBar
           onQuotaChange={({ quota_exceeded, concurrent_exceeded }) =>
             setQuotaBlocked(quota_exceeded || concurrent_exceeded)
           }
         />
-        <CcureCard as={"div"} bodyFlush className="ns-card">
+        <CcureCard as={"div"} className="ns-card">
           <section className="ns-section">
             <input
               type="file"
@@ -2082,7 +2097,7 @@ export default function NewScan() {
                           URL.revokeObjectURL(url);
                         }}
                       >
-                        <Glyph>📥</Glyph> Export Invalid
+                        <CcureIcon name="download" /> Export Invalid
                       </CcureButton>
                     </p>
                   )}
@@ -2159,7 +2174,7 @@ export default function NewScan() {
                           onClick={() => handleRemoveTarget(row.idx)}
                           aria-label={`Remove ${row.value}`}
                         >
-                          <Glyph>❌</Glyph> Remove
+                          <CcureIcon name="x-circle" /> Remove
                         </CcureButton>
                       ),
                     },
@@ -2242,7 +2257,7 @@ export default function NewScan() {
               disabled={loading}
               aria-haspopup="dialog"
             >
-              <Glyph>⚙️</Glyph> Configure Advanced Settings
+              <CcureIcon name="settings" /> Configure Advanced Settings
             </CcureButton>
 
             {error && <CcureAlert variant="danger">{error}</CcureAlert>}
@@ -2259,7 +2274,7 @@ export default function NewScan() {
             </CcureButton>
           </div>
         </CcureCard>
-      </div>
+      </CcurePage>
 
       {/* Advanced settings, a side sheet */}
       <SettingsDialog open={showAdvanced} setOpen={setShowAdvanced}>
@@ -2378,7 +2393,7 @@ export default function NewScan() {
                     {!customPortsError && parsedCustomPortsCount > 0 && (
                       <div className="ns-estimate">
                         <p className="ns-estimate__title">
-                          <Glyph>⚡</Glyph> Scan Estimation
+                          <CcureIcon name="zap" /> Scan Estimation
                         </p>
                         <dl className="ns-estimate__grid">
                           <div className="ns-estimate__row">
@@ -2416,7 +2431,7 @@ export default function NewScan() {
 
         {/* Exclude Ports Section */}
         <OptionRow
-          icon="🚫"
+          icon={<CcureIcon name="slash" />}
           title="Exclude Specific Ports"
           hint="Exclude sensitive or firewalled ports from scanning"
           checked={excludePortsEnabled}
@@ -2475,7 +2490,7 @@ export default function NewScan() {
 
         {/* Exclude IPs Section */}
         <OptionRow
-          icon="🚫"
+          icon={<CcureIcon name="slash" />}
           title="Exclude Specific IPs / Subnets"
           hint="Exclude sensitive target hosts or subnets from scanning"
           checked={excludeIpsEnabled}
@@ -2516,7 +2531,7 @@ export default function NewScan() {
         {pipelineMode === "asset" && (
           <section className="ns-summary">
             <h3 className="ns-summary__title">
-              <Glyph>🎯</Glyph> Scan Configuration Preview
+              <CcureIcon name="target" /> Scan Configuration Preview
             </h3>
             <dl className="ns-summary__grid">
               <div className="ns-summary__item">
@@ -2592,7 +2607,7 @@ export default function NewScan() {
         {(pipelineMode === "advanced" ||
           pipelineMode === "vulnerability_audit") && (
           <OptionRow
-            icon="🔐"
+            icon={<CcureIcon name="lock" />}
             title="Authenticated Checks (Credentialed)"
             hint="Log in to each host and match installed packages, then correlate with the port scan to find what is actually exposed"
             checked={credentialedEnabled}
@@ -2659,7 +2674,7 @@ export default function NewScan() {
 
         {/* 6. SNMP / Network Topology (optional, all modes) */}
         <OptionRow
-          icon="🗺️"
+          icon={<CcureIcon name="map" />}
           title="Network Topology (SNMP)"
           hint="Enable SNMP to discover network connections"
           checked={snmpEnabled}

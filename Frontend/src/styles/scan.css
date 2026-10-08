@@ -1091,60 +1091,6 @@
   margin: 0;
 }
 
-.ns-hero {
-  position: relative;
-  text-align: center;
-  padding: 24px 0 20px;
-}
-
-.ns-back-btn {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(15, 23, 42, 0.04);
-  color: var(--text);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
-}
-
-.ns-back-btn:hover {
-  background: rgba(15, 23, 42, 0.08);
-  border-color: rgba(15, 23, 42, 0.18);
-}
-
-.ns-title {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.03em;
-}
-
-.ns-sub {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  margin-top: 6px;
-}
-
-.ns-card {
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
 .target-input-wrap {
   position: relative;
 }
@@ -1239,37 +1185,6 @@
   color: var(--text-muted);
   margin-top: 3px;
   line-height: 1.4;
-}
-
-.ns-info-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.ns-info-card {
-  background: var(--bg-white);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-}
-
-.nic-icon {
-  font-size: 1.2rem;
-}
-
-.nic-title {
-  font-size: 0.84rem;
-  font-weight: 700;
-  color: var(--text);
-  margin: 6px 0 4px;
-}
-
-.nic-desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -2455,20 +2370,6 @@
   font-size: 0.78rem;
 }
 
-/* Pipeline badge shown in NewScan hero */
-.ns-pipeline-badge {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  background: var(--accent-dim);
-  border: 1px solid rgba(14, 165, 233, 0.25);
-  color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
    AUTOMATED PIPELINE UI
    ────────────────────────────────────────────────────────────────────────── */
@@ -3264,13 +3165,16 @@
 }
 
 /* ── P2: assessment context, shared by the discovery phases ──────────────── */
+/* Sizes: these rules named `--ccure-font-size-*`, which the design system never
+   defined, so the block always rendered at the inherited size. They now name
+   the real scale — values at the body size, labels and notes one step down. */
 
 .asc-block {
   margin: var(--ccure-space-sm) 0;
 }
 
 .asc-h {
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ccure-text-secondary);
@@ -3283,7 +3187,7 @@
 }
 
 .asc-note {
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
   color: var(--ccure-text-secondary);
   margin: 0 0 var(--ccure-space-2xs);
   line-height: 1.5;
@@ -3298,7 +3202,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-2xs) var(--ccure-space-lg);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-base);
 }
 
 .asc-fact {
@@ -3314,7 +3218,7 @@
 
 .asc-fact dt {
   color: var(--ccure-text-secondary);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
 }
 
 .asc-fact dd {
@@ -3324,7 +3228,7 @@
 
 .asc-spec {
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
   word-break: break-all;
 }
 
@@ -3341,7 +3245,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--ccure-space-3xs);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
 }
 
 .asc-raw {
@@ -3349,7 +3253,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
   border: 1px solid var(--ccure-border);
   border-radius: var(--ccure-radius-sm);
   padding: var(--ccure-space-xs);
@@ -3363,7 +3267,7 @@
   margin-left: var(--ccure-space-2xs);
   cursor: pointer;
   font: inherit;
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-sm);
   color: var(--ccure-text-link, var(--ccure-primary));
 }
 

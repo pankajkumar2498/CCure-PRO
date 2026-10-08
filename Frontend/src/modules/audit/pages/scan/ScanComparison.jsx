@@ -37,6 +37,8 @@ import {
   CcureTable,
   CcureToastProvider,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import usePagedRows from "@audit/hooks/usePagedRows";
 import ReportExportPanel from "@audit/components/scan/ReportExportPanel";
@@ -269,7 +271,8 @@ export default function ScanComparison() {
   if (!scanId) {
     return (
       <AppLayout>
-        <div className="sc-page">
+        <CcurePage className="sc-page">
+          <CcurePageHeader title="Scan Comparison" />
           <CcureAlert variant="info" title="No scan selected">
             Open a scan and choose <strong>Compare with a previous scan</strong>{" "}
             to see what changed.
@@ -280,18 +283,18 @@ export default function ScanComparison() {
           >
             Go to Scan History
           </CcureButton>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
 
   return (
     <AppLayout>
-      <div className="sc-page">
-        <header className="sc-header">
-          <div>
-            <h1 className="sc-title">Scan Comparison</h1>
-            <p className="sc-subtitle">
+      <CcurePage className="sc-page">
+        <CcurePageHeader
+          title="Scan Comparison"
+          subtitle={
+            <>
               {scan ? scanLabel(scan) : scanId}
               {comparison?.baseline_scan_id ? (
                 <>
@@ -300,19 +303,21 @@ export default function ScanComparison() {
                   <code className="sc-code">{comparison.baseline_scan_id}</code>
                 </>
               ) : null}
-            </p>
-          </div>
-          <div className="sc-header__actions">
-            <CcureButton
-              variant="secondary"
-              onClick={() =>
-                navigate(`/scan/credentialed/results?scan_id=${scanId}`)
-              }
-            >
-              Back to results
-            </CcureButton>
-          </div>
-        </header>
+            </>
+          }
+          actions={
+            <div className="sc-header__actions">
+              <CcureButton
+                variant="secondary"
+                onClick={() =>
+                  navigate(`/scan/credentialed/results?scan_id=${scanId}`)
+                }
+              >
+                Back to results
+              </CcureButton>
+            </div>
+          }
+        />
 
         {/* Baseline selection. Only completed scans of the same pipeline mode
             are offered — comparing a credentialed audit against a host
@@ -659,7 +664,7 @@ export default function ScanComparison() {
             </section>
           </>
         ) : null}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

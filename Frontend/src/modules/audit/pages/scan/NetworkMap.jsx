@@ -35,6 +35,9 @@ import {
   CcureSelect,
   CcureTable,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import api from "@shell/api/axiosInstance";
 import "../../styles/NetworkMap.css";
@@ -492,7 +495,7 @@ const EVIDENCE_COLUMNS = [
           className="nmap-link"
           onClick={(e) => e.stopPropagation()}
         >
-          <span aria-hidden="true">🔗</span> Matched
+          <CcureIcon name="link" /> Matched
           <span className="cc-sr-only"> (opens in a new tab)</span>
         </a>
       ) : (
@@ -700,7 +703,7 @@ export default function NetworkMap() {
     switch (action) {
       case "Run ARP-enabled scan":
         setSelectedActionHelp({
-          icon: "🚀",
+          icon: "play",
           title: "Run ARP-enabled Scan",
           content: (
             <div>
@@ -711,7 +714,7 @@ export default function NetworkMap() {
               <p>
                 Ensure you select{" "}
                 <strong>
-                  <span aria-hidden="true">🗺️</span> Network Topology (SNMP)
+                  <CcureIcon name="map" /> Network Topology (SNMP)
                 </strong>{" "}
                 during setup and specify your router credentials.
               </p>
@@ -723,7 +726,7 @@ export default function NetworkMap() {
         break;
       case "Add gateway/router SNMP target":
         setSelectedActionHelp({
-          icon: "🔌",
+          icon: "link",
           title: "Add SNMP target",
           content: (
             <div>
@@ -744,7 +747,7 @@ export default function NetworkMap() {
         break;
       case "Enable ARP table collection":
         setSelectedActionHelp({
-          icon: "🔍",
+          icon: "search",
           title: "Enable ARP Table Collection",
           content: (
             <div>
@@ -771,7 +774,7 @@ export default function NetworkMap() {
         break;
       case "Enable LLDP/CDP on infrastructure devices":
         setSelectedActionHelp({
-          icon: "🌐",
+          icon: "globe",
           title: "Enable LLDP/CDP Link Discovery",
           content: (
             <div>
@@ -799,7 +802,7 @@ export default function NetworkMap() {
         break;
       case "Correlate with asset inventory":
         setSelectedActionHelp({
-          icon: "📋",
+          icon: "clipboard",
           title: "Correlate with Asset Inventory",
           content: (
             <div>
@@ -1399,49 +1402,48 @@ export default function NetworkMap() {
 
   return (
     <AppLayout>
-      <div className="nmap-page" ref={pageRef}>
-        <header className="nmap-header">
-          <div className="nmap-header__titles">
-            <h1 className="nmap-title">
-              <span className="nmap-glyph" aria-hidden="true">
-                🗺️
-              </span>{" "}
-              Network Topology Map
-            </h1>
-            <p className="nmap-subtitle">
+      <CcurePage className="nmap-page" ref={pageRef}>
+        <CcurePageHeader
+          title="Network Topology Map"
+          subtitle={
+            <>
               {scanId ? `Scan ID: ${scanId}` : "Corporate network architecture"}
-            </p>
-          </div>
-          <div className="nmap-header__actions">
-            <p className="nmap-stats">
-              <span>
-                <strong className="nmap-stats__value">{stats.nodes}</strong>{" "}
-                Visible Nodes
-              </span>
-              <span className="nmap-stats__divider" aria-hidden="true">
-                •
-              </span>
-              <span>
-                <strong className="nmap-stats__value">{stats.hosts}</strong>{" "}
-                Total Hosts
-              </span>
-            </p>
-            <CcureButton
-              variant="secondary"
-              size="sm"
-              onClick={fetchTopology}
-              loading={loading}
-            >
-              {loading ? (
-                "Syncing..."
-              ) : (
-                <>
-                  <span aria-hidden="true">↻</span> Refresh
-                </>
-              )}
-            </CcureButton>
-          </div>
-        </header>
+            </>
+          }
+          actions={
+            <>
+              <div className="nmap-header__actions">
+                <p className="nmap-stats">
+                  <span>
+                    <strong className="nmap-stats__value">{stats.nodes}</strong>{" "}
+                    Visible Nodes
+                  </span>
+                  <span className="nmap-stats__divider" aria-hidden="true">
+                    •
+                  </span>
+                  <span>
+                    <strong className="nmap-stats__value">{stats.hosts}</strong>{" "}
+                    Total Hosts
+                  </span>
+                </p>
+                <CcureButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={fetchTopology}
+                  loading={loading}
+                >
+                  {loading ? (
+                    "Syncing..."
+                  ) : (
+                    <>
+                      <CcureIcon name="refresh-cw" /> Refresh
+                    </>
+                  )}
+                </CcureButton>
+              </div>
+            </>
+          }
+        />
 
         <section className="nmap-toolbar" aria-label="Map controls">
           <div className="nmap-toolbar__actions">
@@ -1451,7 +1453,7 @@ export default function NetworkMap() {
               onClick={handleFit}
               title="Fit Entire Network View"
             >
-              <span aria-hidden="true">🔍</span> Fit Screen
+              <CcureIcon name="search" /> Fit Screen
             </CcureButton>
             <CcureButton
               variant="secondary"
@@ -1459,7 +1461,7 @@ export default function NetworkMap() {
               onClick={handleExpandAll}
               title="Expand All Visible Subnets"
             >
-              <span aria-hidden="true">📂</span> Expand All
+              <CcureIcon name="folder" /> Expand All
             </CcureButton>
             <CcureButton
               variant="secondary"
@@ -1467,7 +1469,7 @@ export default function NetworkMap() {
               onClick={handleCollapseAll}
               title="Collapse All Subnets"
             >
-              <span aria-hidden="true">📁</span> Collapse All
+              <CcureIcon name="folder" /> Collapse All
             </CcureButton>
           </div>
 
@@ -1587,7 +1589,7 @@ export default function NetworkMap() {
             {!loading && !error && allNodesRef.current.length === 0 && (
               <CcureEmptyState
                 className="nmap-graph__state"
-                icon="🔍"
+                icon={<CcureIcon name="search" />}
                 title="No Network Nodes Discovered"
                 description="Run a network scan configured with SNMP to view the device hierarchy."
               />
@@ -1755,8 +1757,8 @@ export default function NetworkMap() {
                       }}
                       title="Open detailed endpoint evidence table in overlay"
                     >
-                      <span aria-hidden="true">📊</span> View Endpoint Evidence
-                      ({selectedEndpoints.length} devices)
+                      <CcureIcon name="bar-chart" /> View Endpoint Evidence (
+                      {selectedEndpoints.length} devices)
                     </CcureButton>
                     {!!selectedNode.recommended_actions?.length && (
                       <div className="nmap-actions">
@@ -1801,7 +1803,7 @@ export default function NetworkMap() {
             )}
           </aside>
         </div>
-      </div>
+      </CcurePage>
 
       {isEvidenceModalOpen &&
         selectedNode &&
@@ -1813,7 +1815,7 @@ export default function NetworkMap() {
             className="nmap-modal"
             title={
               <>
-                <span aria-hidden="true">📊</span> Endpoint Evidence —{" "}
+                <CcureIcon name="bar-chart" /> Endpoint Evidence —{" "}
                 {subnetTitle(selectedNode.subnet)}
               </>
             }
@@ -1908,7 +1910,7 @@ export default function NetworkMap() {
           className="nmap-modal"
           title={
             <>
-              <span aria-hidden="true">{selectedActionHelp.icon}</span>{" "}
+              <CcureIcon name={selectedActionHelp.icon} />{" "}
               {selectedActionHelp.title}
             </>
           }

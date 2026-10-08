@@ -23,6 +23,9 @@ import {
   CcureCard,
   CcureRadio,
   CcureCheckbox,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/credentialed-scan.css";
 import { parseTargets, runCredentialedScan } from "@audit/api/credentialedScan";
@@ -34,49 +37,49 @@ const SECTIONS = [
   {
     key: "system_info",
     label: "System Info",
-    icon: "🖥",
+    icon: "monitor",
     desc: "OS, kernel/build, CPU, RAM, disk",
   },
   {
     key: "packages",
     label: "Packages",
-    icon: "📦",
+    icon: "package",
     desc: "Installed software (dpkg/rpm/registry)",
   },
   {
     key: "services",
     label: "Running Services",
-    icon: "⚙️",
+    icon: "settings",
     desc: "Active services / systemd units",
   },
   {
     key: "ports",
     label: "Listening Sockets",
-    icon: "🔌",
+    icon: "link",
     desc: "Host socket table — not a network port scan",
   },
   {
     key: "users",
     label: "Users",
-    icon: "👤",
+    icon: "user",
     desc: "User accounts & admin analysis",
   },
   {
     key: "security",
     label: "Security Audit",
-    icon: "🔒",
+    icon: "lock",
     desc: "Firewall, shares, SUID, sudo, RDP",
   },
   {
     key: "network",
     label: "Network",
-    icon: "🌐",
+    icon: "globe",
     desc: "Interfaces, ARP, env vars",
   },
   {
     key: "history",
     label: "Login History",
-    icon: "📋",
+    icon: "clipboard",
     desc: "Recent logins & failures",
   },
 ];
@@ -220,18 +223,19 @@ export default function CredentialedScan() {
 
   return (
     <AppLayout>
-      <div className="page-inner cs-page">
-        <div className="cs-back-row">
-          <CcureButton
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/audit-dashboard")}
-          >
-            ← Back
-          </CcureButton>
-        </div>
-
-        <h1 className="page-title">Credentialed Scan</h1>
+      <CcurePage>
+        <CcurePageHeader
+          title="Credentialed Scan"
+          breadcrumb={
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/audit-dashboard")}
+            >
+              ← Back
+            </CcureButton>
+          }
+        />
 
         {/* A control that is merely disabled says nothing about why. The
             refusal is stated in words as well, and `live={false}` because a
@@ -337,7 +341,7 @@ export default function CredentialedScan() {
               >
                 <option value="auto">Auto-detect</option>
                 <option value="linux">Linux</option>
-                <option value="windows">Windows ⚠ Beta</option>
+                <option value="windows">Windows (Beta)</option>
               </CcureSelect>
             </div>
 
@@ -451,7 +455,10 @@ export default function CredentialedScan() {
                       onClick={() => setAuthMethod(method)}
                       disabled={formDisabled}
                     >
-                      {method === "password" ? "🔑 Password" : "📄 SSH Key"}
+                      <CcureIcon
+                        name={method === "password" ? "key" : "file-text"}
+                      />{" "}
+                      {method === "password" ? "Password" : "SSH Key"}
                     </CcureButton>
                   ))}
                 </div>
@@ -502,9 +509,7 @@ export default function CredentialedScan() {
                           }
                           disabled={formDisabled}
                         >
-                          <span aria-hidden="true">
-                            {showPass ? "🙈" : "👁"}
-                          </span>
+                          <CcureIcon name={showPass ? "eye-off" : "eye"} />
                         </CcureButton>
                       }
                     />
@@ -524,8 +529,9 @@ export default function CredentialedScan() {
             )}
 
             <p className="cs-privacy-note">
-              🔒 Credentials are used for this scan only and immediately
-              discarded — never logged, stored, or transmitted elsewhere.
+              <CcureIcon name="lock" /> Credentials are used for this scan only
+              and immediately discarded — never logged, stored, or transmitted
+              elsewhere.
             </p>
           </section>
 
@@ -557,11 +563,13 @@ export default function CredentialedScan() {
                       hiding it outright took the control out of the tab order,
                       so a keyboard user could not choose what is collected. */}
 
-                  <span className="cs-chip-icon" aria-hidden="true">
-                    {s.icon}
+                  <span className="cs-chip-body">
+                    <span className="cs-chip-icon" aria-hidden="true">
+                      <CcureIcon name={s.icon} />
+                    </span>
+                    <span className="cs-chip-label">{s.label}</span>
+                    <span className="cs-chip-desc">{s.desc}</span>
                   </span>
-                  <span className="cs-chip-label">{s.label}</span>
-                  <span className="cs-chip-desc">{s.desc}</span>
                 </CcureCheckbox>
               ))}
             </div>
@@ -604,11 +612,17 @@ export default function CredentialedScan() {
               loading={loading}
               disabled={!canExecuteScans}
             >
-              {loading ? "Scanning…" : "🔐 Start Credentialed Scan"}
+              {loading ? (
+                "Scanning…"
+              ) : (
+                <>
+                  <CcureIcon name="lock" /> Start Credentialed Scan
+                </>
+              )}
             </CcureButton>
           </div>
         </CcureCard>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

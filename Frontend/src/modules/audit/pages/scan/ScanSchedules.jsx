@@ -53,6 +53,9 @@ import {
   CcureSelect,
   CcureTable,
   CcureTextarea,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import {
   createScanSchedule,
@@ -357,22 +360,24 @@ export default function ScanSchedules() {
 
   return (
     <AppLayout pageTitle="Scan Schedules">
-      <div className="page-inner ss-page">
-        <div className="page-title-row">
-          <div>
-            <h1 className="page-title">Scan Schedules</h1>
-            <p className="page-subtitle">
+      <CcurePage className="ss-page">
+        <CcurePageHeader
+          title="Scan Schedules"
+          subtitle={
+            <>
               Scheduled scans run through the same pipeline as manual ones, so
               their results appear in Scan History, reports and the dashboard
               exactly as if you had started them yourself.
-            </p>
-          </div>
-          <div className="ss-toolbar">
-            <CcureButton variant="primary" size="sm" onClick={openNew}>
-              New schedule
-            </CcureButton>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <div className="ss-toolbar">
+              <CcureButton variant="primary" size="sm" onClick={openNew}>
+                New schedule
+              </CcureButton>
+            </div>
+          }
+        />
 
         {autoDisabled.length > 0 && (
           <CcureAlert variant="warning" className="ss-auto-off">
@@ -416,7 +421,7 @@ export default function ScanSchedules() {
           <CcureLoader label="Loading scan schedules…" />
         ) : schedules.length === 0 ? (
           <CcureEmptyState
-            icon="🗓"
+            icon={<CcureIcon name="calendar" />}
             title="No scan schedules yet"
             description="Create one to run a network or credentialed scan on a recurring basis."
           />
@@ -739,7 +744,7 @@ export default function ScanSchedules() {
             )}
           </CcureCard>
         )}
-      </div>
+      </CcurePage>
 
       <CcureConfirmDialog
         open={Boolean(confirmDelete)}

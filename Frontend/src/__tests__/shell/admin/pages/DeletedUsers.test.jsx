@@ -231,7 +231,7 @@ describe("DeletedUsers — functional", () => {
     // The pagination summary also says "of 3 deleted users", so a page-wide
     // text query matches twice. Scoped to the subtitle, which is what this
     // assertion is actually about.
-    const subtitle = container.querySelector(".page-subtitle");
+    const subtitle = container.querySelector(".cc-page-header__subtitle");
     expect(subtitle).toHaveTextContent(/3 deleted users/i);
   });
 
@@ -612,10 +612,10 @@ describe("DeletedUsers — rendered surface", () => {
     expect(document.querySelectorAll("tbody tr").length).toBe(3);
   });
 
-  it("keeps the page heading", async () => {
+  it("keeps the page heading, as the page's h1 (B.13)", async () => {
     await renderPage();
     expect(
-      screen.getByRole("heading", { name: /^deleted users$/i, level: 2 }),
+      screen.getByRole("heading", { name: /^deleted users$/i, level: 1 }),
     ).toBeInTheDocument();
   });
 });

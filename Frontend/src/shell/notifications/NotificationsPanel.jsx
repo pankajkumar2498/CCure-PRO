@@ -37,6 +37,7 @@ import {
   CcureTabPanel,
   CcureTabs,
   useCcureTabs,
+  CcureIcon,
 } from "../../design-system";
 import { useNotificationPresentation } from "./notificationPresentation";
 import "../navigation/navigation.css";
@@ -109,7 +110,7 @@ function NotifItem({ notif, onRead, onDelete }) {
           className={`shn-item-icon shn-item-icon--${meta.tone}`}
           aria-hidden="true"
         >
-          {meta.emoji}
+          <CcureIcon name={meta.icon} />
         </span>
         <span className="shn-item-body">
           <span className="shn-item-title">{notif.title}</span>
@@ -393,7 +394,7 @@ export default function NotificationsPanel({
         ) : items.length === 0 ? (
           <CcureEmptyState
             title={getEmptyMessage()}
-            icon="🔔"
+            icon={<CcureIcon name="bell" />}
             className="shn-empty"
           />
         ) : (

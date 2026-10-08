@@ -140,7 +140,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
   };
 
   return (
-    <div className="rm-sla">
+    <div className="rmd-sla">
       {notice ? (
         <CcureAlert variant={notice.variant} onClose={() => setNotice(null)}>
           {notice.text}
@@ -154,14 +154,14 @@ export default function SlaPolicyPanel({ canEdit = false }) {
         </CcureAlert>
       ) : null}
 
-      <p className="rm-note">
+      <p className="rmd-note">
         Deadlines are in <strong>{policy.unit || "calendar days"}</strong>,
         counted from when a finding was first found. Rediscovery does not
         restart the clock. <strong>Zero means no deadline applies</strong> — not
         that the finding is due immediately.
       </p>
 
-      <div className="rm-sla__grid">
+      <div className="rmd-sla__grid">
         {keys.map((k) => (
           <CcureInput
             key={k}
@@ -176,7 +176,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
         ))}
       </div>
 
-      <div className="rm-sla__grid">
+      <div className="rmd-sla__grid">
         <CcureInput
           label="Due soon window"
           type="number"
@@ -188,14 +188,14 @@ export default function SlaPolicyPanel({ canEdit = false }) {
           hint="How long before the due date a finding starts reporting due soon."
         />
         <CcureCheckbox
-          className="rm-check"
+          className="rmd-check"
           checked={kev}
           disabled={!canEdit || busy}
           onChange={(e) => setKev(e.target.checked)}
         >
           <span>
             Honour CISA KEV due dates
-            <small className="rm-muted">
+            <small className="rmd-muted">
               {" "}
               — a KEV date is used where it is <em>earlier</em> than the
               internal one, never where it is later. An organisation cannot
@@ -206,7 +206,7 @@ export default function SlaPolicyPanel({ canEdit = false }) {
       </div>
 
       {canEdit ? (
-        <div className="rm-actionrow">
+        <div className="rmd-actionrow">
           <CcureButton
             variant="primary"
             disabled={!dirty || busy}

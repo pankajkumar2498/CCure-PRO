@@ -4,116 +4,131 @@
  * semantic tokens so the screen follows the theme like every other page.
  */
 
-.rm-page {
+/* The page is a CcurePage with the shared CcurePageHeader; before B.12 it had
+   neither and ran flush against the sidebar. This arranges only what is inside. */
+.rmd-page {
+  --ccure-page-gap: var(--ccure-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-lg);
+  gap: var(--ccure-page-gap);
 }
 
-.rm-head h1 {
-  margin: 0 0 var(--ccure-space-2xs);
-  font-size: var(--ccure-font-size-2xl);
+.rmd-muted {
+  color: var(--ccure-text-secondary);
 }
 
-.rm-muted {
-  color: var(--ccure-color-text-secondary);
+.rmd-note {
+  margin: 0 0 var(--ccure-space-md);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
 }
 
-.rm-note {
-  margin: var(--ccure-space-2xs) 0 var(--ccure-space-sm);
-  color: var(--ccure-color-text-secondary);
-  font-size: var(--ccure-font-size-sm);
-  line-height: 1.5;
-}
+/* ── Summary, queues and SLA policy: one surface each ─────────────────────── */
 
-/* ── Summary ───────────────────────────────────────────────────────────── */
-
-.rm-summary {
-  border: 1px solid var(--ccure-color-border);
-  border-radius: var(--ccure-radius-md);
-  background: var(--ccure-color-surface);
-  padding: var(--ccure-space-md);
+.rmd-summary,
+.rmd-queues,
+.rmd-slasection {
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  background: var(--ccure-surface);
+  padding: var(--ccure-space-lg);
+  min-width: 0;
 }
 
 /* The backend's own sentence. Kept monospaced so it is legible as the single
    assembled string it is rather than reflowing into the prose around it. */
-.rm-summary__line {
+.rmd-summary__line {
   margin: 0 0 var(--ccure-space-md);
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-sm);
-  color: var(--ccure-color-text-primary);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
 }
 
-.rm-metrics {
-  display: flex;
-  flex-wrap: wrap;
+.rmd-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.5rem), 1fr));
   gap: var(--ccure-space-sm);
   margin-bottom: var(--ccure-space-sm);
 }
 
-.rm-metric {
-  flex: 1 1 8rem;
-  min-width: 8rem;
-  border: 1px solid var(--ccure-color-border);
-  border-radius: var(--ccure-radius-sm);
-  padding: var(--ccure-space-sm);
-  background: var(--ccure-color-surface-raised, var(--ccure-color-surface));
+.rmd-metric {
+  min-width: 0;
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
 }
 
-.rm-metric--bad {
-  border-color: var(--ccure-color-danger-border, var(--ccure-color-border));
+.rmd-metric--bad {
+  border-color: var(--ccure-danger-border);
+  background: var(--ccure-danger-bg);
 }
 
-.rm-metric__n {
-  font-size: var(--ccure-font-size-xl);
-  font-weight: var(--ccure-font-weight-bold, 700);
+.rmd-metric__n {
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
 }
 
-.rm-metric__l {
-  font-size: var(--ccure-font-size-xs);
-  color: var(--ccure-color-text-secondary);
+.rmd-metric--bad .rmd-metric__n {
+  color: var(--ccure-danger-text);
+}
+
+.rmd-metric__l {
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
 }
 
 /* ── Queues ────────────────────────────────────────────────────────────── */
 
-.rm-tabs {
-  margin-bottom: var(--ccure-space-sm);
+.rmd-tabs {
+  margin-bottom: var(--ccure-space-md);
 }
 
-.rm-toolbar {
+.rmd-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--ccure-space-sm);
-  margin-bottom: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-md);
 }
 
-.rm-link {
+.rmd-owner-field {
+  flex: 0 1 18rem;
+  min-width: 12rem;
+}
+
+.rmd-link {
   border: none;
   background: none;
   padding: 0;
   cursor: pointer;
-  color: var(--ccure-color-primary);
+  color: var(--ccure-text-link);
   text-align: left;
   font: inherit;
   word-break: break-all;
 }
 
-.rm-slacell {
+.rmd-slacell {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--ccure-space-3xs);
 }
 
 /* ── Finding panel ─────────────────────────────────────────────────────── */
 
-.rm-panel {
+.rmd-panel {
   display: flex;
   flex-direction: column;
   gap: var(--ccure-space-md);
 }
 
-.rm-panel__head {
+.rmd-panel__head {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -121,66 +136,66 @@
   gap: var(--ccure-space-sm);
 }
 
-.rm-panel__id {
+.rmd-panel__id {
   font-family: var(--ccure-font-mono, monospace);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   word-break: break-all;
 }
 
-.rm-panel__sub {
-  color: var(--ccure-color-text-secondary);
-  font-size: var(--ccure-font-size-xs);
+.rmd-panel__sub {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-xs);
 }
 
-.rm-panel__badges {
+.rmd-panel__badges {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-2xs);
 }
 
-.rm-sections {
+.rmd-sections {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-md);
 }
 
-.rm-section {
+.rmd-section {
   /* Reset the basis when the row stacks, so a narrow viewport does not leave
      one section pinned at a width the others no longer share. */
   flex: 1 1 16rem;
   min-width: 0;
 }
 
-.rm-section--wide {
+.rmd-section--wide {
   flex-basis: 100%;
 }
 
-.rm-section__h {
+.rmd-section__h {
   margin: 0 0 var(--ccure-space-2xs);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--ccure-color-text-secondary);
+  color: var(--ccure-text-secondary);
 }
 
-.rm-kvs {
+.rmd-kvs {
   margin: 0;
 }
 
-.rm-kv {
+.rmd-kv {
   display: flex;
   gap: var(--ccure-space-xs);
   padding: var(--ccure-space-3xs) 0;
-  border-bottom: 1px solid var(--ccure-color-border-subtle, transparent);
-  font-size: var(--ccure-font-size-sm);
+  border-bottom: 1px solid var(--ccure-border-subtle, transparent);
+  font-size: var(--ccure-text-sm);
 }
 
-.rm-kv__key {
+.rmd-kv__key {
   flex: 0 0 9rem;
-  color: var(--ccure-color-text-secondary);
+  color: var(--ccure-text-secondary);
 }
 
-.rm-kv__val {
+.rmd-kv__val {
   margin: 0;
   flex: 1 1 auto;
   min-width: 0;
@@ -189,12 +204,12 @@
 
 /* ── Actions ───────────────────────────────────────────────────────────── */
 
-.rm-actions {
-  border-top: 1px solid var(--ccure-color-border);
+.rmd-actions {
+  border-top: 1px solid var(--ccure-border);
   padding-top: var(--ccure-space-sm);
 }
 
-.rm-actionrow {
+.rmd-actionrow {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -202,17 +217,17 @@
   margin-bottom: var(--ccure-space-sm);
 }
 
-.rm-unavailable {
+.rmd-unavailable {
   margin: 0 0 var(--ccure-space-sm);
   padding-left: var(--ccure-space-md);
-  color: var(--ccure-color-text-secondary);
-  font-size: var(--ccure-font-size-xs);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-xs);
   line-height: 1.6;
 }
 
 /* ── Timeline ──────────────────────────────────────────────────────────── */
 
-.rm-timeline {
+.rmd-timeline {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -221,78 +236,90 @@
   gap: var(--ccure-space-xs);
 }
 
-.rm-timeline__item {
-  border-left: 2px solid var(--ccure-color-border);
+.rmd-timeline__item {
+  border-left: 2px solid var(--ccure-border);
   padding-left: var(--ccure-space-sm);
 }
 
-.rm-timeline__head {
+.rmd-timeline__head {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-xs);
   align-items: baseline;
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
 }
 
-.rm-timeline__move {
-  font-size: var(--ccure-font-size-xs);
-  color: var(--ccure-color-text-secondary);
+.rmd-timeline__move {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
 }
 
-.rm-timeline__by,
-.rm-timeline__note {
-  font-size: var(--ccure-font-size-xs);
-  color: var(--ccure-color-text-secondary);
+.rmd-timeline__by,
+.rmd-timeline__note {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
 }
 
-.rm-timeline__details {
+.rmd-timeline__details {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-xs);
   margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-font-size-xs);
-  color: var(--ccure-color-text-secondary);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
 }
 
-.rm-timeline__details dt {
+.rmd-timeline__details dt {
   display: inline;
-  font-weight: var(--ccure-font-weight-bold, 700);
+  font-weight: var(--ccure-weight-bold, 700);
 }
 
-.rm-timeline__details dd {
+.rmd-timeline__details dd {
   display: inline;
   margin: 0 var(--ccure-space-xs) 0 var(--ccure-space-3xs);
 }
 
 /* ── SLA policy ────────────────────────────────────────────────────────── */
 
-.rm-sla {
+.rmd-sla {
   display: flex;
   flex-direction: column;
   gap: var(--ccure-space-sm);
 }
 
-.rm-sla__grid {
+.rmd-sla__grid {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-sm);
 }
 
-.rm-sla__grid > * {
+.rmd-sla__grid > * {
   flex: 1 1 10rem;
   min-width: 0;
 }
 
-.rm-check {
+.rmd-check {
   display: flex;
   gap: var(--ccure-space-2xs);
   align-items: flex-start;
   flex: 2 1 20rem;
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
   line-height: 1.5;
 }
 
-.rm-slasection h2 {
-  font-size: var(--ccure-font-size-lg);
-  margin: 0 0 var(--ccure-space-2xs);
+.rmd-slasection h2 {
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-semibold);
+  margin: 0 0 var(--ccure-space-xs);
+}
+
+@media (max-width: 640px) {
+  .rmd-summary,
+  .rmd-queues,
+  .rmd-slasection {
+    padding: var(--ccure-space-md);
+  }
+  .rmd-owner-field {
+    flex-basis: 100%;
+  }
 }

@@ -4,7 +4,7 @@
    Layout only. Every control is a CCure primitive (CcureTable, CcureBadge,
    CcureButton, CcureInput/CcureSelect, CcurePasswordField, CcureModal,
    CcurePagination, CcureAlert) or a security pattern (CcureConfirmDialog);
-   the page chrome is the shared `.page-inner` / `.page-title-row` family.
+   the page chrome is the shared page structure (`CcurePage`, `CcurePageHeader`; B.13).
 
    Nothing was deleted from the legacy stylesheets on this page's account:
    `.card--admin-form`, `.form-horizontal`, `.field`, `.field-input`,

@@ -455,7 +455,7 @@ describe("ComplianceWorkspace attestation and evidence — contract", () => {
         "notes.txt",
       ]);
       expect(squash(itemOf(box, "access-policy.pdf"))).toMatch(
-        /^📎 access-policy\.pdf \(2 KB\)\s*Remove$/,
+        /^access-policy\.pdf \(2 KB\)\s*Remove$/,
       );
       expect(squash(itemOf(box, "sign-off.png"))).toContain(
         "sign-off.png (2 KB)",

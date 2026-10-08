@@ -290,9 +290,9 @@ describe("AuditLogDetailsModal", () => {
     expect(within(dlg).getByText(/^high$/i)).toBeInTheDocument();
     expect(within(dlg).getByText("SUCCESS")).toBeInTheDocument();
     expect(within(dlg).getByText("Account Status")).toBeInTheDocument();
-    expect(within(dlg).getByText("Enabled ➔ Disabled")).toBeInTheDocument();
+    expect(within(dlg).getByText("Enabled → Disabled")).toBeInTheDocument();
     expect(within(dlg).getByText("Password")).toBeInTheDocument();
-    expect(within(dlg).getByText("•••••••• ➔ ••••••••")).toBeInTheDocument();
+    expect(within(dlg).getByText("•••••••• → ••••••••")).toBeInTheDocument();
     expect(dlg.textContent).not.toContain("argon2");
     expect(within(dlg).getByText("Alice A.")).toBeInTheDocument();
   });

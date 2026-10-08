@@ -20,7 +20,13 @@
  *                          product cannot be known, so nothing is assumed.
  */
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { CcureAlert, CcureBadge, CcureButton } from "../../design-system";
+import {
+  CcureAlert,
+  CcureBadge,
+  CcureButton,
+  CcurePage,
+  CcurePageHeader,
+} from "../../design-system";
 import PlatformLayout from "../layout/PlatformLayout";
 import useProductList from "../products/useProductList";
 import { AVAILABILITY, availabilityOf } from "../products/productList";
@@ -87,12 +93,14 @@ function EntryContent() {
     const [badge, variant] = BADGE[availability];
     return (
       <>
-        <h1 className="pl-title">{product.title || "Unnamed product"}</h1>
-        <p className="pl-lead">
-          <CcureBadge variant={variant} dot>
-            {badge}
-          </CcureBadge>
-        </p>
+        <CcurePageHeader
+          title={product.title || "Unnamed product"}
+          badges={
+            <CcureBadge variant={variant} dot>
+              {badge}
+            </CcureBadge>
+          }
+        />
         {product.description ? (
           <p className="pm-statement">{product.description}</p>
         ) : null}
@@ -119,9 +127,9 @@ function EntryContent() {
 export default function ModuleEntryPage() {
   return (
     <PlatformLayout>
-      <div className="page-inner">
+      <CcurePage>
         <EntryContent />
-      </div>
+      </CcurePage>
     </PlatformLayout>
   );
 }

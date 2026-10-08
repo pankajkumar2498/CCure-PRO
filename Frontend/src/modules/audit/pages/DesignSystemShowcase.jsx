@@ -170,7 +170,7 @@ const SECTIONS = [
         id: "vulns",
         label: "Vulnerabilities",
         route: "/design-system#vulns",
-        icon: "⚠",
+        icon: "alert-triangle",
       },
       {
         id: "compliance",

@@ -98,7 +98,7 @@ const getFriendlyValue = (key, val) => {
   if (val && typeof val === "object" && "old" in val && "new" in val) {
     const oldDisplay = formatSingleValue(key, val.old);
     const newDisplay = formatSingleValue(key, val.new);
-    return `${oldDisplay} ➔ ${newDisplay}`;
+    return `${oldDisplay} → ${newDisplay}`;
   }
   if (typeof val === "object") {
     return JSON.stringify(val);

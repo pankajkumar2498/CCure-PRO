@@ -4,6 +4,7 @@ import CcureButton from "../components/CcureButton";
 import CcureIconButton from "../components/CcureIconButton";
 import CcureDrawer from "../components/CcureDrawer";
 import useMediaQuery from "../hooks/useMediaQuery";
+import CcureIcon from "../icons/CcureIcon";
 
 /**
  * CcureAppShell
@@ -45,7 +46,7 @@ import useMediaQuery from "../hooks/useMediaQuery";
  *     is worse than none, and this product's pages carry their own h1.
  */
 export default function CcureAppShell({
-  brand = { name: "CCure Audit", sub: "PRO", mark: "◈" },
+  brand = { name: "CCure Audit", sub: "PRO" },
   identity,
   sections = [],
   currentPath = "",
@@ -77,7 +78,9 @@ export default function CcureAppShell({
     <>
       <div className="cc-sidebar__brand">
         <span className="cc-sidebar__brand-mark" aria-hidden="true">
-          {brand.mark ?? "◈"}
+          {/* One mark for the whole application, so every product's sidebar
+              opens on the same brand. */}
+          {brand.mark ?? <CcureIcon name="shield" />}
         </span>
         <span className="cc-sidebar__brand-text">
           <span className="cc-sidebar__brand-name">{brand.name}</span>
@@ -235,7 +238,7 @@ export default function CcureAppShell({
             aria-controls={!mobile || navOpen ? "cc-sidebar" : undefined}
             aria-label={navOpen ? "Close navigation" : "Open navigation"}
           >
-            <span aria-hidden="true">☰</span>
+            <CcureIcon name="menu" size="1.25em" />
           </CcureIconButton>
           {/* h1 on the shell only when the host asks for one: this product's
               pages carry their own h1 (batches 10–11), so AppLayout does not. */}

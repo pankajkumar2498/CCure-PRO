@@ -50,6 +50,9 @@ import {
   CcureScanStatus,
   CcureSeverityBadge,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/scan-history.css";
 
@@ -316,7 +319,7 @@ function ConfirmDialog({ config, onConfirm, onCancel }) {
       className="sh-confirm"
       title={
         <>
-          <span aria-hidden="true">{config.icon}</span> {title}
+          <CcureIcon name={config.icon} /> {title}
         </>
       }
       subtitle={subtitle}
@@ -896,7 +899,7 @@ export default function ScanHistory({ mode = "history" }) {
       scan,
       config: {
         type: "rerun",
-        icon: "🔁",
+        icon: "repeat",
         iconClass: "info",
         title: `Re-run ${scanLabel(scan)}?`,
         subtitle:
@@ -1142,7 +1145,7 @@ export default function ScanHistory({ mode = "history" }) {
       scan: s,
       config: {
         type: "delete", // Reuse danger style
-        icon: "⏹",
+        icon: "stop-circle",
         iconClass: "danger",
         title: "Stop Scan?",
         subtitle: `Are you sure you want to terminate ${scanLabel(s)}?`,
@@ -1335,41 +1338,41 @@ export default function ScanHistory({ mode = "history" }) {
 
   return (
     <AppLayout pageTitle={isMonitor ? "Active Scans" : "Scan History"}>
-      <div className="sh-page">
+      <CcurePage className="sh-page">
         {/* Page header */}
-        <header className="sh-header">
-          <div>
-            <h1 className="sh-title">
-              {isMonitor ? "Active Scans" : "Scan History"}
-            </h1>
-            <p className="sh-subtitle">
+        <CcurePageHeader
+          title={<>{isMonitor ? "Active Scans" : "Scan History"}</>}
+          subtitle={
+            <>
               {isMonitor
                 ? `${visible.length} active operation${visible.length !== 1 ? "s" : ""}`
                 : `${total} scan${total !== 1 ? "s" : ""} · ${user?.username}`}
-            </p>
-          </div>
-          <div className="sh-header__actions">
-            <p
-              className={`sh-live sh-live--${liveState}`}
-              role="status"
-              title={
-                lastLiveAt
-                  ? `Last update ${lastLiveAt.toLocaleTimeString()}`
-                  : ""
-              }
-            >
-              <span className="sh-live__dot" aria-hidden="true" />
-              <span>{LIVE_LABELS[liveState]}</span>
-            </p>
-            <CcureButton
-              variant="ghost"
-              onClick={() => load()}
-              loading={refreshing}
-            >
-              Sync now
-            </CcureButton>
-          </div>
-        </header>
+            </>
+          }
+          actions={
+            <div className="sh-header__actions">
+              <p
+                className={`sh-live sh-live--${liveState}`}
+                role="status"
+                title={
+                  lastLiveAt
+                    ? `Last update ${lastLiveAt.toLocaleTimeString()}`
+                    : ""
+                }
+              >
+                <span className="sh-live__dot" aria-hidden="true" />
+                <span>{LIVE_LABELS[liveState]}</span>
+              </p>
+              <CcureButton
+                variant="ghost"
+                onClick={() => load()}
+                loading={refreshing}
+              >
+                Sync now
+              </CcureButton>
+            </div>
+          }
+        />
 
         {/* Filters */}
         <div className="sh-filters">
@@ -1450,7 +1453,7 @@ export default function ScanHistory({ mode = "history" }) {
 
         {!loading && !error && visible.length === 0 && (
           <CcureEmptyState
-            icon={isMonitor ? "📡" : "📋"}
+            icon={<CcureIcon name={isMonitor ? "radio" : "clipboard"} />}
             title={
               isMonitor
                 ? "No active scans running right now."
@@ -1515,7 +1518,7 @@ export default function ScanHistory({ mode = "history" }) {
             Showing {sorted.length} of {total} scans
           </p>
         )}
-      </div>
+      </CcurePage>
 
       {/* Detail modal */}
       {viewId && (

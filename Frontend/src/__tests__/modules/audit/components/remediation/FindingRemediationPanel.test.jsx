@@ -213,7 +213,7 @@ describe("the event trail", () => {
     mountWith(withdrawn);
     await screen.findByText("History");
 
-    const items = document.querySelectorAll(".rm-timeline__item");
+    const items = document.querySelectorAll(".rmd-timeline__item");
     expect(items.length).toBe(history.events.length);
     // Not re-sorted here: the API orders by occurred_at then id, and the id
     // carries a random tail, so re-deriving an order would be this UI

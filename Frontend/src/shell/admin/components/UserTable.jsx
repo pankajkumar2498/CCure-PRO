@@ -17,6 +17,7 @@ import {
   CcureEmptyState,
   CcureLoader,
   CcureTable,
+  CcureIcon,
 } from "../../../design-system";
 
 const STATUS = {
@@ -199,7 +200,7 @@ export default function UserTable({
   if (users.length === 0) {
     return (
       <CcureEmptyState
-        icon="👥"
+        icon={<CcureIcon name="users" />}
         title="No users found"
         description="Try a different search term or add a new user to get started."
       />

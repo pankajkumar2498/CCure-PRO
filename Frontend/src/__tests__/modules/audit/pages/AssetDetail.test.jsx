@@ -657,7 +657,9 @@ describe("AssetDetail — Asset Information panels", () => {
 describe("AssetDetail — owner", () => {
   it("shows the owner, employee id and the analyst-override provenance badge", async () => {
     await renderPage();
-    expect(screen.getByText(/👤 alice/)).toBeInTheDocument();
+    expect(
+      screen.getByText("alice", { selector: ".ad-owner-name" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Employee ID:/)).toHaveTextContent("E-1001");
     expect(screen.getByText("OVERRIDE")).toBeInTheDocument();
   });
@@ -686,7 +688,9 @@ describe("AssetDetail — owner", () => {
       }),
     );
     expect(axiosInstance.patch).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/👤 bob/)).toBeInTheDocument();
+    expect(
+      screen.getByText("bob", { selector: ".ad-owner-name" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument();
@@ -700,7 +704,9 @@ describe("AssetDetail — owner", () => {
     await user.type(ownerInput(), "mallory");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     noWrites();
-    expect(screen.getByText(/👤 alice/)).toBeInTheDocument();
+    expect(
+      screen.getByText("alice", { selector: ".ad-owner-name" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit" }));
     expect(ownerInput()).toHaveValue("alice");
   });
@@ -732,7 +738,7 @@ describe("AssetDetail — managed toggle", () => {
       }),
     );
     expect(
-      screen.getByRole("button", { name: /✔ Managed Asset/ }),
+      screen.getByRole("button", { name: /^Managed Asset$/ }),
     ).toBeInTheDocument();
     expect(axiosInstance.patch).toHaveBeenCalledTimes(1);
   });
@@ -740,7 +746,7 @@ describe("AssetDetail — managed toggle", () => {
   it("PATCHes { is_managed: false } from managed", async () => {
     const user = userEvent.setup();
     await renderPage({ asset: { ...ASSET, is_managed: true } });
-    await user.click(screen.getByRole("button", { name: /✔ Managed Asset/ }));
+    await user.click(screen.getByRole("button", { name: /^Managed Asset$/ }));
     await waitFor(() =>
       expect(axiosInstance.patch).toHaveBeenCalledWith("/assets/a-1", {
         is_managed: false,
@@ -959,8 +965,12 @@ describe("AssetDetail — Services & Ports", () => {
 
     expect(screen.getByText(/HTTP Details/)).toBeInTheDocument();
     expect(screen.getByText("40/100")).toBeInTheDocument();
-    expect(screen.getByText(/❌ Missing/)).toBeInTheDocument(); // HSTS
-    expect(screen.getByText(/✅ Configured/)).toBeInTheDocument(); // CSP
+    expect(screen.getByText("HSTS:").parentElement).toHaveTextContent(
+      "HSTS: Missing",
+    );
+    expect(screen.getByText("CSP:").parentElement).toHaveTextContent(
+      "CSP: Configured",
+    );
     expect(screen.getByText("DENY")).toBeInTheDocument();
     expect(screen.getByText("Strict-Transport-Security")).toBeInTheDocument();
 
@@ -1370,7 +1380,7 @@ describe("AssetDetail — write failures are reported (approved change)", () => 
       expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
     );
     expect(
-      screen.getByRole("button", { name: /✔ Managed Asset/ }),
+      screen.getByRole("button", { name: /^Managed Asset$/ }),
     ).toBeInTheDocument();
     expect(axiosInstance.patch).toHaveBeenCalledTimes(2);
     expect(failureAlert).toBeDefined();

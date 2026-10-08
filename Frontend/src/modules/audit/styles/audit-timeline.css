@@ -148,6 +148,19 @@
   color: inherit;
   text-align: left;
   transition: background var(--ccure-duration-fast) var(--ccure-ease);
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.audit-group-header.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
 }
 
 .audit-group-header:hover {
@@ -468,7 +481,8 @@
     align-items: flex-start;
     gap: var(--ccure-space-sm);
   }
-  .audit-group-header {
+  .audit-group-header,
+  .audit-group-header.cc-btn > span:last-child {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--ccure-space-sm);

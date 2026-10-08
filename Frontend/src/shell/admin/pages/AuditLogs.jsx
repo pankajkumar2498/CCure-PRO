@@ -9,6 +9,9 @@ import {
   CcurePagination,
   CcureSelect,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/audit-logs.css";
 import {
@@ -370,7 +373,9 @@ export default function AuditLogs() {
     if (resType === "session") {
       return (
         <div className="al-row">
-          <span className="al-t-md">🎫</span>
+          <span className="al-t-md" aria-hidden="true">
+            <CcureIcon name="tag" />
+          </span>
           <span className="al-t-sm al-medium">Session #{targetVal}</span>
         </div>
       );
@@ -383,7 +388,9 @@ export default function AuditLogs() {
       const cleanTarget = targetVal.split("_").slice(-2, -1)[0] || targetVal;
       return (
         <div className="al-row">
-          <span className="al-t-md">👤</span>
+          <span className="al-t-md" aria-hidden="true">
+            <CcureIcon name="user" />
+          </span>
           <span className="al-t-sm al-medium">User: {cleanTarget}</span>
         </div>
       );
@@ -395,7 +402,9 @@ export default function AuditLogs() {
         : targetVal;
       return (
         <div className="al-row">
-          <span className="al-t-md">📡</span>
+          <span className="al-t-md" aria-hidden="true">
+            <CcureIcon name="radio" />
+          </span>
           <span className="al-t-sm al-medium al-mono">
             Scan #{displayId.slice(-6)}
           </span>
@@ -405,7 +414,9 @@ export default function AuditLogs() {
 
     return (
       <div className="al-row">
-        <span className="al-t-md">📌</span>
+        <span className="al-t-md" aria-hidden="true">
+          <CcureIcon name="flag" />
+        </span>
         <span className="al-t-sm al-medium">
           {resType.charAt(0).toUpperCase() + resType.slice(1)}
         </span>
@@ -457,45 +468,45 @@ export default function AuditLogs() {
   const getActionDisplay = (action) => {
     const act = String(action || "").toLowerCase();
     const config = {
-      "user.login": { label: "Logged In", icon: "🔑", color: "var(--ok)" },
+      "user.login": { label: "Logged In", icon: "key", color: "var(--ok)" },
       "user.login_failed": {
         label: "Failed Login",
-        icon: "⚠️",
+        icon: "alert-triangle",
         color: "var(--danger)",
       },
       "user.logout": {
         label: "Logged Out",
-        icon: "🚪",
+        icon: "log-out",
         color: "var(--accent)",
       },
       "user.created": {
         label: "User Created",
-        icon: "👤",
+        icon: "user",
         color: "var(--primary)",
       },
       "user.updated": {
         label: "User Updated",
-        icon: "⚙️",
+        icon: "settings",
         color: "var(--warning)",
       },
       "user.deleted": {
         label: "User Deleted",
-        icon: "🗑️",
+        icon: "trash",
         color: "var(--danger)",
       },
       "scan.created": {
         label: "Scan Started",
-        icon: "📡",
+        icon: "radio",
         color: "var(--primary)",
       },
       "scan.completed": {
         label: "Scan Completed",
-        icon: "✅",
+        icon: "check-circle",
         color: "var(--ok)",
       },
       "scan.failed": {
         label: "Scan Failed",
-        icon: "❌",
+        icon: "x-circle",
         color: "var(--danger)",
       },
     };
@@ -512,33 +523,32 @@ export default function AuditLogs() {
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
 
-    return { label: cleanLabel, icon: "📌", color: "var(--text)" };
+    return { label: cleanLabel, icon: "flag", color: "var(--text)" };
   };
 
   if (loading) {
     return (
       <ProductFrame>
-        <div className="page-inner">
+        <CcurePage>
+          <CcurePageHeader title="Audit Logs" />
           <div className="al-centered">
             <CcureLoader label="Loading audit logs…" />
           </div>
-        </div>
+        </CcurePage>
       </ProductFrame>
     );
   }
 
   return (
     <ProductFrame pageTitle="Audit Logs">
-      <div className="page-inner">
-        <div className="page-title-row">
-          <div>
-            <h1 className="page-title">Audit Logs</h1>
-            <p className="page-subtitle">
-              Immutable trail of system activities and user actions
-            </p>
-          </div>
-          <div className="al-title-actions">
-            {/* The region is mounted unconditionally and the button appears
+      <CcurePage>
+        <CcurePageHeader
+          title="Audit Logs"
+          subtitle={<>Immutable trail of system activities and user actions</>}
+          actions={
+            <>
+              <div className="al-title-actions">
+                {/* The region is mounted unconditionally and the button appears
                 inside it. A `role="status"` that mounts at the same moment its
                 content arrives is frequently not announced at all — the reader
                 has nothing to observe changing.
@@ -549,60 +559,63 @@ export default function AuditLogs() {
                 the tab order. Polite, not assertive: a background freshness
                 notice is not an emergency, and this one can arrive every five
                 seconds. */}
-            <div role="status" aria-live="polite" className="al-newevents">
-              {newEventsCount > 0 && (
+                <div role="status" aria-live="polite" className="al-newevents">
+                  {newEventsCount > 0 && (
+                    <CcureButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setPage(1);
+                        loadData(true, 1);
+                      }}
+                    >
+                      <CcureIcon name="message-square" /> {newEventsCount} new
+                      event
+                      {newEventsCount > 1 ? "s" : ""} — show
+                    </CcureButton>
+                  )}
+                </div>
                 <CcureButton
                   type="button"
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
                   onClick={() => {
                     setPage(1);
                     loadData(true, 1);
                   }}
+                  disabled={refreshing}
                 >
-                  <span aria-hidden="true">💬</span> {newEventsCount} new event
-                  {newEventsCount > 1 ? "s" : ""} — show
+                  {refreshing ? "Refreshing..." : "Refresh"}
                 </CcureButton>
-              )}
-            </div>
-            <CcureButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setPage(1);
-                loadData(true, 1);
-              }}
-              disabled={refreshing}
-            >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </CcureButton>
-            {canExport && (
-              <>
-                <CcureButton
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleExport("csv")}
-                  disabled={Boolean(exporting)}
-                  title="Download the events matching the current filters, with every stored hash re-verified"
-                >
-                  {exporting === "csv" ? "Exporting..." : "Export CSV"}
-                </CcureButton>
-                <CcureButton
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleExport("pdf")}
-                  disabled={Boolean(exporting)}
-                  title="Summary document; the CSV carries the hashes"
-                >
-                  {exporting === "pdf" ? "Exporting..." : "Export PDF"}
-                </CcureButton>
-              </>
-            )}
-          </div>
-        </div>
+                {canExport && (
+                  <>
+                    <CcureButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleExport("csv")}
+                      disabled={Boolean(exporting)}
+                      title="Download the events matching the current filters, with every stored hash re-verified"
+                    >
+                      {exporting === "csv" ? "Exporting..." : "Export CSV"}
+                    </CcureButton>
+                    <CcureButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleExport("pdf")}
+                      disabled={Boolean(exporting)}
+                      title="Summary document; the CSV carries the hashes"
+                    >
+                      {exporting === "pdf" ? "Exporting..." : "Export PDF"}
+                    </CcureButton>
+                  </>
+                )}
+              </div>
+            </>
+          }
+        />
 
         {canSeeRetention && retention && (
           <div className="al-note">
@@ -944,7 +957,9 @@ export default function AuditLogs() {
                   </td>
                   <td>
                     <div className="al-row">
-                      <span className="al-t-md">{actInfo.icon}</span>
+                      <span className="al-t-md" aria-hidden="true">
+                        <CcureIcon name={actInfo.icon} />
+                      </span>
                       <strong className="al-t-sm al-semibold">
                         {actInfo.label}
                       </strong>
@@ -1019,7 +1034,7 @@ export default function AuditLogs() {
             )}
           </CcureTable>
         </div>
-      </div>
+      </CcurePage>
 
       <AuditLogDetailsModal
         isOpen={detailsOpen}

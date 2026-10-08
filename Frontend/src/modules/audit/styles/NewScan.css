@@ -15,48 +15,16 @@
    ============================================================================ */
 
 /* ── Setup page frame ─────────────────────────────────────────────────────── */
+/* A CcurePage with the shared header (B.13). The setup form keeps its reading
+   width and sits under the title, left-aligned, as every form page does; it
+   used to be a centred hero with its own, larger title. The quota panel and
+   the card are spaced by the page gap, which the header discounts. */
 .ns-page {
-  min-height: calc(100vh - var(--ccure-header-height));
+  --ccure-page-gap: var(--ccure-space-md);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: var(--ccure-space-3xl) var(--ccure-space-lg) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
-  background: var(--ccure-bg);
-}
-
-.ns-hero {
-  position: relative;
-  width: 100%;
-  max-width: 680px;
-  margin-bottom: var(--ccure-space-xl);
-  text-align: center;
-}
-
-.ns-back {
-  position: absolute;
-  inset-inline-start: 0;
-  top: 0;
-}
-
-.ns-hero__badge {
-  margin-bottom: var(--ccure-space-sm);
-}
-
-.ns-title {
-  margin: 0 0 var(--ccure-space-xs);
-  font-family: var(--ccure-font-display);
-  font-size: var(--ccure-text-3xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
-}
-
-.ns-sub {
-  margin: 0;
-  font-size: var(--ccure-text-base);
-  line-height: var(--ccure-leading-normal);
-  color: var(--ccure-text-secondary);
 }
 
 .ns-card {
@@ -688,43 +656,17 @@
 
 /* ── Active mission ───────────────────────────────────────────────────────── */
 .ns-mission {
-  min-height: calc(100vh - var(--ccure-header-height));
+  --ccure-page-gap: var(--ccure-space-md);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-2xl) var(--ccure-space-lg) var(--ccure-space-4xl);
+  gap: var(--ccure-page-gap);
   color: var(--ccure-text);
-  background: var(--ccure-bg);
 }
 
-.ns-mission__bar,
 .ns-mission__card,
 .ns-mission__outcome {
   width: 100%;
   max-width: 760px;
-}
-
-.ns-mission__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ccure-space-sm);
-}
-
-.ns-mission__heading {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-xs);
-}
-
-.ns-mission__title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  line-height: var(--ccure-leading-tight);
-  color: var(--ccure-text);
 }
 
 .ns-mission__actions,
@@ -1172,18 +1114,6 @@
 
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .ns-page {
-    padding: var(--ccure-space-xl) var(--ccure-space-md) var(--ccure-space-3xl);
-  }
-
-  .ns-hero {
-    padding-top: var(--ccure-space-2xl);
-  }
-
-  .ns-title {
-    font-size: var(--ccure-text-2xl);
-  }
-
   .ns-card {
     width: 100%;
     max-width: 680px;
@@ -1193,10 +1123,6 @@
   .ns-model__cards,
   .ns-summary__grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ns-mission {
-    padding: var(--ccure-space-lg) var(--ccure-space-md) var(--ccure-space-3xl);
   }
 
   .ns-console,

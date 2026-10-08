@@ -51,6 +51,9 @@ import {
   CcureToastProvider,
   useCcureToast,
   CcureCard,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/SecurityReports.css";
 
@@ -73,17 +76,17 @@ const TABS = [
 
 const PLACEHOLDER_TABS = {
   executive: {
-    icon: "📊",
+    icon: "bar-chart",
     title: "Executive Report Generation",
     body: "Generate high-level, business-focused security posture summaries for stakeholders.",
   },
   compliance: {
-    icon: "✅",
+    icon: "check-circle",
     title: "Compliance Auditing",
     body: "Map scan findings to standard compliance frameworks (CIS, SOC 2, ISO 27001).",
   },
   trends: {
-    icon: "📈",
+    icon: "trending-up",
     title: "Risk Trends Analytics",
     body: "Visualize organizational risk over time, MTTR (Mean Time to Remediate), and vulnerability velocity.",
   },
@@ -249,33 +252,29 @@ function ReportsView() {
 
   return (
     <AppLayout>
-      <div className="page-inner">
-        {/* Header Section */}
-        <div className="reports-header-box">
-          <div className="rh-left">
-            <h1 className="page-title">Digital Report Cabinet</h1>
-            <p className="page-subtitle">
-              Securely store and retrieve historical audit archives for
-              compliance and sharing.
-            </p>
-          </div>
-          <div className="rh-stats">
-            <div className="rh-stat-item">
-              <span className="rh-stat-val">{scans.length}</span>
-              <span className="rh-stat-lab">Total Reports</span>
+      <CcurePage>
+        <CcurePageHeader
+          title="Digital Report Cabinet"
+          subtitle="Securely store and retrieve historical audit archives for compliance and sharing."
+          actions={
+            <div className="rh-stats">
+              <div className="rh-stat-item">
+                <span className="rh-stat-val">{scans.length}</span>
+                <span className="rh-stat-lab">Total Reports</span>
+              </div>
+              <div className="rh-stat-item">
+                <span className="rh-stat-val">
+                  {
+                    scans.filter(
+                      (s) => dateTimeMs(s.created_at) > Date.now() - 8.64e7,
+                    ).length
+                  }
+                </span>
+                <span className="rh-stat-lab">New Today</span>
+              </div>
             </div>
-            <div className="rh-stat-item">
-              <span className="rh-stat-val">
-                {
-                  scans.filter(
-                    (s) => dateTimeMs(s.created_at) > Date.now() - 8.64e7,
-                  ).length
-                }
-              </span>
-              <span className="rh-stat-lab">New Today</span>
-            </div>
-          </div>
-        </div>
+          }
+        />
 
         {/* The tab strip was `<div onClick>`: no role, no tabindex, no key
             handler, so three of the four sections could not be reached without
@@ -335,7 +334,7 @@ function ReportsView() {
                 </div>
               ) : filtered.length === 0 ? (
                 <CcureEmptyState
-                  icon="📁"
+                  icon={<CcureIcon name="folder" />}
                   title="No reports found in this section."
                   description="Complete a scan to automatically generate and store a report here."
                 />
@@ -359,7 +358,7 @@ function ReportsView() {
           {placeholder && (
             <div className="reports-placeholder">
               <div className="rp-icon" aria-hidden="true">
-                {placeholder.icon}
+                <CcureIcon name={placeholder.icon} />
               </div>
               <h2 className="rp-title">{placeholder.title}</h2>
               <p>{placeholder.body}</p>
@@ -369,7 +368,7 @@ function ReportsView() {
             </div>
           )}
         </CcureTabPanel>
-      </div>
+      </CcurePage>
 
       {/* Confirmation modal for permanent deletion. The wording is carried over
           verbatim — a destructive warning must not be softened in a migration. */}
@@ -426,15 +425,14 @@ function ReportCard({
 
       <div className="rc-meta">
         <div className="rc-meta-item">
-          <span aria-hidden="true">⏱️</span> {fmtDur(scan.scan_duration)}
+          <CcureIcon name="clock" /> {fmtDur(scan.scan_duration)}
         </div>
         <div className="rc-meta-item">
-          <span aria-hidden="true">🎯</span> {scan.summary?.active_hosts || 0}{" "}
-          Hosts
+          <CcureIcon name="target" /> {scan.summary?.active_hosts || 0} Hosts
         </div>
         {scan.summary?.cve_count !== undefined && (
           <div className="rc-meta-item">
-            <span aria-hidden="true">🛡️</span> {scan.summary.cve_count} Findings
+            <CcureIcon name="shield" /> {scan.summary.cve_count} Findings
           </div>
         )}
       </div>
@@ -442,7 +440,7 @@ function ReportCard({
       {/* Every control names its scan. Three cards each offering "Official
           Report" is three identical entries in a reader's control list, and
           picking the wrong one downloads — or destroys — the wrong scan's
-          report. The delete control was previously a bare 🗑️ with only a
+          report. The delete control was previously a bare trash-can glyph with only a
           `title`, which is not a reliable accessible name. */}
       <div className="rc-actions">
         <CcureButton
@@ -454,7 +452,7 @@ function ReportCard({
           aria-label={`Download the official report for scan number ${no}`}
           title="Download Professional PDF Report with formatted tables"
         >
-          <span aria-hidden="true">📄</span> Official Report
+          <CcureIcon name="file-text" /> Official Report
         </CcureButton>
         <CcureButton
           variant="secondary"
@@ -465,7 +463,7 @@ function ReportCard({
           aria-label={`Download the technical data report for scan number ${no}`}
           title="Download Technical PDF containing raw audit data"
         >
-          <span aria-hidden="true">📝</span> Technical Data
+          <CcureIcon name="file-text" /> Technical Data
         </CcureButton>
         <CcureButton
           variant="secondary"
@@ -476,7 +474,7 @@ function ReportCard({
           aria-label={`Download the host inventory for scan number ${no}`}
           title="Download the host inventory as CSV"
         >
-          <span aria-hidden="true">📇</span> Host inventory
+          <CcureIcon name="list" /> Host inventory
         </CcureButton>
         <CcureButton
           variant="secondary"
@@ -487,7 +485,7 @@ function ReportCard({
           aria-label={`Download the full workbook for scan number ${no}`}
           title="Download verdicts, findings and the comparison as one workbook"
         >
-          <span aria-hidden="true">📊</span> Full workbook
+          <CcureIcon name="bar-chart" /> Full workbook
         </CcureButton>
         {canDeleteReports && (
           <CcureButton
@@ -498,7 +496,7 @@ function ReportCard({
             aria-label={`Delete the report for scan number ${no}`}
             title="Delete report artifacts"
           >
-            <span aria-hidden="true">🗑️</span>
+            <CcureIcon name="trash" />
           </CcureButton>
         )}
       </div>

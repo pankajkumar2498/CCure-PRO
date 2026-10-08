@@ -34,6 +34,9 @@ import {
   CcureCheckbox,
   CcureTextarea,
   CcureRadio,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/compliance.css";
 import "../../../styles/scan.css";
@@ -673,7 +676,7 @@ function AttestationEvidence({ files, onRemove, children }) {
           {files.map((f) => (
             <li key={f.id} className="cwa-evidence__item">
               <span className="cwa-evidence__file">
-                <span aria-hidden="true">📎</span> {f.filename}{" "}
+                <CcureIcon name="paperclip" /> {f.filename}{" "}
                 <span className="cwa-evidence__size">
                   ({Math.round(f.size_bytes / 1024)} KB)
                 </span>
@@ -1991,7 +1994,7 @@ export default function ComplianceWorkspace() {
 
   return (
     <AppLayout pageTitle="Policy Compliance Workspace">
-      <div className="cwh-page">
+      <CcurePage className="cwh-page">
         {loading && (
           <CcureProgress
             className="cwh-loading"
@@ -2001,445 +2004,474 @@ export default function ComplianceWorkspace() {
         )}
 
         {/* Workspace Header */}
-        <div className="cwh-header">
-          <div className="cwh-heading">
-            <h1 className="cwh-title">Policy Compliance</h1>
-            <p className="cwh-subtitle">
+        <CcurePageHeader
+          title="Policy Compliance"
+          subtitle={
+            <>
               Standard catalogs, baseline verification scans, manual
               attestations, crosswalk gap analysis, and exception waivers.
-            </p>
-          </div>
-          <div className="cwh-toolbar">
-            <CcureSelect
-              label="Framework"
-              fieldClassName="cwh-filter"
-              value={selectedFrameworkId}
-              onChange={(e) => setSelectedFrameworkId(e.target.value)}
-            >
-              <option value="all">All Frameworks</option>
-              {activeFrameworks.map((fw) => (
-                <option key={`fw_sel_${fw.id}`} value={fw.id}>
-                  {fw.name}
-                </option>
-              ))}
-            </CcureSelect>
-            {(selectedFrameworkId === "cfw_iec_62443" ||
-              selectedFrameworkId === "cfw_nist_800_82_r3") && (
-              <>
+            </>
+          }
+          actions={
+            <>
+              <div className="cwh-toolbar">
                 <CcureSelect
-                  label="Purdue Level"
+                  label="Framework"
                   fieldClassName="cwh-filter"
-                  value={purdueLevelFilter}
-                  onChange={(e) => setPurdueLevelFilter(e.target.value)}
+                  value={selectedFrameworkId}
+                  onChange={(e) => setSelectedFrameworkId(e.target.value)}
                 >
-                  <option value="all">All Purdue Levels</option>
-                  <option value="L0">Level 0 (Physical Process)</option>
-                  <option value="L1">
-                    Level 1 (Basic Control - PLCs/RTUs)
-                  </option>
-                  <option value="L2">
-                    Level 2 (Area Control - HMIs/SCADA)
-                  </option>
-                  <option value="L3">
-                    Level 3 (Site Operations/Historians)
-                  </option>
-                  <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
-                  {selectedFrameworkId === "cfw_nist_800_82_r3" && (
-                    <>
-                      <option value="L4">Level 4 (Enterprise Network)</option>
-                      <option value="L5">
-                        Level 5 (Enterprise Cloud / External)
-                      </option>
-                    </>
-                  )}
+                  <option value="all">All Frameworks</option>
+                  {activeFrameworks.map((fw) => (
+                    <option key={`fw_sel_${fw.id}`} value={fw.id}>
+                      {fw.name}
+                    </option>
+                  ))}
                 </CcureSelect>
+                {(selectedFrameworkId === "cfw_iec_62443" ||
+                  selectedFrameworkId === "cfw_nist_800_82_r3") && (
+                  <>
+                    <CcureSelect
+                      label="Purdue Level"
+                      fieldClassName="cwh-filter"
+                      value={purdueLevelFilter}
+                      onChange={(e) => setPurdueLevelFilter(e.target.value)}
+                    >
+                      <option value="all">All Purdue Levels</option>
+                      <option value="L0">Level 0 (Physical Process)</option>
+                      <option value="L1">
+                        Level 1 (Basic Control - PLCs/RTUs)
+                      </option>
+                      <option value="L2">
+                        Level 2 (Area Control - HMIs/SCADA)
+                      </option>
+                      <option value="L3">
+                        Level 3 (Site Operations/Historians)
+                      </option>
+                      <option value="L3.5">Level 3.5 (Industrial DMZ)</option>
+                      {selectedFrameworkId === "cfw_nist_800_82_r3" && (
+                        <>
+                          <option value="L4">
+                            Level 4 (Enterprise Network)
+                          </option>
+                          <option value="L5">
+                            Level 5 (Enterprise Cloud / External)
+                          </option>
+                        </>
+                      )}
+                    </CcureSelect>
 
-                <CcureSelect
-                  label="Component Type"
-                  fieldClassName="cwh-filter"
-                  value={componentTypeFilter}
-                  onChange={(e) => setComponentTypeFilter(e.target.value)}
-                >
-                  <option value="all">All Component Types</option>
-                  {selectedFrameworkId === "cfw_nist_800_82_r3" ? (
-                    <>
-                      <option value="PLC">
-                        PLC (Programmable Logic Controller)
-                      </option>
-                      <option value="RTU">RTU (Remote Terminal Unit)</option>
-                      <option value="SCADA">SCADA (Supervisory Control)</option>
-                      <option value="DCS">
-                        DCS (Distributed Control System)
-                      </option>
-                      <option value="SIS">
-                        SIS (Safety Instrumented System)
-                      </option>
-                      <option value="HMI">HMI (Human-Machine Interface)</option>
-                      <option value="HISTORIAN">
-                        HISTORIAN (Process Historian)
-                      </option>
-                      <option value="IED">
-                        IED (Intelligent Electronic Device)
-                      </option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="NDD">NDD (Network Device)</option>
-                      <option value="EDR">EDR (Embedded Device)</option>
-                      <option value="HDR">HDR (Host Device)</option>
-                      <option value="SW">SW (Software Application)</option>
-                    </>
-                  )}
-                </CcureSelect>
+                    <CcureSelect
+                      label="Component Type"
+                      fieldClassName="cwh-filter"
+                      value={componentTypeFilter}
+                      onChange={(e) => setComponentTypeFilter(e.target.value)}
+                    >
+                      <option value="all">All Component Types</option>
+                      {selectedFrameworkId === "cfw_nist_800_82_r3" ? (
+                        <>
+                          <option value="PLC">
+                            PLC (Programmable Logic Controller)
+                          </option>
+                          <option value="RTU">
+                            RTU (Remote Terminal Unit)
+                          </option>
+                          <option value="SCADA">
+                            SCADA (Supervisory Control)
+                          </option>
+                          <option value="DCS">
+                            DCS (Distributed Control System)
+                          </option>
+                          <option value="SIS">
+                            SIS (Safety Instrumented System)
+                          </option>
+                          <option value="HMI">
+                            HMI (Human-Machine Interface)
+                          </option>
+                          <option value="HISTORIAN">
+                            HISTORIAN (Process Historian)
+                          </option>
+                          <option value="IED">
+                            IED (Intelligent Electronic Device)
+                          </option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="NDD">NDD (Network Device)</option>
+                          <option value="EDR">EDR (Embedded Device)</option>
+                          <option value="HDR">HDR (Host Device)</option>
+                          <option value="SW">SW (Software Application)</option>
+                        </>
+                      )}
+                    </CcureSelect>
 
-                {selectedFrameworkId === "cfw_iec_62443" && (
+                    {selectedFrameworkId === "cfw_iec_62443" && (
+                      <CcureSelect
+                        label="Target SL"
+                        fieldClassName="cwh-filter"
+                        value={slLevelFilter}
+                        onChange={(e) => setSlLevelFilter(e.target.value)}
+                      >
+                        <option value="all">All Security Levels</option>
+                        <option value="SL1">
+                          SL-1 (Protection against casual violation)
+                        </option>
+                        <option value="SL2">
+                          SL-2 (Protection against simple intentional violation)
+                        </option>
+                        <option value="SL3">
+                          SL-3 (Protection against sophisticated violation)
+                        </option>
+                        <option value="SL4">
+                          SL-4 (Protection against high motivation state actors)
+                        </option>
+                      </CcureSelect>
+                    )}
+                  </>
+                )}
+                {selectedFrameworkId === "cfw_nerc_cip" && (
+                  <>
+                    <CcureSelect
+                      label="Regional Entity"
+                      fieldClassName="cwh-filter"
+                      value={regionalEntityFilter}
+                      onChange={(e) => setRegionalEntityFilter(e.target.value)}
+                    >
+                      <option value="WECC">
+                        WECC (Western Electricity Coordinating Council)
+                      </option>
+                      <option value="SERC">SERC Reliability Corporation</option>
+                      <option value="TEXAS_RE">
+                        Texas RE (Texas Reliability Entity)
+                      </option>
+                      <option value="RELIABILITY_FIRST">
+                        ReliabilityFirst (RF)
+                      </option>
+                      <option value="MRO">
+                        MRO (Midwest Reliability Organization)
+                      </option>
+                      <option value="NPCC">
+                        NPCC (Northeast Power Coordinating Council)
+                      </option>
+                    </CcureSelect>
+
+                    <CcureSelect
+                      label="BES Impact"
+                      fieldClassName="cwh-filter"
+                      value={besImpactLevelFilter}
+                      onChange={(e) => setBesImpactLevelFilter(e.target.value)}
+                    >
+                      <option value="all">All BES Impact Baselines</option>
+                      <option value="High">
+                        High Impact BES Cyber Systems
+                      </option>
+                      <option value="Medium">
+                        Medium Impact BES Cyber Systems
+                      </option>
+                      <option value="Low">Low Impact BES Cyber Systems</option>
+                    </CcureSelect>
+
+                    <CcureSelect
+                      label="Standard"
+                      fieldClassName="cwh-filter"
+                      value={standardNumberFilter}
+                      onChange={(e) => setStandardNumberFilter(e.target.value)}
+                    >
+                      <option value="all">
+                        All Standards (CIP-002 to CIP-014)
+                      </option>
+                      <option value="CIP-002">
+                        CIP-002 (Asset Categorization)
+                      </option>
+                      <option value="CIP-003">
+                        CIP-003 (Security Management)
+                      </option>
+                      <option value="CIP-004">
+                        CIP-004 (Personnel & Training)
+                      </option>
+                      <option value="CIP-005">
+                        CIP-005 (Electronic Security Perimeters)
+                      </option>
+                      <option value="CIP-006">
+                        CIP-006 (Physical Security)
+                      </option>
+                      <option value="CIP-007">
+                        CIP-007 (System Security Management)
+                      </option>
+                      <option value="CIP-008">
+                        CIP-008 (Incident Reporting)
+                      </option>
+                      <option value="CIP-009">CIP-009 (Recovery Plans)</option>
+                      <option value="CIP-010">
+                        CIP-010 (Configuration & Change Mgmt)
+                      </option>
+                      <option value="CIP-011">
+                        CIP-011 (Information Protection)
+                      </option>
+                      <option value="CIP-012">
+                        CIP-012 (Control Center Comms)
+                      </option>
+                      <option value="CIP-013">
+                        CIP-013 (Supply Chain Risk Mgmt)
+                      </option>
+                      <option value="CIP-014">
+                        CIP-014 (Physical Security Substation)
+                      </option>
+                    </CcureSelect>
+                  </>
+                )}
+                {selectedFrameworkId === "cfw_nis2" && (
+                  <>
+                    <CcureSelect
+                      label="Entity Scope"
+                      fieldClassName="cwh-filter"
+                      value={nis2EntityTypeFilter}
+                      onChange={(e) => setNis2EntityTypeFilter(e.target.value)}
+                    >
+                      <option value="all">All Entities</option>
+                      <option value="essential">
+                        Essential Entity (Art. 3.1)
+                      </option>
+                      <option value="important">
+                        Important Entity (Art. 3.2)
+                      </option>
+                    </CcureSelect>
+                    <CcureSelect
+                      label="Sector"
+                      fieldClassName="cwh-filter"
+                      value={nis2SectorFilter}
+                      onChange={(e) => setNis2SectorFilter(e.target.value)}
+                    >
+                      <option value="all">
+                        All 18 Critical Sectors (Annex I & II)
+                      </option>
+                      <option value="energy">
+                        Energy (Electricity, Oil, Gas, Hydrogen, Heating)
+                      </option>
+                      <option value="transport">
+                        Transport (Air, Rail, Water, Road)
+                      </option>
+                      <option value="banking">
+                        Banking & Credit Institutions
+                      </option>
+                      <option value="financial_market_infra">
+                        Financial Market Infrastructures
+                      </option>
+                      <option value="health">
+                        Health & Healthcare (Hospitals, Pharma, Labs)
+                      </option>
+                      <option value="drinking_water">
+                        Drinking Water Supply & Distribution
+                      </option>
+                      <option value="wastewater">
+                        Wastewater Collection & Treatment
+                      </option>
+                      <option value="digital_infrastructure">
+                        Digital Infrastructure (DNS, TLD, Cloud, DC, CDN)
+                      </option>
+                      <option value="ict">
+                        ICT Service Management (B2B Managed Services & MSPs)
+                      </option>
+                      <option value="public_admin">
+                        Public Administration (Central & Regional)
+                      </option>
+                      <option value="space">
+                        Space (Operators of Ground-Based Infrastructure)
+                      </option>
+                      <option value="postal_courier">
+                        Postal & Courier Services
+                      </option>
+                      <option value="waste_management">Waste Management</option>
+                      <option value="chemicals">
+                        Chemicals Production, Processing & Distribution
+                      </option>
+                      <option value="food">
+                        Food Production, Processing & Wholesale Distribution
+                      </option>
+                      <option value="manufacturing">
+                        Manufacturing (Medical, Electronics, Machinery)
+                      </option>
+                      <option value="digital_providers">
+                        Digital Providers (Online Marketplaces, Search, Social)
+                      </option>
+                      <option value="research">Research Organisations</option>
+                    </CcureSelect>
+
+                    <CcureSelect
+                      label="Member State"
+                      fieldClassName="cwh-filter"
+                      value={nis2MemberStateFilter}
+                      onChange={(e) => setNis2MemberStateFilter(e.target.value)}
+                    >
+                      <option value="all">
+                        All EU (Generic / ENISA Coordinated)
+                      </option>
+                      <option value="DE">
+                        Germany — BSI (Bundesamt für Sicherheit in der
+                        Informationstechnik)
+                      </option>
+                      <option value="FR">
+                        France — ANSSI (Agence nationale de la sécurité des SI)
+                      </option>
+                      <option value="IT">
+                        Italy — ACN (Agenzia per la Cybersicurezza Nazionale)
+                      </option>
+                      <option value="NL">Netherlands — NCSC-NL</option>
+                      <option value="BE">
+                        Belgium — CCB (Centre for Cybersecurity Belgium)
+                      </option>
+                      <option value="ES">Spain — INCIBE / CCN-CERT</option>
+                      <option value="SE">
+                        Sweden — MSB (Myndigheten för samhällsskydd och
+                        beredskap)
+                      </option>
+                      <option value="PL">Poland — NASK / CERT Polska</option>
+                      <option value="IE">Ireland — NCSC-IE</option>
+                    </CcureSelect>
+                  </>
+                )}
+                {selectedFrameworkId === "cfw_nist_800_53_r5" && (
+                  <>
+                    <CcureSelect
+                      label="FedRAMP Baseline"
+                      fieldClassName="cwh-filter"
+                      value={impactLevelFilter}
+                      onChange={(e) => setImpactLevelFilter(e.target.value)}
+                    >
+                      <option value="all">All Impact Baselines</option>
+                      <option value="LOW">FedRAMP LOW Impact Baseline</option>
+                      <option value="MODERATE">
+                        FedRAMP MODERATE Impact Baseline
+                      </option>
+                      <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
+                    </CcureSelect>
+                    <CcureCheckbox
+                      className="cwh-check"
+                      checked={zeroTrustOnly}
+                      onChange={(e) => setZeroTrustOnly(e.target.checked)}
+                    >
+                      Zero Trust Only
+                    </CcureCheckbox>
+                  </>
+                )}
+                {selectedFrameworkId === "cfw_dpdp_2023" && (
                   <CcureSelect
-                    label="Target SL"
+                    label="SDF Scope"
                     fieldClassName="cwh-filter"
-                    value={slLevelFilter}
-                    onChange={(e) => setSlLevelFilter(e.target.value)}
+                    value={sdfScopeFilter}
+                    onChange={(e) => setSdfScopeFilter(e.target.value)}
                   >
-                    <option value="all">All Security Levels</option>
-                    <option value="SL1">
-                      SL-1 (Protection against casual violation)
+                    <option value="all">All Fiduciaries (General + SDF)</option>
+                    <option value="sdf_mandatory">
+                      Significant Data Fiduciary (SDF Mandatory)
                     </option>
-                    <option value="SL2">
-                      SL-2 (Protection against simple intentional violation)
-                    </option>
-                    <option value="SL3">
-                      SL-3 (Protection against sophisticated violation)
-                    </option>
-                    <option value="SL4">
-                      SL-4 (Protection against high motivation state actors)
+                    <option value="general_fiduciary">
+                      General Data Fiduciary
                     </option>
                   </CcureSelect>
                 )}
-              </>
-            )}
-            {selectedFrameworkId === "cfw_nerc_cip" && (
-              <>
+                {selectedFrameworkId === "cfw_gdpr" && (
+                  <CcureSelect
+                    label="Privacy Role"
+                    fieldClassName="cwh-filter"
+                    value={privacyRoleFilter}
+                    onChange={(e) => setPrivacyRoleFilter(e.target.value)}
+                  >
+                    <option value="all">
+                      All Roles (Controller & Processor)
+                    </option>
+                    <option value="controller">Data Controller</option>
+                    <option value="processor">Data Processor</option>
+                  </CcureSelect>
+                )}
+                {selectedFrameworkId === "cfw_pci_dss_v4" && (
+                  <>
+                    <CcureSelect
+                      label="SAQ Profile"
+                      fieldClassName="cwh-filter"
+                      value={saqProfileFilter}
+                      onChange={(e) => setSaqProfileFilter(e.target.value)}
+                    >
+                      <option value="all">All SAQ Profiles (Full ~300)</option>
+                      <option value="saq_a">
+                        SAQ A (E-Commerce Outsourced ~31)
+                      </option>
+                      <option value="saq_a_ep">
+                        SAQ A-EP (E-Commerce Direct ~190)
+                      </option>
+                      <option value="saq_b_ip">
+                        SAQ B-IP (Standalone IP Terminals)
+                      </option>
+                      <option value="saq_c">
+                        SAQ C (Payment Application Systems)
+                      </option>
+                      <option value="saq_d_merchant">
+                        SAQ D Merchant (All Other Merchants)
+                      </option>
+                      <option value="saq_d_service_provider">
+                        SAQ D Service Provider (Service Providers)
+                      </option>
+                    </CcureSelect>
+                    <CcureCheckbox
+                      className="cwh-check"
+                      checked={cdeScopeFilter}
+                      onChange={(e) => setCdeScopeFilter(e.target.checked)}
+                    >
+                      CDE Scope Only
+                    </CcureCheckbox>
+                  </>
+                )}
                 <CcureSelect
-                  label="Regional Entity"
+                  label="Gap Source"
                   fieldClassName="cwh-filter"
-                  value={regionalEntityFilter}
-                  onChange={(e) => setRegionalEntityFilter(e.target.value)}
+                  value={gapSourceFramework}
+                  onChange={(e) => setGapSourceFramework(e.target.value)}
                 >
-                  <option value="WECC">
-                    WECC (Western Electricity Coordinating Council)
-                  </option>
-                  <option value="SERC">SERC Reliability Corporation</option>
-                  <option value="TEXAS_RE">
-                    Texas RE (Texas Reliability Entity)
-                  </option>
-                  <option value="RELIABILITY_FIRST">
-                    ReliabilityFirst (RF)
-                  </option>
-                  <option value="MRO">
-                    MRO (Midwest Reliability Organization)
-                  </option>
-                  <option value="NPCC">
-                    NPCC (Northeast Power Coordinating Council)
-                  </option>
+                  {activeFrameworks.map((fw) => (
+                    <option key={`tb_src_${fw.id}`} value={fw.id}>
+                      {fw.longName}
+                    </option>
+                  ))}
                 </CcureSelect>
-
-                <CcureSelect
-                  label="BES Impact"
-                  fieldClassName="cwh-filter"
-                  value={besImpactLevelFilter}
-                  onChange={(e) => setBesImpactLevelFilter(e.target.value)}
-                >
-                  <option value="all">All BES Impact Baselines</option>
-                  <option value="High">High Impact BES Cyber Systems</option>
-                  <option value="Medium">
-                    Medium Impact BES Cyber Systems
-                  </option>
-                  <option value="Low">Low Impact BES Cyber Systems</option>
-                </CcureSelect>
-
-                <CcureSelect
-                  label="Standard"
-                  fieldClassName="cwh-filter"
-                  value={standardNumberFilter}
-                  onChange={(e) => setStandardNumberFilter(e.target.value)}
-                >
-                  <option value="all">
-                    All Standards (CIP-002 to CIP-014)
-                  </option>
-                  <option value="CIP-002">
-                    CIP-002 (Asset Categorization)
-                  </option>
-                  <option value="CIP-003">CIP-003 (Security Management)</option>
-                  <option value="CIP-004">
-                    CIP-004 (Personnel & Training)
-                  </option>
-                  <option value="CIP-005">
-                    CIP-005 (Electronic Security Perimeters)
-                  </option>
-                  <option value="CIP-006">CIP-006 (Physical Security)</option>
-                  <option value="CIP-007">
-                    CIP-007 (System Security Management)
-                  </option>
-                  <option value="CIP-008">CIP-008 (Incident Reporting)</option>
-                  <option value="CIP-009">CIP-009 (Recovery Plans)</option>
-                  <option value="CIP-010">
-                    CIP-010 (Configuration & Change Mgmt)
-                  </option>
-                  <option value="CIP-011">
-                    CIP-011 (Information Protection)
-                  </option>
-                  <option value="CIP-012">
-                    CIP-012 (Control Center Comms)
-                  </option>
-                  <option value="CIP-013">
-                    CIP-013 (Supply Chain Risk Mgmt)
-                  </option>
-                  <option value="CIP-014">
-                    CIP-014 (Physical Security Substation)
-                  </option>
-                </CcureSelect>
-              </>
-            )}
-            {selectedFrameworkId === "cfw_nis2" && (
-              <>
-                <CcureSelect
-                  label="Entity Scope"
-                  fieldClassName="cwh-filter"
-                  value={nis2EntityTypeFilter}
-                  onChange={(e) => setNis2EntityTypeFilter(e.target.value)}
-                >
-                  <option value="all">All Entities</option>
-                  <option value="essential">Essential Entity (Art. 3.1)</option>
-                  <option value="important">Important Entity (Art. 3.2)</option>
-                </CcureSelect>
-                <CcureSelect
-                  label="Sector"
-                  fieldClassName="cwh-filter"
-                  value={nis2SectorFilter}
-                  onChange={(e) => setNis2SectorFilter(e.target.value)}
-                >
-                  <option value="all">
-                    All 18 Critical Sectors (Annex I & II)
-                  </option>
-                  <option value="energy">
-                    Energy (Electricity, Oil, Gas, Hydrogen, Heating)
-                  </option>
-                  <option value="transport">
-                    Transport (Air, Rail, Water, Road)
-                  </option>
-                  <option value="banking">Banking & Credit Institutions</option>
-                  <option value="financial_market_infra">
-                    Financial Market Infrastructures
-                  </option>
-                  <option value="health">
-                    Health & Healthcare (Hospitals, Pharma, Labs)
-                  </option>
-                  <option value="drinking_water">
-                    Drinking Water Supply & Distribution
-                  </option>
-                  <option value="wastewater">
-                    Wastewater Collection & Treatment
-                  </option>
-                  <option value="digital_infrastructure">
-                    Digital Infrastructure (DNS, TLD, Cloud, DC, CDN)
-                  </option>
-                  <option value="ict">
-                    ICT Service Management (B2B Managed Services & MSPs)
-                  </option>
-                  <option value="public_admin">
-                    Public Administration (Central & Regional)
-                  </option>
-                  <option value="space">
-                    Space (Operators of Ground-Based Infrastructure)
-                  </option>
-                  <option value="postal_courier">
-                    Postal & Courier Services
-                  </option>
-                  <option value="waste_management">Waste Management</option>
-                  <option value="chemicals">
-                    Chemicals Production, Processing & Distribution
-                  </option>
-                  <option value="food">
-                    Food Production, Processing & Wholesale Distribution
-                  </option>
-                  <option value="manufacturing">
-                    Manufacturing (Medical, Electronics, Machinery)
-                  </option>
-                  <option value="digital_providers">
-                    Digital Providers (Online Marketplaces, Search, Social)
-                  </option>
-                  <option value="research">Research Organisations</option>
-                </CcureSelect>
-
-                <CcureSelect
-                  label="Member State"
-                  fieldClassName="cwh-filter"
-                  value={nis2MemberStateFilter}
-                  onChange={(e) => setNis2MemberStateFilter(e.target.value)}
-                >
-                  <option value="all">
-                    All EU (Generic / ENISA Coordinated)
-                  </option>
-                  <option value="DE">
-                    Germany — BSI (Bundesamt für Sicherheit in der
-                    Informationstechnik)
-                  </option>
-                  <option value="FR">
-                    France — ANSSI (Agence nationale de la sécurité des SI)
-                  </option>
-                  <option value="IT">
-                    Italy — ACN (Agenzia per la Cybersicurezza Nazionale)
-                  </option>
-                  <option value="NL">Netherlands — NCSC-NL</option>
-                  <option value="BE">
-                    Belgium — CCB (Centre for Cybersecurity Belgium)
-                  </option>
-                  <option value="ES">Spain — INCIBE / CCN-CERT</option>
-                  <option value="SE">
-                    Sweden — MSB (Myndigheten för samhällsskydd och beredskap)
-                  </option>
-                  <option value="PL">Poland — NASK / CERT Polska</option>
-                  <option value="IE">Ireland — NCSC-IE</option>
-                </CcureSelect>
-              </>
-            )}
-            {selectedFrameworkId === "cfw_nist_800_53_r5" && (
-              <>
-                <CcureSelect
-                  label="FedRAMP Baseline"
-                  fieldClassName="cwh-filter"
-                  value={impactLevelFilter}
-                  onChange={(e) => setImpactLevelFilter(e.target.value)}
-                >
-                  <option value="all">All Impact Baselines</option>
-                  <option value="LOW">FedRAMP LOW Impact Baseline</option>
-                  <option value="MODERATE">
-                    FedRAMP MODERATE Impact Baseline
-                  </option>
-                  <option value="HIGH">FedRAMP HIGH Impact Baseline</option>
-                </CcureSelect>
-                <CcureCheckbox
-                  className="cwh-check"
-                  checked={zeroTrustOnly}
-                  onChange={(e) => setZeroTrustOnly(e.target.checked)}
-                >
-                  Zero Trust Only
-                </CcureCheckbox>
-              </>
-            )}
-            {selectedFrameworkId === "cfw_dpdp_2023" && (
-              <CcureSelect
-                label="SDF Scope"
-                fieldClassName="cwh-filter"
-                value={sdfScopeFilter}
-                onChange={(e) => setSdfScopeFilter(e.target.value)}
-              >
-                <option value="all">All Fiduciaries (General + SDF)</option>
-                <option value="sdf_mandatory">
-                  Significant Data Fiduciary (SDF Mandatory)
-                </option>
-                <option value="general_fiduciary">
-                  General Data Fiduciary
-                </option>
-              </CcureSelect>
-            )}
-            {selectedFrameworkId === "cfw_gdpr" && (
-              <CcureSelect
-                label="Privacy Role"
-                fieldClassName="cwh-filter"
-                value={privacyRoleFilter}
-                onChange={(e) => setPrivacyRoleFilter(e.target.value)}
-              >
-                <option value="all">All Roles (Controller & Processor)</option>
-                <option value="controller">Data Controller</option>
-                <option value="processor">Data Processor</option>
-              </CcureSelect>
-            )}
-            {selectedFrameworkId === "cfw_pci_dss_v4" && (
-              <>
-                <CcureSelect
-                  label="SAQ Profile"
-                  fieldClassName="cwh-filter"
-                  value={saqProfileFilter}
-                  onChange={(e) => setSaqProfileFilter(e.target.value)}
-                >
-                  <option value="all">All SAQ Profiles (Full ~300)</option>
-                  <option value="saq_a">
-                    SAQ A (E-Commerce Outsourced ~31)
-                  </option>
-                  <option value="saq_a_ep">
-                    SAQ A-EP (E-Commerce Direct ~190)
-                  </option>
-                  <option value="saq_b_ip">
-                    SAQ B-IP (Standalone IP Terminals)
-                  </option>
-                  <option value="saq_c">
-                    SAQ C (Payment Application Systems)
-                  </option>
-                  <option value="saq_d_merchant">
-                    SAQ D Merchant (All Other Merchants)
-                  </option>
-                  <option value="saq_d_service_provider">
-                    SAQ D Service Provider (Service Providers)
-                  </option>
-                </CcureSelect>
-                <CcureCheckbox
-                  className="cwh-check"
-                  checked={cdeScopeFilter}
-                  onChange={(e) => setCdeScopeFilter(e.target.checked)}
-                >
-                  CDE Scope Only
-                </CcureCheckbox>
-              </>
-            )}
-            <CcureSelect
-              label="Gap Source"
-              fieldClassName="cwh-filter"
-              value={gapSourceFramework}
-              onChange={(e) => setGapSourceFramework(e.target.value)}
-            >
-              {activeFrameworks.map((fw) => (
-                <option key={`tb_src_${fw.id}`} value={fw.id}>
-                  {fw.longName}
-                </option>
-              ))}
-            </CcureSelect>
-            <div className="cwh-actions">
-              <CcureButton
-                variant="secondary"
-                onClick={() =>
-                  fetchGapAnalysis(
-                    gapSourceFramework,
-                    selectedFrameworkId === "all"
-                      ? gapTargetFramework
-                      : selectedFrameworkId,
-                  )
-                }
-                loading={loadingGapAnalysis}
-              >
-                <span aria-hidden="true">📊</span>{" "}
-                {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
-              </CcureButton>
-              <CcureButton
-                variant="primary"
-                onClick={handleTriggerComplianceScan}
-                disabled={loading}
-              >
-                <span aria-hidden="true">⚡</span> Run Compliance Scan
-              </CcureButton>
-              {activeTab === "policies" && (
-                <CcureButton
-                  variant="secondary"
-                  onClick={() => {
-                    setModalType("policy");
-                    setModalOpen(true);
-                  }}
-                >
-                  <span aria-hidden="true">+</span> Create Baseline Policy
-                </CcureButton>
-              )}
-            </div>
-          </div>
-        </div>
+                <div className="cwh-actions">
+                  <CcureButton
+                    variant="secondary"
+                    onClick={() =>
+                      fetchGapAnalysis(
+                        gapSourceFramework,
+                        selectedFrameworkId === "all"
+                          ? gapTargetFramework
+                          : selectedFrameworkId,
+                      )
+                    }
+                    loading={loadingGapAnalysis}
+                  >
+                    <CcureIcon name="bar-chart" />{" "}
+                    {loadingGapAnalysis ? "Calculating..." : "Gap Analysis"}
+                  </CcureButton>
+                  <CcureButton
+                    variant="primary"
+                    onClick={handleTriggerComplianceScan}
+                    disabled={loading}
+                  >
+                    <CcureIcon name="zap" /> Run Compliance Scan
+                  </CcureButton>
+                  {activeTab === "policies" && (
+                    <CcureButton
+                      variant="secondary"
+                      onClick={() => {
+                        setModalType("policy");
+                        setModalOpen(true);
+                      }}
+                    >
+                      <span aria-hidden="true">+</span> Create Baseline Policy
+                    </CcureButton>
+                  )}
+                </div>
+              </div>
+            </>
+          }
+        />
 
         {/* Navigation Tabs */}
         <CcureTabs
@@ -2665,7 +2697,7 @@ export default function ComplianceWorkspace() {
                       "Generating..."
                     ) : (
                       <>
-                        <span aria-hidden="true">📥</span> Download{" "}
+                        <CcureIcon name="download" /> Download{" "}
                         {reportFmt.toUpperCase()} Report
                       </>
                     )}
@@ -2785,9 +2817,8 @@ export default function ComplianceWorkspace() {
                         headingLevel={3}
                         title={
                           <>
-                            <span aria-hidden="true">💶</span> EU NIS 2
-                            Regulatory Fine Risk Exposure Calculator (Article 32
-                            & 34)
+                            <CcureIcon name="flag" /> EU NIS 2 Regulatory Fine
+                            Risk Exposure Calculator (Article 32 & 34)
                           </>
                         }
                         actions={
@@ -2847,7 +2878,7 @@ export default function ComplianceWorkspace() {
                         headingLevel={3}
                         title={
                           <>
-                            <span aria-hidden="true">🚨</span> Article 23 CSIRT
+                            <CcureIcon name="alert-octagon" /> Article 23 CSIRT
                             Mandatory Incident Reporting SLA Readiness Tracker
                           </>
                         }
@@ -2860,8 +2891,8 @@ export default function ComplianceWorkspace() {
                         <ul className="cwv-sla">
                           <li className="cwv-sla__item">
                             <p className="cwv-sla__deadline cwv-sla__deadline--danger">
-                              <span aria-hidden="true">⚡</span> Early Warning
-                              (≤ 24 Hours)
+                              <CcureIcon name="zap" /> Early Warning (≤ 24
+                              Hours)
                             </p>
                             <p className="cwv-sla__text">
                               Submit initial CSIRT warning indicating whether
@@ -2871,8 +2902,8 @@ export default function ComplianceWorkspace() {
                           </li>
                           <li className="cwv-sla__item">
                             <p className="cwv-sla__deadline cwv-sla__deadline--warning">
-                              <span aria-hidden="true">⏰</span> Incident
-                              Notification (≤ 72 Hours)
+                              <CcureIcon name="clock" /> Incident Notification
+                              (≤ 72 Hours)
                             </p>
                             <p className="cwv-sla__text">
                               Submit formal incident notification updating
@@ -2882,8 +2913,8 @@ export default function ComplianceWorkspace() {
                           </li>
                           <li className="cwv-sla__item">
                             <p className="cwv-sla__deadline cwv-sla__deadline--info">
-                              <span aria-hidden="true">📋</span> Final Report (≤
-                              1 Month)
+                              <CcureIcon name="clipboard" /> Final Report (≤ 1
+                              Month)
                             </p>
                             <p className="cwv-sla__text">
                               Provide complete root-cause analysis, forensic
@@ -2944,7 +2975,7 @@ export default function ComplianceWorkspace() {
                     className="cww-framework"
                   >
                     <span className="cww-framework__icon" aria-hidden="true">
-                      🔒
+                      <CcureIcon name="lock" />
                     </span>
                     <p className="cww-framework__meta">
                       Code: {fw.code} | Version: {fw.version}
@@ -3123,8 +3154,8 @@ export default function ComplianceWorkspace() {
                           className="cwv-policy__rules"
                         >
                           <h3 className="cwv-policy__rules-title">
-                            <span aria-hidden="true">📋</span> Policy Rules &
-                            Check Parameters
+                            <CcureIcon name="clipboard" /> Policy Rules & Check
+                            Parameters
                           </h3>
                           {loadingRules ? (
                             <p className="cwv-muted" role="status">
@@ -3430,8 +3461,7 @@ export default function ComplianceWorkspace() {
                     cell: (c) =>
                       c.evidence_file_count > 0 ? (
                         <>
-                          <span aria-hidden="true">📎</span>{" "}
-                          {c.evidence_file_count}
+                          <CcureIcon name="paperclip" /> {c.evidence_file_count}
                         </>
                       ) : (
                         "—"
@@ -4389,7 +4419,7 @@ export default function ComplianceWorkspace() {
             </section>
           )}
         </CcureTabPanel>
-      </div>
+      </CcurePage>
 
       {/* Dynamic Popups Modals */}
       <CcureModal
@@ -4712,7 +4742,7 @@ export default function ComplianceWorkspace() {
               </CcureSelect>
 
               <span className="cwg-pickers__arrow" aria-hidden="true">
-                ➔
+                <CcureIcon name="arrow-right" />
               </span>
 
               <CcureSelect
@@ -4739,7 +4769,7 @@ export default function ComplianceWorkspace() {
                 }
                 loading={loadingGapAnalysis}
               >
-                <span aria-hidden="true">🔄</span>{" "}
+                <CcureIcon name="refresh-cw" />{" "}
                 {loadingGapAnalysis ? "Calculating..." : "Recalculate Gap"}
               </CcureButton>
             </div>
@@ -4757,7 +4787,7 @@ export default function ComplianceWorkspace() {
                   {/* The arrow is drawn, and "to" is what is read. */}
                   <h3 className="cwg-summary__title">
                     {gapAnalysis.source_framework?.code}{" "}
-                    <span aria-hidden="true">➔</span>
+                    <CcureIcon name="arrow-right" />
                     <span className="cc-sr-only">to</span>{" "}
                     {gapAnalysis.target_framework?.code}
                   </h3>
@@ -5063,8 +5093,8 @@ export default function ComplianceWorkspace() {
                     onChange={(e) => setEmergencyBypass(e.target.checked)}
                     aria-describedby="cwe-bypass-note"
                   >
-                    <span aria-hidden="true">⚡</span> Emergency Bypass (Direct
-                    Execution - Skip Approvals Queue)
+                    <CcureIcon name="zap" /> Emergency Bypass (Direct Execution
+                    - Skip Approvals Queue)
                   </CcureCheckbox>
                   <p id="cwe-bypass-note" className="cwe-bypass__note">
                     Note: Emergency bypass will log a critical priority incident
@@ -5092,14 +5122,14 @@ export default function ComplianceWorkspace() {
                       setModalOpen(false);
                     }}
                   >
-                    <span aria-hidden="true">🚀</span>{" "}
+                    <CcureIcon name="play" />{" "}
                     {modalType === "rollback"
                       ? "Dispatch Rollback Request"
                       : "Dispatch Fix Request"}
                   </CcureButton>
                 ) : (
                   <CcureButton variant="secondary" disabled>
-                    <span aria-hidden="true">⚙️</span>{" "}
+                    <CcureIcon name="settings" />{" "}
                     {modalType === "rollback"
                       ? "No Automated Rollback Available"
                       : "No Automated Fix Available"}

@@ -5,31 +5,10 @@
  */
 
 .sp-page {
+  --ccure-page-gap: var(--ccure-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-4xl);
-}
-
-.sp-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-}
-
-.sp-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-}
-
-.sp-subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  max-width: 62ch;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-  line-height: var(--ccure-leading-relaxed);
+  gap: var(--ccure-page-gap);
 }
 
 .sp-filters {
@@ -213,9 +192,6 @@
 }
 
 @media (max-width: 720px) {
-  .sp-page {
-    padding: var(--ccure-space-md);
-  }
   .sp-filters,
   .sp-config {
     grid-template-columns: 1fr;

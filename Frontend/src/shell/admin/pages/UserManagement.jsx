@@ -30,6 +30,8 @@ import {
   CcurePagination,
   CcurePasswordField,
   CcureSelect,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../design-system";
 import "../styles/user-management.css";
 import {
@@ -611,50 +613,51 @@ export default function UserManagement() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <ProductFrame pageTitle="User Management">
-      <div className="page-inner um-page">
+      <CcurePage className="um-page">
         {/* Header */}
-        <div className="page-title-row">
-          <div>
-            <h1 className="page-title">User Management</h1>
-            <p className="page-subtitle">{subtitle}</p>
-            {orgAdmin && (
-              <p className="um-note">
-                Org admins can only manage users in their own organization.
-              </p>
-            )}
-          </div>
-          <div className="um-toolbar">
-            {canDeleteUsers && (
+        <CcurePageHeader
+          title="User Management"
+          subtitle={subtitle}
+          actions={
+            <div className="um-toolbar">
+              {canDeleteUsers && (
+                <CcureButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/admin/users/deleted")}
+                  disabled={busy}
+                >
+                  Deleted users
+                </CcureButton>
+              )}
               <CcureButton
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("/admin/users/deleted")}
-                disabled={busy}
+                onClick={() => loadUsers(true)}
+                loading={refreshing}
+                disabled={loading || refreshing || busy}
               >
-                Deleted users
+                {refreshing ? "Refreshing..." : "Refresh"}
               </CcureButton>
-            )}
-            <CcureButton
-              variant="ghost"
-              size="sm"
-              onClick={() => loadUsers(true)}
-              loading={refreshing}
-              disabled={loading || refreshing || busy}
-            >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </CcureButton>
-            {canCreateUsers && (
-              <CcureButton
-                variant="primary"
-                size="sm"
-                onClick={openCreateModal}
-                disabled={busy}
-              >
-                + Create user
-              </CcureButton>
-            )}
-          </div>
-        </div>
+              {canCreateUsers && (
+                <CcureButton
+                  variant="primary"
+                  size="sm"
+                  onClick={openCreateModal}
+                  disabled={busy}
+                >
+                  + Create user
+                </CcureButton>
+              )}
+            </div>
+          }
+        >
+          {orgAdmin && (
+            <p className="um-note">
+              Org admins can only manage users in their own organization.
+            </p>
+          )}
+        </CcurePageHeader>
 
         {error && <CcureAlert variant="danger">{error}</CcureAlert>}
 
@@ -835,7 +838,7 @@ export default function UserManagement() {
           canUpdateUsers={canUpdateUsers}
           canDeleteUsers={canDeleteUsers}
         />
-      </div>
+      </CcurePage>
 
       <CcureModal
         open={modalOpen}

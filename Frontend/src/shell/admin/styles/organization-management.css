@@ -3,8 +3,8 @@
    ----------------------------------------------------------------------------
    Layout and two semantic colours. Everything else is a CCure primitive
    (CcureTable, CcureBadge, CcureButton, CcureAlert, CcureLoader), a security
-   pattern (CcureConfirmDialog), the shared application shell (`.page-inner`,
-   `.page-title-row`, `.page-title`, `.page-subtitle`), or — for the create and
+   pattern (CcureConfirmDialog), the shared
+   page structure (`CcurePage`, `CcurePageHeader`; B.13), or — for the create and
    edit dialogs — the shared `Modal` and `OrganizationForm`, both deliberately
    out of this batch's scope.
 

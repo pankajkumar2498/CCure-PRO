@@ -4,7 +4,7 @@
    Layout only. Controls are CCure primitives (CcureTable, CcureBadge,
    CcureButton, CcureInput/CcureSelect/CcureField, CcureCard, CcureAlert,
    CcureLoader, CcureEmptyState) and the CcureConfirmDialog pattern; the page
-   chrome is the shared `.page-inner` / `.page-title-row` family.
+   chrome is the shared page structure (`CcurePage`, `CcurePageHeader`; B.13).
 
    Before this batch the page carried 67 inline style objects and 33 colour
    literals; it now carries none. No legacy stylesheet rule was deleted for

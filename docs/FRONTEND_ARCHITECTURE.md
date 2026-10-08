@@ -11,6 +11,11 @@ contract with the backend.
 The permanent rule for all modules/contributors/AI assistants and the required
 CI gates are in [`ux4g/UX4G_STANDARD.md`](ux4g/UX4G_STANDARD.md).
 The final closure is recorded in [`ux4g/B7_B10_FINAL_CLOSURE.md`](ux4g/B7_B10_FINAL_CLOSURE.md).
+The Audit UI restoration that followed it — and the cascade traps behind it
+(unlayered official CSS outranking `@layer ccure-legacy`, `CcureButton`'s label
+span, full-width fields) — is in [`ux4g/B12_AUDIT_UI_RESTORATION.md`](ux4g/B12_AUDIT_UI_RESTORATION.md).
+The one page structure and icon set every module now uses (`CcurePage`,
+`CcurePageHeader`, `CcureIcon`) is in [`ux4g/B13_APPLICATION_PAGE_STANDARD.md`](ux4g/B13_APPLICATION_PAGE_STANDARD.md).
 
 ### Approved UX4G foundation (Phase B.1)
 

@@ -1261,11 +1261,11 @@ describe("CredentialedResults — contract", () => {
       expect(text).toContain("PermitRootLogin is enabled");
       expect(text).toContain("Password authentication is enabled");
       expect(kv("NOPASSWD Sudo")).toEqual([
-        "⚠ YES — any command without password",
+        "YES — any command without password",
       ]);
       expect(kv("SUID Binaries")).toEqual(["2 found"]);
       expect(kv("World-Writable Dirs")).toEqual(["1 found"]);
-      expect(kv("Failed Logins")[0]).toBe("37 ⚠ possible brute force");
+      expect(kv("Failed Logins")[0]).toBe("37 possible brute force");
       const audits = tableWith("Configuration / Audit", "Status");
       expect(headersOf(audits)).toEqual([
         "Configuration / Audit",
@@ -1410,7 +1410,7 @@ describe("CredentialedResults — contract", () => {
       await open(/Users \(2\)/);
       const table = () => tableWith("Username", "UID", "Shell", "Home", "Type");
       expect(cellsOf(table())).toEqual([
-        ["root", "0", "/bin/bash", "/root", "⚠ root"],
+        ["root", "0", "/bin/bash", "/root", "root"],
         ["alice", "1000", "/bin/bash", "/home/alice", "user"],
       ]);
       fireEvent.click(
@@ -1420,7 +1420,7 @@ describe("CredentialedResults — contract", () => {
       );
       await flush();
       expect(cellsOf(table()).map((r) => [r[0], r[4]])).toEqual([
-        ["root", "⚠ root"],
+        ["root", "root"],
         ["daemon", "system"],
         ["alice", "user"],
       ]);
@@ -1446,7 +1446,7 @@ describe("CredentialedResults — contract", () => {
       ]);
       expect(cellsOf(table())).toEqual([
         ["Administrator", "Admin", "Active", "Yes", "2026-09-10 08:00"],
-        ["jdoe", "User", "Active", "⚠ No", "—"],
+        ["jdoe", "User", "Active", "No", "—"],
       ]);
       fireEvent.click(
         screen.getByRole("checkbox", {
@@ -1458,7 +1458,7 @@ describe("CredentialedResults — contract", () => {
         "Guest",
         "System",
         "Disabled",
-        "⚠ No",
+        "No",
         "—",
       ]);
     });
@@ -1494,7 +1494,7 @@ describe("CredentialedResults — contract", () => {
     it("shows login history only when logins failed", async () => {
       await loaded();
       await open(/Login History/);
-      expect(kv("Brute Force Alert")).toEqual(["⚠ YES"]);
+      expect(kv("Brute Force Alert")).toEqual(["YES"]);
       expect(kv("Failed Logins")).toContain("37");
 
       cleanup();

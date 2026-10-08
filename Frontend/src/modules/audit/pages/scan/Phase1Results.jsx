@@ -55,6 +55,9 @@ import {
   CcureInput,
   CcureSwitch,
   CcureCard,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../../design-system";
 import "../../styles/phase1-results.css";
 
@@ -659,10 +662,10 @@ export default function Phase1Results() {
   if (hydrating) {
     return (
       <AppLayout pageTitle="Discovery Results">
-        <div className="p1-page">
-          <h1 className="p1-title">Discovery Results</h1>
+        <CcurePage className="p1-page">
+          <CcurePageHeader title="Discovery Results" />
           <CcureLoader label="Loading scan results…" />
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -670,15 +673,15 @@ export default function Phase1Results() {
   if (hydrateError) {
     return (
       <AppLayout pageTitle="Discovery Results">
-        <div className="p1-page">
-          <h1 className="p1-title">Discovery Results</h1>
+        <CcurePage className="p1-page">
+          <CcurePageHeader title="Discovery Results" />
           <CcureAlert variant="danger" className="p1-alert">
             {hydrateError}
           </CcureAlert>
           <CcureButton as={Link} to="/history" variant="secondary">
             <span aria-hidden="true">←</span> Back to Scan History
           </CcureButton>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -761,26 +764,28 @@ export default function Phase1Results() {
     <AppLayout pageTitle="Discovery Results" saveStatus={saveStatus}>
       <ScanStepper current={stepperCurrent} />
 
-      <div className="p1-page">
-        <header className="p1-header">
-          <div>
-            <h1 className="p1-title">Discovery Results</h1>
-            <p className="p1-subtitle">
+      <CcurePage className="p1-page">
+        <CcurePageHeader
+          title="Discovery Results"
+          subtitle={
+            <>
               Target: <code className="p1-mono">{target}</code>
               {scanId && (
                 <span className="p1-quiet"> · Scan No. {scanNo ?? "—"}</span>
               )}
-            </p>
-          </div>
-          <CcureButton
-            as={Link}
-            to="/audit-dashboard"
-            variant="ghost"
-            size="sm"
-          >
-            <span aria-hidden="true">←</span> New Scan
-          </CcureButton>
-        </header>
+            </>
+          }
+          actions={
+            <CcureButton
+              as={Link}
+              to="/audit-dashboard"
+              variant="ghost"
+              size="sm"
+            >
+              <span aria-hidden="true">←</span> New Scan
+            </CcureButton>
+          }
+        />
 
         {error && (
           <CcureAlert variant="danger" className="p1-alert">
@@ -1001,7 +1006,7 @@ export default function Phase1Results() {
                     </div>
                     {customPortsError && (
                       <p id={customPortsErrorId} className="p1-error">
-                        <span aria-hidden="true">⚠</span> {customPortsError}
+                        <CcureIcon name="alert-triangle" /> {customPortsError}
                       </p>
                     )}
                   </div>
@@ -1014,8 +1019,7 @@ export default function Phase1Results() {
                         id={excludePortsHeadingId}
                         className="p1-exclusion__title"
                       >
-                        <span aria-hidden="true">🚫</span> Exclude Specific
-                        Ports
+                        <CcureIcon name="slash" /> Exclude Specific Ports
                       </h3>
                       <p
                         id={`${excludePortsHeadingId}-hint`}
@@ -1096,8 +1100,8 @@ export default function Phase1Results() {
                         id={excludeIpsHeadingId}
                         className="p1-exclusion__title"
                       >
-                        <span aria-hidden="true">🚫</span> Exclude Specific IPs
-                        / Subnets
+                        <CcureIcon name="slash" /> Exclude Specific IPs /
+                        Subnets
                       </h3>
                       <p id={`${excludeIpsHeadingId}-hint`} className="p1-hint">
                         Exclude sensitive target hosts or subnets from scanning
@@ -1134,7 +1138,7 @@ export default function Phase1Results() {
 
                       {excludeIpsError && (
                         <p id={excludeIpsErrorId} className="p1-error">
-                          <span aria-hidden="true">⚠</span> {excludeIpsError}
+                          <CcureIcon name="alert-triangle" /> {excludeIpsError}
                         </p>
                       )}
                     </div>
@@ -1378,7 +1382,7 @@ export default function Phase1Results() {
               </CcureButton>
             </div>
           )}
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 }

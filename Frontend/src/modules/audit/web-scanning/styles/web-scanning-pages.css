@@ -18,26 +18,10 @@
 
 /* ── Page shell ───────────────────────────────────────────────────────────── */
 
-/* Replaces `maxWidth: 1400px; margin: 0 auto; padding: 24px`, inline on all
-   four pages. FindingsExplorer used 1600px; it keeps that through a modifier
-   rather than the four values being re-typed. */
-.wsp-page {
-  max-width: 87.5rem;
-  margin: 0 auto;
-}
-
-.wsp-page--wide {
-  max-width: 100rem;
-}
-
-.wsp-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--ccure-space-lg);
-  flex-wrap: wrap;
-  margin-bottom: var(--ccure-space-xl);
-}
+/* The page is a CcurePage with the shared CcurePageHeader (B.13). It used to be
+   centred at a 1400px maximum, which put these pages' titles somewhere other
+   than every other page's on a wide screen; the inset and header are now the
+   application's. */
 
 .wsp-actions {
   display: flex;
@@ -167,6 +151,19 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+  white-space: normal;
+  height: auto;
+  border-radius: 0;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.wsp-finding.cc-btn > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
 }
 
 .wsp-finding:hover {
@@ -264,9 +261,8 @@
 
 .wsp-back {
   display: inline-block;
-  margin-bottom: var(--ccure-space-xs);
   font-size: var(--ccure-text-sm);
-  color: var(--ccure-primary);
+  color: var(--ccure-text-link);
 }
 
 .wsp-toolbar {
@@ -299,10 +295,6 @@
 
 .wsp-page--form {
   max-width: 50rem;
-}
-
-.wsp-form-intro {
-  margin-bottom: var(--ccure-space-xl);
 }
 
 .wsp-form-message {
@@ -370,14 +362,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--ccure-space-lg);
-}
-
-.sd-title-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  flex-wrap: wrap;
-  margin-bottom: var(--ccure-space-xs);
 }
 
 .sd-target {
@@ -558,14 +542,14 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid var(--cc-border, #e5e7eb);
+  border-bottom: 1px solid var(--ccure-border);
 }
 .sd-summary-row:last-child {
   border-bottom: none;
 }
 .sd-summary-label {
   margin: 0;
-  color: var(--cc-text-muted, #6b7280);
+  color: var(--ccure-text-secondary);
   font-weight: 500;
 }
 .sd-summary-value {
@@ -578,7 +562,7 @@
 .wsp-screenshot {
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--cc-border, #e5e7eb);
+  border: 1px solid var(--ccure-border);
   border-radius: 6px;
   margin-top: 0.5rem;
 }
@@ -602,7 +586,7 @@
 .wsp-metric-link:focus-visible,
 .sd-stat-link:focus-visible,
 .wsp-row--link:focus-visible {
-  outline: 2px solid var(--cc-focus, #6366f1);
+  outline: 2px solid var(--ccure-focus-ring-color);
   outline-offset: 2px;
 }
 .wsp-row--link {
@@ -612,7 +596,7 @@
   border-radius: 6px;
 }
 .wsp-row--link:hover {
-  background: var(--cc-surface-hover, #f3f4f6);
+  background: var(--ccure-surface-hover);
 }
 .wsp-trend-date {
   color: inherit;

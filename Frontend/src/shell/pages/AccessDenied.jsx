@@ -10,14 +10,19 @@
  * Unauthenticated visitors never reach this: they go to sign-in as before.
  */
 import { Link } from "react-router-dom";
-import { CcureAlert, CcureButton } from "../../design-system";
+import {
+  CcureAlert,
+  CcureButton,
+  CcurePage,
+  CcurePageHeader,
+} from "../../design-system";
 import PlatformLayout from "../layout/PlatformLayout";
 
 export default function AccessDenied() {
   return (
     <PlatformLayout>
-      <div className="page-inner">
-        <h1 className="pl-title">Access denied</h1>
+      <CcurePage>
+        <CcurePageHeader title="Access denied" />
         <CcureAlert
           variant="warning"
           title="You do not have access to this page"
@@ -28,7 +33,7 @@ export default function AccessDenied() {
         <CcureButton as={Link} to="/" variant="secondary" className="pm-back">
           Back to CCure Home
         </CcureButton>
-      </div>
+      </CcurePage>
     </PlatformLayout>
   );
 }

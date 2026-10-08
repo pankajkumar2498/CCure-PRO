@@ -32,6 +32,9 @@ import {
   CcureInput,
   CcureModal,
   CcureButton,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/scan-templates.css";
 
@@ -396,15 +399,11 @@ export default function Dashboard() {
   return (
     <>
       <AppLayout pageTitle="Scan Templates" onNewScan={onNewScan}>
-        <div className="page-inner">
-          <div className="page-title-row">
-            <div>
-              <h1 className="page-title">Scan Templates</h1>
-              <p className="page-subtitle">
-                Choose a scan type to begin your network assessment
-              </p>
-            </div>
-          </div>
+        <CcurePage>
+          <CcurePageHeader
+            title="Scan Templates"
+            subtitle={<>Choose a scan type to begin your network assessment</>}
+          />
 
           {/* Search — named, not merely placeholdered. */}
           <div className="tpl-search">
@@ -426,7 +425,7 @@ export default function Dashboard() {
                nothing matched without leaving it. */
             <div role="status">
               <CcureEmptyState
-                icon="🔍"
+                icon={<CcureIcon name="search" />}
                 title={`No templates match "${search}"`}
               />
             </div>
@@ -437,7 +436,7 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </CcurePage>
       </AppLayout>
 
       {/* The picker the shell's New Scan button opens. CcureModal supplies

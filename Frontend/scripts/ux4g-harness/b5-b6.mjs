@@ -97,7 +97,7 @@ const common = {
     ".cc-field",
     "[role=dialog]",
     ".cc-main",
-    ".page-inner",
+    ".cc-page",
   ],
 };
 const byButton = (text) =>

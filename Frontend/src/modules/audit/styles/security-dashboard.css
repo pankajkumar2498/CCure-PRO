@@ -16,39 +16,8 @@
    `dashboard.css` is untouched; ComplianceWorkspace still imports it.
    ============================================================================ */
 
-/* ── Page frame ───────────────────────────────────────────────────────────── */
-.sd-page {
-  background: var(--ccure-bg);
-  min-height: 100%;
-  padding-bottom: var(--ccure-space-4xl);
-}
-
-.sd-page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-xl) var(--ccure-space-2xl) var(--ccure-space-md);
-  border-bottom: 1px solid var(--ccure-border);
-  background: var(--ccure-surface);
-}
-
-.sd-page-title {
-  margin: 0;
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-  color: var(--ccure-text);
-  line-height: var(--ccure-leading-tight);
-}
-
-.sd-page-subtitle {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-xs);
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
+/* ── Page frame ─────────────────────────────────────────────────────────────
+   The page is a CcurePage with the shared CcurePageHeader (B.13). */
 
 .sd-live-dot {
   display: inline-block;
@@ -67,9 +36,9 @@
   flex-shrink: 0;
 }
 
+/* Tabs, alerts and sections sit inside the page inset (CcurePage); they no
+   longer pad themselves as the old full-bleed dashboard bands did. */
 .sd-tabs {
-  padding: 0 var(--ccure-space-2xl);
-  background: var(--ccure-surface);
   overflow-x: auto;
 }
 
@@ -77,7 +46,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ccure-space-xs);
-  padding: var(--ccure-space-md) var(--ccure-space-2xl) 0;
+  padding: var(--ccure-space-md) 0 0;
 }
 
 .sd-alert__row {
@@ -90,7 +59,7 @@
 
 /* ── Sections and grids ───────────────────────────────────────────────────── */
 .sd-section {
-  padding: var(--ccure-space-lg) var(--ccure-space-2xl) 0;
+  padding: var(--ccure-space-lg) 0 0;
 }
 
 .sd-section-title {
@@ -236,7 +205,7 @@
    metric the backend could not measure. */
 .sd-muted {
   color: var(--ccure-text-secondary);
-  font-size: var(--ccure-font-size-sm);
+  font-size: var(--ccure-text-sm);
 }
 
 .sd-tone--critical {
@@ -1001,11 +970,6 @@ a.sd-metric:hover {
 }
 
 @media (max-width: 768px) {
-  .sd-page-header {
-    flex-direction: column;
-    gap: var(--ccure-space-sm);
-    padding: var(--ccure-space-md) var(--ccure-space-lg);
-  }
   .sd-grid-2,
   .sd-grid-3 {
     grid-template-columns: minmax(0, 1fr);
@@ -1014,13 +978,10 @@ a.sd-metric:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .sd-section {
-    padding: var(--ccure-space-md) var(--ccure-space-lg) 0;
-  }
-  .sd-tabs {
-    padding: 0 var(--ccure-space-lg);
+    padding: var(--ccure-space-md) 0 0;
   }
   .sd-alerts {
-    padding: var(--ccure-space-sm) var(--ccure-space-lg) 0;
+    padding: var(--ccure-space-sm) 0 0;
   }
   /* The toggle sits at the left edge once the header stacks. */
 }
@@ -1031,7 +992,7 @@ a.sd-metric:hover {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ccure-space-xs);
-  font-size: var(--ccure-font-size-xs);
+  font-size: var(--ccure-text-xs);
   color: var(--ccure-text-secondary);
 }
 

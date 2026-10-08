@@ -62,6 +62,9 @@ import {
   CcureTextarea,
   CcureDrawer,
   CcureTable,
+  CcurePage,
+  CcurePageHeader,
+  CcureIcon,
 } from "../../../design-system";
 import "../styles/asset-detail.css";
 
@@ -271,7 +274,10 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
           ))}
         </div>
       ) : !detail ? (
-        <CcureEmptyState icon="⚠" title="Finding not found" />
+        <CcureEmptyState
+          icon={<CcureIcon name="alert-triangle" />}
+          title="Finding not found"
+        />
       ) : (
         <div className="ad-drawer-body">
           <div className="ad-badges ad-mb-sm">
@@ -373,7 +379,7 @@ function FindingDrawer({ findingId, onClose, canUpdate, onStatusChange }) {
                     className="ad-grow ad-btn--ok"
                     onClick={() => setAction("fixed")}
                   >
-                    🛠 Mark Fixed
+                    <CcureIcon name="tool" /> Mark Fixed
                   </CcureButton>
                 </div>
               ) : (
@@ -537,7 +543,7 @@ function ServiceDetailRow({
               {/* TLS Details */}
               {svc.tls && (
                 <div className="ad-detail ad-detail--tls">
-                  <div className="ad-detail-title">🔐 TLS Details</div>
+                  <div className="ad-detail-title">TLS Details</div>
                   <div className="ad-detail-rows">
                     <div>
                       <strong>Grade:</strong>{" "}
@@ -575,17 +581,18 @@ function ServiceDetailRow({
                     </div>
                     {svc.tls.cert_is_expired && (
                       <span className="ad-flag ad-flag--danger">
-                        ⚠ Certificate Expired
+                        <CcureIcon name="alert-triangle" /> Certificate Expired
                       </span>
                     )}
                     {svc.tls.cert_is_self_signed && (
                       <span className="ad-flag ad-flag--warning">
-                        ⚠ Self-Signed Certificate
+                        <CcureIcon name="alert-triangle" /> Self-Signed
+                        Certificate
                       </span>
                     )}
                     {svc.tls.is_weak_cipher && (
                       <span className="ad-flag ad-flag--high">
-                        ⚠ Weak Ciphers Enabled
+                        <CcureIcon name="alert-triangle" /> Weak Ciphers Enabled
                       </span>
                     )}
                     {(svc.tls.issues || []).length > 0 && (
@@ -605,7 +612,7 @@ function ServiceDetailRow({
               {/* HTTP Details */}
               {svc.http && (
                 <div className="ad-detail ad-detail--http">
-                  <div className="ad-detail-title">🌐 HTTP Details</div>
+                  <div className="ad-detail-title">HTTP Details</div>
                   <div className="ad-detail-rows">
                     <div>
                       <strong>Status Code:</strong>{" "}
@@ -619,11 +626,27 @@ function ServiceDetailRow({
                     </div>
                     <div>
                       <strong>HSTS:</strong>{" "}
-                      {svc.http.has_hsts ? "✅ Configured" : "❌ Missing"}
+                      {svc.http.has_hsts ? (
+                        <>
+                          <CcureIcon name="check-circle" /> Configured
+                        </>
+                      ) : (
+                        <>
+                          <CcureIcon name="x-circle" /> Missing
+                        </>
+                      )}
                     </div>
                     <div>
                       <strong>CSP:</strong>{" "}
-                      {svc.http.has_csp ? "✅ Configured" : "❌ Missing"}
+                      {svc.http.has_csp ? (
+                        <>
+                          <CcureIcon name="check-circle" /> Configured
+                        </>
+                      ) : (
+                        <>
+                          <CcureIcon name="x-circle" /> Missing
+                        </>
+                      )}
                     </div>
                     <div>
                       <strong>X-Frame-Options:</strong>{" "}
@@ -809,13 +832,13 @@ export default function AssetDetail() {
   if (loading) {
     return (
       <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
-        <div className="ad-page ad-page--loading" aria-busy="true">
+        <CcurePage className="ad-page" aria-busy="true">
           <CcureSkeleton height={48} className="ad-mb-lg" />
           <div className="ad-body">
             <CcureSkeleton height={350} />
             <CcureSkeleton height={350} />
           </div>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -823,7 +846,8 @@ export default function AssetDetail() {
   if (error || !asset) {
     return (
       <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
-        <div className="ad-page ad-page--error">
+        <CcurePage className="ad-page">
+          <CcurePageHeader title="Asset Details" />
           <CcureAlert variant="danger" title="Failed to Load Asset">
             {error ||
               "The requested asset does not exist or you do not have permission to view it."}
@@ -833,7 +857,7 @@ export default function AssetDetail() {
               Back to Registry
             </CcureButton>
           </div>
-        </div>
+        </CcurePage>
       </AppLayout>
     );
   }
@@ -847,18 +871,7 @@ export default function AssetDetail() {
       pageTitle={`Asset: ${asset.ip_address}`}
       onNewScan={() => navigate("/scan")}
     >
-      <div className="ad-page">
-        {/* Back Link */}
-        <div className="ad-back">
-          <CcureButton
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/assets")}
-          >
-            ← Back to Asset Registry
-          </CcureButton>
-        </div>
-
+      <CcurePage className="ad-page">
         {writeError && (
           <div className="ad-write-error">
             <CcureAlert
@@ -871,11 +884,10 @@ export default function AssetDetail() {
           </div>
         )}
 
-        {/* Header Block */}
-        <header className="ad-header">
-          <div className="ad-header-main">
-            <h1 className="ad-address">{asset.ip_address}</h1>
-            <p className="ad-hostname">
+        <CcurePageHeader
+          title={asset.ip_address}
+          subtitle={
+            <>
               {asset.hostname ? (
                 <>
                   <span className="ad-hostname-name">{asset.hostname}</span>
@@ -886,80 +898,100 @@ export default function AssetDetail() {
               ) : (
                 "No Hostname Resolved"
               )}
-            </p>
-
-            {/* Managed Toggle / Status Row */}
-            <div className="ad-status-row">
-              <CcureBadge variant={asset.is_active ? "success" : "neutral"} dot>
-                {asset.is_active ? "Online / Active" : "Offline / Inactive"}
-              </CcureBadge>
-
-              {/* A toggle that says which way it is set. Disabled, not hidden,
-                  without the permission — the state is still information. */}
-              <CcureButton
-                variant="ghost"
-                size="sm"
-                type="button"
-                disabled={!canUpdate}
-                aria-pressed={Boolean(asset.is_managed)}
-                onClick={handleToggleManaged}
-                className={`ad-toggle ${asset.is_managed ? "ad-toggle--on" : "ad-toggle--off"}`}
-              >
-                {asset.is_managed ? "✔ Managed Asset" : "✗ Unmanaged Asset"}
-              </CcureButton>
-
-              <CcureBadge variant="info">
-                👤 Owner: {asset.owner || "Unassigned"}
-              </CcureBadge>
-            </div>
-          </div>
-
-          {/* Risk Ring (Radial indicator). The ring's arc and colour are the
-              score itself, expressed as SVG attributes and a band class —
-              no inline style. */}
-          <div className="ad-risk">
-            <div
-              className={`ad-riskring ad-riskring--${band}`}
-              role="img"
-              aria-label={`Risk score ${asset.risk_score} out of 100`}
+            </>
+          }
+          breadcrumb={
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/assets")}
             >
-              <svg width="88" height="88" aria-hidden="true" focusable="false">
-                <circle
-                  className="ad-riskring-track"
-                  cx="44"
-                  cy="44"
-                  r={RING_R}
-                  fill="transparent"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="ad-riskring-arc"
-                  cx="44"
-                  cy="44"
-                  r={RING_R}
-                  fill="transparent"
-                  strokeWidth="6"
-                  strokeDasharray={`${RING_C}`}
-                  strokeDashoffset={`${RING_C * (1 - asset.risk_score / 100)}`}
-                />
-              </svg>
-              <div className="ad-riskring-center">
-                <span className="ad-riskring-num">{asset.risk_score}</span>
-                <span className="ad-riskring-lbl">RISK</span>
+              ← Back to Asset Registry
+            </CcureButton>
+          }
+          actions={
+            <div className="ad-risk">
+              <div
+                className={`ad-riskring ad-riskring--${band}`}
+                role="img"
+                aria-label={`Risk score ${asset.risk_score} out of 100`}
+              >
+                <svg
+                  width="88"
+                  height="88"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <circle
+                    className="ad-riskring-track"
+                    cx="44"
+                    cy="44"
+                    r={RING_R}
+                    fill="transparent"
+                    strokeWidth="6"
+                  />
+                  <circle
+                    className="ad-riskring-arc"
+                    cx="44"
+                    cy="44"
+                    r={RING_R}
+                    fill="transparent"
+                    strokeWidth="6"
+                    strokeDasharray={`${RING_C}`}
+                    strokeDashoffset={`${RING_C * (1 - asset.risk_score / 100)}`}
+                  />
+                </svg>
+                <div className="ad-riskring-center">
+                  <span className="ad-riskring-num">{asset.risk_score}</span>
+                  <span className="ad-riskring-lbl">RISK</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="ad-kicker">Risk Classification</div>
+                <CcureBadge
+                  variant={RISK_LEVEL_VARIANT[riskLevelKey] || "info"}
+                  size="md"
+                >
+                  {asset.risk_level}
+                </CcureBadge>
               </div>
             </div>
+          }
+        >
+          {/* Managed Toggle / Status Row */}
+          <div className="ad-status-row">
+            <CcureBadge variant={asset.is_active ? "success" : "neutral"} dot>
+              {asset.is_active ? "Online / Active" : "Offline / Inactive"}
+            </CcureBadge>
 
-            <div>
-              <div className="ad-kicker">Risk Classification</div>
-              <CcureBadge
-                variant={RISK_LEVEL_VARIANT[riskLevelKey] || "info"}
-                size="md"
-              >
-                {asset.risk_level}
-              </CcureBadge>
-            </div>
+            {/* A toggle that says which way it is set. Disabled, not hidden,
+                  without the permission — the state is still information. */}
+            <CcureButton
+              variant="ghost"
+              size="sm"
+              type="button"
+              disabled={!canUpdate}
+              aria-pressed={Boolean(asset.is_managed)}
+              onClick={handleToggleManaged}
+              className={`ad-toggle ${asset.is_managed ? "ad-toggle--on" : "ad-toggle--off"}`}
+            >
+              {asset.is_managed ? (
+                <>
+                  <CcureIcon name="check" /> Managed Asset
+                </>
+              ) : (
+                <>
+                  <CcureIcon name="x" /> Unmanaged Asset
+                </>
+              )}
+            </CcureButton>
+
+            <CcureBadge variant="info">
+              <CcureIcon name="user" /> Owner: {asset.owner || "Unassigned"}
+            </CcureBadge>
           </div>
-        </header>
+        </CcurePageHeader>
 
         {/* Tab Selector */}
         <CcureTabs
@@ -1237,7 +1269,8 @@ export default function AssetDetail() {
                         <span
                           className={`ad-owner-name${asset.owner ? "" : " ad-faint"}`}
                         >
-                          👤 {asset.owner || "No owner assigned"}
+                          <CcureIcon name="user" />{" "}
+                          {asset.owner || "No owner assigned"}
                           {asset.provenance?.owner?.source === "analyst" && (
                             <CcureBadge
                               variant="info"
@@ -1308,7 +1341,7 @@ export default function AssetDetail() {
 
                 {/* Panel: Network & Identity */}
                 <CcureCard
-                  title="🌐 Network & Identity"
+                  title="Network & Identity"
                   subtitle="IP details, MAC, hostname, and DNS settings"
                   headingLevel={2}
                 >
@@ -1356,7 +1389,7 @@ export default function AssetDetail() {
 
                 {/* Panel: OS & Hardware */}
                 <CcureCard
-                  title="🖥️ Operating System & Hardware"
+                  title="Operating System & Hardware"
                   subtitle="Device category, manufacturer, CPU, and kernel details"
                   headingLevel={2}
                 >
@@ -1448,7 +1481,7 @@ export default function AssetDetail() {
                   asset.custom_attributes?.amt_asset_name ||
                   asset.custom_attributes?.serial_number) && (
                   <CcureCard
-                    title="🏢 Corporate (Assets) Details"
+                    title="Corporate (Assets) Details"
                     subtitle="Verified Asset"
                     headingLevel={2}
                   >
@@ -1482,7 +1515,7 @@ export default function AssetDetail() {
 
                 {/* Panel: Scan & Discovery */}
                 <CcureCard
-                  title="🔬 Discovery & Scan Metadata"
+                  title="Discovery & Scan Metadata"
                   subtitle="Scan identification, activity times, and audit details"
                   headingLevel={2}
                 >
@@ -1613,7 +1646,8 @@ export default function AssetDetail() {
                     <div key={note.id} className="ad-note">
                       <div className="ad-note-meta">
                         <span className="ad-note-author">
-                          👤 User ID: {note.user_id?.substring(0, 8)}...
+                          <CcureIcon name="user" /> User ID:{" "}
+                          {note.user_id?.substring(0, 8)}...
                         </span>
                         <span>{ago(note.created_at)}</span>
                       </div>
@@ -1625,7 +1659,7 @@ export default function AssetDetail() {
             </CcureCard>
           </aside>
         </div>
-      </div>
+      </CcurePage>
 
       {/* Selected Vulnerability Detail Drawer Modal */}
       {selectedFindingId && (

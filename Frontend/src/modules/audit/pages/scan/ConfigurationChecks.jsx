@@ -56,6 +56,8 @@ import {
   CcureInput,
   CcureLoader,
   CcureSelect,
+  CcurePage,
+  CcurePageHeader,
 } from "../../../../design-system";
 import "../../styles/configuration-checks.css";
 import {
@@ -349,21 +351,24 @@ const ConfigurationChecks = () => {
     <AppLayout>
       <ToastContainer toasts={toasts} dismiss={removeToast} />
 
-      <div className="page-inner cfg-page">
-        <h1 className="page-title">Configuration Checks</h1>
-
-        <p className="page-subtitle cfg-lede">
-          Host hardening controls evaluated during a credentialed scan. Each one
-          reads a specific setting and compares it against a required state, and
-          its result travels the same path as a CVE finding — severity, risk,
-          remediation and the scan report. There is nothing to start here: these
-          run automatically on every credentialed scan, over the session the
-          collectors already opened.{" "}
-          <Link to="/configuration-checks/validate">
-            Validate a rule definition
-          </Link>
-          .
-        </p>
+      <CcurePage>
+        <CcurePageHeader
+          title="Configuration Checks"
+          subtitle={
+            <>
+              Host hardening controls evaluated during a credentialed scan. Each
+              one reads a specific setting and compares it against a required
+              state, and its result travels the same path as a CVE finding —
+              severity, risk, remediation and the scan report. There is nothing
+              to start here: these run automatically on every credentialed scan,
+              over the session the collectors already opened.{" "}
+              <Link to="/configuration-checks/validate">
+                Validate a rule definition
+              </Link>
+              .
+            </>
+          }
+        />
 
         {/* A group of buttons, not a tab strip: they re-query the same
             catalogue rather than switching between two panels. `aria-pressed`
@@ -541,7 +546,7 @@ const ConfigurationChecks = () => {
           )}
           {lookup && <CheckRow check={lookup} defaultOpen />}
         </section>
-      </div>
+      </CcurePage>
     </AppLayout>
   );
 };

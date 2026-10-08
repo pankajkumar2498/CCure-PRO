@@ -1,0 +1,88 @@
+name: Browser Matrix
+
+# The full cross-browser run of the frontend's browser suite: Chromium, Firefox
+# and WebKit. Pull requests run the same suite in Chromium only (ci.yml,
+# Frontend Validation), which keeps the PR gate fast; this is where a
+# regression that shows in one engine and not another is caught, within a day.
+# Not a required check: it does not run on pull requests, and a required check
+# that never runs would leave every PR waiting (docs/ci/BRANCH_PROTECTION.md).
+#
+# GitHub runs schedules from the default branch only, so this starts nightly
+# once the file is on master.
+on:
+  schedule:
+    - cron: '30 21 * * *'   # 03:00 IST
+  workflow_dispatch:
+
+# Read-only token; no job references a secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
+
+jobs:
+  browser:
+    name: Browser Matrix (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    # One engine per job. All three in one job did not fit 30 minutes on a
+    # hosted runner (7 Oct 2026); a single engine is about a third of that work.
+    timeout-minutes: 60
+    strategy:
+      # Each engine's result stands on its own: a WebKit failure must not
+      # cancel the Firefox run that would have shown whether it is shared.
+      fail-fast: false
+      matrix:
+        engine: [ chromium, firefox, webkit ]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd Frontend
+          npm ci
+
+      # The browser checks serve the production build, as in ci.yml.
+      - name: Build Frontend
+        env:
+          VITE_API_BASE_URL: /api
+        run: |
+          cd Frontend
+          npm run build
+
+      - name: Install Pinned Browser Engine (${{ matrix.engine }})
+        run: |
+          cd Frontend
+          npx --no-install playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Check Accessibility, Responsive UI and Browser Contracts (${{ matrix.engine }})
+        env:
+          UX4G_BROWSER_OUTPUT: ${{ runner.temp }}/ux4g-browser-results
+          UX4G_BROWSER_REPORT: ${{ runner.temp }}/ux4g-browser-report.json
+        run: |
+          cd Frontend
+          npm run test:browser -- --project=${{ matrix.engine }}
+
+      - name: Retain Browser Failure Evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ux4g-browser-evidence-${{ matrix.engine }}
+          path: |
+            ${{ runner.temp }}/ux4g-browser-results
+            ${{ runner.temp }}/ux4g-browser-report.json
+          if-no-files-found: ignore
+          retention-days: 7

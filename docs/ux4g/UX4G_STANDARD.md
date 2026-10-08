@@ -98,6 +98,13 @@ npx playwright install --with-deps chromium firefox webkit
 npm run test:browser
 ```
 
+CI runs this list on every pull request with the browser step in Chromium only
+(`npm run test:browser -- --project=chromium`); Firefox and WebKit run the same
+suite nightly in `.github/workflows/browser-matrix.yml`. A change to the design
+system, a shared adapter or the UX4G release should still pass all three engines
+locally before it merges, since the PR gate will not show an engine-specific
+regression.
+
 Browser artifacts go outside source (`/tmp` by default, a CI runner directory
 in CI). Browser checks use production dist plus a separately built primitive
 fixture, and a loopback test server that refuses all unmocked API calls.

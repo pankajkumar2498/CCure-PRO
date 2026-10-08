@@ -54,10 +54,20 @@ and "what runs" are not the same thing.
 
 ## CI: what each run does
 
-For both images, on every pull request, push to `master`, and on demand:
+For both images, after every merge to `master` (push), nightly at 02:30 IST,
+and on demand (Actions → Images → Run workflow). **Not on pull requests:** a PR
+is gated on what it changes in the application, while an image scan reports on
+OS packages and binaries whose advisories arrive with no commit, so as a PR
+check it failed PRs for advisories nobody had introduced. See
+[BRANCH_PROTECTION.md](BRANCH_PROTECTION.md#what-gates-a-pr-and-what-runs-after-it).
 
-1. **Build** with BuildKit and a GitHub Actions layer cache, loaded into the
-   runner's Docker. Nothing is pushed.
+1. **Build** with BuildKit, loaded into the runner's Docker. Nothing is pushed.
+   The GitHub Actions layer cache is scoped to the UTC day, so the day's first
+   build installs current OS packages; the nightly build uses no cache. A
+   long-lived cache kept serving packages from the day a layer was first built
+   (8 Oct 2026: a cached Chromium 153 carried 80 HIGH/CRITICAL findings fixed in
+   154), which failed the gate on findings a fresh build does not have. The
+   refresh changes what is installed, never what is scanned or how.
 2. **Report** every vulnerability Trivy finds, counted by package type,
    severity and fix availability, in the job summary. This never fails.
 3. **Gate:** fail on CRITICAL or HIGH findings **with a published fix**, minus
@@ -65,17 +75,19 @@ For both images, on every pull request, push to `master`, and on demand:
 4. **Smoke test** the image the way compose runs it.
 5. **Record** the tag, image ID, size and revision label in the job summary.
 
-Required checks: `Backend Image` and `Frontend Image`; see
-[BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
+`Backend Image` and `Frontend Image` are **not** required checks: they do not
+run on pull requests, so a required one would never report and every PR would
+wait for it. A red run on `master` or at night is a finding to fix; run the
+workflow manually on the commit being released.
 
 ## Vulnerability policy
 
-| Finding                                    | What happens                                          | Why                                                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| CRITICAL or HIGH, fix published            | **Blocks**, unless it's in the image's exception file | Someone can act on it.                                                                                                           |
-| CRITICAL or HIGH, no fix published         | Reported                                              | Blocking leaves the build red with nothing anyone can do. It reaches the image through a base-image update.                      |
-| MEDIUM, LOW, UNKNOWN                       | Reported                                              | Visible in every run's summary; not a merge decision.                                                                            |
-| Python packages in the app's site-packages | Left to pip-audit (`security.yml`)                    | They already have a reviewed backlog there. Gating them twice would put one advisory under two exception lists that drift apart. |
+| Finding                                    | What happens                                                 | Why                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| CRITICAL or HIGH, fix published            | **Fails the run**, unless it's in the image's exception file | Someone can act on it.                                                                                                           |
+| CRITICAL or HIGH, no fix published         | Reported                                                     | Blocking leaves the build red with nothing anyone can do. It reaches the image through a base-image update.                      |
+| MEDIUM, LOW, UNKNOWN                       | Reported                                                     | Visible in every run's summary; not a merge decision.                                                                            |
+| Python packages in the app's site-packages | Left to pip-audit (`security.yml`)                           | They already have a reviewed backlog there. Gating them twice would put one advisory under two exception lists that drift apart. |
 
 The Python base image's **own** tooling (its setuptools and the packages that
 setuptools bundles) isn't an application requirement, so pip-audit never sees

@@ -16,8 +16,12 @@ blocks, and what to do when one fails. The workflows are
 | Ruff (in `ci.yml`)            | ruff             | yes              | yes              | no                              | unchanged from before                        |
 
 Container images are scanned separately, by Trivy in `images.yml`, against the
-image each commit actually builds. Its policy and exceptions are in
-[CONTAINER_IMAGES.md](CONTAINER_IMAGES.md).
+image each commit actually builds: after every merge to `master`, nightly, and
+on demand, but **not on pull requests**. A PR is gated on what it changes in the
+application; the image scan reports on OS packages and binaries whose
+advisories arrive with no commit. Its policy and exceptions are in
+[CONTAINER_IMAGES.md](CONTAINER_IMAGES.md); which checks are required is in
+[BRANCH_PROTECTION.md](BRANCH_PROTECTION.md#what-gates-a-pr-and-what-runs-after-it).
 
 The nightly run exists because advisory databases change while the code does
 not. A dependency that was clean when it merged can be vulnerable a week later,

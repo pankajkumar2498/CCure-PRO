@@ -40,8 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     # Without a timeout a hung pytest, or a postgres service that never
     # reports healthy, runs to GitHub's 6-hour ceiling before anyone is told.
-    # The suite takes about 3 minutes; 30 is generous headroom, not a target.
-    timeout-minutes: 30
+    # The job took 29 minutes on a hosted runner on 8 Oct 2026, against a
+    # 30-minute limit: one slower runner would have cancelled a passing run.
+    # 45 is headroom for that, not a target.
+    timeout-minutes: 45
     env:
       PGHOST: localhost
       PGPORT: 5432
@@ -218,10 +220,11 @@ jobs:
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
-    # The browser matrix (three engines, 420 checks) takes about 15 minutes on
-    # an 8-core workstation; a hosted runner has a quarter of the cores, and
-    # 30 minutes cancelled this job mid-run on 8 Oct 2026. Hung runs are still
-    # bounded, just not at a budget the suite cannot meet.
+    # The browser checks here run in Chromium only (see the browser step). The
+    # 75-minute budget was set for all three engines, which took about 15
+    # minutes on an 8-core workstation and did not fit 30 on a hosted runner
+    # (7 Oct 2026). It is left as it was; lower it once Chromium-only runs
+    # show what this job really takes.
     timeout-minutes: 75
 
     steps:
@@ -279,18 +282,23 @@ jobs:
           npm run ux4g:architecture
           node scripts/build-authorization-inventory.mjs --check
 
-      - name: Install Pinned Browser Engines
+      # Chromium on every PR and push: the same accessibility, keyboard,
+      # responsive and reflow checks, in one engine. Firefox and WebKit run the
+      # identical suite every night in browser-matrix.yml, which is where a
+      # cross-engine regression shows up. Three engines here made this the
+      # slowest check on every PR and did not finish on a hosted runner.
+      - name: Install Pinned Browser Engine (Chromium)
         run: |
           cd Frontend
-          npx --no-install playwright install --with-deps chromium firefox webkit
+          npx --no-install playwright install --with-deps chromium
 
-      - name: Check Accessibility, Responsive UI and Browser Contracts
+      - name: Check Accessibility, Responsive UI and Browser Contracts (Chromium)
         env:
           UX4G_BROWSER_OUTPUT: ${{ runner.temp }}/ux4g-browser-results
           UX4G_BROWSER_REPORT: ${{ runner.temp }}/ux4g-browser-report.json
         run: |
           cd Frontend
-          npm run test:browser
+          npm run test:browser -- --project=chromium
 
       - name: Retain Browser Failure Evidence
         if: always()

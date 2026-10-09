@@ -1,16 +1,5 @@
 /* ── Keyframe definitions ─────────────────────────────────────────────────── */
 
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -35,118 +24,10 @@
   }
 }
 
-@keyframes scanLine {
-  0% {
-    top: 0%;
-    opacity: 0.8;
-  }
-  100% {
-    top: 100%;
-    opacity: 0;
-  }
-}
-
-@keyframes badgePop {
-  0% {
-    transform: scale(0.75);
-    opacity: 0;
-  }
-  65% {
-    transform: scale(1.08);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-/* ── 3. STATUS CHIP ANIMATIONS ─────────────────────────────────────────────── */
-
-.chip {
-  animation: badgePop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition:
-    transform 0.12s,
-    box-shadow 0.12s;
-}
-
-/* ── 5. STEPPER ENHANCEMENTS — retired in batch 15 (styles/scan-stepper.css) */
-
-/* ── 6. SKELETON LOADER ───────────────────────────────────────────────────── */
-
-.skeleton {
-  display: inline-block;
-  border-radius: 5px;
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
-  background-size: 600px 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
-}
-
-/* ── 7. EMPTY STATE ───────────────────────────────────────────────────────── */
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 64px 24px;
-  text-align: center;
-  animation: fadeIn 0.4s ease both;
-}
-
-/* ── 11. SCAN CARDS (Dashboard) ───────────────────────────────────────────── */
-
-.scan-card--active {
-  transition:
-    box-shadow 0.2s,
-    border-color 0.2s,
-    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.scan-card--active:hover {
-  transform: translateY(-3px) scale(1.01);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.11);
-}
-
-/* Scan card icon — gentle scale on card hover */
-.scan-card--active:hover .scan-card-icon {
-  transform: scale(1.08);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* ── 14. CARD ENTRY ───────────────────────────────────────────────────────── */
-
-.card {
-  animation: fadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 /* ── 16. TOOLTIP FADE ─────────────────────────────────────────────────────── */
 
 [title]:hover::after {
   animation: fadeIn 0.15s ease both;
-}
-
-/* ── 21. HOST CARD HEADER ─────────────────────────────────────────────────── */
-
-.host-card-header {
-  transition: background 0.15s;
-}
-
-/* ── 24. ACTIVE-SCAN SCAN-LINE EFFECT ─────────────────────────────────────── */
-
-.scan-line-wrap {
-  position: relative;
-  overflow: hidden;
-}
-
-.scan-line-wrap::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  animation: scanLine 1.8s ease-in-out infinite;
-  pointer-events: none;
 }
 
 /* ── prefers-reduced-motion: strip ALL animations ─────────────────────────── */
@@ -171,14 +52,6 @@
   to {
     opacity: 1;
   }
-}
-
-.pm-status-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.84rem;
-  padding: 9px 0;
 }
 
 /* "Sign out all other sessions". Styled as a destructive-but-deliberate

@@ -46,6 +46,7 @@ jobs:
           - title: Backend Image
             name: ccure-audit-pro-backend
             context: Backend
+            file: Backend/Dockerfile
             smoke: scripts/ci/smoke_backend.sh
             exceptions: .github/security/trivy-backend.yaml
             # Python packages are pip-audit's (security.yml), with their own
@@ -57,8 +58,24 @@ jobs:
           - title: Frontend Image
             name: ccure-audit-pro-frontend
             context: Frontend
+            file: Frontend/Dockerfile
             smoke: scripts/ci/smoke_frontend.sh
             exceptions: .github/security/trivy-frontend.yaml
+            skip: ''
+          # The gateway's token check, which answers for every API request.
+          # Built from the repository root: its Dockerfile copies the core's
+          # verification rules, and Dockerfile.dockerignore beside it is an
+          # allow-list of exactly those files. Nothing is skipped: pip-audit
+          # (security.yml) audits only Backend/requirements.txt, so Trivy is
+          # the gate for this image's Python packages too. They are pinned to
+          # the core's versions, and trivy-gateway-auth.yaml repeats only the
+          # core's existing decisions on them.
+          - title: Gateway-auth Image
+            name: ccure-gateway-auth
+            context: .
+            file: gateway/token_check/Dockerfile
+            smoke: scripts/ci/smoke_gateway_auth.sh
+            exceptions: .github/security/trivy-gateway-auth.yaml
             skip: ''
     env:
       # The canonical identity of the artifact: the commit it was built from.
@@ -99,6 +116,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           load: true
           push: false
           tags: ${{ env.IMAGE }}

@@ -154,31 +154,11 @@
  * Secondary text (.field-hint, --text-muted) stays lighter on purpose so the
  * hierarchy is still visible — that separation is the point, not an accident.
  */
-.field label,
-.field-label {
+.field label {
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-mid);
   letter-spacing: 0.01em;
-}
-
-/* The auth cards (login, register, verify-email, reset) are dark-surfaced
- * whatever the app theme is — their inputs hardcode a slate background and
- * white text. So --text-mid, which is near-black under the light theme, would
- * be unreadable there. This is the one place the light literal belongs, and it
- * is scoped so it cannot leak back onto white forms. 13.8:1 on the card. */
-
-/* Browser Autofill Protection */
-
-/* Password Input Adornments */
-
-.field-hint {
-  font-size: 0.78rem;
-  margin-top: 2px;
-}
-
-.field-hint--error {
-  color: #f87171;
 }
 
 /* Password Strength Bar */

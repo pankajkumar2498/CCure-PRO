@@ -1,10 +1,5 @@
 /* ── Dark mode component-specific fixes ─────────────────────────────────── */
 
-:root[data-theme="dark"] .card {
-  background: var(--bg-white);
-  border-color: var(--border);
-}
-
 :root[data-theme="dark"] td,
 :root[data-theme="dark"] th {
   border-color: var(--border);

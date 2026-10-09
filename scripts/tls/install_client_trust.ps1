@@ -4,51 +4,74 @@
     internal root certificate and maps the hostname to the server.
 
 .DESCRIPTION
-    Two things have to be true on a client before https://ccurepro.cdacb.in works
+    Two things have to be true on a client before https://<server name> works
     without a warning:
 
-      1. The machine trusts the CCure internal root CA. A public CA cannot
-         issue for 10.180.6.14 (CA/Browser Forum rules forbid certificates for
-         reserved IP ranges), so the certificate is signed by an internal root
-         that no machine trusts until told to.
+      1. The machine trusts the deployment's internal root CA. A public CA
+         cannot issue for a reserved (private) IP range under CA/Browser Forum
+         rules, so the server certificate is signed by an internal root that no
+         machine trusts until told to.
 
-      2. The name ccurepro.cdacb.in resolves to 10.180.6.14. This machine is not
-         domain-joined, so there is no DNS server to hold an A record and no
-         Group Policy to push one — hence a hosts entry.
+      2. The server name resolves to the server's address. A machine that is
+         not domain-joined has no DNS server to hold an A record and no Group
+         Policy to push one, hence a hosts entry.
 
-    Why bother with the name at all, when https://10.180.6.14 also works:
+    Why bother with the name at all, when https://<address> also works:
     HSTS. RFC 6797 §8.1.1 requires a browser to ignore Strict-Transport-Security
     when the host is an IP literal, so the IP form gets encryption but can never
     be pinned to HTTPS. The hostname form can.
 
+    The server is always named on the command line. There is deliberately no
+    default: the defaults this script used to carry named the Windows host,
+    retired on 9 Oct 2026, and a default silently points a client at whichever
+    server the script happened to be written for.
+
     Safe to re-run. Both steps detect existing state and skip.
 
 .PARAMETER RootCert
-    Path to ccure-internal-ca.crt. Copy it off the server first; it is public
-    and safe to email or put on a share. The CA *private* key must never leave
-    the server.
+    Path to the deployment's root CA certificate (.crt). Copy it off the
+    server first; it is public and safe to email or put on a share. The CA
+    *private* key must never leave the server.
+
+.PARAMETER Hostname
+    The name clients use for the server, as on its certificate.
+
+.PARAMETER IpAddress
+    The server's address, for the hosts entry. Not needed with -SkipHostsEntry.
 
 .PARAMETER SkipHostsEntry
     Use if your network already resolves the hostname via DNS.
 
 .EXAMPLE
     # From an elevated PowerShell on the client machine:
-    .\install_client_trust.ps1 -RootCert .\ccure-internal-ca.crt
+    .\install_client_trust.ps1 -RootCert .\<root-ca>.crt -Hostname <server name> -IpAddress <server address>
+
+.EXAMPLE
+    # Where DNS already resolves the name:
+    .\install_client_trust.ps1 -RootCert .\<root-ca>.crt -Hostname <server name> -SkipHostsEntry
 
 .NOTES
     Firefox maintains its own certificate store and ignores the Windows one.
     Firefox users additionally need either:
       Settings → Privacy & Security → Certificates → View Certificates →
-      Authorities → Import, selecting ccure-internal-ca.crt
+      Authorities → Import, selecting the root certificate file
     or the enterprise policy switch:
       security.enterprise_roots.enabled = true   (in about:config)
     The script prints this reminder if Firefox is detected.
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = "HostsEntry")]
 param(
-    [string]$RootCert  = "$PSScriptRoot\ccure-internal-ca.crt",
-    [string]$Hostname  = "ccurepro.cdacb.in",
-    [string]$IpAddress = "10.180.6.14",
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]
+    [string]$RootCert,
+
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]
+    [string]$Hostname,
+
+    [Parameter(Mandatory, ParameterSetName = "HostsEntry")]
+    [ValidateScript({ $null -ne ($_ -as [System.Net.IPAddress]) })]
+    [string]$IpAddress,
+
+    [Parameter(Mandatory, ParameterSetName = "Dns")]
     [switch]$SkipHostsEntry
 )
 
@@ -64,14 +87,8 @@ if (-not $isAdmin) {
     throw "Run as Administrator: writing to the machine trust store and the hosts file both require it."
 }
 
-# Fall back to the server's canonical path when the script is run in place.
 if (-not (Test-Path $RootCert)) {
-    $onServer = "C:\CCure-PKI\ca\ccure-internal-ca.crt"
-    if (Test-Path $onServer) {
-        $RootCert = $onServer
-    } else {
-        throw "Root certificate not found at '$RootCert'. Copy ccure-internal-ca.crt next to this script."
-    }
+    throw "Root certificate not found at '$RootCert'. Copy the deployment's root CA certificate off the server first."
 }
 
 # ── Sanity-check the file before trusting it ─────────────────────────────────
@@ -95,7 +112,8 @@ Write-Host "  Valid to   : $($cert.NotAfter)"
 Write-Host "  Thumbprint : $($cert.Thumbprint)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Confirm that thumbprint matches the server before continuing." -ForegroundColor Yellow
-Write-Host "  On the server:  Get-PfxCertificate C:\CCure-PKI\ca\ccure-internal-ca.crt | Select Thumbprint"
+Write-Host "  On the server:  openssl x509 -in <root-ca>.crt -noout -fingerprint -sha1"
+Write-Host "  (the SHA-1 fingerprint is the thumbprint, written with colons)"
 Write-Host ""
 
 # ── 1. Trust the root ────────────────────────────────────────────────────────
@@ -195,7 +213,7 @@ if ($firefox) {
     Write-Warn "Firefox keeps its own certificate store and ignores the Windows one."
     Write-Warn "For Firefox users, either import the root manually:"
     Write-Warn "  Settings -> Privacy & Security -> Certificates -> View Certificates"
-    Write-Warn "  -> Authorities -> Import -> select ccure-internal-ca.crt"
+    Write-Warn "  -> Authorities -> Import -> select $RootCert"
     Write-Warn "or set security.enterprise_roots.enabled = true in about:config,"
     Write-Warn "which makes Firefox read the Windows store."
 }
@@ -213,7 +231,8 @@ try {
     Write-Warn $_.Exception.Message
     Write-Host ""
     Write-Host "  If the certificate itself is fine, the usual causes are:" -ForegroundColor Yellow
-    Write-Host "    - the server is unreachable from here (try: Test-NetConnection $IpAddress -Port 443)"
+    $target = if ($IpAddress) { $IpAddress } else { $Hostname }
+    Write-Host "    - the server is unreachable from here (try: Test-NetConnection $target -Port 443)"
     Write-Host "    - a proxy is intercepting TLS"
     Write-Host "  Note that PowerShell and curl on Windows use Schannel, which fails"
     Write-Host "  private-CA certificates with CERT_TRUST_REVOCATION_STATUS_UNKNOWN"

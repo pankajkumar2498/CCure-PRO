@@ -26,15 +26,3 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-
-/* ISO Quadrants */
-
-.quad-label {
-  font-weight: 600;
-  color: var(--text-mid);
-  font-size: 0.82rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}

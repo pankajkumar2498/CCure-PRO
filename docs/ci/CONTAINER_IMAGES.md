@@ -15,13 +15,14 @@ never rebuild it anywhere else.
 Two images are built from this repository. Everything else in
 `docker-compose.yml` is an upstream image the repository only configures.
 
-| Image                      | Built from            | Compose services using it                                                                       | Runs as                                                  |
-| -------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `ccure-audit-pro-backend`  | `Backend/Dockerfile`  | `api`                                                                                           | `ccure` (image default)                                  |
-|                            |                       | `worker`, `web-worker`                                                                          | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
-|                            |                       | `beat`                                                                                          | root, then `setpriv` to `ccure`                          |
-| `ccure-audit-pro-frontend` | `Frontend/Dockerfile` | `frontend`                                                                                      | nginx (master root, workers `nginx`)                     |
-| —                          | upstream              | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `api-gateway` (nginx, digest-pinned) | —                                                        |
+| Image                      | Built from                                                 | Compose services using it                                                                       | Runs as                                                  |
+| -------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `ccure-audit-pro-backend`  | `Backend/Dockerfile`                                       | `api`                                                                                           | `ccure` (image default)                                  |
+|                            |                                                            | `worker`, `web-worker`                                                                          | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
+|                            |                                                            | `beat`                                                                                          | root, then `setpriv` to `ccure`                          |
+| `ccure-audit-pro-frontend` | `Frontend/Dockerfile`                                      | `frontend`                                                                                      | nginx (master root, workers `nginx`)                     |
+| `ccure-gateway-auth`       | `gateway/token_check/Dockerfile`, from the repository root | `gateway-auth`                                                                                  | `gwauth` (10001), read-only root, no capabilities        |
+| —                          | upstream                                                   | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `api-gateway` (nginx, digest-pinned) | —                                                        |
 
 The backend is **one image in four roles**, chosen by command. That's why it
 has no `HEALTHCHECK`: an HTTP check would mark the worker and beat containers
@@ -54,7 +55,7 @@ and "what runs" are not the same thing.
 
 ## CI: what each run does
 
-For both images, after every merge to `master` (push), nightly at 02:30 IST,
+For all three images, after every merge to `master` (push), nightly at 02:30 IST,
 and on demand (Actions → Images → Run workflow). **Not on pull requests:** a PR
 is gated on what it changes in the application, while an image scan reports on
 OS packages and binaries whose advisories arrive with no commit, so as a PR
@@ -75,7 +76,7 @@ check it failed PRs for advisories nobody had introduced. See
 4. **Smoke test** the image the way compose runs it.
 5. **Record** the tag, image ID, size and revision label in the job summary.
 
-`Backend Image` and `Frontend Image` are **not** required checks: they do not
+`Backend Image`, `Frontend Image` and `Gateway-auth Image` are **not** required checks: they do not
 run on pull requests, so a required one would never report and every PR would
 wait for it. A red run on `master` or at night is a finding to fix; run the
 workflow manually on the commit being released.
@@ -93,10 +94,17 @@ The Python base image's **own** tooling (its setuptools and the packages that
 setuptools bundles) isn't an application requirement, so pip-audit never sees
 it. It's gated here.
 
+**gateway-auth is the exception to the pip-audit row.** pip-audit audits only
+`Backend/requirements.txt`, so for this image Trivy is the gate for its Python
+packages too, and nothing is skipped. They are pinned to the core's versions on
+purpose (`gateway/token_check/requirements.txt`, so the token check runs on the
+core's libraries), and `trivy-gateway-auth.yaml` repeats only decisions the
+core's pip-audit backlog already records, each naming its entry there.
+
 ### Vulnerability exceptions
 
-`.github/security/trivy-backend.yaml` and `trivy-frontend.yaml`, one file per
-image, so an exception for one can't hide a finding in the other. Every entry:
+`.github/security/trivy-backend.yaml`, `trivy-frontend.yaml` and
+`trivy-gateway-auth.yaml`, one file per image, so an exception for one can't hide a finding in the other. Every entry:
 
 - names **one vulnerability ID**, and on the backend is scoped to **one path**
   (the binary or package carrying it). The same CVE in another binary is
@@ -133,10 +141,11 @@ after the pin never arrives on its own. Where the gate flags a base-image
 package that has a published fix, the Dockerfile upgrades **that package
 only** and leaves the rest of the base as pinned:
 
-| Image    | Packages                                                    | Advisories                                      | Step                                    |
-| -------- | ----------------------------------------------------------- | ----------------------------------------------- | --------------------------------------- |
-| frontend | `pcre2` 10.48-r0 → 10.49-r0, `libexpat` 2.8.4-r0 → 2.8.5-r0 | CVE-2026-103111, CVE-2026-93990                 | `apk upgrade --no-cache pcre2 libexpat` |
-| backend  | `openssl` and `pcre2` packages                              | CVE-2026-75804, CVE-2026-84782, CVE-2026-103111 | `apt-get install --only-upgrade …`      |
+| Image                     | Packages                                                    | Advisories                                      | Step                                    |
+| ------------------------- | ----------------------------------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| frontend                  | `pcre2` 10.48-r0 → 10.49-r0, `libexpat` 2.8.4-r0 → 2.8.5-r0 | CVE-2026-103111, CVE-2026-93990                 | `apk upgrade --no-cache pcre2 libexpat` |
+| backend                   | `openssl` and `pcre2` packages                              | CVE-2026-75804, CVE-2026-84782, CVE-2026-103111 | `apt-get install --only-upgrade …`      |
+| gateway-auth (9 Oct 2026) | the same, on the same base                                  | the same                                        | the same step                           |
 
 The frontend libexpat entry above was an exception until this patch made it
 unnecessary; it was removed a day before it expired, and
@@ -192,8 +201,8 @@ smoke test passes on both.
 
 ## Smoke tests
 
-`scripts/ci/smoke_backend.sh <image>` and `scripts/ci/smoke_frontend.sh <image>`
-run in CI and work the same way locally.
+`scripts/ci/smoke_backend.sh <image>`, `scripts/ci/smoke_frontend.sh <image>` and
+`scripts/ci/smoke_gateway_auth.sh <image>` run in CI and work the same way locally.
 
 **Backend:**
 
@@ -220,7 +229,15 @@ the stand-in owns that address on its own loopback and the frontend shares its
 network namespace, so the test needs `NET_ADMIN` and no host network on the
 live subnet), and no `[emerg]` or `[crit]` from nginx.
 
-**Both scripts were tested against broken images:** missing `sqlmap` fails;
+**Gateway-auth:** run hardened as compose runs it (read-only root, every
+capability dropped, `no-new-privileges`, tmpfs `/tmp`) against a stand-in JWKS
+for a throwaway key the image itself generates: user `10001:10001`, `/healthz`
+200 once the key set loads, `/check` 204 for a route needing no credential, 403
+with `X-Ccure-Refusal` for a missing token and 401 for one that does not verify,
+500 for an unknown route policy (fail closed), no secret-shaped file in the
+image and no traceback in the log.
+
+**The backend and frontend scripts were tested against broken images:** missing `sqlmap` fails;
 a `start.sh` that prints the JWT key fails; a frontend without its CSP
 fails. The secret check first **passed** the leaking image. Under
 `set -o pipefail`, `printf … | grep -q` makes the producer die of SIGPIPE at

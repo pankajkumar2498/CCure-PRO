@@ -82,7 +82,17 @@ python scripts/verification/check_cve_source.py    # Confirm which CVE source is
 
 The other feeds (OSV, MSRC, CSAF, exploit intelligence, VulnCheck) are the
 `scripts/vuln/sync_*.py` scripts; CLAUDE.md, "Vulnerability feeds", says what
-each needs.
+each needs. A user crontab runs them nightly, one after another from 03:00, and
+each run logs to `Backend/logs/<sync>_scheduled.log`:
+
+```bash
+scripts/install_feed_schedule.sh --dry-run     # show the entries
+scripts/install_feed_schedule.sh               # install or replace them
+scripts/run_feed_sync.sh sync_msrc 60          # run one now, exactly as scheduled
+```
+
+VulnCheck is scheduled only once `VULNCHECK_API_TOKEN` is set in
+`Backend/.env`; re-run the installer after adding it.
 
 ## Preparing a Windows scan target for credentialed scanning over SSH
 

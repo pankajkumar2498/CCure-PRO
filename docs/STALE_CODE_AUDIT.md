@@ -333,20 +333,42 @@ decision where one was needed.
   CI's pin and `pytest-rerunfailures` installed with the pytest pin as CI does.
   The old one is at `~/ccure-venv-backup-20261009` for rollback.
 
+Closed on 9 Oct 2026, in the commit after the cleanup:
+
+- **The gateway-auth image is scanned.** `images.yml` builds, scans, gates and
+  smoke-tests it beside the backend and frontend images
+  (`scripts/ci/smoke_gateway_auth.sh`). Its Dockerfile takes the backend's
+  scoped openssl/pcre2 upgrade on the same base, which leaves no fixable OS
+  finding; `trivy-gateway-auth.yaml` repeats only decisions the core already
+  records for the identical package versions (pip-audit backlog, and the two
+  setuptools-vendored entries of `trivy-backend.yaml`). Without that file the
+  gate fails, so it gates.
+- **The feeds are scheduled on the VM.** `scripts/install_feed_schedule.sh`
+  installs the repository's own schedule (the Windows installer's five syncs,
+  hours and time limits) as user-crontab entries running
+  `scripts/run_feed_sync.sh`, which never overlaps a run and logs each one.
+  VulnCheck is scheduled only once `VULNCHECK_API_TOKEN` is set; the VM has none.
+- **`install_client_trust.ps1` names no server of its own.** `-RootCert`,
+  `-Hostname` and `-IpAddress` (or `-SkipHostsEntry`) are required; the retired
+  host's defaults and its `C:\CCure-PKI` fallback are gone.
+- **The remaining dead CSS is gone.** A parser-based detector (string literals
+  and template quasis only, every template's context read) found 40 classes no
+  code can produce and no census rendered, `.host-card-header` and
+  `.scan-card-badge` among them; their 51 rules and 4 orphaned keyframes were
+  removed, and the built bundle equals the old one minus exactly those
+  selectors, in order. 36 data-dependent modifiers the censuses happened not to
+  render were kept, each tied to the `className` template that builds it.
+- **`beautifulsoup4` leaves with the next backend image build.** The image's
+  dependency stage built from today's `requirements.txt` installs neither it nor
+  `soupsieve`; nothing in the current image requires them.
+
 Still open:
 
-- **Nothing schedules the vulnerability-feed syncs on the VM.** The crontab
-  holds only the backups; `install_feed_schedule.ps1` was the Windows schedule.
-  A Linux schedule is a decision of its own (which feeds, how often, where the
-  API keys live).
-- **The gateway-auth image is not vulnerability-scanned.** `images.yml` scans
-  the backend and frontend images; `gateway-auth` is built by the harness and
-  checked for posture, but no Trivy gate covers it.
-- **The §3.3 detector's prefix heuristic keeps other dead classes alive.** The
-  same `host-${…}` and `scan-${…}` templates protect classes such as
-  `.host-card-header` and `.scan-card-badge`; they were outside this item's
-  scope and are left for a separate pass with the same three-signal proof.
-- **`install_client_trust.ps1`'s defaults** name the retired host
-  (`10.180.6.14`, `ccurepro.cdacb.in`, `ccure-internal-ca.crt`); it works for
-  the VM only with explicit parameters.
-- **The backend image still carries `beautifulsoup4`** until its next rebuild.
+- **`VULNCHECK_API_TOKEN`** must be obtained and put in `Backend/.env` before
+  VulnCheck KEV can be scheduled (then re-run the installer).
+- **`scripts/install_feed_schedule.ps1`** is now superseded by its VM twin and
+  serves only the retired Windows deployment; removing it is a one-line
+  decision.
+- **The live gateway-auth and backend images** pick up these changes only when
+  rebuilt and redeployed (gateway-auth's openssl/pcre2 fix; the backend image
+  dropping `beautifulsoup4`).

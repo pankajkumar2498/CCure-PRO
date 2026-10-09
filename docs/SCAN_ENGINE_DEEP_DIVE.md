@@ -327,12 +327,7 @@ live sources beat stale DNS:
 Confidence is derived from confirmations: `High` if ≥ 2 confirmations or ARP
 answered, `Medium` for exactly one, `Low` otherwise, `N/A` if inactive.
 
-### Backward-compatibility shim
-
-`engines/discovery/discovery_engine.py` (148 lines) is a **migration shim** that
-maps the old `DiscoveryScanType` enum onto `DiscoveryProfile` and re-exports
-`DiscoveryEngine`, so pre-refactor import paths keep working. It contains no
-scanning logic.
+### Passive layer-2 discovery
 
 `engines/discovery/l2_sniffer.py::sniff_l2_infrastructure(timeout)` passively
 sniffs CDP/LLDP/STP multicast frames
@@ -493,7 +488,7 @@ and returns a dict whose keys are merged onto the host record. Recognised keys:
 `_load(name)` imports `engines.vulnerability.plugins.<name>` through `importlib`,
 caches the module (or `None` on failure) in `_plugin_cache`, and logs a **warning**
 on `ImportError` or any other exception. A broken plugin is skipped for all scans
-instead of crashing the scanner at startup. `reload_plugins()` clears the cache.
+instead of crashing the scanner at startup.
 
 `plugins/__init__.py` additionally imports all fifteen eagerly, which is what makes
 an import error visible during development.
@@ -1266,11 +1261,11 @@ hidden}`, capped at `MAX_SQLMAP_TARGETS = 20`.
 `core/web/correlation.py::deduplicate_findings` merges by rule: same URL + same
 `finding_type` → keep highest severity; same URL + overlapping CVE → merge;
 Nuclei **and** SQLMap both finding SQLi → one finding with `verified=True`.
-`correlate_with_network_findings()` cross-links to network CVEs.
+Web findings are not cross-linked to network-scan CVEs.
 
 `core/web/standards_mapping.py::map_compliance(finding_type)` maps to OWASP Top 10 (2021),
-PCI-DSS 4.0 and SOC 2 TSC; `generate_compliance_scorecard(findings)` produces the
-rollup behind `GET /dashboard/web-owasp-scorecard`.
+PCI-DSS 4.0 and SOC 2 TSC. `GET /dashboard/web-owasp-scorecard` rolls stored
+`web_findings.owasp_category` values up per OWASP category (`routers/dashboard.py`).
 
 Failure findings that are real findings: `auth_failure_finding()` when
 authentication could not be established, and `open_redirect_findings()` from
@@ -1309,12 +1304,12 @@ credential (or the inline encrypted material on the request row) into
 
 The `vuln_intel` database backs both the network and credentialed matchers.
 
-| Accessor             | Module                             | Purpose                                                                                                                                                                                                                            |
-| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CVEDatabase`        | `core/cve_database.py` (513 lines) | `search_cves_for_service(service_name, version, cpes)`, `get_cve_details`, `get_cves_by_severity`. PostgreSQL primary with a legacy SQLite fallback. `CPE_MATCH_ROW_CAP = 2000`, `NAME_MATCH_ROW_CAP = 200`                        |
-| Shared helpers       | `core/vuln_intel.py` (488 lines)   | `compute_priority`, `title_case_severity`, `rank_cvss_version`, `extract_search_terms`, `normalize_package_names`, `parse_cpe_identities`, `csaf_advisories_for`, `exploit_intel_for`, `get_feed_freshness`, `can_connect_vuln_db` |
-| CVSS validation      | `scans/cvss.py`                    | Independently recomputes scores from published vectors                                                                                                                                                                             |
-| Structured CVE model | `scans/cve_engine/`                | `cpe_matcher.py`, `cvss_validator.py`, `nvd_client.py`, `remediation_resolver.py`, `models.py`                                                                                                                                     |
+| Accessor             | Module                             | Purpose                                                                                                                                                                                                       |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CVEDatabase`        | `core/cve_database.py` (513 lines) | `search_cves_for_service(service_name, version, cpes)`, `get_cve_details`, `get_cves_by_severity`. PostgreSQL primary with a legacy SQLite fallback. `CPE_MATCH_ROW_CAP = 2000`, `NAME_MATCH_ROW_CAP = 200`   |
+| Shared helpers       | `core/vuln_intel.py` (488 lines)   | `compute_priority`, `title_case_severity`, `extract_search_terms`, `normalize_package_names`, `parse_cpe_identities`, `csaf_advisories_for`, `exploit_intel_for`, `get_feed_freshness`, `can_connect_vuln_db` |
+| CVSS validation      | `scans/cvss.py`                    | Independently recomputes scores from published vectors                                                                                                                                                        |
+| Structured CVE model | `scans/cve_engine/`                | `cpe_matcher.py`, `cvss_validator.py`, `nvd_client.py`, `remediation_resolver.py`, `models.py`                                                                                                                |
 
 `BEST_CVSS_LATERAL` — a `LEFT JOIN LATERAL` that picks the highest-ranked CVSS
 version available per CVE — appears in both `cve_database.py` and

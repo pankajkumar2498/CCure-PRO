@@ -74,11 +74,6 @@ PYSEC-2024-232         # CVE-2024-33663   fixed in 3.4.0
 PYSEC-2024-233         # CVE-2024-33664   fixed in 3.4.0
 PYSEC-2025-185         # CVE-2024-29370   no fix published
 
-# ── urllib3 2.6.3 — 2 advisories; highest fix 2.7.0
-# HTTP client; pinned 2.6.3.
-PYSEC-2026-141         # CVE-2026-44431   fixed in 2.7.0
-PYSEC-2026-142         # CVE-2026-44432   fixed in 2.7.0
-
 # ── ecdsa 0.19.2 — 1 advisories; highest fix none published
 # Transitive (python-jose). No fixed release exists.
 PYSEC-2026-1325        # CVE-2024-23342   no fix published

@@ -21,18 +21,6 @@
   width: 100%;
   min-width: 0;
 }
-.auth-hero-brand,
-.auth-brand,
-.auth-brand-text {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-}
-.auth-hero-brand {
-  margin-bottom: var(--ccure-space-2xl);
-  flex-wrap: wrap;
-}
-.auth-hero-brand-title,
 .auth-brand-name {
   font-size: var(--ccure-text-xl);
   font-weight: var(--ccure-weight-bold);
@@ -49,52 +37,9 @@
   margin-bottom: var(--ccure-space-md);
   overflow-wrap: anywhere;
 }
-.auth-hero-subheadline,
-.auth-feature-text p,
-.auth-metric-lbl {
+.auth-hero-subheadline {
   color: var(--ccure-text-secondary);
   line-height: var(--ccure-leading-normal);
-}
-.auth-feature-list {
-  display: grid;
-  gap: var(--ccure-space-md);
-}
-.auth-feature-card > .cc-card__body {
-  display: flex;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-md);
-}
-.auth-feature-icon {
-  flex-shrink: 0;
-  color: var(--ccure-text-link);
-}
-.auth-feature-text {
-  min-width: 0;
-}
-.auth-feature-text h3 {
-  font-size: var(--ccure-text-base);
-  margin-bottom: var(--ccure-space-2xs);
-}
-.auth-feature-text p {
-  font-size: var(--ccure-text-sm);
-}
-.auth-metrics-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ccure-space-lg);
-  margin-top: var(--ccure-space-xl);
-}
-.auth-metric-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ccure-space-2xs);
-}
-.auth-metric-val {
-  font-size: var(--ccure-text-xl);
-  font-weight: var(--ccure-weight-bold);
-}
-.auth-metric-lbl {
-  font-size: var(--ccure-text-sm);
 }
 .auth-form-panel {
   display: flex;
@@ -109,10 +54,6 @@
 }
 .auth-card > .cc-card__body {
   padding: var(--ccure-space-xl);
-}
-.auth-card .auth-brand {
-  display: none;
-  margin-bottom: var(--ccure-space-xl);
 }
 .auth-title {
   font-size: var(--ccure-text-2xl);
@@ -166,9 +107,6 @@
   }
   .auth-form-panel {
     padding: var(--ccure-space-lg);
-  }
-  .auth-card .auth-brand {
-    display: flex;
   }
 }
 @media (max-width: 480px) {
@@ -239,16 +177,8 @@
   margin-top: 2px;
 }
 
-.field-hint--warn {
-  color: #fbbf24;
-}
-
 .field-hint--error {
   color: #f87171;
-}
-
-.field-hint--ok {
-  color: #34d399;
 }
 
 /* Password Strength Bar */
@@ -256,15 +186,6 @@
 /* ── Auth Submit Button ── */
 
 /* Spinner */
-.btn-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: #ffffff;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
 
 @keyframes spin {
   to {

@@ -1,0 +1,114 @@
+name: Gateway
+
+# The gateway's Docker harnesses (Phase 10): the parts of gateway testing that
+# need images. ci.yml's Backend Validation already runs the hermetic suites on
+# every pull request (gateway-auth unit and parity, production configuration);
+# this runs the rest against real containers:
+#
+#   gateway/harness              route-policy drift check; the refusal matrix
+#                                through nginx + gateway-auth; the image's
+#                                posture (user, read-only root, no secret file);
+#                                the same requests with gateway-auth STOPPED,
+#                                which must fail closed; logs hold no token
+#   gateway/production/          the committed host-nginx edge file in front of
+#     trust_harness              the gateway over its unix socket: who may speak
+#                                for the client address, a stale socket after a
+#                                kill -9, and what reaches the logs
+#
+# Both are isolated: their own compose project and internal network, no
+# published port, throwaway keys. gateway/alongside is not here: it is the
+# Phase 10.3/10.4 rehearsal against the VM's live stack, which it inspects to
+# prove it changed nothing, and there is no live stack on a runner.
+#
+# Not a pull-request check. It needs the 3.2 GB backend image, which only
+# images.yml builds, after a merge. It runs after a merge that touches the
+# gateway or what it is built from, nightly, and on demand; like images.yml it
+# is deliberately not a required check (docs/ci/BRANCH_PROTECTION.md), because
+# a required check that never runs on a PR leaves every PR waiting.
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'gateway/**'
+      - 'Backend/ccure_platform/identity/**'
+      - 'Backend/scripts/gateway/**'
+      - 'Frontend/nginx.conf'
+      - 'docker-compose.yml'
+      - 'scripts/linux/gateway_edge_switch.sh'
+      - '.github/workflows/gateway.yml'
+  schedule:
+    - cron: '0 22 * * *'   # 03:30 IST, after images.yml has refreshed the day's layer cache
+  workflow_dispatch:
+
+# Read-only token; no job references a secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_NODE_TYPE: node24
+
+jobs:
+  harness:
+    name: Gateway Harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # As images.yml: the backend image and BuildKit's copy of it do not fit
+      # beside the toolchains the hosted runner ships.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # images.yml's scope for today (it changes every UTC day; see there).
+      - name: Choose images.yml's layer cache for today
+        id: cache
+        run: echo "scope=ccure-audit-pro-backend-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # The harness compose files name ccure-audit-pro-backend:latest (the
+      # route-policy check, the stub API, the test runners). Built here from
+      # this commit, reading images.yml's layer cache for the day and never
+      # writing it, so this workflow cannot change what images.yml scans.
+      - name: Build the backend image the harnesses run
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: Backend
+          load: true
+          push: false
+          tags: ccure-audit-pro-backend:latest
+          provenance: false
+          cache-from: type=gha,scope=${{ steps.cache.outputs.scope }}
+
+      # run.sh writes its artefacts into CCURE_HARNESS_OUT but creates the
+      # directory only when it chooses one itself, so it must exist first.
+      - name: Route policy, refusal matrix and fail-closed (gateway/harness)
+        env:
+          CCURE_HARNESS_OUT: ${{ runner.temp }}/gateway-harness
+        run: |
+          mkdir -p "$CCURE_HARNESS_OUT"
+          bash gateway/harness/run.sh
+
+      - name: Trust boundary (gateway/production/trust_harness)
+        run: bash gateway/production/trust_harness/run.sh
+
+      # Only for diagnosing a failure. The directory holds the gateway logs and
+      # tokens minted with this run's throwaway keys, which nothing else trusts,
+      # but a green run has no reason to publish them.
+      - name: Retain harness artefacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gateway-harness
+          path: ${{ runner.temp }}/gateway-harness
+          if-no-files-found: ignore
+          retention-days: 7

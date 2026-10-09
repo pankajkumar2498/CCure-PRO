@@ -11,25 +11,6 @@
   .scan-type-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .detail-meta {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .pipeline-complete-card {
-    flex-direction: column;
-    align-items: stretch;
-    text-align: center;
-  }
-
-  .pipeline-complete-left {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .app-progress-labels {
-    font-size: 0.7rem;
-  }
 }
 
 /* ============================================================================

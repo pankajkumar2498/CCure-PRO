@@ -214,7 +214,6 @@ playwright>=1.40.0         # Headless browser for SPA crawling
 sslyze>=6.0.0              # TLS/SSL configuration auditing
 sqlmap==1.10.9             # SQL injection testing (DETECT phase) — pinned (Phase 15): reproducible worker builds, verified working in ccure-web-worker
 httpx>=0.27.0              # Async HTTP client for WAF detection, auth
-beautifulsoup4>=4.12.0     # HTML parsing for crawler
 
 # ── External scanner binaries (NOT installable via pip) ──────────────────────
 # nuclei, subfinder and ffuf are Go binaries. The Docker image installs them

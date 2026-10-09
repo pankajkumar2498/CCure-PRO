@@ -65,16 +65,6 @@
 }
 
 /* Menus (org switcher, account) */
-.sh-menu {
-  position: absolute;
-  top: calc(100% + var(--ccure-space-xs));
-  z-index: var(--ccure-z-drawer);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-  box-shadow: var(--ccure-shadow-lg);
-  overflow: hidden;
-}
 
 .sh-menu--org {
   left: 0;

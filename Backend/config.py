@@ -913,7 +913,7 @@ class AppConfig:
         os.getenv("AUDIT_RETENTION_REQUIRE_BACKUP_HOURS", "24")
     )
 
-    # Where backup_db.ps1 writes. Read only to check the age of the newest
+    # Where scripts/backup_db.sh writes. Read only to check the age of the newest
     # dump; nothing here ever writes to or prunes this directory.
     AUDIT_RETENTION_BACKUP_DIR: str = os.getenv(
         "AUDIT_RETENTION_BACKUP_DIR", str(BACKEND_DIR.parent / "backups")

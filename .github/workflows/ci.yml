@@ -211,6 +211,26 @@ jobs:
           # summary and the job still passes.
           pytest --cov=. --cov-report=xml -v --reruns 1 -rR
 
+      # The gateway (Phase 10). gateway-auth decides every API request before
+      # the core sees it, and its verification rules are the core's own file
+      # (Backend/ccure_platform/identity/verification.py, baked into its
+      # image), so a backend change can break the gateway without touching
+      # gateway/. Neither suite ran in CI before 9 Oct 2026. These two are the
+      # hermetic ones (no network, no Docker, about 10 s together) and run
+      # inside this required job, so they block a PR without a ruleset change.
+      # The Docker harnesses (refusal matrix, fail-closed, trust boundary) need
+      # the backend image and run in gateway.yml. docs/ci/BRANCH_PROTECTION.md.
+      - name: Gateway Tests (gateway-auth unit and FastAPI parity)
+        env:
+          PYTHONPATH: gateway:Backend
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m pytest -q -p no:cacheprovider gateway/token_check/tests
+
+      - name: Gateway Tests (production configuration, static)
+        run: |
+          python -m pytest -q -p no:cacheprovider gateway/production/tests
+
       - name: Verify Documentation Build & Integrity
         run: |
           cd Backend

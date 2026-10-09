@@ -10,7 +10,6 @@ import AllFindings from "./pages/AllFindings";
 import AllEndpoints from "./pages/AllEndpoints";
 
 import PanelErrorBoundary from "@audit/components/common/PanelErrorBoundary";
-import "./styles/web-scanning.css";
 
 export default function WebScanningRoutes() {
   return (

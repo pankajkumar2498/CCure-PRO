@@ -7,7 +7,6 @@ Located at the Backend root (not inside routers/) to avoid circular imports,
 since the lifespan function in main.py also depends on these symbols.
 """
 
-import json
 import logging
 from typing import Dict, List, Optional
 
@@ -221,18 +220,6 @@ def validate_scan_targets(
             raise HTTPException(status_code=403, detail=exc.message) from exc
 
     return cleaned
-
-
-def validate_total_targets(targets: list[str]) -> None:
-    """Backwards-compatible wrapper — prefer validate_scan_targets."""
-    validate_scan_targets(targets)
-
-
-def _safe_json_loads(text: str | None, default):
-    try:
-        return json.loads(text or "")
-    except Exception:
-        return default
 
 
 def _normalize_scan_method(value: str | None) -> str | None:
@@ -456,12 +443,6 @@ def finish_progress(scan_id: str, db: Session = None):
             _db_finish_progress(session, scan_id)
         finally:
             session.close()
-
-
-def get_cve_redirection_url(cve_id: str) -> str:
-    """Return the authoritative NIST NVD URL for a CVE ID."""
-    clean_id = str(cve_id).strip()
-    return f"https://nvd.nist.gov/vuln/detail/{clean_id.upper()}"
 
 
 def make_pdf_cve_paragraph(cve_id: str, style) -> "Paragraph":

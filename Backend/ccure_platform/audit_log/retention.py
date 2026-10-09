@@ -198,10 +198,6 @@ NOT_INSTALLED_HINT = (
 # ─── Preconditions ───────────────────────────────────────────────────────────
 
 
-def retention_enabled() -> bool:
-    return AppConfig.AUDIT_LOG_RETENTION_DAYS > 0
-
-
 def resolve_cutoff(now: datetime | None = None) -> datetime:
     """
     The instant before which a legacy row becomes eligible.
@@ -283,7 +279,7 @@ def assert_backup_recent() -> str:
             f"No database dump found in "
             f"{AppConfig.AUDIT_RETENTION_BACKUP_DIR!r}. An audit purge is "
             f"irreversible; take one first:\n"
-            f"    .\\scripts\\backup_db.ps1 -SkipReferenceData"
+            f"    scripts/backup_db.sh --skip-reference-data"
         )
     if age > window:
         raise RetentionRefused(

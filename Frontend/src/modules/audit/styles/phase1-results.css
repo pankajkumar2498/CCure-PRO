@@ -27,12 +27,6 @@
   align-self: flex-start;
 }
 
-.p1-loading {
-  margin: 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
-
 .p1-alert {
   margin: 0;
 }
@@ -110,18 +104,6 @@
   width: 2.5rem;
 }
 
-.p1-check {
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-  accent-color: var(--ccure-primary);
-  cursor: pointer;
-}
-
-.p1-check:disabled {
-  cursor: not-allowed;
-}
-
 .p1-row--inactive td {
   color: var(--ccure-text-secondary);
 }
@@ -195,15 +177,6 @@
   margin: var(--ccure-space-3xs) 0 0;
   font-size: var(--ccure-text-sm);
   color: var(--ccure-text-secondary);
-}
-
-@keyframes p1-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
 }
 
 .p1-done__text {
@@ -441,43 +414,6 @@
 /* A native checkbox drawn as a switch. The thumb is a background gradient on
    the input itself rather than a pseudo-element, so it renders in every
    browser and the focus ring sits on the element that holds focus. */
-.p1-switch {
-  flex-shrink: 0;
-  width: 2.5rem;
-  height: 1.375rem;
-  margin: 0;
-  border: 1px solid var(--ccure-border-strong);
-  border-radius: var(--ccure-radius-full);
-  background: radial-gradient(
-      circle at 0.6875rem 50%,
-      var(--ccure-surface) 0 0.4375rem,
-      transparent 0.5rem
-    ),
-    var(--ccure-border-strong);
-  appearance: none;
-  cursor: pointer;
-}
-
-.p1-switch:checked {
-  border-color: var(--ccure-primary);
-  background: radial-gradient(
-      circle at calc(100% - 0.6875rem) 50%,
-      var(--ccure-surface) 0 0.4375rem,
-      transparent 0.5rem
-    ),
-    var(--ccure-primary);
-}
-
-.p1-switch:focus-visible {
-  outline: none;
-  box-shadow: var(--ccure-focus-ring);
-}
-
-@media (forced-colors: active) {
-  .p1-switch {
-    appearance: auto;
-  }
-}
 
 .p1-tags {
   display: flex;

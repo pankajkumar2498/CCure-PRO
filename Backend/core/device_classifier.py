@@ -38,40 +38,6 @@ from typing import Dict, List, Optional
 log = logging.getLogger("ccure.device_classifier")
 
 # ---------------------------------------------------------------------------
-# Signal 1 — SNMP OID-based classification
-# ---------------------------------------------------------------------------
-
-# OID for ipForwarding (.1.3.6.1.2.1.4.1.0): 1=forwarding(router), 2=notForwarding(host)
-_OID_IP_FORWARDING = "ip_forwarding"
-# OID for ifNumber (.1.3.6.1.2.1.2.1.0): number of interfaces; >2 strongly suggests router/switch
-_OID_IF_NUMBER = "if_number"
-# Bridge MIB (.1.3.6.1.2.1.17.1.1.0): presence → switch
-_OID_BRIDGE_MIB = "bridge_mib"
-
-
-def _classify_from_snmp(snmp_info: dict) -> str | None:
-    """Return category string from SNMP probe findings, or None."""
-    if not snmp_info or not snmp_info.get("open"):
-        return None
-
-    # IP forwarding → router
-    if snmp_info.get("ip_forwarding") == 1:
-        return "router"
-
-    # Bridge MIB present → switch
-    if snmp_info.get("bridge_mib"):
-        return "switch"
-
-    # Many interfaces + IP forwarding disabled → switch or AP
-    if_count = snmp_info.get("if_count", 0)
-    if if_count > 4 and snmp_info.get("ip_forwarding") == 2:
-        return "switch"
-
-    # No forwarding, few interfaces → host (server or endpoint)
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Signal 2 — OUI vendor keyword → device category
 # ---------------------------------------------------------------------------
 
@@ -197,38 +163,6 @@ def _os_from_vendor(vendor: str | None) -> str | None:
     return None
 
 
-def _classify_from_netbios(host: dict) -> str | None:
-    names = host.get("netbios_names")
-    if not names:
-        return None
-
-    types = {n.get("type") for n in names if isinstance(n, dict) and "type" in n}
-
-    # 0x1D = Master Browser, 0x1B = Domain Master Browser, 0x1C = Domain Controller
-    if {0x1D, 0x1B, 0x1C} & types:
-        return "server"
-    if 0x20 in types:  # Server Service
-        return "server"
-    if 0x00 in types:  # Workstation Service
-        return "endpoint"
-
-    return None
-
-
-def _classify_from_mdns(host: dict) -> str | None:
-    mdns_services = host.get("mdns_services")
-    if not mdns_services:
-        return None
-
-    services_set = set(mdns_services)
-    if {"_printer._tcp.local", "_ipp._tcp.local"} & services_set:
-        return "printer"
-    if {"_ssh._tcp.local", "_workstation._tcp.local"} & services_set:
-        return "endpoint"
-
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Signal 4 — Open port profile
 # ---------------------------------------------------------------------------
@@ -280,17 +214,6 @@ _PORT_PROFILE_RULES: list[dict] = [
     {"ports": {5007}, "category": "scada_ics"},  # Mitsubishi MELSEC
     {"ports": {2455}, "category": "scada_ics"},  # CoDeSys
 ]
-
-
-def _classify_from_ports(open_ports: list[int]) -> str | None:
-    port_set = set(open_ports)
-    for rule in _PORT_PROFILE_RULES:
-        required = rule.get("ports", set())
-        optional = rule.get("any", set())
-        if required.issubset(port_set):
-            if not optional or optional & port_set:
-                return rule["category"]
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -350,30 +273,6 @@ _BANNER_KEYWORDS: dict[str, str] = {
 }
 
 
-def _classify_from_banners(host: dict) -> str | None:
-    """Scan all banner-like fields in the host dict for device keywords."""
-    # Collect text to scan
-    texts = []
-
-    snmp = host.get("snmp_info", {})
-    if snmp:
-        texts.append(snmp.get("sys_descr", ""))
-
-    for port_rec in host.get("open_ports", []):
-        texts.append(port_rec.get("banner", ""))
-        texts.append(port_rec.get("version", ""))
-        texts.append(port_rec.get("service", ""))
-
-    texts.append(host.get("os_guess", ""))
-
-    combined = " ".join(str(t) for t in texts if t).lower()
-
-    for kw, cat in _BANNER_KEYWORDS.items():
-        if kw in combined:
-            return cat
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Signal 5 — TTL
 # ---------------------------------------------------------------------------
@@ -384,29 +283,6 @@ def _classify_from_ttl(ttl: int | None) -> str | None:
         return None
     if ttl >= 250:
         return "network_appliance"  # Cisco IOS = 255, common on routers
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Signal 7 — Nmap CPE mapping
-# ---------------------------------------------------------------------------
-
-
-def _classify_from_cpe(os_cpe: list[str] | None) -> str | None:
-    if not os_cpe:
-        return None
-    for item in os_cpe:
-        cpe = str(item).lower()
-        if (
-            "cpe:/o:cisco:ios" in cpe
-            or "cpe:/o:juniper:junos" in cpe
-            or "cpe:/o:mikrotik:routeros" in cpe
-        ):
-            return "router"
-        if "cpe:/o:fortinet:fortios" in cpe or "cpe:/h:paloalto:" in cpe:
-            return "firewall"
-        if "cpe:/h:hp:procurve" in cpe:
-            return "switch"
     return None
 
 

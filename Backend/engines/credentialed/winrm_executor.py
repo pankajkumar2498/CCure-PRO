@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from engines.credentialed.ssh_scanner import CommandResult
 
@@ -477,33 +477,3 @@ class WinRMExecutor:
                 return True
         except OSError:
             return False
-
-
-def build_options(credential) -> Dict[str, Any]:
-    """
-    Translate a stored credential row into :class:`WinRMExecutor` arguments.
-
-    Lives here rather than in the task so the mapping from stored fields to
-    transport settings has one definition. ``credential.options`` carries the
-    per-credential overrides; anything absent falls back to the safe default.
-    """
-    options = dict(getattr(credential, "options", None) or {})
-    port = credential.port or None
-    use_tls = options.get("use_tls")
-    if use_tls is None and port:
-        use_tls = int(port) == DEFAULT_HTTPS_PORT
-    return {
-        "port": port,
-        "auth_method": credential.auth_method or "ntlm",
-        "use_tls": use_tls,
-        # Defaults to False because a Windows WinRM listener created by
-        # `winrm quickconfig` carries a self-signed certificate. Requiring
-        # validation by default would make the common case fail with a TLS
-        # error, and the usual reaction to that is to disable TLS entirely —
-        # a worse outcome than an unvalidated but encrypted channel.
-        "verify_cert": bool(options.get("verify_cert", False)),
-        "timeout": int(options.get("timeout", 30)),
-        "read_timeout": int(options.get("read_timeout", 60)),
-        "winrm_path": options.get("winrm_path", "/wsman"),
-        "allow_basic_over_http": bool(options.get("allow_basic_over_http", False)),
-    }

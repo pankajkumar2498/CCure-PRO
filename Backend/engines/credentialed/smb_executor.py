@@ -1068,16 +1068,6 @@ def _as_int(raw: Optional[str]) -> Optional[int]:
         return None
 
 
-def _registry_flag(path: str, value: str, key: str):
-    """Build a handler that reads one registry value into a named field."""
-
-    def handler(x: SMBExecutor) -> Dict[str, Any]:
-        raw = x.read_registry_value("HKLM", path, value)
-        return {key: None if raw is None else raw}
-
-    return handler
-
-
 def _smbv1_status(x: SMBExecutor) -> Dict[str, Any]:
     raw = x.read_registry_value(
         "HKLM", r"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1"

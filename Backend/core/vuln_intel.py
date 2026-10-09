@@ -93,10 +93,6 @@ def compute_priority(
     return round(score, 2), "P4"
 
 
-def rank_cvss_version(version: str) -> int:
-    return CVSS_VERSION_ORDER.get(str(version or "").strip(), 0)
-
-
 def extract_search_terms(raw_text: str, include_aliases: bool = True) -> list[str]:
     text = (raw_text or "").strip().lower()
     if not text:

@@ -30,14 +30,10 @@ directly. **Do not grant CREATEROLE as a workaround.**
 Take a backup. The script is a single transaction and rolls itself back on any
 error, but a dump costs a minute:
 
-```powershell
-# Supply the password interactively in your own shell. Do NOT paste a real
-# credential into this file, the repository, .env, or any automation — no
-# superuser or application password belongs in version control.
-$env:PGPASSWORD = Read-Host -Prompt 'ccure_user password' -AsSecureString | `
-    ForEach-Object { [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($_)) }
-.\scripts\backup_db.ps1 -SkipReferenceData
+```bash
+# Runs the container's own pg_dump over its Unix socket: no password is asked
+# for or stored. No superuser or application password belongs in version control.
+scripts/backup_db.sh --skip-reference-data
 ```
 
 The `postgres` password for the bootstrap itself is likewise never stored: `psql`

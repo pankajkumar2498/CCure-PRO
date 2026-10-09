@@ -23,7 +23,6 @@
   gap: var(--ccure-space-lg);
 }
 
-.ac-loading,
 .ac-empty {
   margin: 0;
   font-size: var(--ccure-text-sm);

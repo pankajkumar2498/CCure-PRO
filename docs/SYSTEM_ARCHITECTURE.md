@@ -2,7 +2,7 @@
 
 > **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
 >
-> **The service table and diagram predate the Phase 10 gateway (live 30 Sep 2026).** Since then the `api` publishes no port and is reached only through `api-gateway` and `gateway-auth`. The table has no row for either, nor for `beat` (described below). Current topology: `CLAUDE.md`, "Since Phase 10.5" and "Deployment: Linux VM". Image and framework versions in this document were corrected on 9 Oct 2026 (PostgreSQL 18, Node 25, Vite 8).
+> **The service table and diagram predate the Phase 10 gateway (live 30 Sep 2026).** Since then the `api` publishes no port and is reached only through `api-gateway` and `gateway-auth`. The table has no row for either, nor for `beat` (described below). Current topology: `CLAUDE.md`, "Since Phase 10.5" and "Deployment: Linux VM". Image and framework versions in this document were corrected on 9 Oct 2026 (PostgreSQL 18, Node 25, Vite 8). The diagram's Windows-host worker is the retired Windows deployment's (9 Oct 2026). Its `gateway` node is the plain-HTTP `alt-gateway` service, retired by Phase 10 decision D7 and removed from `docker-compose.yml` on 9 Oct 2026.
 
 **CCure-Audit-PRO** — network, web-application and compliance auditing platform.
 
@@ -71,22 +71,22 @@ graph TB
 
 **Container inventory** — `docker-compose.yml`, verified service by service:
 
-| Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                       |
-| ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                     |
-| `db`         | `ccure-db`         | `postgres:18-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                                |
-| `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro`  |
-| `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                      |
-| `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`          |
-| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:25-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**           |
-| `gateway`    | `ccure-gateway`    | `nginx:stable-alpine`   | `127.0.0.1:${GATEWAY_PORT:-8082}:80`            | `./nginx/gateway.conf`; opt-in only, behind the `alt-gateway` profile. Host Nginx is the entry point on 443 |
+| Service      | Container          | Image / build           | Published bind                                  | Notes                                                                                                      |
+| ------------ | ------------------ | ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `redis`      | `ccure-redis`      | `redis:7-alpine`        | `127.0.0.1:6379`                                | Celery broker, result backend, and Pub/Sub for progress + notifications                                    |
+| `db`         | `ccure-db`         | `postgres:18-alpine`    | `127.0.0.1:${POSTGRES_PORT_BINDING:-5433}:5432` | Seeded by `scripts/docker-postgres-init.sql`                                                               |
+| `api`        | `ccure-api`        | `./Backend/Dockerfile`  | `127.0.0.1:8000`                                | Runs `start.sh` → migrations, then uvicorn. Mounts `./Backend`, `./Backend/reports`, and `./docs:/docs:ro` |
+| `worker`     | `ccure-worker`     | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `scanner,default,compliance`                     |
+| `web-worker` | `ccure-web-worker` | `./Backend/Dockerfile`  | —                                               | `profiles: ["container-scanner"]`, runs as `root`, queues `web_recon,web_crawl,web_dast,web_audit`         |
+| `frontend`   | `ccure-frontend`   | `./Frontend/Dockerfile` | `127.0.0.1:3200:80`                             | Multi-stage: `node:25-slim` build → `nginx:stable-alpine`. `VITE_API_BASE_URL` is a **build arg**          |
 
 Both scanner workers sit behind the `container-scanner` Compose profile, so
 `docker compose up` starts neither by default. That is deliberate: raw-socket
 discovery (Scapy ARP/ICMP/SYN) and Nmap need direct access to the physical
-network, which the containers do not have. The supported production layout runs
-the scanner worker **on the Windows host** via
-`Backend/scripts/scan/start_host_scanner_worker.ps1`.
+network. On the VM the `worker` service gets it through `network_mode: host`
+and `NET_ADMIN`/`NET_RAW`; `COMPOSE_PROFILES=container-scanner` in `.env` starts
+both. (The Windows deployment ran the worker on the host via
+`start_host_scanner_worker.ps1`; both were retired on 9 Oct 2026.)
 
 > **CAUTION:** Because `VITE_API_BASE_URL` is baked at frontend build time, a
 > change to the API URL requires `docker compose build frontend`, not a restart.

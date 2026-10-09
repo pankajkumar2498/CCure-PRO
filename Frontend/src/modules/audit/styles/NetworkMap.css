@@ -287,18 +287,6 @@
   cursor: pointer;
 }
 
-.nmap-subnet__input {
-  flex: none;
-  margin: 0;
-  accent-color: var(--ccure-primary);
-  cursor: pointer;
-}
-
-.nmap-subnet__input:focus-visible {
-  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
-  outline-offset: var(--ccure-focus-ring-offset);
-}
-
 .nmap-subnet__label {
   overflow: hidden;
   font-family: var(--ccure-font-mono);

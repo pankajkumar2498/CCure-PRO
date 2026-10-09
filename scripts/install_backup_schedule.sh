@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Schedule backup_db.sh on this VM — Linux twin of install_backup_schedule.ps1.
+# Schedule backup_db.sh on this VM (its Windows twin was retired on 9 Oct 2026).
 #
 # The server runs with archive_mode = off, so the only recovery points that
 # exist are the ones a dump creates. This puts backup_db.sh in the invoking

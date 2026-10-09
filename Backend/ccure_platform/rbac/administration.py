@@ -342,12 +342,6 @@ def _snap(row: RbacRole) -> RoleSnapshot:
     )
 
 
-def _require_visible(row: RbacRole | None, org_id: str | None) -> RbacRole:
-    if row is None or (row.org_id and row.org_id != org_id):
-        raise GovernanceError([Violation("unknown_role", "no such role")])
-    return row
-
-
 def _slug(display_name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", display_name.lower()).strip("_")
     if not slug:

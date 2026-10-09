@@ -407,24 +407,6 @@
   }
 
   /* ── Toast ────────────────────────────────────────────────────────────────── */
-  .cc-toaster {
-    position: fixed;
-    top: var(--ccure-space-lg);
-    inset-inline-end: var(--ccure-space-lg);
-    z-index: var(--ccure-z-toast);
-    display: flex;
-    flex-direction: column;
-    gap: var(--ccure-space-md);
-    width: min(24rem, calc(100vw - var(--ccure-space-2xl)));
-    /* The container is always mounted so its aria-live region exists before any
-     toast enters it — see CcureToast.jsx. It must therefore not intercept
-     pointer events while empty. */
-    pointer-events: none;
-  }
-
-  .cc-toaster > * {
-    pointer-events: auto;
-  }
 
   .cc-toast {
     display: flex;
@@ -466,26 +448,6 @@
   .cc-toast--danger {
     border-color: var(--ccure-danger-border);
     color: var(--ccure-danger-text);
-  }
-
-  .cc-toast__body {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .cc-toast__dismiss {
-    flex: none;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.7;
-    padding: var(--ccure-space-3xs);
-    border-radius: var(--ccure-radius-sm);
-    line-height: 1;
-  }
-  .cc-toast__dismiss:hover {
-    opacity: 1;
   }
 
   /* ── Skip link ────────────────────────────────────────────────────────────

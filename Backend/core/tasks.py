@@ -859,41 +859,6 @@ def _credentialed_sections_with_identity(
     return merged
 
 
-def _compact_dict(data: dict) -> dict:
-    return {
-        key: value for key, value in data.items() if value not in (None, "", [], {})
-    }
-
-
-def _normalized_severity_counts(counts: dict[str, int]) -> dict[str, int]:
-    normalized = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
-    for key, value in (counts or {}).items():
-        label = str(key or "Info").title()
-        if label not in normalized:
-            label = "Info"
-        normalized[label] += int(value or 0)
-    return normalized
-
-
-def _credentialed_risk_from_counts(counts: dict[str, int]) -> tuple[int, str]:
-    score = min(
-        100,
-        counts.get("Critical", 0) * 25
-        + counts.get("High", 0) * 15
-        + counts.get("Medium", 0) * 8
-        + counts.get("Low", 0) * 3,
-    )
-    if score >= 90:
-        return score, "Critical"
-    if score >= 70:
-        return score, "High"
-    if score >= 40:
-        return score, "Medium"
-    if score > 0:
-        return score, "Low"
-    return 0, "Info"
-
-
 def _port_int(value) -> int | None:
     try:
         port = int(str(value).strip())

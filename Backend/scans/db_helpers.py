@@ -75,62 +75,6 @@ def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Scan | None
     return db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == org_id).first()
 
 
-def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
-    """
-    Load a scan and all its phase results into a single dictionary.
-    """
-    scan = _get_org_scoped_scan(db, scan_id, user_id)
-    if not scan:
-        return {}
-
-    # Map phases to friendly keys for the frontend
-    phases_data = {}
-    for phase in scan.phases:
-        key = (
-            "phase1"
-            if phase.phase_order == 1
-            else (
-                "phase2"
-                if phase.phase_order == 2
-                else "phase3" if phase.phase_order == 3 else f"phase{phase.phase_order}"
-            )
-        )
-
-        # Identity resolve phase data (this recreates the 'data' field from Assets)
-        # For performance, in production we'd use the legacy_json_builder
-        phases_data[key] = {
-            "status": phase.status,
-            "summary": _public_phase_summary(phase.summary),
-            # 'data' is usually populated via legacy_json_builder or asset_syncer
-        }
-
-    # Use the existing legacy builder to get the 'data' (hosts list) correctly
-    from scans.legacy_json_builder import build_legacy_scan_results
-
-    full_results = build_legacy_scan_results(db, scan_id)
-
-    return {
-        "id": str(scan.id),
-        "scan_no": scan.scan_no,
-        "status": scan.status,
-        "pipeline_mode": scan.pipeline_mode,
-        "report_executive_path": scan.report_executive_path,
-        "report_technical_path": scan.report_technical_path,
-        "phase1": {
-            **phases_data.get("phase1", {}),
-            "data": full_results.get("phase1", {}).get("data", []),
-        },
-        "phase2": {
-            **phases_data.get("phase2", {}),
-            "data": full_results.get("phase2", {}).get("data", []),
-        },
-        "phase3": {
-            **phases_data.get("phase3", {}),
-            "data": full_results.get("phase3", {}).get("data", []),
-        },
-    }
-
-
 def _get_org_id(db: Session, user_id: str) -> str:
     user = platform_api.user(db, user_id)
     if not user:

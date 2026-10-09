@@ -29,7 +29,10 @@ the rest is the engineering record: the measurement, incident or defect behind
 a rule. It explains a rule and adds no requirement of its own. Two kinds of
 content are history, not current requirements:
 
-- **The Windows-host deployment**, before 17 Sep 2026. In "Architecture", the
+- **The Windows-host deployment**, before 17 Sep 2026; retired on 9 Oct 2026,
+  when its start, host-worker, backup and nginx scripts were removed (git
+  history keeps them; `scripts/tls/*.ps1` and `install_feed_schedule.ps1`
+  stay). In "Architecture", the
   **Scanner worker** and **Database** bullets, the Windows nginx deployment
   steps under **Rate limiting**, and the certificate scripts and host address
   in the **TLS** bullet are marked as history where they appear. The current
@@ -90,13 +93,8 @@ inherit the live URL.
 
 **Before any destructive operation** (test run, migration, bulk delete):
 
-```powershell
-$env:PGPASSWORD = '<password>'
-.\scripts\backup_db.ps1 -SkipReferenceData   # fast: operational data only
-```
-
 ```bash
-scripts/backup_db.sh --skip-reference-data     # the same, on the Linux VM
+scripts/backup_db.sh --skip-reference-data     # fast: operational data only
 ```
 
 Restore with `pg_restore --clean --if-exists -d ccure_test <file>.dump` —
@@ -105,16 +103,10 @@ findings reference, so it cannot be restored on its own, and `--clean` with
 one drops the live catalogue first. See "Backups on the VM" below for the
 procedure that works.
 
-A scheduled task **CCure DB Backup** already dumps operational data every 6
-hours into `backups/` and prunes after 30 days (registered by
-`scripts/install_backup_schedule.ps1`) on the Windows deployment. Check it with:
-
-```powershell
-Get-ScheduledTask -TaskName 'CCure DB Backup' | Get-ScheduledTaskInfo
-```
-
-On the Linux VM the equivalent is a user crontab installed by
-`scripts/install_backup_schedule.sh`; `crontab -l` and `backups/backup.log`.
+A user crontab installed by `scripts/install_backup_schedule.sh` dumps
+operational data every 6 hours into `backups/` and prunes after 30 days; check it
+with `crontab -l` and `backups/backup.log`. (The Windows deployment's scheduled
+task, `install_backup_schedule.ps1`, was retired with it on 9 Oct 2026.)
 
 `archive_mode` is still `off`, so recovery granularity is "since the last
 dump", not point-in-time. Ad-hoc dumps before risky work are still worth taking.
@@ -532,11 +524,12 @@ migrated.
   system that already has one, no permanent bypass); a new organisation's first administrator is
   assigned through the governed assignment API in the same transaction. Users with no assignment
   hold nothing. Recovery of a lost last administrator is the explicit, audited operator script.
-- **Test seam.** `tests/conftest.py` has test-only listeners that give fixture-created users
-  (created with a legacy `role_id`) the RBAC assignment the golden mapping names, and translate
-  atoms a test grants a legacy role (`RolePermission`) into a shared platform custom role. They
-  are off for `rbac_db` (`connection.info["rbac_no_provision"]`), which TRUNCATEs the `rbac_*`
-  tables inside its rolled-back transaction so RBAC tests start empty.
+- **Test seam.** No account receives a role implicitly in tests either. `tests/native_rbac.py`
+  is the fixture API: `create_user`, `system_role(db, key)` for a seeded role by its native
+  key, and `fixture_role(db, label, keys=…)` for a custom platform role holding exactly the
+  grants a test needs. The suite seeds the catalogue and system roles once per session;
+  `rbac_db` TRUNCATEs the `rbac_*` tables inside its rolled-back transaction so RBAC tests
+  start empty. (The legacy `role_id` / `RolePermission` listeners went with RBAC-8.)
 
 - **A role is `id` + `key` + `display_name`, and none of them is an authorization
   input** — not the name, not the key (`platform.viewer`), not a legacy role name.
@@ -581,18 +574,14 @@ migrated.
   Keys are **capability-level** and come from what the code enforces, not from the old
   vocabulary; **no key is invented for a future feature** (Policy Pro, Rank, IR declare
   nothing). Verb vocabulary is settled: `read` for reading, domain verbs elsewhere.
-- **The golden legacy mapping** (`Backend/data/rbac/golden_legacy_mapping.json`, logic in
-  `rbac/legacy_map.py`) accounts for **66 legacy atoms** — 65 seeded plus `audit_logs:read`,
-  which exists only on the live database — as 50 mapped, 6 replaced, 10 retired. **No atom
-  is dropped silently**: a retired one is a keyless `rbac_legacy_map` row with its reason.
-  It is checked three independent ways (`validate_golden`; `derive_role_grants`, which
-  recomputes each role's set from its legacy role; the declarations' `default_grants`) and
-  through the real shadow comparator. A merge of atoms is only legal where every legacy role
-  holds all of them or none. **Changing a declaration's `default_grants`, or a legacy role's
-  grants, means changing the golden file in the same commit** — the tests fail otherwise.
+- **The golden legacy mapping is history.** It mapped **66 legacy atoms** (65 seeded plus
+  `audit_logs:read`) as 50 mapped, 6 replaced, 10 retired, and is how the catalogue was
+  derived. `golden_legacy_mapping.json`, `rbac/legacy_map.py` and the `rbac_legacy_map` table
+  were removed with the legacy model (`86e105b`, 3 Oct 2026; migration `d4f8b2c6e0a1`); git
+  history has them. Nothing reads or tests them now.
 - **The catalogue reaches a database only through `scripts/rbac/sync_catalogue.py`** (dry
-  run unless `--apply`; validates before it writes; takes the live `permissions` table's atoms
-  and refuses any it does not account for). It is **not** wired into start-up: a failure
+  run unless `--apply`; validates before it writes; synchronises the declared catalogue and
+  the frozen system grants). It is **not** wired into start-up: a failure
   there would stop the API for a dark capability. Back up first (`scripts/backup_db.sh
 --skip-reference-data`) before `--apply` on a real database.
 - **RBAC-4/RBAC-8: the authority switch and the legacy fallback are deleted.** The inventory
@@ -923,7 +912,7 @@ section is the VM's answer.
   `NET_ADMIN`/`NET_RAW`** — the Linux equivalent of the Windows host worker,
   for the reasons in the compose file. Restart it after changing anything
   under `core/`, `scans/` or `orchestrator/`: `docker compose restart worker`.
-  `start_host_scan_stack.ps1` and its twin are Windows-only; here the stack is
+  The Windows start scripts were retired on 9 Oct 2026; the stack is
   `docker compose up -d` / `down`, and every service is `restart:
 unless-stopped` so a reboot brings it all back together.
 
@@ -1076,8 +1065,8 @@ dump": up to six hours of operational data.
 --no-deps frontend`.
 - **Scanner worker** _(Windows deployment, history; on the VM the worker is a
   container with `network_mode: host`, see "Deployment: Linux VM")_ — Celery on the **Windows host**, not in Docker, so Nmap and
-  Scapy get raw-socket access to the physical network. Start with
-  `.\Backend\scripts\scan\start_host_scanner_worker.ps1`. Restart it after
+  Scapy get raw-socket access to the physical network. It was started with
+  `start_host_scanner_worker.ps1`, retired on 9 Oct 2026. Restart it after
   changing anything under `core/`, `scans/` or `orchestrator/`.
 - **Database** _(Windows deployment, history; on the VM the database is the
   `ccure-db` container, `ccure_db`, with TLS deliberately off, see "Deployment:
@@ -1576,24 +1565,16 @@ docker-compose.emergency-direct.yml up -d --no-deps api` (`:8000` back,
   client that cached HTTPS-only for a year cannot reach a broken deployment to
   be told why. `tests/security/test_cors_and_headers.py` asserts the low value.
 
-- **The `gateway` service in `docker-compose.yml` is not part of this
-  deployment**, and two things now stop it becoming part of one by accident: it
-  sits behind the `alt-gateway` profile, so `docker compose up` cannot start it,
-  and its mapping is `127.0.0.1:${GATEWAY_PORT:-8082}:80`, so if it is started
-  it is reachable from this host only. It previously carried no bind address —
-  Docker published it on `0.0.0.0`, the one port in the file that was not
-  loopback bound.
-
-  It duplicates host Nginx's routing (`/api/` → api:8000, `/` → frontend:80)
-  but over plain HTTP, which would not merely expose sessions but break them:
-  `REFRESH_COOKIE_SECURE` is set statically in `.env` rather than derived from
-  `X-Forwarded-Proto`, so over HTTP the browser refuses to store the refresh
-  cookie and every session dies at the 30-minute access-token expiry.
-
-  The default port is `8082` because that is what `.env` already sets, so the
-  value is the same with or without `.env`. It is deliberately not `80`, the
-  previous default, which collides with host Nginx's `0.0.0.0:80` redirect
-  listener; and not `8080`, which on this host is the Oracle XE TNS listener.
+- **There is no plain-HTTP gateway any more.** The old `gateway` service
+  (`alt-gateway` profile, `nginx/gateway.conf`) duplicated host Nginx's routing
+  over plain HTTP. Phase 10 decision D7 retired it and it was removed on 9 Oct
+  2026; ingress is host Nginx → `api-gateway` → `gateway-auth` / api. What it
+  taught still holds for any proxy added later: over plain HTTP the browser
+  refuses to store the refresh cookie (`REFRESH_COOKIE_SECURE` is set
+  statically in `.env`, not derived from `X-Forwarded-Proto`), so every session
+  dies at the 30-minute access-token expiry. Nothing may publish on `80` (host
+  Nginx's redirect listener) or `8080` (the Oracle XE TNS listener on the
+  Windows host).
 
 - **`add_header` in Nginx does not merge.** A `location` containing any
   `add_header` replaces the parent's whole set. This silently disabled the SPA's
@@ -4240,11 +4221,13 @@ Scheduling: `compliance_scan_schedules` is driven by
 `success: False` — no scheduled scan had ever run. The CRUD endpoints under
 `/compliance/schedules` did not exist either.
 
-**The `compliance` queue needs a consumer.** The only container subscribed to
-it sits behind the `container-scanner` profile and is not started here, so beat
-was publishing 1,440 messages a day into a queue nothing read.
-`start_host_scanner_worker.ps1` now subscribes to `scanner,default,compliance`.
-If you see the queue growing, that worker is not running.
+**The `compliance` queue needs a consumer.** On the Windows deployment the only
+container subscribed to it sat behind the `container-scanner` profile and was not
+started, so beat published 1,440 messages a day into a queue nothing read. On
+the VM the `worker` service consumes `scanner,default,compliance`
+(`docker-compose.yml`); it is behind the same profile, so
+`COMPOSE_PROFILES=container-scanner` must be set. If you see the queue growing,
+that worker is not running.
 
 Seeding: `python -m scripts.seed_compliance` globs `*_controls_seed.json`
 rather than naming files — two frameworks existed as seed files and were never

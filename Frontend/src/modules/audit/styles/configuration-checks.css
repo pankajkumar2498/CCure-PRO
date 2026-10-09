@@ -221,13 +221,6 @@
   margin-bottom: var(--ccure-space-sm);
 }
 
-.cfg-collect__label {
-  display: block;
-  margin-bottom: var(--ccure-space-3xs);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
-
 /* JSON is read by its indentation and brackets, so it is set in the mono face.
    The field chrome is the shared textarea's. */
 .cfg-collect__area {

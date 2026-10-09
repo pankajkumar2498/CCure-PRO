@@ -10,17 +10,17 @@ the repository's actual scripts, Dockerfiles, CI workflow and configuration file
 
 ## 1. Prerequisites
 
-| Requirement             | Version                                | Why                                                                                                                                                             |
-| ----------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Python**              | **3.11** (host worker) / **3.12** (CI) | The Backend image is `python:3.11-slim`; the `start_host_scanner_worker.ps1` error message says `py -3.11 -m venv .venv`; GitHub Actions uses `3.12`            |
-| **Node.js**             | **25** (image) / **22** (CI)           | `Frontend/Dockerfile` builds on `node:25-slim` (pinned by digest); CI's `setup-node` pins `22`                                                                  |
-| **npm**                 | Bundled with Node                      | `package-lock.json` is committed; CI uses `npm ci`                                                                                                              |
-| **PostgreSQL**          | **18**                                 | Compose ships `postgres:18-alpine` (the VM's `ccure-db`) and CI uses the same; `Backend/tests/repo/test_ci_postgres_version.py` keeps them on one major version |
-| **Redis**               | 7                                      | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                                    |
-| **Docker + Compose v2** | current                                | The `docker compose` (space) form is used throughout                                                                                                            |
-| **Nmap**                | any recent                             | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                                      |
-| **Npcap**               | current                                | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                               |
-| **Git**                 | any                                    |                                                                                                                                                                 |
+| Requirement             | Version                                      | Why                                                                                                                                                             |
+| ----------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Python**              | **3.11** (image, local venv) / **3.12** (CI) | The Backend image is `python:3.11-slim`; create `Backend/.venv` with `python3.11 -m venv .venv`; GitHub Actions uses `3.12`                                     |
+| **Node.js**             | **25** (image) / **22** (CI)                 | `Frontend/Dockerfile` builds on `node:25-slim` (pinned by digest); CI's `setup-node` pins `22`                                                                  |
+| **npm**                 | Bundled with Node                            | `package-lock.json` is committed; CI uses `npm ci`                                                                                                              |
+| **PostgreSQL**          | **18**                                       | Compose ships `postgres:18-alpine` (the VM's `ccure-db`) and CI uses the same; `Backend/tests/repo/test_ci_postgres_version.py` keeps them on one major version |
+| **Redis**               | 7                                            | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                                    |
+| **Docker + Compose v2** | current                                      | The `docker compose` (space) form is used throughout                                                                                                            |
+| **Nmap**                | any recent                                   | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                                      |
+| **Npcap**               | current                                      | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                               |
+| **Git**                 | any                                          |                                                                                                                                                                 |
 
 Optional external binaries — each absent tool is a **coverage gap, not an error**,
 except Nuclei in the DAST pipeline where it is essential:
@@ -53,10 +53,10 @@ CCure-Audit-PRO/
 │   ├── .env.local      VITE_API_BASE_URL
 │   └── package.json
 ├── docs/               This documentation set
-├── nginx/gateway.conf  Reverse-proxy config for the compose gateway
-├── scripts/            backup_db.ps1 · install_backup_schedule.ps1 ·
-│                       install_feed_schedule.ps1 · start/stop_host_scan_stack.ps1 ·
-│                       docker-postgres-init.sql · host-nginx/
+├── gateway/           API gateway (Phase 10): nginx config, route policy, gateway-auth
+├── scripts/            backup_db.sh · install_backup_schedule.sh ·
+│                       install_feed_schedule.ps1 · docker-postgres-init.sql ·
+│                       host-nginx/ · linux/ · tls/
 ├── .env                docker-compose variables ONLY (git-ignored)
 ├── .env.example        Template for the above
 ├── docker-compose.yml
@@ -130,14 +130,13 @@ curl -s http://127.0.0.1:8000/api/pipeline-modes
 docker compose logs -f api
 ```
 
-| Surface           | URL                                                                      |
-| ----------------- | ------------------------------------------------------------------------ |
-| API               | `http://127.0.0.1:8000`                                                  |
-| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**)        |
-| ReDoc             | `http://127.0.0.1:8000/redoc`                                            |
-| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                                     |
-| Frontend (direct) | `http://127.0.0.1:3200`                                                  |
-| Gateway (opt-in)  | `http://127.0.0.1:${GATEWAY_PORT:-8082}` — needs `--profile alt-gateway` |
+| Surface           | URL                                                               |
+| ----------------- | ----------------------------------------------------------------- |
+| API               | `http://127.0.0.1:8000`                                           |
+| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**) |
+| ReDoc             | `http://127.0.0.1:8000/redoc`                                     |
+| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                              |
+| Frontend (direct) | `http://127.0.0.1:3200`                                           |
 
 ### 3.4 Rebuild rules
 
@@ -219,33 +218,25 @@ npm run dev                 # http://localhost:3000
 
 ---
 
-## 5. Host scanner worker (Windows)
+## 5. Scanner worker
 
-The reference production layout runs the scanner worker outside Docker so Scapy
-and Nmap get raw-socket access to the physical network.
+The scanner worker is the `worker` compose service, run with `network_mode: host`
+and `NET_ADMIN`/`NET_RAW` so Scapy and Nmap get raw-socket access to the
+physical network. It and `web-worker` sit behind the `container-scanner` profile,
+which `COMPOSE_PROFILES=container-scanner` in `.env` turns on.
 
-```powershell
-.\Backend\scripts\scan\start_host_scanner_worker.ps1
-.\Backend\scripts\scan\start_host_scanner_worker.ps1 -Force   # replace a running worker
+```bash
+docker compose up -d                  # the whole stack, workers included
+docker compose restart worker         # after changing core/, scans/ or orchestrator/
+docker compose down
 ```
 
-The script requires `Backend\.venv\Scripts\python.exe` and **refuses to start a
-second worker** on the `scanner` queue. Two workers on one queue is a real hazard:
-tasks go to whichever grabs them first, and if the two were started from different
-working directories they can be running different code — so editing `Backend/` and
-restarting "the" worker would silently leave the other serving stale code. The
-guard counts only top-level Celery processes, because a single worker also shows a
-child `python.exe` under the venv's base interpreter.
-
-Whole-stack helpers:
-
-```powershell
-.\scripts\start_host_scan_stack.ps1
-.\scripts\stop_host_scan_stack.ps1
-```
-
-Restart the host worker after changing anything under `core/`, `scans/` or
-`orchestrator/`.
+Run **one** worker on the `scanner` queue. Two workers on one queue is a real
+hazard: tasks go to whichever grabs them first, and if they were started from
+different code they can be running different code, so restarting "the" worker
+silently leaves the other serving stale code. (The Windows deployment's
+`start_host_scanner_worker.ps1` guarded against this; it was retired on
+9 Oct 2026 with that deployment.)
 
 ---
 
@@ -402,27 +393,27 @@ alembic revision --autogenerate -m "describe the change"
 
 ### Seeding
 
-| Command                                | Effect                                                               |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| `python -m scripts.seed_compliance`    | Frameworks and controls from the twelve `*_controls_seed.json` files |
-| `python -m scripts.seed_real_rules`    | Compliance rules, then evaluates them                                |
-| `python scripts/admin/create_admin.py` | Create an administrator interactively                                |
-| `python scripts/print_admin.py`        | Print the seeded admin account                                       |
-| `python scripts/seed_mock_findings.py` | Sample findings for UI work                                          |
+| Command                                                                          | Effect                                                               |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `python -m scripts.seed_compliance`                                              | Frameworks and controls from the twelve `*_controls_seed.json` files |
+| `python -m scripts.seed_real_rules`                                              | Compliance rules, then evaluates them                                |
+| `python -m scripts.rbac.bootstrap_admin --email … --reason … --allow-database …` | Make an account the platform administrator (first run or recovery)   |
+| `python scripts/print_admin.py`                                                  | Print the seeded admin account                                       |
 
 Framework seeding also runs automatically in the API lifespan when any framework's
 control count falls below its threshold.
 
 ### Backups
 
-```powershell
-$env:PGPASSWORD = '<password>'
-.\scripts\backup_db.ps1 -SkipReferenceData   # fast: operational data only
-.\scripts\install_backup_schedule.ps1        # register the 6-hourly scheduled task
-Get-ScheduledTask -TaskName 'CCure DB Backup' | Get-ScheduledTaskInfo
+```bash
+scripts/backup_db.sh --skip-reference-data   # fast: operational data only
+scripts/install_backup_schedule.sh           # the 6-hourly and nightly crontab entries
+crontab -l; tail backups/backup.log
 ```
 
-Restore: `pg_restore --clean --if-exists -d ccure_test <file>.dump`.
+Restore into a fresh database, never over the one serving, by the procedure in
+CLAUDE.md, "Backups on the VM". An operational (`_ops`) dump cannot be restored on
+its own: it lacks the catalogue tables its findings reference.
 
 > **CAUTION:** `archive_mode` is `off` on the reference deployment, so recovery
 > granularity is "since the last dump", not point-in-time. Take an ad-hoc dump
@@ -514,16 +505,15 @@ an up-to-date target cannot distinguish "matching works and the host is clean" f
 
 ### Verification scripts
 
-| Script                                            | Checks                     |
-| ------------------------------------------------- | -------------------------- |
-| `scripts/verification/verify_install.py`          | Installation prerequisites |
-| `scripts/verification/verify_permissions.py`      | RBAC seeding               |
-| `scripts/verification/check_schema.py`            | Schema state               |
-| `scripts/verification/check_compliance_data.py`   | Compliance catalog         |
-| `scripts/verification/check_cve_source.py`        | Feed connectivity          |
-| `scripts/verification/check_target_asset.py`      | One asset's record         |
-| `scripts/verification/test_scan_execution.py`     | End-to-end scan            |
-| `scripts/verification/verify_report_integrity.py` | Report generation          |
+| Script                                                                           | Checks                                                            |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `scripts/verification/verify_install.py`                                         | Installation prerequisites                                        |
+| `scripts/verification/verify_permissions.py`                                     | RBAC seeding                                                      |
+| `scripts/verification/check_compliance_data.py`                                  | Compliance catalog                                                |
+| `scripts/verification/check_cve_source.py`                                       | Feed connectivity                                                 |
+| `scripts/verification/check_target_asset.py`                                     | One asset's record                                                |
+| `scripts/verification/verify_compliance_scan_execution.py --allow-database NAME` | One compliance scan end to end; **writes** a run and its findings |
+| `scripts/verification/verify_report_integrity.py`                                | Report generation                                                 |
 
 ---
 
@@ -653,18 +643,16 @@ Services: `postgres:18-alpine` and `redis:7-alpine` with health checks.
 
 ## 13. Common tasks
 
-| Task                          | Command                                                                    |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| Interactive scan CLI          | `cd Backend && python scripts/cli.py`                                      |
-| Create an admin               | `python scripts/admin/create_admin.py`                                     |
-| Clear test data               | `python scripts/admin/clear_ccure_test_data.py`                            |
-| Clean up legacy findings      | `python scripts/cleanup_legacy_findings.py`                                |
-| Inspect a scan's schema state | `python scripts/verification/check_schema.py`                              |
-| Tail API logs                 | `docker compose logs -f api`                                               |
-| Tail worker logs              | `docker compose logs -f worker`                                            |
-| Open a DB shell               | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB`            |
-| Restart after Python edits    | `docker compose restart api`                                               |
-| Rebuild the frontend          | `docker compose build frontend && docker compose up -d --no-deps frontend` |
+| Task                       | Command                                                                    |
+| -------------------------- | -------------------------------------------------------------------------- |
+| Interactive scan CLI       | `cd Backend && python scripts/cli.py`                                      |
+| Create an admin            | `python -m scripts.rbac.bootstrap_admin --help`                            |
+| Show the schema revision   | `docker exec -w /app ccure-api alembic current`                            |
+| Tail API logs              | `docker compose logs -f api`                                               |
+| Tail worker logs           | `docker compose logs -f worker`                                            |
+| Open a DB shell            | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB`            |
+| Restart after Python edits | `docker compose restart api`                                               |
+| Rebuild the frontend       | `docker compose build frontend && docker compose up -d --no-deps frontend` |
 
 ---
 
@@ -684,7 +672,7 @@ Services: `postgres:18-alpine` and `redis:7-alpine` with health checks.
 | Frontend still points at the old API URL              | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
 | `test_docs_integrity` fails on three missing files    | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
 | CI fails on "Breaking OpenAPI changes detected"       | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
-| Two workers serving different code                    | A second host worker was started                                                           | Use `start_host_scanner_worker.ps1 -Force`                       |
+| Two workers serving different code                    | A second worker was started on the `scanner` queue                                         | Stop the extra one; `docker compose ps` shows one `worker`       |
 | Scan History shows the download time as the scan date | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
 
 ---

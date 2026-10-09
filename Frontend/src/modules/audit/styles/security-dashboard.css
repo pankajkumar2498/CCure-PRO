@@ -938,15 +938,6 @@ a.sd-metric:hover {
   position: relative;
 }
 
-.sd-daterange__caret {
-  font-size: 0.6rem;
-  color: var(--ccure-text-secondary);
-}
-
-.sd-daterange__check {
-  width: 0.875rem;
-}
-
 /* ── Welcome dialog ───────────────────────────────────────────────────────── */
 .sd-welcome__icon {
   margin-bottom: var(--ccure-space-sm);

@@ -2997,16 +2997,3 @@ def build_scan_report(
         reverse=True,
     )
     return report
-
-
-def extract_findings_from_result(
-    result_dict: Dict[str, Any],
-) -> Tuple[List[StandardizedFinding], List[StandardizedFinding]]:
-    """
-    Backwards-compatible flat accessor.
-
-    Retained for callers that want a simple (active, mitigated) pair, such as
-    the CSV exporter. New code should prefer ``build_scan_report``.
-    """
-    report = build_scan_report(result_dict)
-    return report.active, report.mitigated

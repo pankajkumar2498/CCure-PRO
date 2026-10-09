@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Dump the CCure application database to a timestamped file.
 #
-# Linux twin of backup_db.ps1, for the deployment where PostgreSQL runs in the
+# Was the Linux twin of backup_db.ps1 (retired with the Windows deployment,
+# 9 Oct 2026); now the only one. For the deployment where PostgreSQL runs in the
 # `ccure-db` container. The server runs with archive_mode = off, so there is no
 # point-in-time recovery: whatever is in the database right now is all there
 # is. A dump taken before any destructive operation — a test run, a migration,

@@ -168,7 +168,7 @@ classified as dependency issues needing later remediation, not as safe.
 | pyasn1           | 0.5.1     | 4          | 0.6.x              | Held below 0.6 on purpose for pysnmp-lextudio.                                    |
 | cryptography     | 46.0.7    | 4          | 50.0.0             | Held below 48 by sslyze's bound.                                                  |
 | python-jose      | 3.3.0     | 3          | 3.4.0 (1 has none) | JWT signing and verification for authentication.                                  |
-| urllib3          | 2.6.3     | 2          | 2.7.0              |                                                                                   |
+| urllib3          | 2.6.3     | 2          | 2.7.0              | **Paid down.** Pinned 2.8.0 since 7 Oct (`d90bb51`); block removed 9 Oct.         |
 | ecdsa            | 0.19.2    | 1          | none               | Transitive, via python-jose.                                                      |
 | paramiko         | 4.0.0     | 1          | none               | SSH transport for credentialed scanning.                                          |
 | pytest           | 7.4.4     | 1          | 9.0.3              | Installed from `requirements.txt`, so the test runner ships in the runtime image. |
@@ -194,8 +194,8 @@ Nothing in CI can close these. They need a person.
 2. **Confirm the Gmail app password was revoked** in that Google account. Only
    the account owner can check this.
 3. **Decide the four accepted risks** above.
-4. **Pay down the Python backlog**, easiest first: urllib3, python-dotenv,
-   python-multipart and python-jose are patch or minor upgrades; pillow,
+4. **Pay down the Python backlog**, easiest first: python-dotenv,
+   python-multipart and python-jose are patch or minor upgrades (urllib3 is done); pillow,
    starlette/FastAPI and cryptography are majors, each needing a full backend
    suite run.
 5. **Move pytest out of `requirements.txt`** into a dev requirements file, so

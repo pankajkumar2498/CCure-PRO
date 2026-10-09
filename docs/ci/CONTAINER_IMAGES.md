@@ -15,13 +15,13 @@ never rebuild it anywhere else.
 Two images are built from this repository. Everything else in
 `docker-compose.yml` is an upstream image the repository only configures.
 
-| Image                      | Built from            | Compose services using it                                                                    | Runs as                                                  |
-| -------------------------- | --------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `ccure-audit-pro-backend`  | `Backend/Dockerfile`  | `api`                                                                                        | `ccure` (image default)                                  |
-|                            |                       | `worker`, `web-worker`                                                                       | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
-|                            |                       | `beat`                                                                                       | root, then `setpriv` to `ccure`                          |
-| `ccure-audit-pro-frontend` | `Frontend/Dockerfile` | `frontend`                                                                                   | nginx (master root, workers `nginx`)                     |
-| —                          | upstream              | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `gateway` (profile `alt-gateway`) | —                                                        |
+| Image                      | Built from            | Compose services using it                                                                       | Runs as                                                  |
+| -------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `ccure-audit-pro-backend`  | `Backend/Dockerfile`  | `api`                                                                                           | `ccure` (image default)                                  |
+|                            |                       | `worker`, `web-worker`                                                                          | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
+|                            |                       | `beat`                                                                                          | root, then `setpriv` to `ccure`                          |
+| `ccure-audit-pro-frontend` | `Frontend/Dockerfile` | `frontend`                                                                                      | nginx (master root, workers `nginx`)                     |
+| —                          | upstream              | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `api-gateway` (nginx, digest-pinned) | —                                                        |
 
 The backend is **one image in four roles**, chosen by command. That's why it
 has no `HEALTHCHECK`: an HTTP check would mark the worker and beat containers

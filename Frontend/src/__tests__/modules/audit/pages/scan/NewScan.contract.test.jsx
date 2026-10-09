@@ -2348,7 +2348,18 @@ describe("NewScan — batch 25", () => {
     expect(css).not.toMatch(/\b(?:rgba?|hsla?)\(/);
     expect(css.match(/var\(--(?!ccure-)[a-z0-9-]+/g) || []).toEqual([]);
     expect(css).not.toMatch(/prefers-color-scheme|ux4g/i);
-    expect(css).toMatch(/:focus-visible/);
+    // Focus rings come from the design-system controls the page uses
+    // (CcureButton, CcureInput, CcureSelect, CcureSwitch, CcureRadio,
+    // CcureCheckbox). Its own .ns-switch, .ns-model__input and .ns-cred__check
+    // controls went in the UX4G migration (8699eaa); their :focus-visible
+    // rules stayed behind styling nothing until the dead-CSS removal of
+    // 9 Oct 2026. So assert what keeps focus visible: the page renders no
+    // focusable control of its own — the one raw <input> is the hidden file
+    // picker. keyboard.spec.mjs checks the rings themselves in a browser.
+    const jsx = source.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(jsx.match(/<(?:select|textarea|button)\b/g) || []).toEqual([]);
+    const inputs = jsx.match(/<input\b[\s\S]*?\/>/g) || [];
+    expect(inputs.filter((tag) => !/\shidden\b/.test(tag))).toEqual([]);
     expect(css).toMatch(/\.ns-card\s*\{[^}]*max-width:\s*680px;/);
   });
 });

@@ -84,10 +84,6 @@
   align-items: center;
   gap: var(--ccure-space-2xs);
 }
-
-.al-row--gap-md {
-  gap: var(--ccure-space-sm);
-}
 .al-row--gap-lg {
   gap: var(--ccure-space-md);
 }
@@ -159,9 +155,6 @@
 .al-relaxed {
   line-height: var(--ccure-leading-relaxed);
 }
-.al-start {
-  text-align: start;
-}
 
 /* `opacity: 0.7` dims text against whatever sits behind it, which cannot be
    reasoned about for contrast. The secondary tier is a measured token. */
@@ -188,9 +181,6 @@
 }
 .al-push {
   margin-left: auto;
-}
-.al-full {
-  width: 100%;
 }
 .al-minw {
   min-width: 0;

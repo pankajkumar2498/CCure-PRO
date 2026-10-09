@@ -14,11 +14,6 @@
   margin-bottom: var(--ccure-space-sm);
 }
 
-.shs-loading {
-  color: var(--ccure-text-secondary);
-  font-size: var(--ccure-text-sm);
-}
-
 .shs-section-header {
   display: flex;
   align-items: center;

@@ -31,15 +31,6 @@
   grid-template-columns: 64px minmax(0, 1fr);
 }
 
-/* ── Government identity strip ───────────────────────────────────────────────
-   The one piece of UX4G's citizen-facing convention that belongs on an internal
-   console: it states which government body operates the system. It sits above
-   the header, spans the full width, and is not part of the scrollable region. */
-.cc-govbar {
-  grid-area: header;
-  display: none; /* enabled by the shell when `identity` is supplied */
-}
-
 /* ── Header ──────────────────────────────────────────────────────────────── */
 .cc-header {
   grid-area: header;

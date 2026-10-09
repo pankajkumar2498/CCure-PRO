@@ -41,15 +41,6 @@
   overflow-wrap: anywhere;
 }
 
-.sp-empty {
-  margin: 0;
-  padding: var(--ccure-space-md);
-  border: 1px dashed var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-  color: var(--ccure-text-secondary);
-  font-size: var(--ccure-text-sm);
-}
-
 .sp-link {
   border: 0;
   background: none;

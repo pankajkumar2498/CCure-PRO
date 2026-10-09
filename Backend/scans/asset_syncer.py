@@ -69,15 +69,6 @@ _DEVICE_SIGNAL_PRIORITY = {
 }
 
 
-def _get_device_signal_priority(host: dict) -> int:
-    """
-    Extract the device classification signal from a host dict and return its
-    numeric priority.  Higher = more reliable (e.g. SNMP OID).
-    """
-    signal = host.get("device_category_signal") or "none"
-    return _DEVICE_SIGNAL_PRIORITY.get(signal, 0)
-
-
 def _clean(value) -> str:
     return str(value or "").strip()
 
@@ -608,11 +599,6 @@ def _may_rebind_ip(current, incoming) -> bool:
         return True
     # Both routable: a genuine address change (DHCP lease, re-addressing).
     return True
-
-
-def _should_update(current, incoming) -> bool:
-    """Enterprise merge rule: Only update if the new value is non-empty and non-trivial."""
-    return _has_value(incoming)
 
 
 def _has_value(value) -> bool:

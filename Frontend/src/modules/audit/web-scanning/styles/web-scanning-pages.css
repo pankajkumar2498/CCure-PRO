@@ -6,11 +6,6 @@
    because the page shell (`.wsp-page`, `.wsp-header`, `.wsp-panel`) really is
    the same on all of them — it was the same inline object copied four times.
 
-   Deliberately NOT added to `web-scanning.css`: that file is imported by
-   `WebScanningRoutes.jsx`, which also serves ScanDetail and NewWebScan, and
-   neither is in this batch. Nothing in this migration edits a file those two
-   pages depend on.
-
    Everything else on these pages is a CCure primitive (CcureTable,
    CcureButton, CcureBadge, CcureCard, CcureSkeleton, CcureEmptyState) or a
    security pattern (CcureScanStatus, CcureSeverityBadge).
@@ -214,13 +209,6 @@
   word-break: break-all;
 }
 
-.wsp-detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--ccure-space-md);
-}
-
 .wsp-meta {
   display: flex;
   flex-wrap: wrap;
@@ -263,14 +251,6 @@
   display: inline-block;
   font-size: var(--ccure-text-sm);
   color: var(--ccure-text-link);
-}
-
-.wsp-toolbar {
-  display: flex;
-  gap: var(--ccure-space-sm);
-  align-items: flex-end;
-  flex-wrap: wrap;
-  margin-bottom: var(--ccure-space-md);
 }
 
 .wsp-search {

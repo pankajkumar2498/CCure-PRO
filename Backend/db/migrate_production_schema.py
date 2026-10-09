@@ -104,17 +104,6 @@ def _print_header(title: str):
     print("=" * 60)
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    result = conn.execute(
-        text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name=:t)"
-        ),
-        {"t": table_name},
-    )
-    return result.scalar()
-
-
 def _row_count(conn, table_name: str) -> int:
     try:
         from sqlalchemy import func, select, table

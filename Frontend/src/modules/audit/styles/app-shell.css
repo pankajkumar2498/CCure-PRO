@@ -215,13 +215,6 @@
   line-height: var(--ccure-leading-relaxed);
 }
 
-.shh-empty {
-  padding: var(--ccure-space-lg);
-  text-align: center;
-  color: var(--ccure-text-secondary);
-  font-size: var(--ccure-text-sm);
-}
-
 .shh-links-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -317,15 +310,6 @@
 .shh-support-textarea {
   width: 100%;
   resize: vertical;
-}
-
-.shh-support-sent {
-  padding: var(--ccure-space-sm) var(--ccure-space-md);
-  background: var(--ccure-success-bg);
-  color: var(--ccure-success-text);
-  border: 1px solid var(--ccure-success-border);
-  border-radius: var(--ccure-radius-md);
-  font-size: var(--ccure-text-sm);
 }
 
 .cc-shell.sh-shell > .cc-header {

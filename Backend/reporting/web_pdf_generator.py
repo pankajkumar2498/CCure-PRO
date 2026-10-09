@@ -147,41 +147,6 @@ def _build_styles():
 # ── Header / Footer ──────────────────────────────────────────────────────────
 
 
-def _draw_web_header_footer(canvas, doc):
-    """Page decorator for web scan reports."""
-    canvas.saveState()
-
-    report_ts = getattr(
-        doc, "scan_timestamp", datetime.now().strftime("%d %b %Y  %H:%M:%S")
-    )
-    target = getattr(doc, "target_domain", "")
-
-    # Header
-    canvas.setFillColor(HEADER_BG)
-    canvas.rect(0, PAGE_H - 22 * mm, PAGE_W, 22 * mm, fill=1, stroke=0)
-    canvas.setFillColor(WHITE)
-    canvas.setFont("Helvetica-Bold", 14)
-    canvas.drawString(MARGIN, PAGE_H - 13 * mm, "CCure-Audit PRO — Web Security Report")
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(colors.HexColor("#AACCEE"))
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 10 * mm, f"Target: {target}")
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm, f"Generated: {report_ts}")
-
-    canvas.setStrokeColor(CDAC_LIGHT_BLUE)
-    canvas.setLineWidth(1.5)
-    canvas.line(0, PAGE_H - 22 * mm, PAGE_W, PAGE_H - 22 * mm)
-
-    # Footer
-    canvas.setFillColor(HEADER_BG)
-    canvas.rect(0, 0, PAGE_W, 12 * mm, fill=1, stroke=0)
-    canvas.setFillColor(WHITE)
-    canvas.setFont("Helvetica", 8)
-    canvas.drawString(MARGIN, 4.5 * mm, "CONFIDENTIAL — Authorized Personnel Only")
-    canvas.drawRightString(PAGE_W - MARGIN, 4.5 * mm, f"Page {doc.page}")
-
-    canvas.restoreState()
-
-
 # ── Table Helpers ─────────────────────────────────────────────────────────────
 
 
@@ -279,16 +244,6 @@ def _data_table(headers, rows, styles, widths=None):
         )
     )
     return tbl
-
-
-def _severity_paragraph(severity, styles):
-    """Color-coded severity label."""
-    sev = (severity or "info").lower()
-    color = SEV_COLORS.get(sev, SEV_COLORS["info"])
-    return Paragraph(
-        f'<font color="{color.hexval()}">{sev.upper()}</font>',
-        ParagraphStyle("Sev", parent=styles["value"], fontName="Helvetica-Bold"),
-    )
 
 
 def _section(title, styles):

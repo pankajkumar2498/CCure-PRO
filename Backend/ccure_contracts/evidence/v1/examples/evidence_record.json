@@ -1,0 +1,35 @@
+{
+  "contract": "ccure.audit.evidence_record",
+  "schema_version": "1.0",
+  "message_id": "b4c5d6e7-f203-4415-8a87-92a3b4c5d60c",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T08:20:00Z",
+  "correlation_id": "corr-ir-evidence-pull-0042",
+  "data": {
+    "evidence_id": "evd_chk_win_pwlen_192_0_2_10",
+    "kind": "check_observation",
+    "origin_module": "audit",
+    "collected_at": "2026-09-26T02:40:31Z",
+    "assessment": {
+      "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+      "completed_at": "2026-09-26T02:41:17Z"
+    },
+    "asset": {
+      "asset_id": "ast_org_default_192_0_2_10",
+      "ip_address": "192.0.2.10",
+      "hostname": "fin-app-01"
+    },
+    "finding_refs": [
+      {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CCURE-CFG-CCURE-WIN-PASSWORD-MINIMUM-LENGTH"
+      }
+    ],
+    "control_refs": [],
+    "text": "Expected: MinimumPasswordLength >= 14\nObserved: MinimumPasswordLength = 8 (secedit export, [System Access])",
+    "redaction_applied": false
+  }
+}

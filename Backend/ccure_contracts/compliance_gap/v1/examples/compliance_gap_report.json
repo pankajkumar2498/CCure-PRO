@@ -1,0 +1,218 @@
+{
+  "contract": "ccure.audit.compliance_gap_report",
+  "schema_version": "1.0",
+  "message_id": "9d2e4f60-1a3b-4c5d-8e7f-0a1b2c3d4e03",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T02:41:41Z",
+  "correlation_id": "corr-audit-scn_defa_c522b539_26sep26_k2mq",
+  "data": {
+    "report_id": "cgr_scn_defa_c522b539_26sep26_k2mq_pp-baseline-infosec-core_4",
+    "generated_at": "2026-09-26T02:41:40Z",
+    "assessment": {
+      "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+      "completed_at": "2026-09-26T02:41:17Z",
+      "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+    },
+    "baseline": {
+      "baseline_id": "pp-baseline-infosec-core",
+      "baseline_version": 4,
+      "content_sha256": "28a258807c0ed3c17a10c802c4c70c68648a46ed325c3cb81c92458f8b0acc0b"
+    },
+    "mapping_revision": 1,
+    "scope": {
+      "assets_in_scope": 4,
+      "assets_assessed": 1,
+      "assets_partially_assessed": 2,
+      "assets_not_assessed": 1,
+      "assets_error": 0
+    },
+    "summary": {
+      "PASS": 1,
+      "FAIL": 1,
+      "NOT_ASSESSED": 2,
+      "NOT_APPLICABLE": 1,
+      "MANUAL_REVIEW": 1,
+      "ERROR": 0
+    },
+    "compliance_score": {
+      "status": "not_implemented",
+      "reason": "Audit scores per framework, not per received baseline."
+    },
+    "controls": [
+      {
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.17"
+        },
+        "requirement_id": "REQ-ACC-01",
+        "state": "MANUAL_REVIEW",
+        "state_reason": "Attestation required; none recorded for this baseline version.",
+        "basis": "attestation",
+        "asset_counts": {
+          "PASS": 0,
+          "FAIL": 0,
+          "NOT_ASSESSED": 0,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "finding_refs": null,
+        "evidence_refs": null
+      },
+      {
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.8"
+        },
+        "requirement_id": "REQ-VUL-01",
+        "state": "FAIL",
+        "basis": "automated",
+        "asset_counts": {
+          "PASS": 2,
+          "FAIL": 1,
+          "NOT_ASSESSED": 1,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "rules": [
+          {
+            "rule_id": "crl_vuln_critical_v1",
+            "title": "No open critical vulnerabilities",
+            "severity": "critical",
+            "state": "FAIL",
+            "asset_counts": {
+              "PASS": 2,
+              "FAIL": 1,
+              "NOT_ASSESSED": 1,
+              "NOT_APPLICABLE": 0,
+              "MANUAL_REVIEW": 0,
+              "ERROR": 0
+            }
+          },
+          {
+            "rule_id": "crl_vuln_high_v1",
+            "title": "No open high vulnerabilities",
+            "severity": "high",
+            "state": "NOT_ASSESSED",
+            "reason": "192.0.2.40 was not assessed.",
+            "asset_counts": {
+              "PASS": 3,
+              "FAIL": 0,
+              "NOT_ASSESSED": 1,
+              "NOT_APPLICABLE": 0,
+              "MANUAL_REVIEW": 0,
+              "ERROR": 0
+            }
+          }
+        ],
+        "gap_description": "1 asset has an open critical vulnerability (CVE-2021-44228).",
+        "finding_refs": null,
+        "evidence_refs": null
+      },
+      {
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.9"
+        },
+        "requirement_id": "REQ-CFG-01",
+        "state": "NOT_ASSESSED",
+        "state_reason": "Configuration evidence was collected on 1 of 4 in-scope assets.",
+        "basis": "automated",
+        "asset_counts": {
+          "PASS": 1,
+          "FAIL": 0,
+          "NOT_ASSESSED": 3,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "evidence_refs": null,
+        "finding_refs": null
+      },
+      {
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.1"
+        },
+        "requirement_id": "REQ-GOV-01",
+        "state": "PASS",
+        "basis": "attestation",
+        "disposition": "attested",
+        "asset_counts": {
+          "PASS": 0,
+          "FAIL": 0,
+          "NOT_ASSESSED": 0,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "evidence_refs": null,
+        "finding_refs": null
+      },
+      {
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.7.4"
+        },
+        "requirement_id": "REQ-PHY-01",
+        "state": "NOT_APPLICABLE",
+        "state_reason": "Declared not applicable by the baseline.",
+        "basis": "attestation",
+        "asset_counts": {
+          "PASS": 0,
+          "FAIL": 0,
+          "NOT_ASSESSED": 0,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "finding_refs": null,
+        "evidence_refs": null
+      },
+      {
+        "control": {
+          "framework": {
+            "code": "ORG_INTERNAL",
+            "version": "3"
+          },
+          "control_id": "PWD-01"
+        },
+        "requirement_id": "REQ-ORG-07",
+        "state": "NOT_ASSESSED",
+        "state_reason": "UNKNOWN_CONTROL: framework not in Audit's catalogue.",
+        "basis": "automated",
+        "asset_counts": {
+          "PASS": 0,
+          "FAIL": 0,
+          "NOT_ASSESSED": 0,
+          "NOT_APPLICABLE": 0,
+          "MANUAL_REVIEW": 0,
+          "ERROR": 0
+        },
+        "finding_refs": null,
+        "evidence_refs": null
+      }
+    ],
+    "content_sha256": "4c43f800331b9f5f2075b6dc61d23332d9ec48c096e5e3208bf700463499aa82"
+  }
+}

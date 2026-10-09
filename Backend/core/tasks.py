@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from config import AppConfig
+from core import task_names
 from core.celery_app import celery_app
 from core.mac import mac_identity
 from core.scan_control import ScanCancelled
@@ -18,11 +19,10 @@ from db.base import SessionLocal, gen_asset_id, utcnow
 from db.models import (
     Asset,
     AssetVulnerability,
-    Organization,
     Scan,
-    User,
     VulnerabilityDefinition,
 )
+from ccure_platform import api as platform_api
 from db.models.compliance import CREDENTIAL_TYPE_DATABASE, CREDENTIAL_TYPE_SSH
 from engines.credentialed.coverage import (
     correlate_listeners,
@@ -120,22 +120,17 @@ def _bind_scan_scope(
     was admitted for. Falling back to the user's current org covers the
     traditional-scan path, which carries no scan id.
     """
-    from db.models import Organization, User
+    from core.scan_scope import org_scan_scope
 
     org_id = None
     if scan_id:
         scan_row = db.query(Scan).filter(Scan.id == scan_id).first()
         org_id = getattr(scan_row, "org_id", None) if scan_row is not None else None
     if not org_id and user_id:
-        user_row = db.query(User).filter(User.id == user_id).first()
-        org_id = getattr(user_row, "org_id", None) if user_row is not None else None
+        owner = platform_api.user(db, user_id)
+        org_id = owner.org_id if owner is not None else None
 
-    org = (
-        db.query(Organization).filter(Organization.id == org_id).first()
-        if org_id
-        else None
-    )
-    orch.apply_scan_scope(org)
+    orch.apply_scan_scope(org_scan_scope(db, org_id) if org_id else None)
 
 
 def _run_async(coro):
@@ -382,7 +377,7 @@ def _sync_credentialed_asset_identity(
         _to_int,
     )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if not user:
         log.warning("Credentialed asset sync skipped: user %s not found", user_id)
         return
@@ -428,7 +423,7 @@ def _sync_credentialed_asset_identity(
             asset.ip_address = ip
     else:
         log.info("Asset not found for ip=%s. Bootstrapping new asset record.", ip)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         asset = Asset(
@@ -864,41 +859,6 @@ def _credentialed_sections_with_identity(
     return merged
 
 
-def _compact_dict(data: dict) -> dict:
-    return {
-        key: value for key, value in data.items() if value not in (None, "", [], {})
-    }
-
-
-def _normalized_severity_counts(counts: dict[str, int]) -> dict[str, int]:
-    normalized = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
-    for key, value in (counts or {}).items():
-        label = str(key or "Info").title()
-        if label not in normalized:
-            label = "Info"
-        normalized[label] += int(value or 0)
-    return normalized
-
-
-def _credentialed_risk_from_counts(counts: dict[str, int]) -> tuple[int, str]:
-    score = min(
-        100,
-        counts.get("Critical", 0) * 25
-        + counts.get("High", 0) * 15
-        + counts.get("Medium", 0) * 8
-        + counts.get("Low", 0) * 3,
-    )
-    if score >= 90:
-        return score, "Critical"
-    if score >= 70:
-        return score, "High"
-    if score >= 40:
-        return score, "Medium"
-    if score > 0:
-        return score, "Low"
-    return 0, "Info"
-
-
 def _port_int(value) -> int | None:
     try:
         port = int(str(value).strip())
@@ -1184,7 +1144,7 @@ def _sync_credentialed_vulnerabilities(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_asset_discovery_task",
+    name=task_names.SYNC_ASSET_DISCOVERY,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1216,7 +1176,7 @@ def sync_asset_discovery_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_vulnerability_audit_task",
+    name=task_names.SYNC_VULNERABILITY_AUDIT,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1248,7 +1208,7 @@ def sync_vulnerability_audit_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.sync_host_discovery_task",
+    name=task_names.SYNC_HOST_DISCOVERY,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
     time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY
@@ -1280,7 +1240,7 @@ def sync_host_discovery_task(
 
 
 @celery_app.task(
-    name="ccure.tasks.run_host_discovery",
+    name=task_names.RUN_HOST_DISCOVERY,
     queue="scanner",
     bind=True,
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_DISCOVERY,
@@ -2665,7 +2625,7 @@ def run_topology_mapping_task(
             return {"success": True, "skipped": True, "reason": "No SNMP configuration"}
 
         # Determine org_id
-        user = db.query(User).filter(User.id == user_id).first()
+        user = platform_api.user(db, user_id)
         org_id = str(scan_row.org_id or (user.org_id if user else ""))
 
         # Determine target IPs from discovered active hosts
@@ -3102,7 +3062,7 @@ def _sync_configuration_compliance(
         return None
 
     try:
-        from core.config_audit.compliance_sync import sync_config_audit_findings
+        from core.compliance_sync import sync_config_audit_findings
 
         return sync_config_audit_findings(
             db,
@@ -3385,7 +3345,7 @@ def audit_credentialed_host(
     from engines.credentialed.ssh_scanner import SSHScanner
     from engines.credentialed.vuln_matcher import VulnMatcher
     from engines.credentialed.windows_collector import WindowsCollector
-    from routers.credentialed import _detect_os
+    from engines.credentialed.os_detection import detect_os
     from scans.finding_normalizer import verify_credentialed_report
 
     def _emit(message, percentage=0, stage=None):
@@ -3472,7 +3432,7 @@ def audit_credentialed_host(
         if resolved_transport in ("winrm", "smb"):
             # Both are Windows-only protocols, so the operating system is
             # established by the fact that the connection succeeded. Running
-            # _detect_os here would spend a round trip re-deriving something
+            # detect_os here would spend a round trip re-deriving something
             # already known, and its probes are written for a POSIX shell — on
             # the SMB transport they would not run at all, since it executes no
             # commands, and the host would be misread as Linux.
@@ -3484,7 +3444,7 @@ def audit_credentialed_host(
             )
         else:
             _emit("Detecting Operating System...", 20, "detection")
-            os_type = os_type_req if os_type_req != "auto" else _detect_os(ssh)
+            os_type = os_type_req if os_type_req != "auto" else detect_os(ssh)
 
         _emit(f"Collecting system data ({os_type})...", 30, "collection")
         collector = (
@@ -4477,7 +4437,7 @@ def _audit_host_over_transport(**kwargs):
 
 
 @celery_app.task(
-    name="ccure.tasks.run_credentialed_scan",
+    name=task_names.RUN_CREDENTIALED_SCAN,
     queue="scanner",
     soft_time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED,
     time_limit=AppConfig.SCAN_TIME_LIMIT_CREDENTIALED
@@ -4537,7 +4497,7 @@ def run_credentialed_scan_task(
     _scan_row = db.query(Scan).filter(Scan.id == scan_id).first() if scan_id else None
     policy = read_policy_snapshot(_scan_row)
     benchmark_checks: list = []
-    _scan_owner = db.query(User).filter(User.id == user_id).first()
+    _scan_owner = platform_api.user(db, user_id)
     if _scan_owner is not None:
         from core.benchmarks.selection import benchmark_checks_for_org
 
@@ -4852,13 +4812,12 @@ def run_credentialed_scan_task(
         # `apply_sla` is idempotent and writes an event only when the deadline
         # actually moves, so a scan that changes nothing adds no history.
         try:
-            from core.remediation import apply_sla
-            from db.models.rbac import Organization as _Org
+            from core.remediation import apply_sla, sla_policy_for_org_id
 
-            _org_row = (
-                db.query(_Org).filter(_Org.id == scan.org_id).first()
-                if scan.org_id
-                else None
+            # One lookup for the scan's organisation; with no org on the scan,
+            # each finding's own organisation is looked up, as before.
+            _sla_policy = (
+                sla_policy_for_org_id(db, scan.org_id) if scan.org_id else None
             )
             _sla_rows = (
                 db.query(AssetVulnerability)
@@ -4869,7 +4828,7 @@ def run_credentialed_scan_task(
                 .all()
             )
             for _finding in _sla_rows:
-                apply_sla(db, _finding, org=_org_row)
+                apply_sla(db, _finding, policy=_sla_policy)
             if _sla_rows:
                 log.info(
                     "Scan %s: remediation SLA applied to %d finding(s)",
@@ -5064,181 +5023,16 @@ def run_credentialed_scan_task(
 
 # ── Outgoing mail ─────────────────────────────────────────────────────────────
 #
-# Every one of these tasks used to wrap its send in `try/except: log.error(...)`.
-# That looked defensive and was the opposite: swallowing the exception told
-# Celery the task had *succeeded*, so a momentary SMTP failure — a dropped
-# connection, a Gmail rate limit, a DNS blip — destroyed the message
-# permanently. A user whose verification email hit a five-second outage simply
-# never received it, and nothing retried.
-#
-# `autoretry_for=(Exception,)` with exponential backoff replaces that. The
-# exception now propagates, Celery retries, and only after the retries are
-# exhausted is the message given up on — at which point `on_failure` records it
-# loudly, because at that point a promise made to a user has definitively been
-# broken.
-#
-# Callers should not use `.delay()` on these directly. Go through
-# `core.mail_dispatch.dispatch_email`, which also handles the case where no
-# worker is consuming the queue at all.
-
-_MAIL_RETRY = dict(
-    autoretry_for=(Exception,),
-    retry_backoff=2,  # 2s, 4s, 8s, 16s …
-    retry_backoff_max=300,
-    retry_jitter=True,
-    max_retries=5,
-    queue="default",
+# The mail tasks live in auth/mail_tasks.py. Re-exported so existing callers
+# and patch targets (`core.tasks.send_*_task`) keep resolving to the same
+# task objects.
+from auth.mail_tasks import (  # noqa: E402,F401
+    send_account_approved_email_task,
+    send_mfa_otp_task,
+    send_password_changed_email_task,
+    send_password_reset_email_task,
+    send_verification_email_task,
 )
-
-
-class _MailTask(celery_app.Task):
-    """Shared failure reporting for the mail tasks."""
-
-    abstract = True
-
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        # args[0] is the recipient for every sender below. Logged so a
-        # permanently undelivered message is findable, without dumping the body.
-        recipient = args[0] if args else "<unknown>"
-        log.error(
-            "MAIL PERMANENTLY UNDELIVERED after %s retries: task=%s to=%s error=%s",
-            self.max_retries,
-            self.name,
-            recipient,
-            exc,
-        )
-
-
-@celery_app.task(
-    name="ccure.tasks.send_password_reset_email",
-    base=_MailTask,
-    bind=True,
-    **_MAIL_RETRY,
-)
-def send_password_reset_email_task(
-    self, email_to: str, username: str, reset_link: str
-) -> None:
-    """Dispatch a password-reset link. Retried; see _MAIL_RETRY."""
-    from auth.mail_service import send_password_reset_email as _send
-
-    _send(email_to, username, reset_link)
-
-
-@celery_app.task(
-    name="ccure.tasks.send_mfa_otp",
-    base=_MailTask,
-    bind=True,
-    **{**_MAIL_RETRY, "max_retries": 2, "retry_backoff_max": 20},
-)
-def send_mfa_otp_task(self, email_to: str, username: str, code: str) -> None:
-    """
-    Dispatch a 6-digit MFA code.
-
-    Fewer, faster retries than the other senders: the code expires in five
-    minutes, so a delivery arriving after a long backoff is useless to the
-    person waiting for it and better replaced by them requesting a new one.
-    """
-    from auth.mail_service import send_mfa_otp_email as _send
-
-    _send(email_to, username, code)
-
-
-@celery_app.task(
-    name="ccure.tasks.send_verification_email", base=_MailTask, bind=True, **_MAIL_RETRY
-)
-def send_verification_email_task(
-    self, email_to: str, username: str, verify_link: str
-) -> None:
-    """Dispatch an email-verification link. Retried; see _MAIL_RETRY."""
-    from auth.mail_service import send_verification_email as _send
-
-    _send(email_to, username, verify_link)
-
-
-@celery_app.task(
-    name="ccure.tasks.send_password_changed_email",
-    base=_MailTask,
-    bind=True,
-    **_MAIL_RETRY,
-)
-def send_password_changed_email_task(
-    self, email_to: str, username: str, when: str, source_ip: str | None = None
-) -> None:
-    """
-    Notify a user that their password changed.
-
-    Worth retrying hard: this is the only signal the real owner gets during an
-    account takeover, and it is useful whenever it arrives.
-    """
-    from auth.mail_service import send_password_changed_email as _send
-
-    _send(email_to, username, when, source_ip)
-
-
-@celery_app.task(
-    name="ccure.tasks.send_account_approved_email",
-    base=_MailTask,
-    bind=True,
-    **_MAIL_RETRY,
-)
-def send_account_approved_email_task(
-    self, email_to: str, username: str, login_url: str, role_name: str | None = None
-) -> None:
-    """
-    Tell a user their account was approved.
-
-    Losing this one strands the user: they cannot see the in-app notification
-    until they log in, which is what this email tells them they may now do.
-    """
-    from auth.mail_service import send_account_approved_email as _send
-
-    _send(email_to, username, login_url, role_name)
-
-
-@celery_app.task(name="ccure.tasks.purge_stale_unverified_accounts", queue="default")
-def purge_stale_unverified_accounts() -> dict:
-    """
-    Delete accounts that were never verified within the configured window.
-
-    An unverified account is personal data being retained for no purpose, and
-    it also holds a username and email address hostage against the person who
-    legitimately wants them. Only rows that are unverified *and* unapproved are
-    touched, so an admin-provisioned account whose owner has not clicked the
-    link yet is never removed by this.
-    """
-    import datetime
-
-    from config import AppConfig
-    from db.models import User
-
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-        days=AppConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
-    )
-    db = SessionLocal()
-    try:
-        stale = (
-            db.query(User)
-            .filter(
-                User.is_verified.is_(False),
-                User.approved_at.is_(None),
-                User.created_at < cutoff,
-            )
-            .all()
-        )
-        removed = len(stale)
-        for user in stale:
-            log.info(
-                "Purging unverified account %s (created %s)", user.id, user.created_at
-            )
-            db.delete(user)
-        db.commit()
-        return {"success": True, "purged": removed}
-    except Exception as exc:
-        db.rollback()
-        log.error("Failed to purge unverified accounts: %s", exc, exc_info=True)
-        return {"success": False, "error": str(exc)}
-    finally:
-        db.close()
 
 
 @celery_app.task(name="ccure.tasks.expire_risk_acceptances", queue="default")
@@ -5281,68 +5075,6 @@ def expire_risk_acceptances() -> dict:
         # which looks exactly like an estate with nothing outstanding.
         log.exception("Risk-acceptance expiry failed")
         return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
-    finally:
-        db.close()
-
-
-@celery_app.task(name="ccure.tasks.purge_expired_refresh_sessions", queue="default")
-def purge_expired_refresh_sessions() -> dict:
-    """
-    Delete refresh-token sessions that are long past being useful.
-
-    `refresh_token_sessions` is append-only in practice: every login inserts a
-    row, every refresh inserts another and revokes the old one, and nothing
-    ever removed any of them. With 30-minute access tokens the SPA refreshes
-    roughly 48 times a day per signed-in session, so a single daily user
-    generates on the order of 17,000 rows a year — none of which any query
-    needs after the row expires.
-
-    Two properties worth keeping:
-
-    * **Revoked rows are kept for the full retention window, not deleted
-      immediately.** The revocation *is* the audit record — "this session was
-      signed out at 14:02 from this address" is exactly what someone
-      investigating a compromise needs, and deleting it the moment it stops
-      being usable would erase the evidence of the event being investigated.
-
-    * **Only rows that are both past `expires_at` and older than the window are
-      removed.** A row cannot be revived: `_get_refresh_session` rejects
-      anything expired, so nothing here can end a session that still works.
-
-    Bounded by `REFRESH_SESSION_RETENTION_DAYS`.
-    """
-    import datetime
-
-    from config import AppConfig
-    from db.models import RefreshTokenSession
-
-    days = AppConfig.REFRESH_SESSION_RETENTION_DAYS
-    if days <= 0:
-        return {"success": True, "purged": 0, "skipped": "retention disabled"}
-
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cutoff = now - datetime.timedelta(days=days)
-
-    db = SessionLocal()
-    try:
-        removed = (
-            db.query(RefreshTokenSession)
-            .filter(
-                RefreshTokenSession.expires_at < now,
-                RefreshTokenSession.issued_at < cutoff,
-            )
-            .delete(synchronize_session=False)
-        )
-        db.commit()
-        if removed:
-            log.info(
-                "Purged %s refresh-token session(s) issued before %s", removed, cutoff
-            )
-        return {"success": True, "purged": removed}
-    except Exception as exc:
-        db.rollback()
-        log.error("Failed to purge refresh sessions: %s", exc, exc_info=True)
-        return {"success": False, "error": str(exc)}
     finally:
         db.close()
 
@@ -5421,48 +5153,6 @@ def update_mac_vendor_registry_task() -> dict:
     except Exception as exc:
         log.exception("MAC vendor registry background update task failed")
         return {"success": False, "error": str(exc)}
-
-
-@celery_app.task(name="ccure.tasks.purge_expired_audit_logs", queue="default")
-def purge_expired_audit_logs() -> dict:
-    """
-    Phase 6a. Remove audit rows that predate the tamper-evidence chain and are
-    older than the configured retention period.
-
-    **Legacy rows only** — those with no ``record_hash``. Nothing can ever have
-    linked to one, because ``prev_hash`` references a ``record_hash`` value and
-    a legacy row has none, so removing them cannot break a chain for any
-    dataset. Chained rows are phase 6b and the database refuses them here
-    regardless of what this function asks for.
-
-    **Dry run unless ``AUDIT_RETENTION_DRY_RUN`` is explicitly false**, and a
-    no-op entirely while ``AUDIT_LOG_RETENTION_DAYS`` is 0, which is the
-    shipped default and stays that way until a period is agreed with the
-    business or compliance owner. A refusal is returned as a report rather than
-    raised: this runs on beat, and an exception in a nightly job is a line in a
-    log nobody reads, whereas ``{"skipped": ...}`` is visible in the result.
-    """
-    from config import AppConfig
-    from core.audit_retention import RetentionRefused, run_retention
-
-    db = SessionLocal()
-    try:
-        return {
-            "success": True,
-            **run_retention(
-                db,
-                dry_run=AppConfig.AUDIT_RETENTION_DRY_RUN,
-                operator="beat:purge_expired_audit_logs",
-            ),
-        }
-    except RetentionRefused as refusal:
-        log.info("audit retention did not run: %s", refusal)
-        return {"success": True, "skipped": str(refusal), "deleted_total": 0}
-    except Exception as exc:
-        log.exception("audit retention task failed")
-        return {"success": False, "error": str(exc), "deleted_total": 0}
-    finally:
-        db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

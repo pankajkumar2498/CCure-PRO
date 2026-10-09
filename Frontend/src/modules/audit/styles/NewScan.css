@@ -1,0 +1,1100 @@
+/* ============================================================================
+   New scan — setup, advanced settings and the active mission view
+   ----------------------------------------------------------------------------
+   Batch 25. The legacy stylesheet ran to 2,873 lines: a hand-built button,
+   input, select, switch, drawer and toast per purpose, colour literals and
+   translucent glows throughout, the legacy `--bg-*` / `--text-*` variables,
+   and a second copy of most rules for the dark theme. Every control is
+   now a design-system primitive; what remains here is the page's layout and
+   the two things no primitive draws — the progress ring and the host list —
+   and every colour resolves through a `--ccure-*` token, so both themes get a
+   colour chosen for them.
+
+   The file keeps its name: ScanQuotaBar's layout test reads `.ns-card` here to
+   hold the quota bar to the card's width.
+   ============================================================================ */
+
+/* ── Setup page frame ─────────────────────────────────────────────────────── */
+/* A CcurePage with the shared header (B.13). The setup form keeps its reading
+   width and sits under the title, left-aligned, as every form page does; it
+   used to be a centred hero with its own, larger title. The quota panel and
+   the card are spaced by the page gap, which the header discounts. */
+.ns-page {
+  --ccure-page-gap: var(--ccure-space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+  color: var(--ccure-text);
+}
+
+.ns-card {
+  width: 100%;
+  max-width: 680px;
+}
+
+.ns-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+.ns-section--divided {
+  padding-top: var(--ccure-space-xl);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+/* ── Shared text ──────────────────────────────────────────────────────────── */
+.ns-glyph {
+  display: inline-block;
+  line-height: 1;
+}
+
+.ns-label {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-hint {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-muted {
+  color: var(--ccure-text-secondary);
+}
+
+.ns-code {
+  padding: 0 var(--ccure-space-3xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ── Target ───────────────────────────────────────────────────────────────── */
+/* The drop area outlines itself only while a file is dragged over it. */
+.ns-drop {
+  margin: calc(-1 * var(--ccure-space-xs));
+  padding: var(--ccure-space-xs);
+  border: 1px dashed transparent;
+  border-radius: var(--ccure-radius-md);
+  transition:
+    background-color var(--ccure-duration-fast) var(--ccure-ease),
+    border-color var(--ccure-duration-fast) var(--ccure-ease);
+}
+
+.ns-drop--active {
+  background: var(--ccure-primary-soft);
+  border-color: var(--ccure-primary);
+}
+
+.ns-drop__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: var(--ccure-space-sm);
+}
+
+.ns-target {
+  font-family: var(--ccure-font-mono);
+}
+
+.ns-drop__browse {
+  white-space: nowrap;
+}
+
+/* ── Imported target list ─────────────────────────────────────────────────── */
+.ns-import {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ns-import__close {
+  flex-shrink: 0;
+}
+
+.ns-import__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  min-width: 0;
+}
+
+.ns-import__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs) var(--ccure-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-import__stats strong {
+  font-family: var(--ccure-font-mono);
+  color: var(--ccure-text);
+}
+
+.ns-import__stat--valid strong {
+  color: var(--ccure-success-text);
+}
+
+.ns-import__stat--invalid strong {
+  color: var(--ccure-danger-text);
+}
+
+.ns-import__stat--dup strong {
+  color: var(--ccure-warning-text);
+}
+
+.ns-import__hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+
+.ns-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.cc-btn.ns-remove {
+  color: var(--ccure-danger-text);
+}
+
+/* ── Quick choices ────────────────────────────────────────────────────────── */
+.ns-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+.ns-quick__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-chip {
+  font-family: var(--ccure-font-mono);
+}
+
+/* ── Profiles ─────────────────────────────────────────────────────────────── */
+.ns-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-choices__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ccure-space-3xs) var(--ccure-space-xs);
+}
+
+.ns-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-3xs);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ns-segmented__option {
+  width: 100%;
+}
+
+/* The chosen profile: raised, outlined and bold — not colour alone. */
+.cc-btn.ns-segmented__option[aria-pressed="true"] {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-primary-text);
+  background: var(--ccure-surface);
+  border-color: var(--ccure-primary);
+  box-shadow: var(--ccure-shadow-sm);
+}
+
+.ns-choices__desc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-settings-trigger {
+  align-self: flex-start;
+}
+
+/* ── Advanced settings: a modal dialog drawn as a side sheet ──────────────── */
+.cc-modal__overlay:has(> .ns-settings) {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.cc-modal.ns-settings {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 30rem;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border-radius: 0;
+  border-inline-start: 1px solid var(--ccure-border);
+}
+
+.ns-settings .cc-modal__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ns-settings__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+/* The port scan model: two cards, one radio group. The radio stays visible,
+   so the choice is not carried by the card's colour alone. */
+.ns-model {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-model__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ccure-space-sm);
+}
+
+.ns-model__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  cursor: pointer;
+}
+
+.ns-model__card:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.ns-model__card--selected,
+.ns-model__card--selected:hover {
+  background: var(--ccure-primary-soft);
+  border-color: var(--ccure-primary);
+}
+
+.ns-model__icon {
+  font-size: var(--ccure-text-lg);
+}
+
+.ns-model__title {
+  padding-inline-end: var(--ccure-space-lg);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-model__desc {
+  font-size: var(--ccure-text-xs);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+}
+
+/* Ports in a predefined profile. A sensitive port is tinted, outlined, bold,
+   and says so in text for assistive technology. */
+.ns-pills {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+}
+
+.ns-pills__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ns-pill {
+  padding: 0 var(--ccure-space-2xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-sm);
+}
+
+.ns-pill--sensitive {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-warning-text);
+  background: var(--ccure-warning-bg);
+  border-color: var(--ccure-warning-border);
+}
+
+.ns-custom-ports {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.ns-estimate {
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+  background: var(--ccure-success-bg);
+  border: 1px solid var(--ccure-success-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ns-estimate__title {
+  margin: 0 0 var(--ccure-space-2xs);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-success-text);
+}
+
+.ns-estimate__grid {
+  display: grid;
+  gap: var(--ccure-space-3xs);
+  margin: 0;
+}
+
+.ns-estimate__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-estimate__row dt {
+  color: var(--ccure-text);
+}
+
+.ns-estimate__row dd {
+  margin: 0;
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+/* ── Options switched on and off ──────────────────────────────────────────── */
+.ns-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  padding-top: var(--ccure-space-md);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+.ns-option__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+}
+
+.ns-option__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  min-width: 0;
+}
+
+.ns-option__title {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  cursor: pointer;
+}
+
+.ns-option__control {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-option__status {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  white-space: nowrap;
+}
+
+.ns-option__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+/* A native checkbox drawn as a switch. The thumb is a background gradient on
+   the input itself, so it renders in every browser and the focus ring sits on
+   the element that holds focus. */
+
+.ns-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ns-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  padding-inline-start: var(--ccure-space-xs);
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-full);
+}
+
+.cc-btn.ns-tag__remove {
+  min-height: 0;
+  padding: 0 var(--ccure-space-2xs);
+  border-radius: var(--ccure-radius-full);
+}
+
+.ns-sensitive__text {
+  margin: 0;
+}
+
+.ns-summary {
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ns-summary__title {
+  margin: 0 0 var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ccure-space-xs) var(--ccure-space-md);
+  margin: 0;
+}
+
+.ns-summary__item dt {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-summary__item dd {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+/* Stored credentials: references only — a name and an account, never a
+   secret. */
+.ns-creds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ns-creds legend {
+  margin-bottom: var(--ccure-space-2xs);
+  padding: 0;
+}
+
+.ns-cred {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  cursor: pointer;
+}
+
+.ns-cred__name {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-cred__account {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.cc-btn.ns-link {
+  min-height: 0;
+  padding: 0;
+  color: var(--ccure-text-link);
+  text-decoration: underline;
+  vertical-align: baseline;
+}
+
+/* ── Active mission ───────────────────────────────────────────────────────── */
+.ns-mission {
+  --ccure-page-gap: var(--ccure-space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+  color: var(--ccure-text);
+}
+
+.ns-mission__card,
+.ns-mission__outcome {
+  width: 100%;
+  max-width: 760px;
+}
+
+.ns-mission__actions,
+.ns-console__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-live-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+  box-shadow: 0 0 0 var(--ccure-space-3xs) var(--ccure-primary-soft);
+  animation: ns-pulse 1.6s ease-in-out infinite;
+}
+
+.ns-mission--complete .ns-live-dot {
+  background: var(--ccure-success-solid);
+  box-shadow: 0 0 0 var(--ccure-space-3xs) var(--ccure-success-bg);
+  animation: none;
+}
+
+.ns-mission--failed .ns-live-dot {
+  background: var(--ccure-danger-solid);
+  box-shadow: 0 0 0 var(--ccure-space-3xs) var(--ccure-danger-bg);
+  animation: none;
+}
+
+.ns-mission--warning .ns-live-dot {
+  background: var(--ccure-warning-solid);
+  box-shadow: 0 0 0 var(--ccure-space-3xs) var(--ccure-warning-bg);
+  animation: none;
+}
+
+.ns-mission__card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  box-shadow: var(--ccure-shadow-md);
+}
+
+.ns-console {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-lg) var(--ccure-space-xl);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.ns-console__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+}
+
+/* The progress ring: a visualisation of the percentage the progress bar and
+   the stats already state, so it is hidden from assistive technology. */
+.ns-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+}
+
+.ns-ring__svg {
+  width: 52px;
+  height: 52px;
+  transform: rotate(-90deg);
+}
+
+.ns-ring__track {
+  fill: none;
+  stroke: var(--ccure-border);
+  stroke-width: 4;
+}
+
+.ns-ring__fill {
+  fill: none;
+  stroke: var(--ccure-primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--ccure-duration-slow) var(--ccure-ease);
+}
+
+.ns-mission--complete .ns-ring__fill {
+  stroke: var(--ccure-success-solid);
+}
+
+.ns-mission--failed .ns-ring__fill {
+  stroke: var(--ccure-danger-solid);
+}
+
+.ns-mission--warning .ns-ring__fill {
+  stroke: var(--ccure-warning-solid);
+}
+
+.ns-ring__pct {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+}
+
+.ns-console__info {
+  min-width: 0;
+}
+
+.ns-console__pipeline {
+  margin: 0;
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-console__target {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ns-console__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+.ns-unreachable {
+  margin: var(--ccure-space-md) var(--ccure-space-xl) 0;
+}
+
+.ns-unreachable__text {
+  margin: 0;
+}
+
+.ns-unreachable__list {
+  margin: var(--ccure-space-3xs) 0 0;
+  padding-inline-start: var(--ccure-space-lg);
+}
+
+.ns-mission__progress {
+  padding: var(--ccure-space-md) var(--ccure-space-xl) 0;
+}
+
+/* The bar is named for assistive technology; the ring and the stats already
+   show the figure on screen. */
+.ns-mission__progress .cc-progress__labels {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ns-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0;
+  padding: var(--ccure-space-md) var(--ccure-space-xl);
+  list-style: none;
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.ns-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-xs);
+  text-align: center;
+  background: var(--ccure-surface-sunken);
+  border-radius: var(--ccure-radius-md);
+}
+
+.ns-stat__value {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-text);
+}
+
+.ns-stat__value--found {
+  color: var(--ccure-success-text);
+}
+
+.ns-stat__value--accent {
+  color: var(--ccure-primary-text);
+}
+
+.ns-stat__label {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Discovered systems ───────────────────────────────────────────────────── */
+.ns-hosts {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ns-hosts__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-sm) var(--ccure-space-xl);
+  background: var(--ccure-surface-sunken);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.ns-hosts__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.ns-hosts__title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.ns-hosts__scanning {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.ns-hosts__pulse {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+  animation: ns-pulse 1.6s ease-in-out infinite;
+}
+
+.ns-hosts__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-2xl) var(--ccure-space-xl);
+}
+
+.ns-radar {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+}
+
+.ns-radar__ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--ccure-primary);
+  border-radius: var(--ccure-radius-full);
+  opacity: 0;
+  animation: ns-radar 2.4s ease-out infinite;
+}
+
+.ns-radar__ring:nth-child(2) {
+  animation-delay: 0.8s;
+}
+
+.ns-radar__ring:nth-child(3) {
+  animation-delay: 1.6s;
+}
+
+.ns-radar__dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: -0.25rem 0 0 -0.25rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+}
+
+.ns-hosts__empty-text {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  text-align: center;
+  color: var(--ccure-text-secondary);
+}
+
+.ns-hosts__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  max-height: 20rem;
+  margin: 0;
+  padding: var(--ccure-space-sm) var(--ccure-space-xl) var(--ccure-space-md);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ns-host {
+  display: grid;
+  grid-template-columns: 0.5rem minmax(7rem, 9rem) minmax(0, 1.5fr) minmax(
+      0,
+      1fr
+    );
+  align-items: center;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+}
+
+/* A host that has just appeared, for three seconds. */
+.ns-host--new {
+  background: var(--ccure-success-bg);
+  border-color: var(--ccure-success-border);
+  animation: ns-host-in var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.ns-host__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-success-solid);
+}
+
+.ns-host__ip,
+.ns-host__name,
+.ns-host__mac {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ccure-text);
+}
+
+.ns-host__ip {
+  font-family: var(--ccure-font-mono);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.ns-host__mac {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+}
+
+.ns-host__resolving {
+  font-style: italic;
+  color: var(--ccure-text-secondary);
+}
+
+.ns-console__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-sm) var(--ccure-space-xl);
+  background: var(--ccure-surface-sunken);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+.ns-console__elapsed {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+@keyframes ns-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes ns-radar {
+  from {
+    opacity: 0.8;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@keyframes ns-host-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--ccure-space-3xs));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ns-live-dot,
+  .ns-hosts__pulse,
+  .ns-radar__ring,
+  .ns-host--new {
+    animation: none;
+  }
+
+  .ns-drop,
+  .ns-ring__fill {
+    transition: none;
+  }
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .ns-card {
+    width: 100%;
+    max-width: 680px;
+  }
+
+  .ns-drop__row,
+  .ns-model__cards,
+  .ns-summary__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ns-console,
+  .ns-stats,
+  .ns-hosts__header,
+  .ns-hosts__list,
+  .ns-console__footer {
+    padding-inline: var(--ccure-space-md);
+  }
+
+  .ns-mission__progress {
+    padding-inline: var(--ccure-space-md);
+  }
+
+  .ns-unreachable {
+    margin-inline: var(--ccure-space-md);
+  }
+
+  .ns-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ns-host {
+    grid-template-columns: 0.5rem minmax(0, 1fr);
+    row-gap: var(--ccure-space-3xs);
+  }
+
+  .ns-host__name,
+  .ns-host__mac {
+    grid-column: 2;
+  }
+}
+
+.ns-card > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xl);
+  padding: var(--ccure-space-2xl);
+}
+@media (max-width: 480px) {
+  .ns-card > .cc-card__body {
+    padding: var(--ccure-space-md);
+  }
+}
+
+.ns-model__title,
+.ns-model__desc {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,270 @@
+/* src/shell/navigation/navigation.css — the shared header pieces: account menu, organisation switcher, user card.
+   Moved from Audit's app-shell.css with the component (Phase 12
+   navigation refactor); rules unchanged, class names unchanged. */
+
+.sh-menu-anchor {
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  position: relative;
+  display: inline-flex;
+}
+
+.sh-org-anchor {
+  flex: 0 1 auto;
+}
+
+.sh-org-btn .cc-badge,
+.sh-org-btn .sh-chevron {
+  flex-shrink: 0;
+}
+
+/* Org switcher ─ a menu button */
+.sh-org-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 2rem;
+  white-space: normal;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-2xs) var(--ccure-space-sm);
+  border-radius: var(--ccure-radius-sm);
+  border: 1px solid var(--ccure-border);
+  background: var(--ccure-surface-sunken);
+  color: var(--ccure-text);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  cursor: pointer;
+  transition: background var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.sh-org-btn:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.sh-org-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-org-btn:focus-visible,
+.sh-user-btn:focus-visible,
+.sh-menu-item:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.sh-chevron {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-inline-start: var(--ccure-space-3xs);
+}
+
+/* Menus (org switcher, account) */
+
+.sh-menu--org {
+  left: 0;
+  width: 13.75rem;
+}
+
+.sh-menu--profile {
+  right: 0;
+  width: 13.125rem;
+}
+
+.sh-menu-title {
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text-secondary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ccure-border);
+}
+
+.sh-menu-note {
+  padding: var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.sh-menu-item {
+  width: 100%;
+  padding: var(--ccure-space-sm);
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.sh-menu-item:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.sh-menu-item--current {
+  color: var(--ccure-primary-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sh-menu-check {
+  display: inline-block;
+  width: 0.875rem;
+}
+
+.sh-menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border-bottom: 1px solid var(--ccure-border);
+}
+
+.sh-menu-head-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sh-menu-name {
+  font-weight: var(--ccure-weight-semibold);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+}
+
+.sh-menu-email {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sh-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-xs);
+}
+
+.sh-signout {
+  color: var(--ccure-danger-text);
+}
+
+/* Account button */
+.sh-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-3xs) var(--ccure-space-xs);
+  border-radius: var(--ccure-radius-full);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ccure-text);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  cursor: pointer;
+}
+
+.sh-user-btn:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.sh-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+  flex: none;
+}
+
+.sh-avatar--lg {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+/* User card */
+.sh-user {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.sh-user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.sh-user-info-name {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-user-info-role {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  text-transform: capitalize;
+}
+
+/* Header icon button (the notification bell, settings and help buttons) —
+   moved from Audit's app-shell.css so the shared bell is styled by the shell. */
+.sh-iconbtn {
+  flex-shrink: 0;
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: var(--ccure-radius-full);
+  justify-content: center;
+}
+
+.sh-iconbtn--active,
+.sh-iconbtn[aria-expanded="true"] {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+}
+
+/* B.4 menus use the shared Dropdown; these rules only arrange shell content. */
+.sh-org-btn.cc-btn > span,
+.sh-user-btn.cc-btn > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+.sh-menu--org.cc-dropdown__menu {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+  width: min(16rem, calc(100vw - 2rem));
+}
+.sh-menu--profile.cc-dropdown__menu {
+  width: min(16rem, calc(100vw - 2rem));
+}
+.sh-menu-item.cc-menuitem {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sh-menu-head-text {
+  overflow-wrap: anywhere;
+}
+.sh-menu-body .sh-signout {
+  color: var(--ccure-danger-text);
+}

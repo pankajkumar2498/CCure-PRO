@@ -1,0 +1,607 @@
+{
+  "$defs": {
+    "Applicability": {
+      "description": "Whether the policy owner declares a control applicable to the organisation.",
+      "enum": [
+        "applicable",
+        "not_applicable"
+      ],
+      "title": "Applicability",
+      "type": "string"
+    },
+    "CcureBaselineControlV1": {
+      "additionalProperties": false,
+      "description": "One control requirement of the baseline.",
+      "properties": {
+        "applicability": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Applicability"
+            }
+          ],
+          "description": "Whether the organisation declares the control applicable.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "applicability_justification": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Required when not applicable: the reason, as the Statement of Applicability records it (ISO/IEC 27001 6.1.3(d)).",
+          "title": "Applicability Justification",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "control": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureControlRefV1"
+            }
+          ],
+          "description": "The framework control required.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "parameters": {
+          "description": "Organisation parameters for this control.",
+          "items": {
+            "$ref": "#/$defs/CcureBaselineParameterV1"
+          },
+          "title": "Parameters",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "requirement_id": {
+          "description": "Policy Pro's identifier for this requirement of the policy.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Requirement Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "requirement_text": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The policy's wording, for display to Audit users only. Audit never derives an executable check from it.",
+          "title": "Requirement Text",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "control",
+        "applicability"
+      ],
+      "title": "CcureBaselineControlV1",
+      "type": "object"
+    },
+    "CcureBaselineParameterV1": {
+      "additionalProperties": false,
+      "description": "One organisation parameter, e.g. minimum password length = 12.\n\nParameter names come from Audit's published vocabulary\n(``GET /api/v1/integrations/capabilities``), not from a list Policy Pro\nkeeps: a vocabulary is fetched, not copied.",
+      "properties": {
+        "name": {
+          "description": "Parameter name from Audit's published parameter vocabulary.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unit, e.g. 'characters', 'days', 'minutes'.",
+          "title": "Unit",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            }
+          ],
+          "description": "The organisation's chosen value.",
+          "title": "Value",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "CcureBaselineParameterV1",
+      "type": "object"
+    },
+    "CcureBaselineScopeV1": {
+      "additionalProperties": false,
+      "description": "Where the baseline applies. It can only **narrow** the organisation's\nauthorised scan scope, never widen it: Policy Pro is not a scan\nauthorisation, and an entry outside the authorised scope is reported back\nas rejected.",
+      "properties": {
+        "asset_tags": {
+          "description": "Audit asset tags.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Asset Tags",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "cidrs": {
+          "description": "IP ranges in CIDR notation.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Cidrs",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "title": "CcureBaselineScopeV1",
+      "type": "object"
+    },
+    "CcureControlRefV1": {
+      "additionalProperties": false,
+      "description": "One control of one framework, e.g. ISO27001_2022 / 2022 / A.8.9.",
+      "properties": {
+        "control_id": {
+          "description": "The control's identifier as the framework publishes it (A.8.9, PR.AA-01, AC-2). Namespace rules are open decision D3.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Control Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "framework": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureFrameworkRefV1"
+            }
+          ],
+          "description": "The framework.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "framework",
+        "control_id"
+      ],
+      "title": "CcureControlRefV1",
+      "type": "object"
+    },
+    "CcureFrameworkRefV1": {
+      "additionalProperties": false,
+      "description": "A compliance framework, named by code and version (e.g. ISO27001_2022 / 2022).",
+      "properties": {
+        "code": {
+          "description": "Framework code from the shared framework vocabulary (open decision D3).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "version": {
+          "description": "Framework version as published.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "code",
+        "version"
+      ],
+      "title": "CcureFrameworkRefV1",
+      "type": "object"
+    },
+    "CcurePolicyBaselineDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_at": {
+          "description": "When the policy was approved.",
+          "format": "date-time",
+          "title": "Approved At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "approver_ref": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Policy Pro's opaque reference to the approver. No personal data.",
+          "title": "Approver Ref",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "baseline_id": {
+          "description": "Stable identifier of the baseline.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Baseline Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "baseline_version": {
+          "description": "Monotonic version. A new version is a new immutable record; a version is never edited.",
+          "minimum": 1,
+          "title": "Baseline Version",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "controls": {
+          "description": "The controls the baseline requires.",
+          "items": {
+            "$ref": "#/$defs/CcureBaselineControlV1"
+          },
+          "minItems": 1,
+          "title": "Controls",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "effective_from": {
+          "description": "From when the baseline is meant to govern assessments.",
+          "format": "date-time",
+          "title": "Effective From",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "frameworks": {
+          "description": "Frameworks the baseline draws controls from.",
+          "items": {
+            "$ref": "#/$defs/CcureFrameworkRefV1"
+          },
+          "minItems": 1,
+          "title": "Frameworks",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcurePolicyRefV1"
+            }
+          ],
+          "description": "The source policy document.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CcureBaselineScopeV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional narrowing of where the baseline applies.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "status": {
+          "const": "approved",
+          "description": "Only an approved policy is sent (SRS 7.6.2: 'once a policy has been finalized and approved').",
+          "enum": [
+            "approved"
+          ],
+          "title": "Status",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "supersedes_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The version this one replaces, if any.",
+          "title": "Supersedes Version",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "baseline_id",
+        "baseline_version",
+        "policy",
+        "status",
+        "approved_at",
+        "effective_from",
+        "frameworks",
+        "controls"
+      ],
+      "title": "CcurePolicyBaselineDataV1",
+      "type": "object"
+    },
+    "CcurePolicyRefV1": {
+      "additionalProperties": false,
+      "description": "The Policy Pro policy document this baseline was derived from (SRS 7.2.6.1).",
+      "properties": {
+        "policy_id": {
+          "description": "Policy Pro's policy identifier.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Policy Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "policy_version": {
+          "description": "The policy document's version label.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        },
+        "title": {
+          "description": "Policy title, for display.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "policy_pro"
+        }
+      },
+      "required": [
+        "policy_id",
+        "policy_version",
+        "title"
+      ],
+      "title": "CcurePolicyRefV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/policy_baseline/v1/PolicyBaseline.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``POST /api/v1/integrations/policy-baselines`` request body.",
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.policy_baseline",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.policy_baseline"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcurePolicyBaselineDataV1"
+        }
+      ],
+      "description": "The baseline.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "policy_pro"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcurePolicyBaselineV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

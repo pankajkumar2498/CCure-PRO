@@ -52,7 +52,7 @@ from typing import Any, Dict, List, Optional
 
 from core.scheduling.recurrence import RecurrenceSpec, compute_next_run
 from db.base import gen_scan_schedule_run_id
-from db.models import Organization, ScanSchedule, ScanScheduleRun
+from db.models import ScanSchedule, ScanScheduleRun
 from db.models.scan_schedules import (
     RUN_STATUS_DISPATCHED,
     RUN_STATUS_FAILED,
@@ -199,12 +199,15 @@ def _resolve_targets(db: Session, schedule: ScanSchedule) -> List[str]:
     if not raw:
         raise ScheduleDispatchError("the schedule has no targets")
 
-    org = db.query(Organization).filter(Organization.id == schedule.org_id).first()
-    if org is None:
+    from core.scan_scope import org_scan_scope
+
+    # None when the organisation is gone — the same refusal as before.
+    scope = org_scan_scope(db, schedule.org_id)
+    if scope is None:
         raise ScheduleDispatchError(f"organisation {schedule.org_id} no longer exists")
 
     try:
-        return validate_scan_targets(raw, org=org)
+        return validate_scan_targets(raw, scope=scope)
     except Exception as exc:  # noqa: BLE001 — the message is what the user reads
         # validate_scan_targets raises HTTPException; its `detail` is written
         # for a person, so it is exactly what belongs in the run record.
@@ -301,7 +304,8 @@ def _count_policy_use(db: Session, schedule: ScanSchedule, effective) -> None:
 def _dispatch_network(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
-    from core.tasks import run_host_discovery_task
+    from core.celery_app import registered_task
+    from core.task_names import RUN_HOST_DISCOVERY
     from scans.db_helpers import create_scan
 
     # Resolved before the scan row exists: `create_scan` commits, so a refusal
@@ -338,7 +342,7 @@ def _dispatch_network(
     record_policy_snapshot(scan, effective, overwrite=True)
     db.flush()
 
-    task = run_host_discovery_task.delay(
+    task = registered_task(RUN_HOST_DISCOVERY).delay(
         user_id=schedule.created_by,
         targets=targets,
         scan_type=scan_type,
@@ -364,7 +368,8 @@ def _dispatch_network(
 def _dispatch_credentialed(
     db: Session, schedule: ScanSchedule, targets: List[str]
 ) -> DispatchOutcome:
-    from core.tasks import run_credentialed_scan_task
+    from core.celery_app import registered_task
+    from core.task_names import RUN_CREDENTIALED_SCAN
     from db.models import ComplianceCredential
     from scans.db_helpers import create_scan
 
@@ -418,7 +423,7 @@ def _dispatch_credentialed(
     # Only the credential *reference* travels to the worker. The task resolves
     # and decrypts it there. A schedule must never put a password in the broker
     # payload, which is what the manual route does with its request body.
-    task = run_credentialed_scan_task.delay(
+    task = registered_task(RUN_CREDENTIALED_SCAN).delay(
         user_id=schedule.created_by,
         targets=targets,
         username=None,

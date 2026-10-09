@@ -65,10 +65,22 @@ class _Finding:
         self.remediation_state = kwargs.get("remediation_state", STATE_OPEN)
 
 
-class _Org:
-    def __init__(self, settings=None):
-        self.id = "org_test"
-        self.settings = settings or {}
+def _Org(settings=None):
+    """
+    An organisation's SLA setting as the platform reports it (Phase 8.4): the
+    stored value as JSON text, or None when the organisation never set one.
+    """
+    import json
+
+    from ccure_platform.api import RemediationSlaSettingView
+
+    settings = settings or {}
+    stored = (
+        json.dumps(settings["remediation_sla"])
+        if "remediation_sla" in settings
+        else None
+    )
+    return RemediationSlaSettingView(org_id="org_test", stored=stored)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

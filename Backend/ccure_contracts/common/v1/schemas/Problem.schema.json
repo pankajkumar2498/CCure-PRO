@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "CcureFieldErrorV1": {
+      "additionalProperties": false,
+      "description": "One validation failure, located by JSON Pointer.",
+      "properties": {
+        "message": {
+          "description": "What is wrong with it.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "pointer": {
+          "description": "RFC 6901 JSON Pointer to the offending field, e.g. /data/controls/3.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Pointer",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "pointer",
+        "message"
+      ],
+      "title": "CcureFieldErrorV1",
+      "type": "object"
+    },
+    "ProblemCode": {
+      "description": "Every refusal an integration endpoint can give. ``retryable`` in the design\ndocument's table says which a caller may retry unchanged.",
+      "enum": [
+        "invalid_payload",
+        "unsupported_schema_version",
+        "unsupported_contract",
+        "unauthenticated",
+        "insufficient_scope",
+        "tenant_mismatch",
+        "not_found",
+        "version_conflict",
+        "idempotency_conflict",
+        "payload_too_large",
+        "rate_limited",
+        "integration_disabled",
+        "unavailable",
+        "internal_error"
+      ],
+      "title": "ProblemCode",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/common/v1/Problem.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An RFC 9457 problem detail.",
+  "properties": {
+    "code": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ProblemCode"
+        }
+      ],
+      "description": "Machine-readable problem code.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The correlation id of the refused request.",
+      "title": "Correlation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Explanation of this occurrence. Never echoes a secret or another tenant's data.",
+      "title": "Detail",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "errors": {
+      "description": "Field-level validation failures.",
+      "items": {
+        "$ref": "#/$defs/CcureFieldErrorV1"
+      },
+      "title": "Errors",
+      "type": "array",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "retry_after_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Minimum wait before retrying, where known.",
+      "title": "Retry After Seconds",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "retryable": {
+      "description": "Whether sending the same message again may succeed.",
+      "title": "Retryable",
+      "type": "boolean",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "status": {
+      "description": "HTTP status code.",
+      "maximum": 599,
+      "minimum": 400,
+      "title": "Status",
+      "type": "integer",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "title": {
+      "description": "Short, stable summary of the problem type.",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "type": {
+      "description": "URI identifying the problem type: https://ccurepro.cdac.in/problems/<code>.",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Type",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "retryable"
+  ],
+  "title": "CcureProblemV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

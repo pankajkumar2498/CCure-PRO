@@ -19,6 +19,8 @@ Two things about how these are written:
   what they do to the *response*.
 """
 
+from native_rbac import system_role, create_user
+
 import hashlib
 import logging
 from contextlib import contextmanager
@@ -27,7 +29,7 @@ from unittest.mock import patch
 
 import pytest
 from db.base import gen_user_id, utcnow
-from db.models import Organization, PasswordResetToken, Role, User
+from db.models import Organization, PasswordResetToken, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -173,9 +175,11 @@ def test_rate_limit_key_is_the_resolved_client_ip():
         "203.0.113.9"
     )
 
-    # Two clients behind the real proxy get two different buckets.
-    proxied_a = _rate_limit_key(make("172.18.0.5", {"x-forwarded-for": "10.180.6.11"}))
-    proxied_b = _rate_limit_key(make("172.18.0.5", {"x-forwarded-for": "10.180.6.12"}))
+    # Two clients behind the real proxy get two different buckets. Host nginx
+    # arrives as the compose network's gateway, 172.18.0.1 (Phase 10.3, F10-1:
+    # a container such as 172.18.0.5 is a caller, not a proxy).
+    proxied_a = _rate_limit_key(make("172.18.0.1", {"x-forwarded-for": "10.180.6.11"}))
+    proxied_b = _rate_limit_key(make("172.18.0.1", {"x-forwarded-for": "10.180.6.12"}))
     assert proxied_a != proxied_b
 
 
@@ -190,14 +194,15 @@ def reset_user(db_session: Session) -> User:
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
-    user = User(
+    role = system_role(db_session, "platform.analyst")
+    user = create_user(
+        db_session,
         id=gen_user_id(org.slug, "resetuser"),
         username="resetuser",
         email="resetuser@test.com",
         password_hash="oldhash",
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -307,6 +312,12 @@ def test_bad_token_answers_uniformly_whatever_is_wrong_with_it(
     expired = _issue_token(db_session, reset_user, minutes=-5)
 
     orphan = _issue_token(db_session, reset_user)
+    # the account's RBAC assignments go with it (ON DELETE RESTRICT otherwise)
+    from sqlalchemy import text
+
+    db_session.execute(
+        text("DELETE FROM rbac_user_roles WHERE user_id = :u"), {"u": reset_user.id}
+    )
     db_session.query(User).filter(User.id == reset_user.id).delete()
     db_session.commit()
 
@@ -645,6 +656,26 @@ def test_rejections_are_logged_without_leaking_credentials():
     assert "198.51.100.4" in text
     assert "sekrit-token-value" not in text
     assert "Bearer" not in text
+
+
+def test_rejections_are_attributed_through_the_decoder_main_registers():
+    """
+    Phase 3 moved token decoding out of core/rate_limit_audit.py: the module
+    is infrastructure and must not import auth, so main.py registers
+    auth.jwt_handler.decode_token at start-up. If that wiring were lost, 429
+    records would silently stop naming the caller — this pins it.
+    """
+    import core.rate_limit_audit as audit
+    import main  # noqa: F401  (the composition root does the registration)
+    from auth.jwt_handler import decode_token
+
+    assert audit._token_decoder is decode_token
+
+    class _Req:
+        headers = {"authorization": "Bearer not-a-real-token"}
+
+    # An invalid token is still unattributed, as before.
+    assert audit._caller_identity(_Req()) == (None, None)
 
 
 def test_degradation_is_announced_once_per_transition():

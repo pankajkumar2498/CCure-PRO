@@ -11,11 +11,14 @@ import logging
 from datetime import timedelta
 from typing import Any, List, Optional
 
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from db.base import gen_scan_id, gen_scan_phase_id, utcnow
-from db.models.rbac import Organization
+from ccure_platform import api as platform_api
 from db.models.scans import Scan, ScanPhase
-from db.models.users import User
+from scans.notification_vocabulary import (
+    AuditNotificationCategory,
+    AuditNotificationType,
+)
 from scans.asset_syncer import (
     sync_asset_discovery,
     sync_host_discovery,
@@ -72,64 +75,8 @@ def _get_org_scoped_scan(db: Session, scan_id: str, user_id: str) -> Scan | None
     return db.query(Scan).filter(Scan.id == scan_id, Scan.org_id == org_id).first()
 
 
-def read_scan_full(db: Session, scan_id: str, user_id: str) -> dict:
-    """
-    Load a scan and all its phase results into a single dictionary.
-    """
-    scan = _get_org_scoped_scan(db, scan_id, user_id)
-    if not scan:
-        return {}
-
-    # Map phases to friendly keys for the frontend
-    phases_data = {}
-    for phase in scan.phases:
-        key = (
-            "phase1"
-            if phase.phase_order == 1
-            else (
-                "phase2"
-                if phase.phase_order == 2
-                else "phase3" if phase.phase_order == 3 else f"phase{phase.phase_order}"
-            )
-        )
-
-        # Identity resolve phase data (this recreates the 'data' field from Assets)
-        # For performance, in production we'd use the legacy_json_builder
-        phases_data[key] = {
-            "status": phase.status,
-            "summary": _public_phase_summary(phase.summary),
-            # 'data' is usually populated via legacy_json_builder or asset_syncer
-        }
-
-    # Use the existing legacy builder to get the 'data' (hosts list) correctly
-    from scans.legacy_json_builder import build_legacy_scan_results
-
-    full_results = build_legacy_scan_results(db, scan_id)
-
-    return {
-        "id": str(scan.id),
-        "scan_no": scan.scan_no,
-        "status": scan.status,
-        "pipeline_mode": scan.pipeline_mode,
-        "report_executive_path": scan.report_executive_path,
-        "report_technical_path": scan.report_technical_path,
-        "phase1": {
-            **phases_data.get("phase1", {}),
-            "data": full_results.get("phase1", {}).get("data", []),
-        },
-        "phase2": {
-            **phases_data.get("phase2", {}),
-            "data": full_results.get("phase2", {}).get("data", []),
-        },
-        "phase3": {
-            **phases_data.get("phase3", {}),
-            "data": full_results.get("phase3", {}).get("data", []),
-        },
-    }
-
-
 def _get_org_id(db: Session, user_id: str) -> str:
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if not user:
         raise ValueError(f"User {user_id} not found in DB")
     return str(user.org_id)
@@ -166,7 +113,7 @@ def create_scan(
     """Create an empty running scan before Phase 1 starts."""
     if not org_id:
         org_id = _get_org_id(db, user_id)
-    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org = platform_api.organisation(db, org_id)
     org_slug = org.slug if org else org_id
 
     scan = Scan(
@@ -186,7 +133,7 @@ def create_scan(
     db.commit()
     db.refresh(scan)
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if user:
         log_audit_event(
             db=db,
@@ -283,7 +230,7 @@ def update_scan_phase1(
     db.refresh(scan)
 
     if is_final:
-        user = db.query(User).filter(User.id == scan.created_by).first()
+        user = platform_api.user(db, scan.created_by)
         if user:
             log_audit_event(
                 db=db,
@@ -301,23 +248,25 @@ def update_scan_phase1(
             db.commit()
 
     # Asset Sync in background (AFTER commit to avoid FK race condition)
-    from core.tasks import sync_host_discovery_task
+    from core.celery_app import registered_task
+    from core.task_names import SYNC_HOST_DISCOVERY
 
-    sync_host_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+    registered_task(SYNC_HOST_DISCOVERY).delay(
+        str(scan.id), org_id, user_id, hosts_data
+    )
 
     if is_final:
         try:
-            from routers.notifications import (
+            from ccure_platform.api import (
                 NotificationCategory,
-                NotificationType,
                 create_notification,
             )
 
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.SCAN_COMPLETED,
-                category=NotificationCategory.SCAN,
+                notification_type=AuditNotificationType.SCAN_COMPLETED,
+                category=AuditNotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Host Discovery scan on {scan.target_str} has finished. Found {scan.active_hosts} active hosts.",
                 related_scan_id=str(scan.id),
@@ -550,7 +499,7 @@ def update_scan_phase(
     db.refresh(scan)
 
     if is_final:
-        user = db.query(User).filter(User.id == scan.created_by).first()
+        user = platform_api.user(db, scan.created_by)
         if user:
             log_audit_event(
                 db=db,
@@ -569,21 +518,26 @@ def update_scan_phase(
 
     # Synchronization (AFTER commit to avoid FK race condition)
     if phase == 2:
-        from core.tasks import sync_asset_discovery_task
+        from core.celery_app import registered_task
+        from core.task_names import SYNC_ASSET_DISCOVERY
 
-        sync_asset_discovery_task.delay(str(scan.id), org_id, user_id, hosts_data)
+        registered_task(SYNC_ASSET_DISCOVERY).delay(
+            str(scan.id), org_id, user_id, hosts_data
+        )
     elif phase >= 3 and not findings_synced:
         # Reached only for a non-final phase-3 update, or when the inline sync
         # above failed and the work still has to happen.
-        from core.tasks import sync_vulnerability_audit_task
+        from core.celery_app import registered_task
+        from core.task_names import SYNC_VULNERABILITY_AUDIT
 
-        sync_vulnerability_audit_task.delay(str(scan.id), org_id, user_id, hosts_data)
+        registered_task(SYNC_VULNERABILITY_AUDIT).delay(
+            str(scan.id), org_id, user_id, hosts_data
+        )
 
     if is_final:
         try:
-            from routers.notifications import (
+            from ccure_platform.api import (
                 NotificationCategory,
-                NotificationType,
                 create_notification,
                 fan_out_notification,
             )
@@ -593,7 +547,7 @@ def update_scan_phase(
                 create_notification(
                     db=db,
                     user_id=scan.created_by,
-                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
                     title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
@@ -604,8 +558,8 @@ def update_scan_phase(
                 fan_out_notification(
                     db=db,
                     org_id=str(scan.org_id),
-                    target_roles=["superadmin", "org_admin"],
-                    notification_type=NotificationType.VULNERABILITY_FOUND,
+                    permission_key="audit.scan.lifecycle",
+                    notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                     category=NotificationCategory.SECURITY,
                     title="Critical Vulnerabilities Found",
                     message=f"Scan {scan.scan_no} on {scan.target_str} discovered {scan.critical_count} critical vulnerabilities.",
@@ -616,8 +570,8 @@ def update_scan_phase(
                 create_notification(
                     db=db,
                     user_id=scan.created_by,
-                    notification_type=NotificationType.SCAN_COMPLETED,
-                    category=NotificationCategory.SCAN,
+                    notification_type=AuditNotificationType.SCAN_COMPLETED,
+                    category=AuditNotificationCategory.SCAN,
                     title=f"Scan {scan.scan_no} Completed",
                     message=f"Scan on {scan.target_str} has finished successfully.",
                     related_scan_id=str(scan.id),
@@ -686,7 +640,7 @@ def mark_scan_failed(
     db.commit()
     db.refresh(scan)
 
-    user = db.query(User).filter(User.id == scan.created_by).first()
+    user = platform_api.user(db, scan.created_by)
     if user:
         log_audit_event(
             db=db,
@@ -702,13 +656,12 @@ def mark_scan_failed(
         db.commit()
 
     try:
-        from routers.notifications import (
+        from ccure_platform.api import (
             NotificationCategory,
-            NotificationType,
             create_notification,
         )
 
-        ntype = NotificationType.SCAN_FAILED
+        ntype = AuditNotificationType.SCAN_FAILED
         title = f"Scan {scan.scan_no} Failed"
         if status == "unreachable":
             title = f"Scan {scan.scan_no} Unreachable"
@@ -717,7 +670,7 @@ def mark_scan_failed(
             db=db,
             user_id=scan.created_by,
             notification_type=ntype,
-            category=NotificationCategory.SCAN,
+            category=AuditNotificationCategory.SCAN,
             title=title,
             message=f"Scan on {scan.target_str} {status}: {reason}",
             related_scan_id=str(scan.id),
@@ -752,7 +705,7 @@ def create_completed_scan(
         if not scan:
             raise ValueError(f"Scan {scan_id} not found")
         org_id = str(scan.org_id)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         if scan.status != "unreachable":
@@ -772,7 +725,7 @@ def create_completed_scan(
         scan.info_count = summary.get("info_count", scan.info_count or 0)
     else:
         org_id = _get_org_id(db, user_id)
-        org = db.query(Organization).filter(Organization.id == org_id).first()
+        org = platform_api.organisation(db, org_id)
         org_slug = org.slug if org else org_id
 
         scan = Scan(
@@ -853,7 +806,7 @@ def create_completed_scan(
         db.commit()
         db.refresh(scan)
 
-    user = db.query(User).filter(User.id == scan.created_by).first()
+    user = platform_api.user(db, scan.created_by)
     if user:
         log_audit_event(
             db=db,
@@ -884,9 +837,8 @@ def create_completed_scan(
             db.commit()
 
     try:
-        from routers.notifications import (
+        from ccure_platform.api import (
             NotificationCategory,
-            NotificationType,
             create_notification,
             fan_out_notification,
         )
@@ -905,7 +857,7 @@ def create_completed_scan(
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.VULNERABILITY_FOUND,
+                notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
                 title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
@@ -916,8 +868,8 @@ def create_completed_scan(
             fan_out_notification(
                 db=db,
                 org_id=str(scan.org_id),
-                target_roles=["superadmin", "org_admin"],
-                notification_type=NotificationType.VULNERABILITY_FOUND,
+                permission_key="audit.scan.lifecycle",
+                notification_type=AuditNotificationType.VULNERABILITY_FOUND,
                 category=NotificationCategory.SECURITY,
                 title="Critical Vulnerabilities Found",
                 message=f"Credentialed scan {scan.scan_no} on {scan.target_str} discovered {critical_count} critical vulnerabilities.",
@@ -928,8 +880,8 @@ def create_completed_scan(
             create_notification(
                 db=db,
                 user_id=scan.created_by,
-                notification_type=NotificationType.SCAN_COMPLETED,
-                category=NotificationCategory.SCAN,
+                notification_type=AuditNotificationType.SCAN_COMPLETED,
+                category=AuditNotificationCategory.SCAN,
                 title=f"Scan {scan.scan_no} Completed",
                 message=f"Credentialed scan on {scan.target_str} has finished successfully.",
                 related_scan_id=str(scan.id),

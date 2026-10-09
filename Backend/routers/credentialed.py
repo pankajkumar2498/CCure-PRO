@@ -12,9 +12,13 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
 from db.base import SessionLocal
-from db.models import ComplianceCredential, User
+from db.models import ComplianceCredential
 from engines.credentialed.ssh_scanner import PARAMIKO_AVAILABLE
 from engines.credentialed.transport_resolver import TRANSPORT_SSH, resolve_endpoint
 from orchestrator.scan_orchestrator import ScanOrchestrator
@@ -27,7 +31,7 @@ router = APIRouter(tags=["Credentialed Scans"])
 
 
 def _enforce_credentialed_scan_scope(
-    hosts: list[str], user: User, org_id: str | None
+    hosts: list[str], user: CurrentUser, org_id: str | None
 ) -> None:
     """
     Deny hosts outside the organisation's authorised scan scope.
@@ -36,19 +40,14 @@ def _enforce_credentialed_scan_scope(
     scans. It lives here rather than there because this route expands its own
     targets and never calls that helper.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope
-    from db.models import Organization
+    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
-    role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-    target_org_id = (
-        org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-    )
+    target_org_id = resolve_active_organisation(user, org_id)
 
     db = SessionLocal()
     try:
-        org = db.query(Organization).filter(Organization.id == target_org_id).first()
         try:
-            enforce_org_scan_scope(hosts, org)
+            enforce_org_scan_scope(hosts, org_scan_scope(db, target_org_id))
         except ScanScopeError as exc:
             raise HTTPException(status_code=403, detail=exc.message) from exc
     finally:
@@ -152,62 +151,6 @@ class CredentialedScanRequest(BaseModel):
         return str(p)
 
 
-# ── OS detection ──────────────────────────────────────────────────────────────
-
-
-def _detect_os(ssh) -> str:
-    """
-    Robust OS auto-detection via SSH.
-
-    Runs up to 5 lightweight probes in priority order — each designed for a
-    different SSH default shell (cmd.exe, PowerShell, bash/sh).  Stops as
-    soon as a confident match is found.
-
-    Returns 'windows' or 'linux'.
-    """
-
-    # ── Probe 1: cmd.exe native — ver always prints "Microsoft Windows" ──────
-    r = ssh.run("ver", timeout=4)
-    out = r.stdout.strip()
-    log.debug("[OS-detect] ver → %s", out[:80])
-    if r.success and "microsoft windows" in out.lower():
-        return "windows"
-
-    # ── Probe 2: cmd /c ver — same as above but explicit cmd ─────────────────
-    r = ssh.run("cmd /c ver", timeout=4)
-    out = r.stdout.strip()
-    log.debug("[OS-detect] cmd /c ver → %s", out[:80])
-    if r.success and "microsoft windows" in out.lower():
-        return "windows"
-
-    # ── Probe 3: PowerShell $env:OS — Windows_NT on all Windows machines ─────
-    r = ssh.run("$env:OS", timeout=4)
-    out = r.stdout.strip()
-    log.debug("[OS-detect] $env:OS → %s", out[:80])
-    if r.success and "windows" in out.lower():
-        return "windows"
-
-    # ── Probe 4: uname exact match — only real Linux/macOS returns this ───────
-    r = ssh.run("uname -s", timeout=4)
-    out = r.stdout.strip().upper()
-    log.debug("[OS-detect] uname -s → %s", out[:80])
-    if r.success and out in {"LINUX", "DARWIN", "FREEBSD", "OPENBSD", "NETBSD"}:
-        return "linux"
-    if r.success and "NT" in out and "LINUX" not in out:
-        return "windows"
-
-    # ── Probe 5: PowerShell [Environment]::OSVersion — works on PS 5+ ────────
-    r = ssh.run("[Environment]::OSVersion.Platform", timeout=4)
-    out = r.stdout.strip()
-    log.debug("[OS-detect] OSVersion.Platform → %s", out[:80])
-    if r.success and "win" in out.lower():
-        return "windows"
-
-    # ── Safe fallback ─────────────────────────────────────────────────────────
-    log.warning("[OS-detect] All probes inconclusive — defaulting to 'linux'")
-    return "linux"
-
-
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 from core.tasks import MAX_CREDENTIALED_TARGETS, run_credentialed_scan_task
@@ -221,7 +164,7 @@ async def scan_credentialed(
     response: Response,
     req: CredentialedScanRequest,
     org_id: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     SSH Credentialed Scan (Trigger Background Task).
@@ -255,10 +198,7 @@ async def scan_credentialed(
         # Verify stored credential exists and fetch its port
         db = SessionLocal()
         try:
-            role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-            target_org_id = (
-                org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-            )
+            target_org_id = resolve_active_organisation(user, org_id)
             cred = (
                 db.query(ComplianceCredential)
                 .filter(
@@ -340,10 +280,7 @@ async def scan_credentialed(
 
     db = SessionLocal()
     try:
-        role_name = (getattr(getattr(user, "role", None), "name", "") or "").lower()
-        target_org_id = (
-            org_id if (role_name == "superadmin" and org_id) else str(user.org_id)
-        )
+        target_org_id = resolve_active_organisation(user, org_id)
         scan = create_scan(
             db=db,
             user_id=str(user.id),

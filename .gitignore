@@ -111,7 +111,7 @@ docs/*.pdf
 # pre-commit cache
 .pre-commit-cache/
 
-# Database dumps from scripts/backup_db.ps1
+# Database dumps from scripts/backup_db.sh
 backups/
 .env.bak*
 
@@ -152,6 +152,9 @@ celerybeat.pid
 
 # Staged blocklist and vulnerability feed downloads. Regenerable, and large.
 Backend/data/feeds/
+# The vulnerability-feed syncs' default cache when CCURE_FEED_DIR is unset
+# (Backend/.env.example: "Default: <repo>/feeds"); OSV alone is gigabytes.
+/feeds/
 
 # Uploaded compliance evidence. Tenant data, not source — the API container
 # bind-mounts ./Backend at /app, so the default COMPLIANCE_EVIDENCE_DIR

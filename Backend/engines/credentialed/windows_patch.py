@@ -97,10 +97,6 @@ def host_build(os_info: dict[str, Any]) -> str | None:
     return None
 
 
-def _build_tuple(build: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in build.split("."))
-
-
 @dataclass
 class WindowsPatchResult:
     """Findings plus an explicit statement of whether the OS was assessable."""

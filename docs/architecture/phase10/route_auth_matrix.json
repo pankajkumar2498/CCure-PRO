@@ -1,0 +1,5446 @@
+{
+ "schema": "ccure.phase10.route_auth_matrix/1",
+ "baseline": "live application + host nginx at HEAD fc38b31, 29 Sep 2026",
+ "error_envelope": {
+  "shape": {
+   "success": false,
+   "error_code": "HTTP_<status>",
+   "message": "<text>",
+   "detail": "<same text>",
+   "request_id": "<same as X-Request-ID>"
+  },
+  "exception": "unmatched route answers the bare Starlette body {\"detail\": \"Not Found\"}",
+  "cases": [
+   "edge:bearer-route missing",
+   "edge:bearer-route 404 unknown path, missing"
+  ]
+ },
+ "counts": {
+  "public": 17,
+  "bearer": 251,
+  "ticket_or_bearer": 3,
+  "ws_ticket": 2,
+  "service": 0
+ },
+ "classes": {
+  "public": {
+   "count": 17,
+   "behaviour": "reachable with no credential; empty bodies answer 422 VALIDATION_ERROR, refresh/logout without a cookie answer 401",
+   "observed": {
+    "GET /auth/check-username": {
+     "edge": {
+      "case": "edge:public GET /auth/check-username",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /auth/check-username",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "GET /auth/check-email": {
+     "edge": {
+      "case": "edge:public GET /auth/check-email",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /auth/check-email",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/register": {
+     "edge": {
+      "case": "edge:public POST /auth/register",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/register",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/verify-email": {
+     "edge": {
+      "case": "edge:public POST /auth/verify-email",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/verify-email",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/resend-verification": {
+     "edge": {
+      "case": "edge:public POST /auth/resend-verification",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/resend-verification",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/login": {
+     "edge": {
+      "case": "edge:public POST /auth/login",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/login",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/logout": {
+     "edge": {
+      "case": "edge:public POST /auth/logout",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/logout",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "GET /auth/jwks.json": {
+     "edge": {
+      "case": "edge:public GET /auth/jwks.json",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /auth/jwks.json",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/refresh": {
+     "edge": {
+      "case": "edge:public POST /auth/refresh",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/refresh",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/forgot-password": {
+     "edge": {
+      "case": "edge:public POST /auth/forgot-password",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/forgot-password",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/reset-password": {
+     "edge": {
+      "case": "edge:public POST /auth/reset-password",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/reset-password",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/login/send-email-otp": {
+     "edge": {
+      "case": "edge:public POST /auth/login/send-email-otp",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/login/send-email-otp",
+      "status": 422,
+      "message": "Request validation failed.",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/login/verify-mfa": {
+     "edge": {
+      "case": "edge:public POST /auth/login/verify-mfa",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/login/verify-mfa",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "POST /auth/service-token": {
+     "edge": {
+      "case": "edge:public POST /auth/service-token",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public POST /auth/service-token",
+      "status": 422,
+      "message": "{\"success\":false,\"error_code\":\"VALIDATION_ERROR\",\"message\":\"Request validation f",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "GET /": {
+     "edge": {
+      "case": "edge:public GET /",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "GET /api/pipeline-modes": {
+     "edge": {
+      "case": "edge:public GET /api/pipeline-modes",
+      "status": 200,
+      "message": "{\"pipeline_modes\":{\"basic\":{\"phases\":[1,4],\"terminal_phase\":4,\"description\":\"Hos",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /api/pipeline-modes",
+      "status": 200,
+      "message": "{\"pipeline_modes\":{\"basic\":{\"phases\":[1,4],\"terminal_phase\":4,\"description\":\"Hos",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "GET /api/workflow-example": {
+     "edge": {
+      "case": "edge:public GET /api/workflow-example",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:public GET /api/workflow-example",
+      "status": 200,
+      "message": null,
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    }
+   }
+  },
+  "bearer": {
+   "count": 251,
+   "missing": {
+    "edge": {
+     "case": "edge:bearer-route missing",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route missing",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "empty_bearer": {
+    "edge": {
+     "case": "edge:bearer-route empty-bearer",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route empty-bearer",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "non_bearer_scheme": {
+    "edge": {
+     "case": "edge:bearer-route basic-scheme",
+     "status": 403,
+     "message": "Invalid authentication credentials",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route basic-scheme",
+     "status": 403,
+     "message": "Invalid authentication credentials",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_garbage": {
+    "edge": {
+     "case": "edge:bearer-route garbage",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route garbage",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_alg_none": {
+    "edge": {
+     "case": "edge:bearer-route alg-none",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route alg-none",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_legacy_hs256": {
+    "edge": {
+     "case": "edge:bearer-route legacy-hs256-random-secret",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route legacy-hs256-random-secret",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_es256_unknown_kid": {
+    "edge": {
+     "case": "edge:bearer-route es256-unknown-kid",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route es256-unknown-kid",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "post_missing": {
+    "edge": {
+     "case": "edge:bearer-route POST missing",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route POST missing",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "valid": {
+    "case": "bearer GET /scans?limit=1",
+    "status": 200,
+    "bytes": 1416,
+    "sha256": "4bb2b1c2c8b9b753fd22dfd17fcf0796c3b1b6c1611eec262a37edcf4a5e847c",
+    "response_keys": [
+     "emitted_at",
+     "limit",
+     "scans",
+     "scope",
+     "skip",
+     "total",
+     "version"
+    ],
+    "set_cookie": [],
+    "ms": 36.8
+   },
+   "access_token_after_logout": {
+    "case": "access token still accepted after logout",
+    "status": 200,
+    "bytes": 1416,
+    "sha256": "e92cccda00f1b3dc36018d6a9f2a47b6a69aa2faa69fcfa8f969f37303ef7513",
+    "response_keys": [
+     "emitted_at",
+     "limit",
+     "scans",
+     "scope",
+     "skip",
+     "total",
+     "version"
+    ],
+    "set_cookie": [],
+    "ms": 20.2
+   },
+   "ticket_as_bearer": {
+    "case": "ticket used as bearer on /scans",
+    "status": 401,
+    "bytes": 166,
+    "sha256": "2a3790bc649aaee4c85e7be67d55aa185a5a0ad5a40a4469dc8b9b93782d6ffc",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 7.1,
+    "message": "Invalid or expired token"
+   }
+  },
+  "ticket_or_bearer": {
+   "routes": [
+    "GET /reports/download/{scan_id}",
+    "GET /reports/export/{scan_id}",
+    "DELETE /reports/{scan_id}"
+   ],
+   "precedence": "a ?ticket= is evaluated first; when present, the Authorization header is not consulted",
+   "missing": {
+    "edge": {
+     "case": "edge:download missing",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download missing",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_ticket": {
+    "edge": {
+     "case": "edge:download ticket-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download ticket-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_ticket_legacy_hs256": {
+    "edge": {
+     "case": "edge:download ticket-legacy-hs256",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download ticket-legacy-hs256",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_ticket_es256_unknown_kid": {
+    "edge": {
+     "case": "edge:download ticket-es256-unknown-kid",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download ticket-es256-unknown-kid",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_bearer": {
+    "edge": {
+     "case": "edge:download bearer-garbage",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download bearer-garbage",
+     "status": 401,
+     "message": "Invalid or expired token",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "invalid_ticket_and_invalid_bearer": {
+    "edge": {
+     "case": "edge:download ticket-garbage+bearer-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:download ticket-garbage+bearer-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "export_missing": {
+    "edge": {
+     "case": "edge:export missing",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:export missing",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "export_invalid_ticket": {
+    "edge": {
+     "case": "edge:export ticket-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:export ticket-garbage",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "delete_missing": {
+    "edge": {
+     "case": "edge:delete-report missing (nonexistent id)",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:delete-report missing (nonexistent id)",
+     "status": 401,
+     "message": "Authentication token is missing.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "delete_invalid_ticket": {
+    "edge": {
+     "case": "edge:delete-report ticket-garbage (nonexistent id)",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:delete-report ticket-garbage (nonexistent id)",
+     "status": 401,
+     "message": "Invalid or expired download ticket.",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "valid_bearer": {
+    "case": "download bearer",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 35.3
+   },
+   "valid_bearer_direct": {
+    "case": "download bearer (direct :8000)",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 33.7
+   },
+   "valid_ticket": {
+    "case": "download ticket",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 34.2
+   },
+   "ticket_replay_within_60s": {
+    "case": "download same ticket again (replay within 60 s)",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 24.0
+   },
+   "ticket_replay_direct": {
+    "case": "download ticket (direct :8000, same ticket)",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 26.0
+   },
+   "valid_ticket_plus_valid_bearer": {
+    "case": "ticket + valid bearer on download",
+    "status": 200,
+    "bytes": 46191,
+    "sha256": "71fd2cbc4d55cfa80a32140eee075339c9495ebfe33c01d5f91418061b16873b",
+    "set_cookie": [],
+    "ms": 33.9
+   },
+   "access_token_as_ticket": {
+    "case": "access token passed as ?ticket=",
+    "status": 401,
+    "bytes": 188,
+    "sha256": "8bd69d461a52b694f4d81c0b156a69aec3a7062bffeaf8e199216c9f23e66e22",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 7.3,
+    "message": "Invalid or expired download ticket."
+   },
+   "valid_bearer_plus_garbage_ticket": {
+    "case": "valid bearer + garbage ticket on download",
+    "status": 401,
+    "bytes": 188,
+    "sha256": "626aba083766ed1c5eff28ec7a2e4af05429a11b85adfef55f8a1672d5a26d40",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 7.6,
+    "message": "Invalid or expired download ticket."
+   },
+   "expired_ticket": {
+    "case": "download expired ticket (>60 s)",
+    "status": 401,
+    "bytes": 188,
+    "sha256": "b42a35aa69cb109e5dcd3673d8b9c1ef97150d702df02aba9f12a4cebcdeec26",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 13.6,
+    "message": "Invalid or expired download ticket."
+   },
+   "live_usage_m5": "1 HTTP 200 in retained host-nginx logs: GET /api/reports/download/<scan_id> (29 Sep 2026); ticket support on downloads is in real use and is NOT WebSocket-only"
+  },
+  "ws_ticket": {
+   "routes": [
+    "/scans/{scan_id}/progress",
+    "/web-scans/{scan_id}/progress"
+   ],
+   "refusal": "HTTP 403 on the upgrade, empty text/plain body, no X-Request-ID, no API security headers (edge adds HSTS + nosniff only); identical for missing, garbage, HS256, unknown-kid tickets and for a bearer header without a ticket",
+   "observed": {
+    "missing": {
+     "edge": {
+      "case": "edge:ws /web-scans/{}/progress missing",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     },
+     "direct": {
+      "case": "direct:ws /web-scans/{}/progress missing",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     }
+    },
+    "ticket-garbage": {
+     "edge": {
+      "case": "edge:ws /web-scans/{}/progress ticket-garbage",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     },
+     "direct": {
+      "case": "direct:ws /web-scans/{}/progress ticket-garbage",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     }
+    },
+    "ticket-legacy-hs256": {
+     "edge": {
+      "case": "edge:ws /web-scans/{}/progress ticket-legacy-hs256",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     },
+     "direct": {
+      "case": "direct:ws /web-scans/{}/progress ticket-legacy-hs256",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     }
+    },
+    "ticket-es256-unknown-kid": {
+     "edge": {
+      "case": "edge:ws /web-scans/{}/progress ticket-es256-unknown-kid",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     },
+     "direct": {
+      "case": "direct:ws /web-scans/{}/progress ticket-es256-unknown-kid",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     }
+    },
+    "bearer-header-only garbage": {
+     "edge": {
+      "case": "edge:ws /web-scans/{}/progress bearer-header-only garbage",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     },
+     "direct": {
+      "case": "direct:ws /web-scans/{}/progress bearer-header-only garbage",
+      "status": 403,
+      "message": null,
+      "x_request_id": false,
+      "www_authenticate": false,
+      "content_type": "text/plain"
+     }
+    }
+   },
+   "valid_ticket": {
+    "case": "ws scans progress valid ticket",
+    "status": 101,
+    "error": "TimeoutError('The read operation timed out')"
+   },
+   "ticket_reuse_same_route": {
+    "case": "ws scans progress same ticket again",
+    "status": 101,
+    "frames": [
+     {
+      "opcode": 1,
+      "bytes": 561,
+      "at_ms": 1,
+      "json_keys": [
+       "phase",
+       "progress",
+       "scan_id"
+      ],
+      "type": null,
+      "status": null
+     }
+    ]
+   },
+   "ticket_reuse_other_route": {
+    "case": "ws web-scans progress same ticket",
+    "status": 101,
+    "error": "TimeoutError('The read operation timed out')"
+   },
+   "valid_ticket_direct": {
+    "case": "ws scans progress same ticket (direct :8000)",
+    "status": 101,
+    "frames": [
+     {
+      "opcode": 1,
+      "bytes": 561,
+      "at_ms": 1,
+      "json_keys": [
+       "phase",
+       "progress",
+       "scan_id"
+      ],
+      "type": null,
+      "status": null
+     }
+    ]
+   },
+   "access_token_as_ticket": {
+    "case": "ws scans progress access token as ticket",
+    "status": 403,
+    "frames": []
+   }
+  },
+  "sse": {
+   "routes": [
+    "/scans/events",
+    "/notifications/stream"
+   ],
+   "missing": {
+    "/notifications/stream": {
+     "edge": {
+      "case": "edge:sse /notifications/stream missing",
+      "status": 403,
+      "message": "Not authenticated",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:sse /notifications/stream missing",
+      "status": 403,
+      "message": "Not authenticated",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "/scans/events": {
+     "edge": {
+      "case": "edge:sse /scans/events missing",
+      "status": 403,
+      "message": "Not authenticated",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:sse /scans/events missing",
+      "status": 403,
+      "message": "Not authenticated",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    }
+   },
+   "invalid": {
+    "/notifications/stream": {
+     "edge": {
+      "case": "edge:sse /notifications/stream garbage",
+      "status": 401,
+      "message": "Invalid or expired token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:sse /notifications/stream garbage",
+      "status": 401,
+      "message": "Invalid or expired token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "/scans/events": {
+     "edge": {
+      "case": "edge:sse /scans/events garbage",
+      "status": 401,
+      "message": "Invalid or expired token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:sse /scans/events garbage",
+      "status": 401,
+      "message": "Invalid or expired token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    }
+   },
+   "valid_notifications": {
+    "case": "sse notifications 8 s",
+    "status": 200,
+    "set_cookie": [],
+    "sse_events": [
+     {
+      "event": "connected",
+      "at_ms": 22,
+      "bytes": 154
+     },
+     {
+      "event": "heartbeat",
+      "at_ms": 24,
+      "bytes": 78
+     }
+    ],
+    "sse_stopped": "idle timeout",
+    "ms": 11035.3
+   },
+   "valid_scan_events": {
+    "case": "sse scans/events 8 s",
+    "status": 200,
+    "set_cookie": [],
+    "sse_events": [
+     {
+      "event": "connected",
+      "at_ms": 20,
+      "bytes": 55
+     },
+     {
+      "event": "scans",
+      "at_ms": 42,
+      "bytes": 10583
+     },
+     {
+      "event": "heartbeat",
+      "at_ms": 2066,
+      "bytes": 73
+     },
+     {
+      "event": "heartbeat",
+      "at_ms": 4088,
+      "bytes": 73
+     },
+     {
+      "event": "heartbeat",
+      "at_ms": 6116,
+      "bytes": 73
+     },
+     {
+      "event": "heartbeat",
+      "at_ms": 8143,
+      "bytes": 73
+     }
+    ],
+    "sse_stopped": "duration",
+    "ms": 8142.9
+   }
+  },
+  "stream_and_file": {
+   "stream_routes": [
+    "GET /admin/audit-logs/export",
+    "GET /assets/reconciliation/drilldown",
+    "GET /compliance/reports/soa",
+    "GET /compliance/reports/executive",
+    "GET /compliance/reports/nist_csf",
+    "GET /compliance/reports/cis_v8_1",
+    "GET /compliance/reports/soc2_type2",
+    "GET /compliance/reports/cert_in_2022",
+    "GET /compliance/reports/pci_dss_v4",
+    "GET /compliance/reports/dpdp_2023",
+    "GET /compliance/reports/gdpr",
+    "GET /compliance/reports/nist_800_53_r5",
+    "GET /compliance/reports/iec_62443",
+    "GET /compliance/reports/nist_800_82",
+    "GET /compliance/reports/nerc_cip",
+    "GET /compliance/reports/nis2"
+   ],
+   "file_routes": [
+    "GET /reports/download/{scan_id}",
+    "GET /reports/export/{scan_id}",
+    "GET /web-scans/{scan_id}/findings/{finding_id}/screenshot",
+    "GET /web-scans/{scan_id}/report",
+    "GET /compliance/evidence/{file_id}/download"
+   ],
+   "valid_streaming_soa": {
+    "case": "streaming: ISO SoA pdf",
+    "status": 200,
+    "bytes": 21477,
+    "sha256": "1943879d017aa1a28dbe9f12bc3cca8b108427e48a48e5a2d947f663235af7f0",
+    "set_cookie": [],
+    "ms": 508.8
+   }
+  }
+ },
+ "surfaces": {
+  "ir_future_stub": {
+   "current": {
+    "/ir/": {
+     "missing": {
+      "edge": {
+       "case": "edge:ir /ir/ missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/ missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     },
+     "invalid": {
+      "edge": {
+       "case": "edge:ir /ir/ garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/ garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     }
+    },
+    "/ir/health": {
+     "missing": {
+      "edge": {
+       "case": "edge:ir /ir/health missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/health missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     },
+     "invalid": {
+      "edge": {
+       "case": "edge:ir /ir/health garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/health garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     }
+    },
+    "/ir/incidents": {
+     "missing": {
+      "edge": {
+       "case": "edge:ir /ir/incidents missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/incidents missing",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     },
+     "invalid": {
+      "edge": {
+       "case": "edge:ir /ir/incidents garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      },
+      "direct": {
+       "case": "direct:ir /ir/incidents garbage",
+       "status": 404,
+       "message": "Not Found",
+       "x_request_id": true,
+       "www_authenticate": false,
+       "content_type": "application/json"
+      }
+     }
+    }
+   },
+   "note": "today /api/ir/* reaches the core and answers 404 {\"detail\":\"Not Found\"} whether or not a credential is sent; the proposal's stub is 401/403 then 503 MODULE_NOT_DEPLOYED"
+  },
+  "unknown_route": {
+   "missing_credential": {
+    "edge": {
+     "case": "edge:bearer-route 404 unknown path, missing",
+     "status": 404,
+     "message": "Not Found",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:bearer-route 404 unknown path, missing",
+     "status": 404,
+     "message": "Not Found",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "note": "404 is answered before authentication"
+  },
+  "refresh_cookie": {
+   "failure_paths": {
+    "refresh no cookie": {
+     "edge": {
+      "case": "edge:refresh no cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:refresh no cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "refresh garbage cookie": {
+     "edge": {
+      "case": "edge:refresh garbage cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:refresh garbage cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "refresh legacy-hs256 cookie": {
+     "edge": {
+      "case": "edge:refresh legacy-hs256 cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:refresh legacy-hs256 cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    },
+    "logout no cookie": {
+     "edge": {
+      "case": "edge:logout no cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     },
+     "direct": {
+      "case": "direct:logout no cookie",
+      "status": 401,
+      "message": "Invalid or expired refresh token",
+      "x_request_id": true,
+      "www_authenticate": false,
+      "content_type": "application/json"
+     }
+    }
+   },
+   "failure_sets_no_cookie": true,
+   "valid_rotation": {
+    "case": "refresh valid cookie",
+    "status": 200,
+    "bytes": 615,
+    "sha256": "dfa5ff805f6d701ea1e6e01d921dfa93e963d1e6b6c002578b4e6da12b38acd4",
+    "response_keys": [
+     "access_token",
+     "refresh_token",
+     "token_type"
+    ],
+    "set_cookie": [
+     {
+      "name": "ccure_refresh_token",
+      "value_sha8": "f469930d",
+      "empty_value": false,
+      "attributes": "HttpOnly; Max-Age=604800; Path=/; SameSite=lax; Secure"
+     }
+    ],
+    "rotated": true,
+    "ms": 20.4
+   },
+   "pre_rotation_reuse": {
+    "case": "refresh with the pre-rotation cookie (reuse)",
+    "status": 401,
+    "bytes": 182,
+    "sha256": "57472f77c4ed42023d2074d1824550da403aa63d0ec527339d34436d5a515211",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 10.5,
+    "message": "Invalid or expired refresh token"
+   },
+   "logout": {
+    "case": "logout with current cookie",
+    "status": 200,
+    "bytes": 37,
+    "sha256": "a159cabb6adc11766a057059e99532a40742d40797d83f01f94cfc510949e1d3",
+    "response_keys": [
+     "detail"
+    ],
+    "set_cookie": [
+     {
+      "name": "ccure_refresh_token",
+      "value_sha8": "12ae32cb",
+      "empty_value": true,
+      "attributes": "expires=Tue, 29 Sep 2026 15:06:13 GMT; Max-Age=0; Path=/; SameSite=lax; Secure"
+     },
+     {
+      "name": "ccure_refresh_token",
+      "value_sha8": "12ae32cb",
+      "empty_value": true,
+      "attributes": "expires=Tue, 29 Sep 2026 15:06:13 GMT; Max-Age=0; Path=/auth; SameSite=lax; Secure"
+     }
+    ],
+    "ms": 30.8
+   },
+   "refresh_after_logout": {
+    "case": "refresh after logout",
+    "status": 401,
+    "bytes": 182,
+    "sha256": "fec69ad9c96420f316afd216955abb7a2845bc25bc466f394801412dafcdc0dd",
+    "response_keys": [
+     "detail",
+     "error_code",
+     "message",
+     "request_id",
+     "success"
+    ],
+    "set_cookie": [],
+    "ms": 9.9,
+    "message": "Invalid or expired refresh token"
+   },
+   "login_set_cookie": {
+    "case": "login",
+    "status": 200,
+    "bytes": 3407,
+    "sha256": "e5e03b8ce554d107ac7d9c48aae1bb12d7ac158020b93ffa3a34087d808047cd",
+    "response_keys": [
+     "access_token",
+     "refresh_token",
+     "token_type",
+     "user"
+    ],
+    "set_cookie": [
+     {
+      "name": "ccure_refresh_token",
+      "value_sha8": "33250f26",
+      "empty_value": false,
+      "attributes": "HttpOnly; Max-Age=604800; Path=/; SameSite=lax; Secure"
+     }
+    ],
+    "ms": 205.1
+   },
+   "config": {
+    "name": "ccure_refresh_token",
+    "Secure": "static REFRESH_COOKIE_SECURE=True",
+    "SameSite": "lax",
+    "Path": "/",
+    "Domain": null,
+    "HttpOnly": true,
+    "also_accepted_in_body": true
+   }
+  },
+  "ticket_issuance": {
+   "without_bearer": {
+    "edge": {
+     "case": "edge:ticket issuance without bearer",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:ticket issuance without bearer",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "valid": {
+    "case": "ticket issue",
+    "status": 200,
+    "bytes": 510,
+    "sha256": "8476b33cfef35a5dd07b25bd8e6c5e46c7ac14b03053afaf945bb89c3e29d2a7",
+    "response_keys": [
+     "ticket"
+    ],
+    "set_cookie": [],
+    "ms": 16.8
+   }
+  },
+  "x_request_id": {
+   "none_sent": {
+    "edge": {
+     "case": "edge:xrid none, 200",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:xrid none, 200",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "client_value_echoed_200": {
+    "edge": {
+     "case": "edge:xrid client value, 200",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:xrid client value, 200",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "client_value_echoed_403": {
+    "edge": {
+     "case": "edge:xrid client value, 403",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:xrid client value, 403",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "client_300_chars_echoed": {
+    "edge": {
+     "case": "edge:xrid client 300-char value",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:xrid client 300-char value",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "absent_on": [
+    "WebSocket refusals",
+    "PNA preflight answers",
+    "SPA responses",
+    "host-nginx-generated 429/301"
+   ]
+  },
+  "cors": {
+   "cors preflight allowed origin /auth/login": {
+    "edge": {
+     "case": "edge:cors preflight allowed origin /auth/login",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    },
+    "direct": {
+     "case": "direct:cors preflight allowed origin /auth/login",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    }
+   },
+   "cors preflight disallowed origin /auth/login": {
+    "edge": {
+     "case": "edge:cors preflight disallowed origin /auth/login",
+     "status": 400,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    },
+    "direct": {
+     "case": "direct:cors preflight disallowed origin /auth/login",
+     "status": 400,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    }
+   },
+   "cors preflight allowed origin protected /scans": {
+    "edge": {
+     "case": "edge:cors preflight allowed origin protected /scans",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    },
+    "direct": {
+     "case": "direct:cors preflight allowed origin protected /scans",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "text/plain; charset=utf-8"
+    }
+   },
+   "cors PNA preflight allowed": {
+    "edge": {
+     "case": "edge:cors PNA preflight allowed",
+     "status": 200,
+     "message": null,
+     "x_request_id": false,
+     "www_authenticate": false,
+     "content_type": null
+    },
+    "direct": {
+     "case": "direct:cors PNA preflight allowed",
+     "status": 200,
+     "message": null,
+     "x_request_id": false,
+     "www_authenticate": false,
+     "content_type": null
+    }
+   },
+   "cors PNA preflight disallowed": {
+    "edge": {
+     "case": "edge:cors PNA preflight disallowed",
+     "status": 403,
+     "message": null,
+     "x_request_id": false,
+     "www_authenticate": false,
+     "content_type": null
+    },
+    "direct": {
+     "case": "direct:cors PNA preflight disallowed",
+     "status": 403,
+     "message": null,
+     "x_request_id": false,
+     "www_authenticate": false,
+     "content_type": null
+    }
+   },
+   "cors simple GET allowed origin": {
+    "edge": {
+     "case": "edge:cors simple GET allowed origin",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:cors simple GET allowed origin",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "cors simple GET disallowed origin": {
+    "edge": {
+     "case": "edge:cors simple GET disallowed origin",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:cors simple GET disallowed origin",
+     "status": 200,
+     "message": null,
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   },
+   "cors 403 allowed origin": {
+    "edge": {
+     "case": "edge:cors 403 allowed origin",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    },
+    "direct": {
+     "case": "direct:cors 403 allowed origin",
+     "status": 403,
+     "message": "Not authenticated",
+     "x_request_id": true,
+     "www_authenticate": false,
+     "content_type": "application/json"
+    }
+   }
+  },
+  "spa_query_tokens": {
+   "/": {
+    "case": "edge:spa /",
+    "status": 200,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   },
+   "/index.html": {
+    "case": "edge:spa /index.html",
+    "status": 404,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   },
+   "/reset-password?token=probe-not-a-token": {
+    "case": "edge:spa /reset-password?token=probe-not-a-token",
+    "status": 200,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   },
+   "/verify-email?token=probe-not-a-token": {
+    "case": "edge:spa /verify-email?token=probe-not-a-token",
+    "status": 200,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   },
+   "/assets/index-CkVhwOG4.js": {
+    "case": "edge:spa /assets/index-CkVhwOG4.js",
+    "status": 200,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "application/javascript"
+   },
+   "/api": {
+    "case": "edge:spa /api",
+    "status": 301,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   },
+   "/API/scans": {
+    "case": "edge:spa /API/scans",
+    "status": 200,
+    "message": null,
+    "x_request_id": false,
+    "www_authenticate": false,
+    "content_type": "text/html"
+   }
+  },
+  "frontend_3200_api_proxy": {
+   "3200 /api/ root": {
+    "case": "frontend-3200:3200 /api/ root",
+    "status": 200,
+    "message": null,
+    "x_request_id": true,
+    "www_authenticate": false,
+    "content_type": "application/json"
+   },
+   "3200 /api/scans missing": {
+    "case": "frontend-3200:3200 /api/scans missing",
+    "status": 403,
+    "message": null,
+    "x_request_id": true,
+    "www_authenticate": false,
+    "content_type": "application/json"
+   }
+  }
+ },
+ "routes": [
+  {
+   "method": "POST",
+   "path": "/auth/ticket",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.generate_ws_download_ticket",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/auth/check-username",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "auth.router.check_username",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/auth/check-email",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "auth.router.check_email",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/register",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "3 per 1 minute"
+   ],
+   "endpoint": "auth.router.register",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/verify-email",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "auth.router.verify_email",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/resend-verification",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "3 per 1 minute"
+   ],
+   "endpoint": "auth.router.resend_verification",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/login",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "auth.router.login",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/logout",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "auth.router.logout",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/auth/jwks.json",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "auth.router.jwks",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/auth/me",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.me",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/refresh",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "auth.router.refresh",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/forgot-password",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "3 per 1 minute"
+   ],
+   "endpoint": "auth.router.forgot_password",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/reset-password",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "auth.router.reset_password_endpoint",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/login/send-email-otp",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "auth.router.send_email_otp",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/login/verify-mfa",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "auth.router.verify_mfa",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/mfa/enable",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.enable_mfa",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/mfa/confirm",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.confirm_mfa",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/mfa/disable",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "auth.router.disable_mfa",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/auth/service-token",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "ccure_platform.service_identity.router.service_token",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/scans",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.list_scans",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scans/events",
+   "auth": "bearer",
+   "response_kind": "sse",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.stream_scan_history",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "WS",
+   "path": "/scans/{scan_id}/progress",
+   "auth": "ws_ticket",
+   "response_kind": "websocket",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.scan_history.scan_progress_ws",
+   "refusal_behaviour": "classes.ws_ticket",
+   "gateway_policy_proposed": "ticket"
+  },
+  {
+   "method": "GET",
+   "path": "/scans/{scan_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.get_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scans/{scan_id}/policy",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_history.scan_policy_record",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scans/{scan_id}/comparison",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_history.compare_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scans/{scan_id}/archive",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.archive_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scans/{scan_id}/stop",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.stop_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scans/{scan_id}/restore",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.restore_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/scans/{scan_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.delete_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/scans/{scan_id}/purge",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_history.purge_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.health.root",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/scan/progress/{scan_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.scan_progress.get_scan_progress",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/api/pipeline-modes",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.scan_progress.pipeline_modes",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "GET",
+   "path": "/api/workflow-example",
+   "auth": "public",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.scan_progress.workflow_example",
+   "refusal_behaviour": null,
+   "gateway_policy_proposed": "none"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/host",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.traditional_scans.scan_host",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/range",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.traditional_scans.scan_range",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/subnet",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.traditional_scans.scan_subnet",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/subnets",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.traditional_scans.scan_subnets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan/quota",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.phase_scans.get_scan_quota",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/host-discovery",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.phase_scans.scan_host_discovery",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/asset-discovery",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.phase_scans.scan_asset_discovery",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/vulnerability-audit",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.phase_scans.scan_vulnerability_audit",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/phases",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.phase_scans.scan_phases",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan/credentialed",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.credentialed.scan_credentialed",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/summary",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.remediation_summary",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/overdue",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.overdue_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/pending-verification",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.pending_verification",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/findings/{finding_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.finding_remediation",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/findings/{finding_id}/history",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.finding_history",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/remediation/sla-policy",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.get_sla_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/remediation/sla-policy",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.set_sla_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/remediation/assign",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.assign",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/remediation/findings/{finding_id}/state",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.set_state",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/remediation/findings/{finding_id}/notes",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.append_note",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/remediation/findings/{finding_id}/accept-risk",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.accept_finding_risk",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/remediation/findings/{finding_id}/withdraw-acceptance",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.remediation.withdraw_finding_acceptance",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-policies",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.list_policies",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-policies/settings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.policy_settings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-policies/validate",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.validate_policy_body",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-policies",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.create_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-policies/{policy_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.get_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/scan-policies/{policy_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.update_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-policies/{policy_id}/enable",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.enable_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-policies/{policy_id}/status",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.set_policy_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-policies/{policy_id}/version",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.new_policy_version",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-policies/{policy_id}/usage",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.policy_usage",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/scan-policies/{policy_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_policies.delete_policy",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-schedules/timezones",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.list_timezones",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-schedules/credentials",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.list_selectable_credentials",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-schedules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.list_schedules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-schedules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.create_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-schedules/{schedule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.get_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/scan-schedules/{schedule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.update_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-schedules/{schedule_id}/enable",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.set_enabled",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/scan-schedules/{schedule_id}/run-now",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.run_now",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/scan-schedules/{schedule_id}/runs",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.list_runs",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/scan-schedules/{schedule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.scan_schedules.delete_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/credentials/types",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.credential_types",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/credentials",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.list_credentials",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/credentials",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.create_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/credentials/{credential_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.get_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/credentials/{credential_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.update_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/credentials/{credential_id}/validate",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.validate_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/credentials/{credential_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.credentials.delete_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/config-audit/checks",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.config_audit.list_checks",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/config-audit/capabilities",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.config_audit.capabilities",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/config-audit/checks/{check_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "60 per 1 minute"
+   ],
+   "endpoint": "routers.config_audit.get_check",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/config-audit/validate",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "30 per 1 minute"
+   ],
+   "endpoint": "routers.config_audit.validate_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/reports/download/{scan_id}",
+   "auth": "ticket_or_bearer",
+   "response_kind": "file",
+   "guards": [],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.reports.download_report",
+   "refusal_behaviour": "classes.ticket_or_bearer",
+   "gateway_policy_proposed": "ticket_or_bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/reports/export/{scan_id}",
+   "auth": "ticket_or_bearer",
+   "response_kind": "file",
+   "guards": [],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.reports.export_scan_dataset",
+   "refusal_behaviour": "classes.ticket_or_bearer",
+   "gateway_policy_proposed": "ticket_or_bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/reports/{scan_id}",
+   "auth": "ticket_or_bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.reports.delete_report",
+   "refusal_behaviour": "classes.ticket_or_bearer",
+   "gateway_policy_proposed": "OPEN: O4 (bearer proposed; ticket accepted today)"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/users/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.list_users",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/users",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.list_users",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.create_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.create_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/organization/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.move_user_to_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/organization",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.move_user_to_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/users/{user_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.update_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/users/{user_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.update_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/role/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.change_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/role",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.change_role",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/status/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.change_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/users/{user_id}/status",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.change_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/users/pending/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.list_pending_users",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/users/pending",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.list_pending_users",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/approve/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.approve_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/approve",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.approve_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/users/{user_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.delete_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/users/{user_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.delete_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/restore/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.restore_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/restore",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.restore_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/users/{user_id}/purge/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.purge_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/users/{user_id}/purge",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.purge_user",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/reset-password/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.reset_password",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/reset-password",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.reset_password",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/reset-mfa/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.reset_mfa",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/users/{user_id}/reset-mfa",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_users.reset_mfa",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.list_rules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.list_rules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains/stats/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.rule_stats",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains/stats",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.rule_stats",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains/lookup/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.lookup",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/email-domains/lookup",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.lookup",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/email-domains/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.create_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/email-domains",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.create_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/email-domains/{rule_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.update_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/email-domains/{rule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.update_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/email-domains/{rule_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.delete_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/email-domains/{rule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_email_domains.delete_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/roles/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_rbac.list_roles",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/roles",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_rbac.list_roles",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/roles/{role_id}/permissions/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_rbac.list_role_permissions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/roles/{role_id}/permissions",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_rbac.list_role_permissions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/organizations/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.list_organizations",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/organizations",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.list_organizations",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/organizations/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.create_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/organizations",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.create_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/organizations/{org_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.update_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/organizations/{org_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.update_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/organizations/{org_id}/status/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.change_organization_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/admin/organizations/{org_id}/status",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.change_organization_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/organizations/{org_id}/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.archive_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/admin/organizations/{org_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.archive_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/organizations/{org_id}/restore/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.restore_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/admin/organizations/{org_id}/restore",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.restore_organization",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/organizations/{org_id}/scan-scope/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.get_scan_scope",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/organizations/{org_id}/scan-scope",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.get_scan_scope",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/organizations/{org_id}/scan-scope/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.set_scan_scope",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/admin/organizations/{org_id}/scan-scope",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.admin_orgs.set_scan_scope",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/sync-nvd",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_nvd.trigger_nvd_sync",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/nvd-sync-status",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [],
+   "endpoint": "routers.admin_nvd.get_sync_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/audit-logs/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.audit.list_audit_logs",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/audit-logs",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.audit.list_audit_logs",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/audit-logs/export",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.audit.export_audit_logs",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/audit-logs/retention/preview",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_role"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.audit.preview_audit_retention",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/admin/audit-logs/{event_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.audit.get_audit_log",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/user/profile",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.get_profile",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/user/profile",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.update_profile",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/user/change-password",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.change_password",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/user/preferences",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.get_preferences",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/user/preferences",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.update_preferences",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/user/sessions",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.get_sessions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/user/sessions",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.revoke_other_sessions",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/user/sessions/{session_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.user_profile.revoke_session",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/notifications",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.list_notifications",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/notifications/summary",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.get_notification_summary",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/notifications/stream",
+   "auth": "bearer",
+   "response_kind": "sse",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.stream_notifications",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/notifications/{notification_id}/read",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.mark_as_read",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/notifications/read-all",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.mark_all_as_read",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/notifications/{notification_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.delete_notification",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/notifications",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.notifications.delete_all_notifications",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/summary",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_dashboard_summary",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/risk-breakdown",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_risk_breakdown",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/vuln-trends",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_vuln_trends",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/top-assets",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_top_assets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/top-cves",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_top_cves",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/services-exposure",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_services_exposure",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/tls-health",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_tls_health",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/http-headers",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_http_headers",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/compliance",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_compliance",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/asset-breakdown",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_asset_breakdown",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/scan-activity",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_scan_activity",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/insights",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_insights",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/web-scan-summary",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_web_scan_summary",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/web-owasp-scorecard",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_web_owasp_scorecard",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/web-scan-trends",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_web_scan_trends",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/web-findings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_web_findings_drilldown",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/web-endpoints",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.dashboard.get_web_endpoints_drilldown",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.list_assets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.list_assets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/debug-reconcile",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.debug_reconcile",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/certificates",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.list_global_certificates",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/services",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.list_global_services",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/services/assets",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.list_service_assets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/coverage-stats",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_coverage_stats",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/reconciliation/drilldown",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_reconciliation_drilldown",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/{asset_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_asset",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/{asset_id}/services",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_asset_services",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/{asset_id}/findings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_asset_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/{asset_id}/changelog",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.get_asset_changelog",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/assets/{asset_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.update_asset",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/assets/{asset_id}/tags",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.add_tag",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/assets/{asset_id}/tags/{tag}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.remove_tag",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/assets/{asset_id}/notes",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.assets.add_note",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/assets/import-amt",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "3 per 1 minute"
+   ],
+   "endpoint": "routers.assets.import_amt_inventory",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/findings/",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.list_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/findings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.list_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/findings/grouped/by-component",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.list_findings_grouped",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/findings/{finding_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.get_finding",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/findings/{finding_id}/status",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.update_finding_status",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/findings/{finding_id}/notes",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.findings.update_finding_notes",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/web-scans",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.web_scans.start_web_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.list_web_scans",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/findings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/assets",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan_assets",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/parameters",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan_parameters",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/forms",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan_forms",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/api-operations",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_web_scan_api_operations",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/web-scans/{scan_id}/cancel",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.cancel_web_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/web-scans/{scan_id}/findings/{finding_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.triage_finding",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/findings/{finding_id}/screenshot",
+   "auth": "bearer",
+   "response_kind": "file",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.web_scans.get_finding_screenshot",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/web-scans/{scan_id}/report",
+   "auth": "bearer",
+   "response_kind": "file",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.web_scans.download_web_scan_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "WS",
+   "path": "/web-scans/{scan_id}/progress",
+   "auth": "ws_ticket",
+   "response_kind": "websocket",
+   "guards": [],
+   "limits": [],
+   "endpoint": "routers.web_scans.web_scan_progress_ws",
+   "refusal_behaviour": "classes.ws_ticket",
+   "gateway_policy_proposed": "ticket"
+  },
+  {
+   "method": "GET",
+   "path": "/topology/map",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.topology.get_topology_map",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/topology/map/{scan_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.topology.get_topology_map_by_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/marketplace",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.get_marketplace_frameworks",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/marketplace/{framework_id}/install",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.install_marketplace_framework",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/marketplace/{framework_id}/uninstall",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.uninstall_marketplace_framework",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/policies",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_policies",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/policies/{id}/rules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.get_policy_rules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PUT",
+   "path": "/compliance/rules/{id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.update_compliance_rule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/policies",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.create_policy_baseline",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/scans",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "5 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.trigger_compliance_scan",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/findings",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_findings",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/controls/{control_id}/attest",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.attest_manual_control",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/frameworks/{framework_id}/controls",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_framework_controls",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/controls/{control_id}/evidence",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "20 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.upload_control_evidence",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/controls/{control_id}/evidence",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_control_evidence",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/evidence/{file_id}/download",
+   "auth": "bearer",
+   "response_kind": "file",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.download_control_evidence",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/compliance/evidence/{file_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.delete_control_evidence",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/scans",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_scan_runs",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/scans/{run_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.get_scan_run",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/schedules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.create_scan_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/schedules",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_scan_schedules",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/compliance/schedules/{schedule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.update_scan_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/compliance/schedules/{schedule_id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.delete_scan_schedule",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/credentials",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.create_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/credentials",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_credentials",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "DELETE",
+   "path": "/compliance/credentials/{id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.delete_credential",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/findings/{id}/remediate",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.apply_remediation",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/remediations/requests",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.list_remediation_requests",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/remediations/requests/{id}/approve",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.approve_remediation_request",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/remediations/requests/{id}/cancel",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.cancel_remediation_request",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/remediations/requests/{id}/rollback",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.rollback_remediation_request",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "POST",
+   "path": "/compliance/findings/{id}/exception",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.request_exception_waiver",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "PATCH",
+   "path": "/compliance/exceptions/{id}",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.approve_exception_waiver",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/summary",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.get_dashboard_summary",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/soa",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_statement_of_applicability",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/executive",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_executive_compliance_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/gap-analysis",
+   "auth": "bearer",
+   "response_kind": "json",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [],
+   "endpoint": "routers.compliance.get_compliance_gap_analysis",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/nist_csf",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_nist_csf_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/cis_v8_1",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_cis_v8_1_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/soc2_type2",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_soc2_type2_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/cert_in_2022",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_cert_in_2022_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/pci_dss_v4",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_pci_dss_v4_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/dpdp_2023",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_dpdp_2023_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/gdpr",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_gdpr_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/nist_800_53_r5",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_nist_800_53_r5_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/iec_62443",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_iec_62443_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/nist_800_82",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_nist_800_82_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/nerc_cip",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_nerc_cip_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  },
+  {
+   "method": "GET",
+   "path": "/compliance/reports/nis2",
+   "auth": "bearer",
+   "response_kind": "stream",
+   "guards": [
+    "require_permission"
+   ],
+   "limits": [
+    "10 per 1 minute"
+   ],
+   "endpoint": "routers.compliance.download_nis2_report",
+   "refusal_behaviour": "classes.bearer",
+   "gateway_policy_proposed": "bearer"
+  }
+ ]
+}

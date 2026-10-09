@@ -4,6 +4,11 @@ from celery import Celery
 from config import AppConfig
 from kombu import Queue
 
+# The platform module registry (Phase 11) is a leaf — standard library only —
+# which is why shared infrastructure may read it (layer_rules:
+# infrastructure-is-foundation, exempt_targets).
+from ccure_platform.modules import registry as module_registry
+
 # Initialize the Celery Application
 # We name it "ccure_tasks" and point it to our Redis container
 celery_app = Celery(
@@ -15,6 +20,13 @@ celery_app = Celery(
         "core.web.tasks",  # Web application scan background jobs
         "core.compliance_tasks",  # Compliance scan background jobs
         "core.email_security_tasks",  # Email domain screening and account hygiene
+        "auth.mail_tasks",  # Outgoing application email
+        "ccure_platform.identity.account_maintenance",  # Account and session purges
+        "ccure_platform.audit_log.tasks",  # Audit-log retention
+        # Each enabled module's task modules (Phase 11). Empty until a module
+        # declares one: Audit's are the list above until Phase 16, and Policy Pro
+        # and Rank are disabled.
+        *module_registry.task_modules(),
     ],
 )
 
@@ -35,6 +47,8 @@ celery_app.conf.update(
         Queue("web_dast"),  # Web scan: Nuclei templates, SQLMap injection
         Queue("web_audit"),  # Web scan: TLS audit, compliance mapping
         Queue("compliance"),  # Compliance scan baseline queue (new)
+        # Queues the enabled modules declare (Phase 11); none today.
+        *(Queue(name) for name in module_registry.queues()),
     ),
     task_track_started=True,
     worker_concurrency=AppConfig.SCANNER_WORKER_CONCURRENCY,  # Limits parallel heavy scans
@@ -171,31 +185,29 @@ celery_app.conf.beat_schedule = {
 }
 
 
-# ── Web-scanner readiness self-check (Phase 15) ──────────────────────────────
-# When the web-scanner worker comes up, verify its DAST toolchain (nuclei +
-# templates, ffuf, sqlmap, the Playwright browser, sslyze) and its backing
-# services (Redis, PostgreSQL), and log the verdict loudly. Phase 14 wrongly
-# read SQLi as broken because an ad-hoc login-shell probe hid sqlmap on PATH;
-# the fix is for the worker to report its own readiness in its own runtime, so
-# a genuinely missing engine surfaces as NOT_READY rather than a silent skip
-# that lets a vulnerable app read as clean. Runs only on the web-scanner worker
-# (identified by its web_* queues) and never emits a secret.
-from celery.signals import worker_ready  # noqa: E402
+# The web-scanner worker's start-up self-check is registered by the web module
+# itself, in core/web/tasks.py (Phase 3) — shared infrastructure does not
+# import a feature.
 
 
-@worker_ready.connect
-def _web_scanner_self_check(sender=None, **_kwargs):
-    import logging
-    import sys
+def registered_task(name: str):
+    """
+    The task registered under ``name`` — the same object ``.delay()`` is called
+    on when the defining module is imported directly.
 
-    argv = " ".join(sys.argv)
-    if not any(q in argv for q in ("web_dast", "web_crawl", "web_recon", "web_audit")):
-        return  # not the web-scanner worker — it does not need the DAST toolchain
+    Code below the task hub dispatches through this rather than importing
+    ``core.tasks``: importing the hub to reach one task put the scheduler, the
+    scan persistence helpers and the hub in one import cycle. The object is the
+    registered task itself, so its queue, time limits, eager execution and any
+    test patch of ``.delay`` all behave exactly as before.
+
+    A process that has not imported the task modules yet (a script, a shell)
+    loads the modules this app is configured with — the same list a worker
+    loads at start-up — and looks again. A name that is still missing raises
+    ``celery.exceptions.NotRegistered``, as it would from a worker.
+    """
     try:
-        from core.web.self_check import log_self_check
-
-        log_self_check()
-    except Exception as exc:  # noqa: BLE001
-        logging.getLogger("ccure.web.self_check").warning(
-            "web-scanner self-check could not run: %s", exc
-        )
+        return celery_app.tasks[name]
+    except KeyError:
+        celery_app.loader.import_default_modules()
+        return celery_app.tasks[name]

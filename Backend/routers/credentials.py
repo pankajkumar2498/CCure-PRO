@@ -47,11 +47,16 @@ ticket. The four WinRM error classes map to four different messages and a
 import logging
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
+from ccure_platform.api import log_audit_event
 from core.security_crypto import encrypt_credential
 from db.base import gen_compliance_credential_id, get_db
-from db.models import ComplianceCredential, Organization, User
+from ccure_platform import api as platform_api
+from db.models import ComplianceCredential
 from db.models.compliance import (
     AUTH_METHODS,
     AUTH_REQUIRES_KEY,
@@ -151,16 +156,10 @@ def _database_drivers() -> Dict[str, bool]:
     return available_engines()
 
 
-def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
-def _resolve_org(user: User, requested: Optional[str]) -> str:
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _get(db: Session, credential_id: str, org_id: str) -> ComplianceCredential:
@@ -340,7 +339,7 @@ def _apply_type_rules(
 def credential_types(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
 ):
     """
     What this build can authenticate with — read from the code, not hardcoded
@@ -434,7 +433,7 @@ def list_credentials(
     response: Response,
     credential_type: Optional[str] = Query(None),
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -452,7 +451,7 @@ def create_credential(
     response: Response,
     body: ScanCredentialCreate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.manage")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -489,7 +488,7 @@ def create_credential(
             status_code=409, detail=f"A credential named {body.name!r} already exists."
         )
 
-    org_row = db.query(Organization).filter(Organization.id == org).first()
+    org_row = platform_api.organisation(db, org)
     cred = ComplianceCredential(
         id=gen_compliance_credential_id(org_row.slug if org_row else org),
         tenant_id=org,
@@ -533,7 +532,7 @@ def get_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.read")),
     db: Session = Depends(get_db),
 ):
     return _serialize(_get(db, credential_id, _resolve_org(user, org_id)))
@@ -547,7 +546,7 @@ def update_credential(
     credential_id: str,
     body: ScanCredentialUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.manage")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
@@ -630,7 +629,7 @@ def validate_credential(
     credential_id: str,
     body: ScanCredentialValidateRequest,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "validate")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.validate")),
     db: Session = Depends(get_db),
 ):
     """
@@ -645,15 +644,14 @@ def validate_credential(
     address — otherwise it is a way to make this host try credentials against
     anything on the network.
     """
-    from core.scan_scope import ScanScopeError, enforce_org_scan_scope
+    from core.scan_scope import ScanScopeError, enforce_org_scan_scope, org_scan_scope
 
     org = _resolve_org(user, org_id)
     cred = _get(db, credential_id, org)
     target = body.target.strip()
 
-    org_row = db.query(Organization).filter(Organization.id == org).first()
     try:
-        enforce_org_scan_scope([target], org_row)
+        enforce_org_scan_scope([target], org_scan_scope(db, org))
     except ScanScopeError as exc:
         raise HTTPException(status_code=403, detail=exc.message) from exc
 
@@ -757,7 +755,7 @@ def delete_credential(
     response: Response,
     credential_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("credentials", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.credential.delete")),
     db: Session = Depends(get_db),
 ):
     """

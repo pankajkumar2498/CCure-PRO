@@ -2978,97 +2978,145 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "  - Successfully mapped rules and controls for CERT-In Directions 2022"
             )
 
-        # Map rules and controls for PCI-DSS v4.0
+        # Map rules and controls for PCI DSS v4.0.1
+        #
+        # Switched on 28 Sep 2026. Three defects in this block were fixed before
+        # that, each harmless only while PCI was parked:
+        #
+        # * It inherited *every* rule of a crosswalked ISO control, attestation
+        #   placeholders included, so 21 PCI controls carried an ISO placeholder
+        #   — ISO's wording in a PCI findings queue. Only rules that evaluate
+        #   something cross a crosswalk, as for NIST CSF, and a foreign
+        #   placeholder is unlinked.
+        # * The placeholder's rule id came from `control_number`, so correcting
+        #   the published numbers (16 were wrong) would have minted a second set
+        #   of rules beside the first. It comes from the control's id, which
+        #   never changes and yields exactly the existing ids.
+        # * A new placeholder took the control's `scannability` as its evidence
+        #   source — `auto`, which no adapter serves. It is always `manual`.
+        #
+        # A control's own placeholder is active exactly when nothing that
+        # evaluates reaches the control: a `manual_review` placeholder outranks
+        # `pass` in the rollup, and a control with no active rule at all is a
+        # control switched off.
         pci_controls = (
             db.query(ComplianceControl)
             .filter(ComplianceControl.framework_id == "cfw_pci_dss_v4")
             .all()
         )
         if pci_controls:
-            for pci_ctrl in pci_controls:
-                # Crosswalk mapping from ISO 27001 rules
-                if pci_ctrl.crosswalk:
-                    for iso_num in pci_ctrl.crosswalk:
-                        if not iso_num.startswith("ISO27001:"):
-                            continue
-                        iso_ref = (
-                            iso_num.replace("ISO27001:", "")
-                            .strip()
-                            .lower()
-                            .replace("a.", "")
-                            .replace(".", "_")
-                        )
-                        iso_ctrl_ids = [
-                            f"cct_iso27001_2022_a_{iso_ref}",
-                            f"cct_iso27001_2022_{iso_ref}",
-                        ]
-                        linked_rules = (
-                            db.query(ComplianceRuleControl)
-                            .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
-                            .all()
-                        )
-                        for r_link in linked_rules:
-                            p_link = (
-                                db.query(ComplianceRuleControl)
-                                .filter(
-                                    ComplianceRuleControl.rule_id == r_link.rule_id,
-                                    ComplianceRuleControl.control_id == pci_ctrl.id,
-                                )
-                                .first()
-                            )
-                            if not p_link:
-                                db.add(
-                                    ComplianceRuleControl(
-                                        rule_id=r_link.rule_id,
-                                        control_id=pci_ctrl.id,
-                                    )
-                                )
-
-                # Ensure every PCI control has a dedicated 1:1 baseline rule
-                raw_id = (
-                    pci_ctrl.control_number.lower().replace(".", "_").replace("-", "_")
+            evaluating_rule_ids = {
+                r_id
+                for (r_id,) in db.query(ComplianceRule.id).filter(
+                    ComplianceRule.evidence_source.isnot(None),
+                    ComplianceRule.evidence_source != "manual",
                 )
-                rule_id = f"crl_pci_auto_gen_{raw_id}"
-                rule_exists = (
+            }
+            for pci_ctrl in pci_controls:
+                for iso_num in pci_ctrl.crosswalk or []:
+                    if not iso_num.startswith("ISO27001:"):
+                        continue
+                    iso_ref = (
+                        iso_num.replace("ISO27001:", "")
+                        .strip()
+                        .lower()
+                        .replace("a.", "")
+                        .replace(".", "_")
+                    )
+                    iso_ctrl_ids = [
+                        f"cct_iso27001_2022_a_{iso_ref}",
+                        f"cct_iso27001_2022_{iso_ref}",
+                    ]
+                    for r_link in (
+                        db.query(ComplianceRuleControl)
+                        .filter(ComplianceRuleControl.control_id.in_(iso_ctrl_ids))
+                        .all()
+                    ):
+                        if r_link.rule_id not in evaluating_rule_ids:
+                            continue
+                        exists = (
+                            db.query(ComplianceRuleControl)
+                            .filter(
+                                ComplianceRuleControl.rule_id == r_link.rule_id,
+                                ComplianceRuleControl.control_id == pci_ctrl.id,
+                            )
+                            .first()
+                        )
+                        if not exists:
+                            db.add(
+                                ComplianceRuleControl(
+                                    rule_id=r_link.rule_id, control_id=pci_ctrl.id
+                                )
+                            )
+
+                for link in (
+                    db.query(ComplianceRuleControl)
+                    .filter(ComplianceRuleControl.control_id == pci_ctrl.id)
+                    .all()
+                ):
+                    if (
+                        not link.rule_id.startswith("crl_pci_")
+                        and link.rule_id not in evaluating_rule_ids
+                    ):
+                        print(
+                            f"    - Unlinked foreign placeholder {link.rule_id} "
+                            f"from PCI {pci_ctrl.control_number}"
+                        )
+                        db.delete(link)
+
+                suffix = pci_ctrl.id.replace("cct_pci_dss_v4_", "")
+                rule_id = f"crl_pci_auto_gen_{suffix}"
+                placeholder = (
                     db.query(ComplianceRule)
                     .filter(ComplianceRule.id == rule_id)
                     .first()
                 )
-                if not rule_exists:
-                    c_rule = ComplianceRule(
+                if not placeholder:
+                    placeholder = ComplianceRule(
                         id=rule_id,
                         rule_family_code=f"RULE-PCI-{pci_ctrl.control_number}",
                         version_number=1,
                         check_type="api_response",
-                        evidence_source=(
-                            pci_ctrl.scannability
-                            if pci_ctrl.scannability != "manual"
-                            else "manual"
-                        ),
+                        evidence_source="manual",
                         target_platform="any",
                         check_definition={},
                         severity="medium",
                         severity_weight=5,
                         status="active",
                     )
-                    db.add(c_rule)
+                    db.add(placeholder)
                     db.flush()
-
-                p_link = (
+                if not (
                     db.query(ComplianceRuleControl)
                     .filter(
                         ComplianceRuleControl.rule_id == rule_id,
                         ComplianceRuleControl.control_id == pci_ctrl.id,
                     )
                     .first()
-                )
-                if not p_link:
+                ):
                     db.add(
                         ComplianceRuleControl(rule_id=rule_id, control_id=pci_ctrl.id)
                     )
+                db.flush()
+
+                evaluated = (
+                    db.query(ComplianceRuleControl)
+                    .join(
+                        ComplianceRule,
+                        ComplianceRule.id == ComplianceRuleControl.rule_id,
+                    )
+                    .filter(
+                        ComplianceRuleControl.control_id == pci_ctrl.id,
+                        ComplianceRuleControl.rule_id.in_(evaluating_rule_ids),
+                        ComplianceRule.status == "active",
+                    )
+                    .first()
+                    is not None
+                )
+                placeholder.status = "archived" if evaluated else "active"
 
             db.commit()
-            print("  - Successfully mapped rules and controls for PCI-DSS v4.0")
+            print("  - Successfully mapped rules and controls for PCI DSS v4.0.1")
 
         # Map rules and controls for DPDP Act 2023
         dpdp_controls = (
@@ -3779,6 +3827,57 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
             db.commit()
             print("  - Successfully mapped rules and controls for EU NIS 2 Directive")
 
+        # HIPAA Security Rule: one attestation placeholder per control. There
+        # are no crosswalks to inherit through and no technical check reads a
+        # HIPAA requirement, so every control is attestation work until one does.
+        #
+        # The rule id comes from the control's *id*, which never changes, not
+        # from its number: the PCI block derives it from `control_number`, so a
+        # renumbering there would mint a second set of rules beside the first.
+        hipaa_controls = (
+            db.query(ComplianceControl)
+            .filter(ComplianceControl.framework_id == "cfw_hipaa_security_rule")
+            .all()
+        )
+        for hipaa_ctrl in hipaa_controls:
+            suffix = hipaa_ctrl.id.replace("cct_hipaa_security_rule_", "")
+            rule_id = f"crl_hipaa_auto_gen_{suffix}"
+            if (
+                not db.query(ComplianceRule)
+                .filter(ComplianceRule.id == rule_id)
+                .first()
+            ):
+                db.add(
+                    ComplianceRule(
+                        id=rule_id,
+                        rule_family_code=f"RULE-HIPAA-{hipaa_ctrl.control_number}",
+                        version_number=1,
+                        check_type="api_response",
+                        evidence_source="manual",
+                        target_platform="any",
+                        check_definition={},
+                        severity="medium",
+                        severity_weight=5,
+                        status="active",
+                    )
+                )
+                db.flush()
+            linked = (
+                db.query(ComplianceRuleControl)
+                .filter(
+                    ComplianceRuleControl.rule_id == rule_id,
+                    ComplianceRuleControl.control_id == hipaa_ctrl.id,
+                )
+                .first()
+            )
+            if not linked:
+                db.add(ComplianceRuleControl(rule_id=rule_id, control_id=hipaa_ctrl.id))
+        if hipaa_controls:
+            db.commit()
+            print(
+                "  - Successfully mapped rules and controls for the HIPAA Security Rule"
+            )
+
         now = datetime.now(timezone.utc)
 
         orgs = db.query(Organization).all()
@@ -3802,6 +3901,7 @@ def seed_and_evaluate(target_ip: Optional[str] = None):
                 "cfw_nist_800_82_r3",
                 "cfw_nerc_cip",
                 "cfw_nis2",
+                "cfw_hipaa_security_rule",
             ]:
                 fw_obj = (
                     db.query(ComplianceFramework)

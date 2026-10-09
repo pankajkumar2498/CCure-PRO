@@ -1,0 +1,98 @@
+/* src/shell/account/settings-drawer.css — the settings drawer.
+   Moved from Audit's app-shell.css with the component (Phase 12
+   navigation refactor). B.4 keeps section composition; controls and drawer
+   presentation now come from shared UX4G adapters. */
+
+/* ── Settings drawer (modal) ─────────────────────────────────────────────── */
+.shs-drawer.cc-drawer {
+  width: min(26rem, 100%);
+}
+.shs-body {
+  min-width: 0;
+}
+.shs-error {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.shs-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.shs-section-icon {
+  display: inline-flex;
+  color: var(--ccure-primary-text);
+}
+
+.shs-section-title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ccure-text-secondary);
+}
+
+.shs-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.shs-divider {
+  border-top: 1px solid var(--ccure-border);
+  margin: var(--ccure-space-md) 0;
+}
+
+.shs-label {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  margin-bottom: var(--ccure-space-2xs);
+}
+
+.shs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+}
+
+.shs-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.shs-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.shs-toggle-label {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+}
+
+.shs-toggle-hint {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.shs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+}
+
+.shs-saved {
+  margin-inline-end: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-success-text);
+  font-weight: var(--ccure-weight-semibold);
+}

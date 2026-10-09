@@ -1,5 +1,7 @@
 # Authentication and Authorization
 
+> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+
 **CCure-Audit-PRO** — an end-to-end trace of identity, session and access
 control, read from `Backend/auth/`, `Backend/db/models/users.py`,
 `Backend/db/models/rbac.py` and `Frontend/src/`.
@@ -333,7 +335,7 @@ in §8 closes the specific case of a role or organization change.
 
 ### Client-side session upkeep
 
-`Frontend/src/context/AuthContext.jsx` runs two timers while authenticated:
+`Frontend/src/shell/auth/AuthContext.jsx` runs two timers while authenticated:
 
 - `setInterval(refreshActiveSession, 20 * 60 * 1000)` — a proactive refresh
   every 20 minutes, comfortably inside the 30-minute access lifetime.
@@ -513,7 +515,7 @@ almost immediately.
 ### Token custody
 
 ```javascript
-// Frontend/src/api/tokenStorage.js — the entire module
+// Frontend/src/shell/api/tokenStorage.js — the entire module
 let accessToken = null;
 export const getAccessToken = () => accessToken;
 export const setAccessToken = (token) => { accessToken = token || null; };
@@ -531,7 +533,7 @@ selector rather than a credential.
 
 ### Axios interceptors
 
-`Frontend/src/api/axiosInstance.js`.
+`Frontend/src/shell/api/axiosInstance.js`.
 
 **Request** — attaches `Authorization: Bearer` when a token exists, and injects
 `params.org_id` from `localStorage.activeOrgId` unless the caller already set it.
@@ -581,7 +583,7 @@ of the SPA.
 
 ### Route guards
 
-`Frontend/src/components/auth/PrivateRoute.jsx` — renders a spinner while
+`Frontend/src/shell/auth/PrivateRoute.jsx` — renders a spinner while
 `loading`, redirects to `/login` (carrying `state.from`, `state.reason`,
 `state.message`) when there is no user, then evaluates
 `superadminOnly` / `requiredPermission` / `requiredAny` / `requiredAll`. On
@@ -653,15 +655,15 @@ Only mechanisms verified in the current code.
 
 ### Known gaps
 
-| Gap                                                                                                          | Impact                                                                                                                        | Where                                  |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `_verify_admin` compares a `Role` object against strings and reads a non-existent `is_superadmin` attribute  | Both `/api/v1/admin/*` routes return **403 to every caller**, superadmin included. The 24-hour NVD sync loop is unaffected    | `routers/admin_nvd.py`                 |
-| All `/web-scans` routes are authentication-only                                                              | `viewer` can start and cancel DAST scans                                                                                      | `routers/web_scans.py`                 |
-| `DELETE /admin/organizations/{org_id}` enforces superadmin in the handler body, not via `require_permission` | Access level is correct, but `organizations:delete` is never consulted and the route is invisible to a dependency-based audit | `routers/admin_orgs.py`                |
-| `REFRESH_COOKIE_SECURE` defaults to `false`                                                                  | Refresh cookie can traverse plain HTTP unless configured                                                                      | `auth/router.py`                       |
-| WebSocket ticket check omits `is_active` / `is_deleted` / org status                                         | A user deactivated within the last 60 s can still open a progress socket                                                      | `scans/router.py::_get_websocket_user` |
-| `permissions.js` honours a `resource:manage` wildcard with no backend counterpart                            | Dead branch today; would silently widen client gating if such an atom were ever seeded                                        | `Frontend/src/auth/permissions.js`     |
-| `MFA_ENCRYPTION_KEY` defaults to `JWT_SECRET_KEY`                                                            | Rotating the JWT key orphans every enrolled TOTP secret                                                                       | `config.py::JWTConfig`                 |
+| Gap                                                                                                          | Impact                                                                                                                        | Where                                    |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `_verify_admin` compares a `Role` object against strings and reads a non-existent `is_superadmin` attribute  | Both `/api/v1/admin/*` routes return **403 to every caller**, superadmin included. The 24-hour NVD sync loop is unaffected    | `routers/admin_nvd.py`                   |
+| All `/web-scans` routes are authentication-only                                                              | `viewer` can start and cancel DAST scans                                                                                      | `routers/web_scans.py`                   |
+| `DELETE /admin/organizations/{org_id}` enforces superadmin in the handler body, not via `require_permission` | Access level is correct, but `organizations:delete` is never consulted and the route is invisible to a dependency-based audit | `routers/admin_orgs.py`                  |
+| `REFRESH_COOKIE_SECURE` defaults to `false`                                                                  | Refresh cookie can traverse plain HTTP unless configured                                                                      | `auth/router.py`                         |
+| WebSocket ticket check omits `is_active` / `is_deleted` / org status                                         | A user deactivated within the last 60 s can still open a progress socket                                                      | `scans/router.py::_get_websocket_user`   |
+| `permissions.js` honours a `resource:manage` wildcard with no backend counterpart                            | Dead branch today; would silently widen client gating if such an atom were ever seeded                                        | `Frontend/src/shell/auth/permissions.js` |
+| `MFA_ENCRYPTION_KEY` defaults to `JWT_SECRET_KEY`                                                            | Rotating the JWT key orphans every enrolled TOTP secret                                                                       | `config.py::JWTConfig`                   |
 
 ---
 

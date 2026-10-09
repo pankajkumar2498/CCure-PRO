@@ -18,11 +18,15 @@
 
 import "./tokens/index.css";
 import "./components/components.css";
+import "./components/ux4g.components.generated.css";
+import "./components/adapters.css";
 import "./patterns/shell.css";
 import "./patterns/security-patterns.css";
+import "./patterns/page.css";
 
 /* ── Actions ─────────────────────────────────────────────────────────────── */
 export { default as CcureButton } from "./components/CcureButton";
+export { default as CcureCheckbox } from "./components/CcureCheckbox";
 
 /* ── Forms ───────────────────────────────────────────────────────────────── */
 export {
@@ -89,6 +93,27 @@ export { default as CcureConfirmDialog } from "./patterns/CcureConfirmDialog";
 
 /* ── Application chrome ──────────────────────────────────────────────────── */
 export { default as CcureAppShell } from "./patterns/CcureAppShell";
+/* Every page in every module: CcurePage is the inset, CcurePageHeader the
+   breadcrumb / <h1> / subtitle / actions. See patterns/CcurePage.jsx. */
+export { CcurePage, CcurePageHeader } from "./patterns/CcurePage";
+
+/* ── Icons ───────────────────────────────────────────────────────────────── */
+export { default as CcureIcon } from "./icons/CcureIcon";
+export { ICON_NAMES } from "./icons/icons";
 
 /* ── Hooks ───────────────────────────────────────────────────────────────── */
 export { default as useFocusTrap } from "./hooks/useFocusTrap";
+
+// Group 1: official UX4G adapters. Modules consume this entry point only.
+export { default as CcureIconButton } from "./components/CcureIconButton";
+export { default as CcureTextarea } from "./components/CcureTextarea";
+export { default as CcureCombobox } from "./components/CcureCombobox";
+export { CcureRadio, CcureSwitch } from "./components/CcureChoice";
+export { CcureField as CcureFormField } from "./components/CcureInput";
+export { default as CcureDrawer } from "./components/CcureDrawer";
+export {
+  default as CcureDropdown,
+  CcureMenuItem,
+} from "./components/CcureDropdown";
+export { CcureToastList, useCcureToasts } from "./components/CcureToast";
+export { CcureLoader as CcureSpinner } from "./components/CcureFeedback";

@@ -5,13 +5,19 @@ name: Images
 # phase, and it will push the image this workflow built and verified, never a
 # rebuild. Policy and procedure: docs/ci/CONTAINER_IMAGES.md.
 #
-# Same trigger shape as ci.yml and security.yml, for the same reason: push is
-# filtered to master so a PR branch does not build everything twice.
+# Not a pull-request check. A PR is gated on what it changes in the application
+# (ci.yml, security.yml); this scans what the image carries besides: Debian and
+# Alpine packages and the scanner binaries, whose advisories arrive with no
+# commit at all. Gating PRs on it turned them red for advisories nobody had
+# introduced. It runs after a merge to master, nightly, and on demand.
+# docs/ci/BRANCH_PROTECTION.md lists which checks are required, and these are
+# deliberately not among them: a required check that never runs on a PR would
+# leave every PR waiting for it.
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+  schedule:
+    - cron: '0 21 * * *'   # 02:30 IST
   workflow_dispatch:
 
 # Read-only token; no job references a secret. The layer cache below talks to
@@ -40,6 +46,7 @@ jobs:
           - title: Backend Image
             name: ccure-audit-pro-backend
             context: Backend
+            file: Backend/Dockerfile
             smoke: scripts/ci/smoke_backend.sh
             exceptions: .github/security/trivy-backend.yaml
             # Python packages are pip-audit's (security.yml), with their own
@@ -51,8 +58,24 @@ jobs:
           - title: Frontend Image
             name: ccure-audit-pro-frontend
             context: Frontend
+            file: Frontend/Dockerfile
             smoke: scripts/ci/smoke_frontend.sh
             exceptions: .github/security/trivy-frontend.yaml
+            skip: ''
+          # The gateway's token check, which answers for every API request.
+          # Built from the repository root: its Dockerfile copies the core's
+          # verification rules, and Dockerfile.dockerignore beside it is an
+          # allow-list of exactly those files. Nothing is skipped: pip-audit
+          # (security.yml) audits only Backend/requirements.txt, so Trivy is
+          # the gate for this image's Python packages too. They are pinned to
+          # the core's versions, and trivy-gateway-auth.yaml repeats only the
+          # core's existing decisions on them.
+          - title: Gateway-auth Image
+            name: ccure-gateway-auth
+            context: .
+            file: gateway/token_check/Dockerfile
+            smoke: scripts/ci/smoke_gateway_auth.sh
+            exceptions: .github/security/trivy-gateway-auth.yaml
             skip: ''
     env:
       # The canonical identity of the artifact: the commit it was built from.
@@ -75,10 +98,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # A layer cache keeps the OS packages from the day the layer was first
+      # built. The Dockerfile's package lines do not change when Debian or
+      # Alpine ship a fix, so a long-lived cache went on serving an old
+      # Chromium for weeks, and the gate failed on findings a fresh build does
+      # not have (measured 8 Oct 2026: 80 fixed-upstream HIGH/CRITICAL in a
+      # cached Chromium 153, none in a fresh 154). The cache scope therefore
+      # changes every UTC day, so the day's first build installs current
+      # packages; the nightly run builds with no cache at all. This only
+      # refreshes what is installed. Whatever the fresh image carries is
+      # scanned and gated exactly as before.
+      - name: Choose a layer cache that is at most a day old
+        id: cache
+        run: echo "scope=${{ matrix.name }}-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Build ${{ env.IMAGE }}
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           load: true
           push: false
           tags: ${{ env.IMAGE }}
@@ -88,8 +126,9 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           provenance: false
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          no-cache: ${{ github.event_name == 'schedule' }}
+          cache-from: type=gha,scope=${{ steps.cache.outputs.scope }}
+          cache-to: type=gha,scope=${{ steps.cache.outputs.scope }},mode=max
 
       # Everything Trivy finds, blocking or not, counted in the job summary —
       # Python packages included, though the gate below leaves them to pip-audit.

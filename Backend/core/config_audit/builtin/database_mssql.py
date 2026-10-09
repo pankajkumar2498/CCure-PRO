@@ -41,7 +41,6 @@ left unanswered. The guard is worth more than the check.
 
 from __future__ import annotations
 
-import re
 from typing import List
 
 from core.config_audit.spec import AbsencePolicy, ConfigCheck, Expectation
@@ -67,25 +66,6 @@ _PROVISIONED_PRINCIPALS = (
     "NT SERVICE\\%",
     "BUILTIN\\%",
 )
-
-
-def _configuration(name: str) -> str:
-    """
-    Read one entry from sys.configurations as an integer.
-
-    The name is interpolated rather than bound because these are module-level
-    literals composed once at import — but it is validated anyway, for the same
-    reason as the PostgreSQL helper: this is the shape that becomes an
-    injection point the first time rules are made editable.
-    """
-    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9 _]*", name):
-        raise ValueError(f"not a SQL Server configuration name: {name!r}")
-    # Interpolation is safe here because of the line above: the name has been
-    # proven to be a bare identifier before it reaches the statement.
-    return (
-        "SELECT CAST(value_in_use AS INT) FROM sys.configurations "
-        f"WHERE name = '{name}'"  # nosec B608
-    )
 
 
 MSSQL_CHECKS: List[ConfigCheck] = [

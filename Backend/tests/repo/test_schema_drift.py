@@ -9,7 +9,7 @@ This project builds a schema two different ways:
 
   * a **fresh** install runs ``Base.metadata.create_all()`` and stamps Alembic
     head (``db/migrate_production_schema.py`` — the ``is_database_empty`` branch)
-  * an **existing** install runs ``alembic upgrade head``
+  * an **existing** install runs ``alembic upgrade heads``
 
 That is a deliberate and correct pattern for adopting Alembic over a schema that
 already existed. Its known failure mode is divergence: add a column to a model

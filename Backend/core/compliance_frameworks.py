@@ -61,6 +61,13 @@ DEFAULT_ACTIVE_FRAMEWORK_IDS: tuple[str, ...] = (
     # recommendations there. Benchmark content is loaded as its own framework
     # by `core/benchmarks/loader.py` and is not seeded in this repository.
     "cfw_cis_v8_1",
+    # PCI DSS v4.0.1 is parked, not missing: it was switched on and parked
+    # again on 28 Sep 2026, when the project owner narrowed the work to ISO
+    # until the modular refactoring completes. Everything fixed that day stays
+    # fixed — its 16 corrected requirement numbers, its rules no longer
+    # inheriting ISO's placeholders, its evidence defaults — so re-activating
+    # it is this one entry plus `set_active_frameworks --framework
+    # cfw_pci_dss_v4 --apply`.
 )
 
 # Every catalogue that ships, active or parked. Kept so callers can tell
@@ -80,6 +87,11 @@ ALL_FRAMEWORK_IDS: tuple[str, ...] = (
     "cfw_nist_800_82_r3",
     "cfw_nerc_cip",
     "cfw_nis2",
+    # HIPAA Security Rule (45 CFR Part 164 Subpart C), added 28 Sep 2026.
+    # Parked: the catalogue exists so a Policy Pro baseline naming a HIPAA
+    # requirement is answered, and so an operator can install it; switching it
+    # on is a separate decision.
+    "cfw_hipaa_security_rule",
 )
 
 # Framework id -> the `/compliance/reports/<slug>` endpoint that renders it, so

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "reason": "Existing domain CSS and reduced-motion declarations at the B.6 checkpoint. CI permits removal but rejects additions; never expand to make a gate pass. File inputs remain native in the three documented upload workflows until a shared upload adapter preserves their contracts.",
+  "report": "../docs/ux4g/UX4G_STANDARD.md",
+  "legacyImportant": {
+    "src/design-system/components/adapters.css": [
+      ".cc-alert.cc-ux4g.cc-alert--info|background-color|var(--ccure-info-bg)",
+      ".cc-ux4g, .cc-ux4g *, .cc-toast--exit|animation|none",
+      ".cc-ux4g, .cc-ux4g *, .cc-toast--exit|transition|none"
+    ],
+    "src/modules/audit/styles/asset-detail.css": [
+      ".ad-detail-cell|padding|var(--ccure-space-md)"
+    ],
+    "src/modules/audit/styles/compliance.css": [
+      ".compliance-form button[type=\"submit\"]|display|inline-flex",
+      ".compliance-form button[type=\"submit\"]|align-items|center",
+      ".compliance-form button[type=\"submit\"]|justify-content|center",
+      ".compliance-form button[type=\"submit\"]|text-align|center",
+      ".compliance-form button[type=\"submit\"]|width|100%",
+      ".compliance-form button[type=\"submit\"]|height|40px",
+      ".compliance-form button[type=\"submit\"]|margin-top|0.75rem",
+      ".compliance-form button[type=\"submit\"]|font-size|0.875rem",
+      ".compliance-form button[type=\"submit\"]|font-weight|600",
+      ".compliance-form button[type=\"submit\"]|border-radius|0.5rem",
+      ".fw-action-btn|display|inline-flex",
+      ".fw-action-btn|align-items|center",
+      ".fw-action-btn|justify-content|center",
+      ".fw-action-btn|text-align|center",
+      ".fw-action-btn|width|100%",
+      ".fw-action-btn|height|38px",
+      ".fw-action-btn|font-size|0.875rem",
+      ".fw-action-btn|font-weight|600",
+      ".fw-action-btn|border-radius|0.5rem",
+      ".fw-action-btn|box-sizing|border-box",
+      ".fw-action-btn|cursor|pointer",
+      ".fw-action-btn|transition|background-color 0.2s ease,\n    transform 0.1s ease"
+    ],
+    "src/styles/animations.css": [
+      ".data-table tr.tr-host:hover|background|rgba(0, 0, 0, 0.04)",
+      ":root[data-theme=\"dark\"] .data-table tr.tr-host:hover|background|rgba(15, 23, 42, 0.75)",
+      ":root[data-theme=\"dark\"] .data-table tr.tr-host:hover|color|var(--text-white)",
+      ":root[data-theme=\"dark\"] .data-table tr.tr-host:hover td|color|inherit",
+      ".data-table tr.tr-selected|box-shadow|inset 3px 0 0 var(--accent)",
+      "*, *::before, *::after|animation-duration|0.01ms",
+      "*, *::before, *::after|animation-iteration-count|1",
+      "*, *::before, *::after|transition-duration|0.01ms"
+    ],
+    "src/styles/layout.css": [
+      ".sidebar|width|220px",
+      ".sidebar|min-width|220px"
+    ],
+    "src/styles/scan.css": [
+      ":root[data-theme=\"dark\"] .data-table tbody tr:hover|background|rgba(15, 23, 42, 0.75)",
+      ":root[data-theme=\"dark\"] .data-table tbody tr:hover|color|var(--text-white)",
+      ":root[data-theme=\"dark\"] .data-table tbody tr:hover td|color|inherit",
+      ".data-table tr.tr-selected|background|rgba(14, 165, 233, 0.05)",
+      ".form-horizontal .field-label|margin-bottom|0",
+      ".row--active:hover|color|var(--text)",
+      ":root[data-theme=\"dark\"] .results-table .row--active:hover|background|rgba(15, 23, 42, 0.7)",
+      ":root[data-theme=\"dark\"] .results-table .row--active:hover|color|var(--text-white)",
+      ":root[data-theme=\"dark\"] .results-table .row--active:hover td, :root[data-theme=\"dark\"] .results-table .row--active:hover td *|color|inherit"
+    ]
+  }
+}

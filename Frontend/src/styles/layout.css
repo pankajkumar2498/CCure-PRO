@@ -28,82 +28,6 @@
 
 /* ── Mobile backdrop ── */
 
-@keyframes backdropFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* ── Collapse toggle button ── */
-
-/* ── Brand ── */
-
-/* ── Scrollable nav area ── */
-
-/* ── Section label ── */
-
-/* ── Nav item ── */
-
-/* ── Icon ── */
-
-/* ── Label ── */
-
-/* ── Badge ── */
-
-/* ── "SOON" tag ── */
-
-/* ── Section divider ── */
-
-/* ────────────────────────────────────────────────────────────────────────────
-   SIDEBAR FOOTER — Quota bars + Settings
-   ────────────────────────────────────────────────────────────────────────── */
-
-/* ────────────────────────────────────────────────────────────────────────────
-   MAIN CONTENT AREA
-   ────────────────────────────────────────────────────────────────────────── */
-
-/* ────────────────────────────────────────────────────────────────────────────
-   TOP HEADER
-   ────────────────────────────────────────────────────────────────────────── */
-
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.header-brand-icon {
-  font-size: 1.1rem;
-  color: var(--accent);
-}
-
-.header-brand-title {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text-mid);
-  letter-spacing: 0.02em;
-}
-
-.header-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  color: var(--text-faint);
-}
-
-.header-breadcrumb-sep {
-  color: var(--border);
-}
-
-.header-breadcrumb-current {
-  color: var(--text-mid);
-  font-weight: 600;
-}
-
 /* Hamburger (mobile only) */
 
 /* New Scan button */
@@ -114,17 +38,6 @@
 
 /* Profile dropdown */
 
-@keyframes dropIn {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Notification / Help panel wrappers */
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -134,34 +47,6 @@
   flex: 1;
   overflow-y: auto;
   background: var(--bg-app);
-}
-
-.page-inner {
-  padding: 28px 32px 48px;
-  width: 100%;
-  max-width: none;
-}
-
-.page-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-title {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-.page-subtitle {
-  font-size: 0.84rem;
-  color: var(--text-muted);
-  margin-top: 4px;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,89 @@
+# Trivy exceptions for the gateway-auth image. Read by .github/workflows/images.yml.
+#
+# Every entry names one vulnerability in one file (by path), says why it is
+# accepted and how it is removed, and EXPIRES. On 2026-10-24 the entries stop
+# applying and the gate fails again, the same date as trivy-backend.yaml, so the
+# two images' decisions are reviewed together. Policy and procedure:
+# docs/ci/CONTAINER_IMAGES.md#vulnerability-exceptions
+#
+# Nothing here is a new risk decision. Each entry is an advisory this repository
+# already accepts at the identical version, recorded where that decision lives:
+#
+# - gateway-auth pins python-jose, cryptography and pyasn1 to the core's versions
+#   on purpose (gateway/token_check/requirements.txt), so its token verification
+#   runs on the same libraries as the core's. The core's image leaves Python
+#   application packages to pip-audit, where these advisories are in the reviewed
+#   backlog (.github/security/pip-audit-accepted.txt). pip-audit audits only
+#   Backend/requirements.txt, so for this image Trivy is the gate, and the same
+#   decision is repeated here with a pointer to it.
+# - jaraco.context and wheel are vendored in the base image's setuptools, which
+#   is the core's base by digest; trivy-backend.yaml carries the same two entries.
+#
+# Generated from the scan of the image built from 87b94d4 on 9 Oct 2026, after
+# the Dockerfile's scoped openssl/pcre2 upgrade (which leaves no OS finding).
+
+vulnerabilities:
+
+  # ── Python packages pinned to the core's versions (8)
+  - id: CVE-2024-33663
+    paths:
+      - "usr/local/lib/python3.11/site-packages/python_jose-3.3.0.dist-info/METADATA"
+    statement: >-
+      CRITICAL in python-jose 3.3.0, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 3.4.0. Accepted for the core as PYSEC-2024-232 in pip-audit-accepted.txt. Remediation: upgrade python-jose in Backend/requirements.txt and gateway/token_check/requirements.txt together, which retires both entries.
+    expired_at: 2026-10-24
+  - id: CVE-2026-69247
+    paths:
+      - "usr/local/lib/python3.11/site-packages/cryptography-46.0.7.dist-info/METADATA"
+    statement: >-
+      HIGH in cryptography 46.0.7, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 50.0.0. Accepted for the core as PYSEC-2026-3552 in pip-audit-accepted.txt; the core is held below 48 by sslyze's bound. Remediation: upgrade cryptography in both requirement files together.
+    expired_at: 2026-10-24
+  - id: CVE-2026-69249
+    paths:
+      - "usr/local/lib/python3.11/site-packages/cryptography-46.0.7.dist-info/METADATA"
+    statement: >-
+      HIGH in cryptography 46.0.7, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 49.0.0. Accepted for the core as PYSEC-2026-3553 in pip-audit-accepted.txt; the core is held below 48 by sslyze's bound. Remediation: upgrade cryptography in both requirement files together.
+    expired_at: 2026-10-24
+  - id: GHSA-537c-gmf6-5ccf
+    paths:
+      - "usr/local/lib/python3.11/site-packages/cryptography-46.0.7.dist-info/METADATA"
+    statement: >-
+      HIGH in cryptography 46.0.7, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 48.0.1. Accepted for the core as GHSA-537c-gmf6-5ccf in pip-audit-accepted.txt; the core is held below 48 by sslyze's bound. Remediation: upgrade cryptography in both requirement files together.
+    expired_at: 2026-10-24
+  - id: CVE-2026-30922
+    paths:
+      - "usr/local/lib/python3.11/site-packages/pyasn1-0.5.1.dist-info/METADATA"
+    statement: >-
+      HIGH in pyasn1 0.5.1, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 0.6.3. Accepted for the core as PYSEC-2026-2263 in pip-audit-accepted.txt; the core holds it below 0.6 for pysnmp-lextudio. Remediation: upgrade pyasn1 in both requirement files together.
+    expired_at: 2026-10-24
+  - id: CVE-2026-59884
+    paths:
+      - "usr/local/lib/python3.11/site-packages/pyasn1-0.5.1.dist-info/METADATA"
+    statement: >-
+      HIGH in pyasn1 0.5.1, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 0.6.4. Accepted for the core as PYSEC-2026-3455 in pip-audit-accepted.txt; the core holds it below 0.6 for pysnmp-lextudio. Remediation: upgrade pyasn1 in both requirement files together.
+    expired_at: 2026-10-24
+  - id: CVE-2026-59885
+    paths:
+      - "usr/local/lib/python3.11/site-packages/pyasn1-0.5.1.dist-info/METADATA"
+    statement: >-
+      HIGH in pyasn1 0.5.1, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 0.6.4. Accepted for the core as PYSEC-2026-3456 in pip-audit-accepted.txt; the core holds it below 0.6 for pysnmp-lextudio. Remediation: upgrade pyasn1 in both requirement files together.
+    expired_at: 2026-10-24
+  - id: CVE-2026-59886
+    paths:
+      - "usr/local/lib/python3.11/site-packages/pyasn1-0.5.1.dist-info/METADATA"
+    statement: >-
+      HIGH in pyasn1 0.5.1, pinned to the core's version (gateway/token_check/requirements.txt); fixed in 0.6.4. Accepted for the core as PYSEC-2026-3457 in pip-audit-accepted.txt; the core holds it below 0.6 for pysnmp-lextudio. Remediation: upgrade pyasn1 in both requirement files together.
+    expired_at: 2026-10-24
+
+  # ── python:3.11-slim base image: setuptools 79.0.1's vendored copies (2)
+  - id: CVE-2026-23949
+    paths:
+      - "usr/local/lib/python3.11/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info/METADATA"
+    statement: >-
+      HIGH in jaraco.context 5.3.0, vendored inside the setuptools 79.0.1 that the pinned python:3.11-slim base ships (not an application requirement); fixed in 6.1.0. Same base by digest and same entry as trivy-backend.yaml. Not upgraded in place: newer setuptools removes pkg_resources. Remediation: the Dependabot PR moving the base digest to a python:3.11-slim with a fixed setuptools.
+    expired_at: 2026-10-24
+  - id: CVE-2026-24049
+    paths:
+      - "usr/local/lib/python3.11/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info/METADATA"
+    statement: >-
+      HIGH in wheel 0.45.1, vendored inside the setuptools 79.0.1 that the pinned python:3.11-slim base ships (not an application requirement); fixed in 0.46.2. Same base by digest and same entry as trivy-backend.yaml. Not upgraded in place: newer setuptools removes pkg_resources. Remediation: the Dependabot PR moving the base digest to a python:3.11-slim with a fixed setuptools.
+    expired_at: 2026-10-24

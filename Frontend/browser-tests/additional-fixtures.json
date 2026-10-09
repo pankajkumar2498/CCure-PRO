@@ -1,0 +1,276 @@
+{
+  "configuration": {
+    "CHECKS": [
+      {
+        "check_id": "ccure.win.smb1",
+        "title": "SMBv1 must not be installed",
+        "severity": "medium",
+        "check_type": "registry",
+        "absent_policy": "pass",
+        "domain": "hardening",
+        "platforms": ["windows"],
+        "qod": 95,
+        "requires_credentials": true,
+        "expected": "SMB1Protocol not installed",
+        "description": "SMBv1 is obsolete and is the EternalBlue transport.",
+        "rationale": "Removing it eliminates the protocol entirely.",
+        "remediation": "Uninstall the SMB1Protocol feature.",
+        "references": ["https://example.test/smb1"]
+      },
+      {
+        "check_id": "ccure.win.auditd",
+        "title": "Audit policy must be configured",
+        "severity": "critical",
+        "check_type": "auditpol",
+        "absent_policy": "fail",
+        "domain": "logging",
+        "platforms": ["windows"],
+        "qod": 99,
+        "requires_credentials": true,
+        "expected": "Success and Failure",
+        "description": "Without audit policy nothing is recorded."
+      },
+      {
+        "check_id": "ccure.win.iis",
+        "title": "IIS request filtering",
+        "severity": "low",
+        "check_type": "structured_config",
+        "absent_policy": "not_applicable",
+        "domain": "middleware",
+        "platforms": ["windows"],
+        "qod": 80,
+        "requires_credentials": true,
+        "expected": "requestFiltering enabled",
+        "description": "Only applies where IIS is installed."
+      },
+      {
+        "check_id": "ccure.win.lsa",
+        "title": "LSA protection",
+        "severity": "high",
+        "check_type": "registry",
+        "absent_policy": "manual_review",
+        "domain": "hardening",
+        "platforms": ["windows"],
+        "qod": 90,
+        "requires_credentials": true,
+        "expected": "RunAsPPL = 1",
+        "description": "Absent means the platform default applies."
+      }
+    ],
+    "CAPS": {
+      "supported": {
+        "windows": ["registry", "auditpol", "structured_config"],
+        "linux": ["command", "config_file"]
+      },
+      "declared_without_collector": ["api", "database_query"]
+    }
+  },
+  "credentials": {
+    "CREDS": [
+      {
+        "id": "c-1",
+        "name": "Windows admin",
+        "credential_type": "windows",
+        "principal": "CORP\\svc_scan",
+        "username": "svc_scan",
+        "domain": "CORP",
+        "auth_method": "ntlm",
+        "transport": "winrm",
+        "port": 5985,
+        "has_secret": true,
+        "options": {}
+      },
+      {
+        "id": "c-2",
+        "name": "Linux key",
+        "credential_type": "ssh",
+        "principal": "root",
+        "username": "root",
+        "domain": null,
+        "auth_method": "key",
+        "transport": "ssh",
+        "port": 22,
+        "has_secret": false,
+        "options": {}
+      }
+    ],
+    "TYPES": [
+      {
+        "value": "windows",
+        "label": "Windows",
+        "auth_methods": ["ntlm", "password"],
+        "available": true
+      },
+      {
+        "value": "ssh",
+        "label": "SSH",
+        "auth_methods": ["password", "key"],
+        "available": true
+      }
+    ]
+  },
+  "schedules": {
+    "SCHEDULES": [
+      {
+        "id": "sch-1",
+        "name": "Nightly DMZ",
+        "description": "Every night",
+        "scan_kind": "network",
+        "targets": ["10.180.5.0/24", "10.180.6.14"],
+        "credential_id": null,
+        "credential_name": null,
+        "recurrence": "daily",
+        "timezone": "Asia/Kolkata",
+        "run_at": "02:00",
+        "day_of_week": null,
+        "day_of_month": null,
+        "cron_expression": null,
+        "starts_at": null,
+        "is_enabled": true,
+        "scan_options": {},
+        "summary": "Daily at 02:00 Asia/Kolkata",
+        "next_run_at": "2026-09-13T20:30:00Z",
+        "last_run_at": "2026-09-12T20:30:00Z",
+        "last_status": "dispatched",
+        "last_error": null,
+        "consecutive_failures": 0
+      },
+      {
+        "id": "sch-2",
+        "name": "Weekly Windows audit",
+        "description": "",
+        "scan_kind": "credentialed",
+        "targets": ["10.180.6.14"],
+        "credential_id": "cred-9",
+        "credential_name": "DC admin",
+        "recurrence": "weekly",
+        "timezone": "UTC",
+        "run_at": "03:30",
+        "day_of_week": 6,
+        "day_of_month": null,
+        "cron_expression": null,
+        "starts_at": null,
+        "is_enabled": false,
+        "scan_options": {},
+        "summary": "Weekly on Sunday at 03:30 UTC",
+        "next_run_at": null,
+        "last_run_at": "2026-09-06T03:30:00Z",
+        "last_status": "failed",
+        "last_error": "credential refused",
+        "consecutive_failures": 3
+      }
+    ],
+    "CREDENTIALS": [
+      {
+        "id": "cred-9",
+        "name": "DC admin",
+        "username": "CORP\\svc-audit"
+      },
+      {
+        "id": "cred-10",
+        "name": "Linux ro",
+        "username": "audit"
+      }
+    ]
+  },
+  "web": {
+    "SCAN": {
+      "id": "ws-42",
+      "scan_name": "Corporate portal",
+      "target_url": "https://portal.example.test",
+      "status": "completed",
+      "pipeline_phase": "AUDIT",
+      "total_endpoints": 128,
+      "total_findings": 9,
+      "critical_count": 2,
+      "high_count": 3
+    },
+    "FINDINGS": [
+      {
+        "id": "f-1",
+        "title": "SQL injection in login form",
+        "severity": "critical",
+        "status": "open",
+        "request_method": "POST",
+        "request_url": "https://portal.example.test/login",
+        "finding_type": "sqli",
+        "owasp_category": "A03 Injection",
+        "cve_id": null,
+        "description": "Parameter `user` is concatenated into a query.",
+        "request_body": "user=admin'--&pass=x",
+        "response_body": "<html>SQL syntax error near</html>",
+        "curl_command": "curl -X POST 'https://portal.example.test/login' -d \"user=admin'--\""
+      },
+      {
+        "id": "f-2",
+        "title": "Reflected XSS in search",
+        "severity": "high",
+        "status": "open",
+        "request_method": "GET",
+        "request_url": "https://portal.example.test/search?q=x",
+        "finding_type": "xss",
+        "owasp_category": "A03 Injection",
+        "cve_id": null,
+        "description": "Query parameter is reflected unescaped."
+      },
+      {
+        "id": "f-3",
+        "title": "Missing HSTS header",
+        "severity": "low",
+        "status": "open",
+        "request_method": "GET",
+        "request_url": "https://portal.example.test/",
+        "finding_type": "header",
+        "owasp_category": "A05 Security Misconfiguration",
+        "cve_id": null,
+        "description": "Strict-Transport-Security is absent."
+      }
+    ],
+    "ASSETS": [
+      {
+        "id": "a-1",
+        "method": "GET",
+        "url": "https://portal.example.test/",
+        "response_code": 200,
+        "content_type": "text/html",
+        "auth_required": false,
+        "is_api": false,
+        "is_form": false,
+        "has_file_upload": false
+      },
+      {
+        "id": "a-2",
+        "method": "POST",
+        "url": "https://portal.example.test/api/v1/upload",
+        "response_code": 401,
+        "content_type": "application/json",
+        "auth_required": true,
+        "is_api": true,
+        "is_form": false,
+        "has_file_upload": true
+      },
+      {
+        "id": "a-3",
+        "method": "POST",
+        "url": "https://portal.example.test/login",
+        "response_code": 200,
+        "content_type": "text/html",
+        "auth_required": false,
+        "is_api": false,
+        "is_form": true,
+        "has_file_upload": false
+      },
+      {
+        "id": "a-4",
+        "method": "DELETE",
+        "url": "https://portal.example.test/api/v1/session",
+        "response_code": 500,
+        "content_type": "application/json",
+        "auth_required": true,
+        "is_api": true,
+        "is_form": false,
+        "has_file_upload": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+# Explicitly opt the existing local DEVELOPMENT deployment into native RBAC.
+# Use with docker-compose.yml after the restored-copy rehearsal passes.
+# No database, Redis, gateway, certificate or signing-key settings are changed.
+services:
+  api:
+    environment:
+      ENV: development
+      APP_ENV: development
+      DEFAULT_ORG_NAME: CCure Development
+      DEFAULT_ORG_SLUG: development
+      SKIP_DOTENV_LOAD: "1"
+      DEFAULT_ADMIN_EMAIL: ""
+      DEFAULT_ADMIN_PASSWORD: ""
+    volumes:
+      - ${CCURE_DEVELOPMENT_BACKEND_DIR:?Set the reviewed Backend directory}:/app
+  worker:
+    environment:
+      ENV: development
+      APP_ENV: development
+      DEFAULT_ORG_NAME: CCure Development
+      DEFAULT_ORG_SLUG: development
+      SKIP_DOTENV_LOAD: "1"
+      DEFAULT_ADMIN_EMAIL: ""
+      DEFAULT_ADMIN_PASSWORD: ""
+    volumes:
+      - ${CCURE_DEVELOPMENT_BACKEND_DIR:?Set the reviewed Backend directory}:/app
+  web-worker:
+    environment:
+      ENV: development
+      APP_ENV: development
+      DEFAULT_ORG_NAME: CCure Development
+      DEFAULT_ORG_SLUG: development
+      SKIP_DOTENV_LOAD: "1"
+      DEFAULT_ADMIN_EMAIL: ""
+      DEFAULT_ADMIN_PASSWORD: ""
+    volumes:
+      - ${CCURE_DEVELOPMENT_BACKEND_DIR:?Set the reviewed Backend directory}:/app
+  beat:
+    environment:
+      ENV: development
+      APP_ENV: development
+      DEFAULT_ORG_NAME: CCure Development
+      DEFAULT_ORG_SLUG: development
+      SKIP_DOTENV_LOAD: "1"
+      DEFAULT_ADMIN_EMAIL: ""
+      DEFAULT_ADMIN_PASSWORD: ""
+    volumes:
+      - ${CCURE_DEVELOPMENT_BACKEND_DIR:?Set the reviewed Backend directory}:/app
+  frontend:
+    build:
+      context: ${CCURE_DEVELOPMENT_FRONTEND_DIR:?Set the reviewed Frontend directory}

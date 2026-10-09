@@ -40,9 +40,43 @@ def _seed_controls() -> list:
         return json.load(fh)["controls"]
 
 
+def _annex_a() -> list:
+    return [c for c in _seed_controls() if c["theme"] != "ISMS"]
+
+
+#: ISO/IEC 27001:2022's management-system clauses, in the standard's order.
+MANAGEMENT_CLAUSES = [
+    "4.1",
+    "4.2",
+    "4.3",
+    "4.4",
+    "5.1",
+    "5.2",
+    "5.3",
+    "6.1.1",
+    "6.1.2",
+    "6.1.3",
+    "6.2",
+    "6.3",
+    "7.1",
+    "7.2",
+    "7.3",
+    "7.4",
+    "7.5",
+    "8.1",
+    "8.2",
+    "8.3",
+    "9.1",
+    "9.2",
+    "9.3",
+    "10.1",
+    "10.2",
+]
+
+
 def test_annex_a_is_complete_and_correctly_themed():
     """93 controls, split 37 / 8 / 14 / 34 across the four Annex A themes."""
-    controls = _seed_controls()
+    controls = _annex_a()
     assert len(controls) == 93
 
     by_theme: dict = {}
@@ -51,15 +85,51 @@ def test_annex_a_is_complete_and_correctly_themed():
     assert by_theme == {"ORG": 37, "PPL": 8, "PHY": 14, "TECH": 34}
 
 
+def test_the_management_clauses_are_present_and_attestation_only():
+    """
+    Clauses 4–10, so a Policy Pro baseline naming one is not UNKNOWN_CONTROL.
+
+    Each is published under its own number — ``5.1``, never ``A.5.1``, which
+    is a different requirement — and carries an id that cannot collide with
+    Annex A's row. Nothing automates them, and no crosswalk has been reviewed,
+    so none is claimed.
+    """
+    clauses = [c for c in _seed_controls() if c["theme"] == "ISMS"]
+    assert [c["control_number"] for c in clauses] == MANAGEMENT_CLAUSES
+    for c in clauses:
+        num = c["control_number"]
+        assert c["id"] == f"clause_{num}"
+        assert c["scannability"] == "manual" and not c.get("scan_module_hint")
+        assert not c.get("crosswalk"), f"{num} claims a crosswalk nobody reviewed"
+        assert c["description"].strip() != c["title"].strip()
+        assert c.get("evidence_checklist"), f"{num} has no evidence checklist"
+    assert (
+        len({c["title"] for c in clauses}) == len(clauses) - 2
+    )  # 8.2/8.3 repeat 6.1.2/6.1.3
+
+
+def test_the_seeder_publishes_each_control_under_its_own_number():
+    from scripts.seed_compliance import _control_number
+
+    iso = "cfw_iso27001_2022"
+    assert _control_number(iso, {"id": "5.1"}) == "A.5.1"
+    assert _control_number(iso, {"id": "clause_5.1", "control_number": "5.1"}) == "5.1"
+    # A catalogue outside the allow-list keeps its stored id until verified.
+    assert (
+        _control_number("cfw_nis2", {"id": "gov_01", "control_number": "NIS2-Art20-01"})
+        == "gov_01"
+    )
+
+
 def test_every_control_carries_auditor_facing_metadata():
-    """Descriptions, evidence checklists and crosswalks on all 93.
+    """Descriptions, evidence checklists and crosswalks on all 93 Annex A controls.
 
     ISO shipped with 0 crosswalks, 0 evidence checklists and 82 of 93
     descriptions that were the control's own title repeated back. For a
     framework where 63 controls are attestation-only, the evidence checklist is
     the entire prompt the reviewer works from.
     """
-    for c in _seed_controls():
+    for c in _annex_a():
         cid = c["id"]
         assert c.get("description"), f"{cid} has no description"
         assert (
@@ -351,6 +421,33 @@ def test_control_numbers_sort_numerically():
         "A.8.9",
         "A.8.24",
     ]
+    # The management-system clauses come first and never interleave with Annex
+    # A: clause 5.1 and control A.5.1 are different requirements.
+    mixed = ["A.5.1", "10.1", "5.1", "A.8.9", "6.1.3", "4.1", "9.2"]
+    assert sorted(mixed, key=control_sort_key) == [
+        "4.1",
+        "5.1",
+        "6.1.3",
+        "9.2",
+        "10.1",
+        "A.5.1",
+        "A.8.9",
+    ]
+
+
+def test_the_soa_lists_annex_a_only():
+    """Clause 6.1.3(d): the SoA states applicability for Annex A controls.
+
+    Clauses 4–10 are mandatory; there is no applicability to state for them,
+    and an SoA row claiming one would invite an exclusion the standard forbids.
+    """
+    import inspect
+
+    from routers import compliance
+
+    assert compliance.SOA_EXCLUDED_THEME == "ISMS"
+    source = inspect.getsource(compliance.download_statement_of_applicability)
+    assert "ComplianceControl.theme != SOA_EXCLUDED_THEME" in source
 
 
 def test_soa_maps_every_verdict_to_applicability_and_implementation():

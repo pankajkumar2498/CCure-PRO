@@ -19,6 +19,9 @@ swapped; another tenant's scan is a 404 whatever id is named.
 
 from __future__ import annotations
 
+from native_rbac import create_user, fixture_role, grant_permissions
+
+
 import csv
 import io
 import uuid
@@ -29,7 +32,7 @@ import pytest
 openpyxl = pytest.importorskip("openpyxl")
 
 from auth.jwt_handler import create_access_token  # noqa: E402
-from db.models import Organization, Permission, Role, RolePermission, User  # noqa: E402
+from db.models import Organization, User
 from db.models.assets import Asset  # noqa: E402
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition  # noqa: E402
 from db.models.scans import Scan, ScanPhase  # noqa: E402
@@ -61,36 +64,10 @@ CONFIG_DEFINITION_ID = config_definition_id(
 )
 
 
-def _grant(db_session, role: Role, resource: str, action: str) -> None:
-    permission = (
-        db_session.query(Permission)
-        .filter(Permission.resource == resource, Permission.action == action)
-        .first()
-    )
-    if permission is None:
-        permission = Permission(
-            resource=resource, action=action, description=f"{resource}:{action}"
-        )
-        db_session.add(permission)
-        db_session.flush()
-    link = (
-        db_session.query(RolePermission)
-        .filter(
-            RolePermission.role_id == role.id,
-            RolePermission.permission_id == permission.id,
-        )
-        .first()
-    )
-    if link is None:
-        db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
-        db_session.flush()
-
-
 def _headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -152,42 +129,41 @@ def world(db_session):
         is_active=True,
         settings={},
     )
-    reader_role = Role(
-        name=f"exp_reader_{suffix}", description="reports:read", is_system_role=False
-    )
-    blind_role = Role(
-        name=f"exp_blind_{suffix}", description="no reports", is_system_role=False
-    )
+    reader_role = fixture_role(db_session, f"exp_reader_{suffix}")
+    blind_role = fixture_role(db_session, f"exp_blind_{suffix}")
     db_session.add_all([org, other_org, reader_role, blind_role])
     db_session.flush()
 
-    _grant(db_session, reader_role, "reports", "read")
-    _grant(db_session, reader_role, "scans", "read_all")
+    grant_permissions(db_session, reader_role, "audit.report.read")
+    grant_permissions(db_session, reader_role, "audit.scan.read_all")
 
-    reader = User(
+    reader = create_user(
+        db_session,
         username=f"exp-reader-{suffix}",
         email=f"exp-reader-{suffix}@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=reader_role.id,
+        role=reader_role,
         is_active=True,
         is_verified=True,
     )
-    blind = User(
+    blind = create_user(
+        db_session,
         username=f"exp-blind-{suffix}",
         email=f"exp-blind-{suffix}@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=blind_role.id,
+        role=blind_role,
         is_active=True,
         is_verified=True,
     )
-    outsider = User(
+    outsider = create_user(
+        db_session,
         username=f"exp-out-{suffix}",
         email=f"exp-out-{suffix}@test.com",
         password_hash="hash",
         org_id=other_org.id,
-        role_id=reader_role.id,
+        role=reader_role,
         is_active=True,
         is_verified=True,
     )
@@ -724,7 +700,7 @@ class TestExportAuthorisation:
             path.format(sid=world["scan"].id), headers=_headers(world["blind"])
         )
         assert response.status_code == 403
-        assert "reports:read" in response.json()["detail"]
+        assert "audit.report.read" in response.json()["detail"]
 
     @pytest.mark.parametrize(
         "path", ["/reports/download/{sid}?fmt=XLSX", "/reports/export/{sid}?fmt=json"]

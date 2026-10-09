@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { CcureSelect } from "./CcureInput";
 import CcureButton from "./CcureButton";
 
 /**
@@ -31,6 +32,8 @@ export default function CcurePagination({
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = [25, 50, 100],
+  pageSizeLabel = "Rows per page",
+  showBoundaryLinks = false,
   label = "Pagination",
   itemNoun = "results",
   disabled = false,
@@ -47,7 +50,10 @@ export default function CcurePagination({
   const atEnd = current >= pageCount;
 
   return (
-    <nav className={`cc-pagination ${className}`.trim()} aria-label={label}>
+    <nav
+      className={`cc-pagination cc-ux4g ux4g-pagination-wrapper ${className}`.trim()}
+      aria-label={label}
+    >
       <div className="cc-pagination__summary">
         Showing {first}–{last} of {total ?? 0} {itemNoun}
       </div>
@@ -55,8 +61,9 @@ export default function CcurePagination({
       <div className="cc-pagination__controls">
         {onPageSizeChange ? (
           <div className="cc-pagination__size">
-            <label htmlFor={sizeId}>Rows per page</label>
-            <select
+            <label htmlFor={sizeId}>{pageSizeLabel}</label>
+            <CcureSelect
+              aria-label={pageSizeLabel}
               id={sizeId}
               value={pageSize}
               disabled={disabled}
@@ -67,9 +74,20 @@ export default function CcurePagination({
                   {n}
                 </option>
               ))}
-            </select>
+            </CcureSelect>
           </div>
         ) : null}
+
+        {showBoundaryLinks && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            disabled={disabled || atStart}
+            onClick={() => onPageChange(1)}
+          >
+            First
+          </CcureButton>
+        )}
 
         <CcureButton
           variant="secondary"
@@ -98,6 +116,16 @@ export default function CcurePagination({
         >
           Next
         </CcureButton>
+        {showBoundaryLinks && (
+          <CcureButton
+            variant="secondary"
+            size="sm"
+            disabled={disabled || atEnd}
+            onClick={() => onPageChange(pageCount)}
+          >
+            Last
+          </CcureButton>
+        )}
       </div>
     </nav>
   );

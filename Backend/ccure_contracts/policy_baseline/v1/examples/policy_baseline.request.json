@@ -1,0 +1,122 @@
+{
+  "contract": "ccure.audit.policy_baseline",
+  "schema_version": "1.0",
+  "message_id": "0f1c7d8e-3b52-4a8e-9a55-5d2f0f6f1a01",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "policy_pro",
+    "module_version": "0.1.0"
+  },
+  "produced_at": "2026-09-25T09:12:04Z",
+  "correlation_id": "corr-pp-approval-2f6c1b",
+  "data": {
+    "baseline_id": "pp-baseline-infosec-core",
+    "baseline_version": 4,
+    "supersedes_version": 3,
+    "policy": {
+      "policy_id": "pp-policy-0012",
+      "policy_version": "4.0",
+      "title": "Information Security Policy — Core Technical Controls"
+    },
+    "status": "approved",
+    "approved_at": "2026-09-25T09:12:00Z",
+    "approver_ref": "pp-user-7781",
+    "effective_from": "2026-10-01T00:00:00Z",
+    "frameworks": [
+      {
+        "code": "ISO27001_2022",
+        "version": "2022"
+      },
+      {
+        "code": "ORG_INTERNAL",
+        "version": "3"
+      }
+    ],
+    "controls": [
+      {
+        "requirement_id": "REQ-ACC-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.17"
+        },
+        "applicability": "applicable",
+        "requirement_text": "Passwords shall be at least 12 characters.",
+        "parameters": [
+          {
+            "name": "password_min_length",
+            "value": 12,
+            "unit": "characters"
+          }
+        ]
+      },
+      {
+        "requirement_id": "REQ-VUL-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.8"
+        },
+        "applicability": "applicable",
+        "requirement_text": "No critical or high vulnerabilities may remain open."
+      },
+      {
+        "requirement_id": "REQ-CFG-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.8.9"
+        },
+        "applicability": "applicable"
+      },
+      {
+        "requirement_id": "REQ-GOV-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.5.1"
+        },
+        "applicability": "applicable"
+      },
+      {
+        "requirement_id": "REQ-PHY-01",
+        "control": {
+          "framework": {
+            "code": "ISO27001_2022",
+            "version": "2022"
+          },
+          "control_id": "A.7.4"
+        },
+        "applicability": "not_applicable",
+        "applicability_justification": "Fully cloud-hosted; no premises in scope."
+      },
+      {
+        "requirement_id": "REQ-ORG-07",
+        "control": {
+          "framework": {
+            "code": "ORG_INTERNAL",
+            "version": "3"
+          },
+          "control_id": "PWD-01"
+        },
+        "applicability": "applicable",
+        "requirement_text": "Service accounts rotate credentials every 90 days."
+      }
+    ],
+    "scope": {
+      "cidrs": [
+        "192.0.2.0/24",
+        "198.51.100.0/24"
+      ],
+      "asset_tags": []
+    }
+  }
+}

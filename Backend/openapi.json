@@ -340,6 +340,45 @@
         "title": "Body_import_amt_inventory_assets_import_amt_post",
         "type": "object"
       },
+      "Body_service_token_auth_service_token_post": {
+        "properties": {
+          "client_assertion": {
+            "title": "Client Assertion",
+            "type": "string"
+          },
+          "client_assertion_type": {
+            "title": "Client Assertion Type",
+            "type": "string"
+          },
+          "grant_type": {
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "scope": {
+            "default": "",
+            "title": "Scope",
+            "type": "string"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          }
+        },
+        "required": [
+          "grant_type",
+          "client_assertion_type",
+          "client_assertion"
+        ],
+        "title": "Body_service_token_auth_service_token_post",
+        "type": "object"
+      },
       "Body_upload_control_evidence_compliance_controls__control_id__evidence_post": {
         "properties": {
           "file": {
@@ -1720,24 +1759,6 @@
         "title": "OrganizationUpdateSchema",
         "type": "object"
       },
-      "PermissionOut": {
-        "properties": {
-          "action": {
-            "title": "Action",
-            "type": "string"
-          },
-          "resource": {
-            "title": "Resource",
-            "type": "string"
-          }
-        },
-        "required": [
-          "resource",
-          "action"
-        ],
-        "title": "PermissionOut",
-        "type": "object"
-      },
       "PhasesRequest": {
         "description": "Convenience endpoint — run any combination of phases in one call.",
         "properties": {
@@ -1818,6 +1839,68 @@
         "title": "PhasesRequest",
         "type": "object"
       },
+      "PlatformProduct": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entry_path": {
+            "title": "Entry Path",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "tile_state": {
+            "title": "Tile State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "kind",
+          "description",
+          "entry_path",
+          "tile_state"
+        ],
+        "title": "PlatformProduct",
+        "type": "object"
+      },
+      "PlatformProductList": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformProduct"
+            },
+            "title": "Modules",
+            "type": "array"
+          },
+          "tile_states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tile States",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tile_states",
+          "modules"
+        ],
+        "title": "PlatformProductList",
+        "type": "object"
+      },
       "PolicyCreate": {
         "properties": {
           "framework_id": {
@@ -1867,6 +1950,7 @@
         "type": "object"
       },
       "PreferencesRequest": {
+        "additionalProperties": true,
         "description": "Update user preferences.",
         "properties": {
           "default_rows_per_page": {
@@ -1879,17 +1963,6 @@
               }
             ],
             "title": "Default Rows Per Page"
-          },
-          "default_scan_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Scan Type"
           },
           "email_alerts": {
             "anyOf": [
@@ -1912,6 +1985,20 @@
               }
             ],
             "title": "In App Alerts"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products"
           },
           "sidebar_collapsed": {
             "anyOf": [
@@ -2002,6 +2089,173 @@
           "target"
         ],
         "title": "RangeRequest",
+        "type": "object"
+      },
+      "RbacAssignBody": {
+        "additionalProperties": false,
+        "properties": {
+          "role_id": {
+            "title": "Role Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_id"
+        ],
+        "title": "RbacAssignBody",
+        "type": "object"
+      },
+      "RbacRoleCreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "org_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id"
+          },
+          "permission_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Permission Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "RbacRoleCreateBody",
+        "type": "object"
+      },
+      "RbacRolePermissionsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "permission_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Permission Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "permission_keys"
+        ],
+        "title": "RbacRolePermissionsBody",
+        "type": "object"
+      },
+      "RbacRoleReplaceBody": {
+        "additionalProperties": false,
+        "properties": {
+          "to_role_id": {
+            "title": "To Role Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_role_id"
+        ],
+        "title": "RbacRoleReplaceBody",
+        "type": "object"
+      },
+      "RbacRoleTransitionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "replacement_role_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Role Id"
+          },
+          "target": {
+            "enum": [
+              "retiring",
+              "retired",
+              "active"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "RbacRoleTransitionBody",
+        "type": "object"
+      },
+      "RbacRoleUpdateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "title": "RbacRoleUpdateBody",
         "type": "object"
       },
       "RefreshRequest": {
@@ -2337,27 +2591,6 @@
           "password"
         ],
         "title": "ResetPasswordRequest",
-        "type": "object"
-      },
-      "RoleOut": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "permissions": {
-            "items": {
-              "$ref": "#/components/schemas/PermissionOut"
-            },
-            "title": "Permissions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "name",
-          "permissions"
-        ],
-        "title": "RoleOut",
         "type": "object"
       },
       "RollbackRequest": {
@@ -3444,6 +3677,39 @@
         "title": "ScheduleUpdate",
         "type": "object"
       },
+      "ServiceTokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "token_type": {
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "tenant"
+        ],
+        "title": "ServiceTokenResponse",
+        "type": "object"
+      },
       "SessionResponse": {
         "description": "Active session information.",
         "properties": {
@@ -3753,9 +4019,9 @@
             "title": "Password",
             "type": "string"
           },
-          "role_id": {
-            "title": "Role Id",
-            "type": "integer"
+          "rbac_role_id": {
+            "title": "Rbac Role Id",
+            "type": "string"
           },
           "username": {
             "title": "Username",
@@ -3765,7 +4031,7 @@
         "required": [
           "username",
           "email",
-          "role_id",
+          "rbac_role_id",
           "password"
         ],
         "title": "UserCreateSchema",
@@ -3787,6 +4053,17 @@
       },
       "UserOut": {
         "properties": {
+          "authorization": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -3854,16 +4131,6 @@
               }
             ]
           },
-          "role": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RoleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "username": {
             "title": "Username",
             "type": "string"
@@ -3879,17 +4146,13 @@
         "type": "object"
       },
       "UserPreferencesResponse": {
+        "additionalProperties": true,
         "description": "User preferences.",
         "properties": {
           "default_rows_per_page": {
             "default": 10,
             "title": "Default Rows Per Page",
             "type": "integer"
-          },
-          "default_scan_type": {
-            "default": "asset",
-            "title": "Default Scan Type",
-            "type": "string"
           },
           "email_alerts": {
             "default": true,
@@ -3900,6 +4163,14 @@
             "default": true,
             "title": "In App Alerts",
             "type": "boolean"
+          },
+          "products": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "default": {},
+            "title": "Products",
+            "type": "object"
           },
           "sidebar_collapsed": {
             "default": false,
@@ -4019,13 +4290,13 @@
       "UserRoleUpdateSchema": {
         "additionalProperties": false,
         "properties": {
-          "role_id": {
-            "title": "Role Id",
-            "type": "integer"
+          "rbac_role_id": {
+            "title": "Rbac Role Id",
+            "type": "string"
           }
         },
         "required": [
-          "role_id"
+          "rbac_role_id"
         ],
         "title": "UserRoleUpdateSchema",
         "type": "object"
@@ -4223,7 +4494,7 @@
               }
             ],
             "default": "recommended",
-            "description": "recommended | conservative | deep",
+            "description": "Only 'recommended' is implemented: checks are selected by the host's open ports. Any other value is refused.",
             "examples": [
               "recommended"
             ],
@@ -7344,164 +7615,10 @@
         ]
       }
     },
-    "/admin/roles": {
-      "get": {
-        "operationId": "list_roles_admin_roles_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Roles",
-        "tags": [
-          "RBAC Administration"
-        ]
-      }
-    },
-    "/admin/roles/": {
-      "get": {
-        "operationId": "list_roles_admin_roles__get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Roles",
-        "tags": [
-          "RBAC Administration"
-        ]
-      }
-    },
-    "/admin/roles/{role_id}/permissions": {
-      "get": {
-        "operationId": "list_role_permissions_admin_roles__role_id__permissions_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "role_id",
-            "required": true,
-            "schema": {
-              "title": "Role Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Role Permissions",
-        "tags": [
-          "RBAC Administration"
-        ]
-      }
-    },
-    "/admin/roles/{role_id}/permissions/": {
-      "get": {
-        "operationId": "list_role_permissions_admin_roles__role_id__permissions__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "role_id",
-            "required": true,
-            "schema": {
-              "title": "Role Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Role Permissions",
-        "tags": [
-          "RBAC Administration"
-        ]
-      }
-    },
     "/admin/users": {
       "get": {
         "operationId": "list_users_admin_users_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "role_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Role Id"
-            }
-          },
           {
             "in": "query",
             "name": "organization_id",
@@ -7658,22 +7775,6 @@
       "get": {
         "operationId": "list_users_admin_users__get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "role_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Role Id"
-            }
-          },
           {
             "in": "query",
             "name": "organization_id",
@@ -10904,6 +11005,26 @@
         ]
       }
     },
+    "/auth/jwks.json": {
+      "get": {
+        "description": "The platform's token-verification keys, as a JSON Web Key Set.\n\nPublic key material only. Every key a token may currently be signed or\nverified with is listed, identified by its kid. Answers 503 when no signing\nkeyset is configured.",
+        "operationId": "jwks_auth_jwks_json_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Jwks",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Authenticate with email + password.\nReturns access + refresh tokens on success.\n\nOrganization Status Validation:\n- Users from deactivated organizations cannot log in.\n- This prevents new sessions from being created for inactive orgs.\n- Existing sessions are checked on every request in middleware.",
@@ -11087,6 +11208,24 @@
       "get": {
         "description": "Return the profile of the currently authenticated user.\nRequires: Authorization: Bearer <access_token>",
         "operationId": "me_auth_me_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11097,6 +11236,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -11391,6 +11540,48 @@
         "summary": "Reset Password Endpoint",
         "tags": [
           "Authentication"
+        ]
+      }
+    },
+    "/auth/service-token": {
+      "post": {
+        "description": "Exchange a service's signed client assertion for a 10-minute service token.\n\nForm-encoded, as RFC 6749 §4.4 and RFC 7523 §2.2 specify:\n`grant_type=client_credentials`,\n`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`,\n`client_assertion=<JWT signed ES256 by the service's own key>`,\n`scope=<space-separated scopes>` and, for a service granted more than one\ntenant, `tenant=<organisation id>`.\n\nAnswers 401 `invalid_client` for any authentication failure, 400\n`invalid_scope` or `invalid_request`, 403 for a tenant the service is not\ngranted, and 503 when the service registry or the replay store is\nunavailable.",
+        "operationId": "service_token_auth_service_token_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_service_token_auth_service_token_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Service Token",
+        "tags": [
+          "Service identity"
         ]
       }
     },
@@ -17489,6 +17680,715 @@
         ]
       }
     },
+    "/platform/modules": {
+      "get": {
+        "description": "List the CCure products for the signed-in user's home page.\n\nReturns every product — CCure Policy Pro, CCure Audit, CCure Rank and\nCCure IR — in display order, each with its name, a description of what it is\nresponsible for, the frontend address its card opens, and its availability\n(`tile_state`). `tile_states` lists every availability state. The list is the\nsame for every signed-in user.",
+        "operationId": "list_platform_modules_platform_modules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformProductList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Platform Modules",
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/platform/rbac/assignable-roles": {
+      "get": {
+        "operationId": "assignable_roles_platform_rbac_assignable_roles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assignable Roles",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/assignments/{assignment_id}": {
+      "delete": {
+        "operationId": "revoke_assignment_platform_rbac_assignments__assignment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Assignment",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/permissions": {
+      "get": {
+        "operationId": "list_permissions_platform_rbac_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Permissions",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/roles": {
+      "get": {
+        "operationId": "list_roles_platform_rbac_roles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Roles",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      },
+      "post": {
+        "operationId": "create_role_platform_rbac_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacRoleCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/roles/{role_id}": {
+      "get": {
+        "operationId": "get_role_platform_rbac_roles__role_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      },
+      "patch": {
+        "operationId": "update_role_platform_rbac_roles__role_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacRoleUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/roles/{role_id}/permissions": {
+      "put": {
+        "operationId": "set_permissions_platform_rbac_roles__role_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacRolePermissionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Permissions",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/roles/{role_id}/replace": {
+      "post": {
+        "operationId": "replace_role_platform_rbac_roles__role_id__replace_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacRoleReplaceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replace Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/roles/{role_id}/transition": {
+      "post": {
+        "operationId": "transition_role_platform_rbac_roles__role_id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacRoleTransitionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Transition Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
+    "/platform/rbac/users/{user_id}/assignments": {
+      "get": {
+        "operationId": "get_user_assignments_platform_rbac_users__user_id__assignments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get User Assignments",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      },
+      "post": {
+        "operationId": "assign_role_platform_rbac_users__user_id__assignments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacAssignBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assign Role",
+        "tags": [
+          "Platform RBAC Administration"
+        ]
+      }
+    },
     "/remediation/assign": {
       "post": {
         "description": "Assign, reassign or unassign remediation ownership, in bulk.\n\nThe owner must be a user **in the same organisation**. Without that check\na caller could name any user id in the installation and hand another\ntenant's employee a finding they can neither see nor act on.\n\nFindings the caller cannot see are silently absent from the result rather\nthan erroring: a bulk call across a stale selection should not fail\nwholesale, and the response reports how many were actually changed.",
@@ -20623,6 +21523,24 @@
       "post": {
         "description": "Vulnerability Audit: Phase 3 (Trigger and Return Immediately).",
         "operationId": "scan_vulnerability_audit_scan_vulnerability_audit_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -21738,6 +22656,22 @@
             "schema": {
               "title": "Scan Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
             }
           },
           {

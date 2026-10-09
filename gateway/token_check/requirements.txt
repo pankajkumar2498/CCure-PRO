@@ -1,0 +1,10 @@
+# gateway-auth runtime. Versions pinned to the core service's image, so the
+# verification rules run on the same python-jose and cryptography there and here.
+python-jose==3.3.0
+cryptography==46.0.7
+ecdsa==0.19.2
+rsa==4.9.1
+pyasn1==0.5.1
+uvicorn==0.29.0
+h11==0.16.0
+click==8.5.0

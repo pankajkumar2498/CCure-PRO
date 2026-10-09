@@ -34,23 +34,11 @@ try:
 except (ImportError, PermissionError):
     SCAPY_AVAILABLE = False
 
-# -- Optional PDF --------------------------------------------------------------
-try:
-    from reporting.pdf_generator import ScanReportGenerator
-
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
-
-# -- CVE Database (SQLite with automatic fallback) ----------------------------
-try:
-    from core.cve_database import get_cve_database
-
-    CVE_DB = get_cve_database()
-    CVE_DATABASE_AVAILABLE = CVE_DB.db_available
-except ImportError:
-    CVE_DB = None
-    CVE_DATABASE_AVAILABLE = False
+# PDF_AVAILABLE now lives in reporting/availability.py and CVE_DB in
+# core/utils.py (Phase 3 of the modular-platform programme). Both ran at import
+# time here, so every importer of a lookup table also loaded the PDF generator
+# and opened the CVE database — the "safe to import anywhere" promise above was
+# not true, and constants <-> cve_database was an import cycle.
 
 # =============================================================================
 # CVE / Vulnerability Intelligence  (Fallback hardcoded hints)

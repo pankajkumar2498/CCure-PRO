@@ -5,13 +5,16 @@ API tests for the phase-selective and traditional scan endpoints.
 We mock the internal scanner engines so tests run instantly and don't hit the network.
 """
 
+from native_rbac import system_role, create_user, fixture_role
+
+
 from unittest.mock import AsyncMock, patch
 
 from auth.jwt_handler import hash_password
 from db.base import gen_asset_id, utcnow
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition
-from db.models.rbac import Organization, Role
+from db.models.rbac import Organization
 from db.models.scans import Scan
 from db.models.users import AuditLog, User
 from fastapi.testclient import TestClient
@@ -75,16 +78,17 @@ def test_create_scan_writes_audit_log(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
-    user = User(
+    user = create_user(
+        db_session,
         id=user_id,
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -133,26 +137,28 @@ def test_global_org_scan_numbering_across_users(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    user1 = User(
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    user1 = create_user(
+        db_session,
         id=f"user_test_{uuid.uuid4().hex[:8]}",
         username=f"user1_{uuid.uuid4().hex[:8]}",
         email=f"user1_{uuid.uuid4().hex[:8]}@test.com",
         full_name="User One",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user2 = User(
+    user2 = create_user(
+        db_session,
         id=f"user_test_{uuid.uuid4().hex[:8]}",
         username=f"user2_{uuid.uuid4().hex[:8]}",
         email=f"user2_{uuid.uuid4().hex[:8]}@test.com",
         full_name="User Two",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -205,16 +211,17 @@ def test_scan_completion_logs_audit_event(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
-    user = User(
+    user = create_user(
+        db_session,
         id=user_id,
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -275,16 +282,17 @@ def test_scan_failure_logs_audit_event(db_session: Session):
     db_session.add(org)
     db_session.commit()
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
     user_id = f"user_test_{uuid.uuid4().hex[:8]}"
-    user = User(
+    user = create_user(
+        db_session,
         id=user_id,
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -873,15 +881,16 @@ def test_credentialed_scan_does_not_overwrite_existing_dns_fqdn(db_session: Sess
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    user = User(
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    user = create_user(
+        db_session,
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -1022,15 +1031,16 @@ def test_credentialed_sync_fills_mac_and_vendor_fallback(db_session: Session):
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    user = User(
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    user = create_user(
+        db_session,
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -1240,15 +1250,16 @@ def test_update_finding_status_refreshes_asset_counts(db_session: Session):
     )
     db_session.add(org)
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    user = User(
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    user = create_user(
+        db_session,
         id=f"usr_{org_id}_admin",
         username=f"testadmin{uuid.uuid4().hex[:8]}",
         email=f"admin{uuid.uuid4().hex[:8]}@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
@@ -1462,13 +1473,14 @@ def test_scan_history_includes_started_by_metadata(
 def test_scan_history_owner_filter_returns_only_my_scans(
     client: TestClient, auth_headers: dict, test_user: User, db_session: Session
 ):
-    other_user = User(
+    other_user = create_user(
+        db_session,
         username="otheruser",
         email="other@test.com",
         full_name="Other User",
         password_hash=hash_password("securepassword"),
         org_id=test_user.org_id,
-        role_id=test_user.role_id,
+        role=system_role(db_session, "platform.org_admin"),
         is_active=True,
         is_verified=True,
     )
@@ -1510,20 +1522,21 @@ def test_scan_progress_requires_scan_read_permission(
     client: TestClient, db_session: Session, test_org: Organization
 ):
     """Users without scans:read should be denied access to scan progress."""
-    role = Role(name="limited", description="Limited role", is_system_role=False)
+    role = fixture_role(db_session, "limited")
     db_session.add(role)
     db_session.commit()
     db_session.refresh(role)
 
     from db.base import utcnow
 
-    user = User(
+    user = create_user(
+        db_session,
         username="limiteduser",
         email="limited@example.com",
         full_name="Limited User",
         password_hash=hash_password("securepassword"),
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         # This test is about RBAC refusing scans:read, not about the account
@@ -1559,7 +1572,7 @@ def test_scan_progress_requires_scan_read_permission(
     )
 
     assert progress_response.status_code == 403
-    assert "scans:read" in progress_response.json()["detail"]
+    assert "audit.scan.read" in progress_response.json()["detail"]
 
 
 def test_sync_vulnerability_audit_populates_tls_details(db_session: Session):

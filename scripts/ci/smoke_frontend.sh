@@ -3,16 +3,18 @@
 #
 #   scripts/ci/smoke_frontend.sh <image>
 #
-# nginx.conf proxies /api/ to http://api:8000 and nginx resolves that name at
-# startup, so the image cannot start without a host called `api`. A stand-in
-# answers on that alias; it lets the test prove the proxy reaches it without
-# involving the real backend.
+# nginx.conf proxies /api/ to the API gateway at 172.31.254.10:8080, keeping
+# the /api prefix (Phase 10.7; it used to be http://api:8000 with the prefix
+# stripped). A stand-in upstream owns that address on its own loopback, and the
+# frontend shares its network namespace, so the address is local to both and no
+# network on this host has to use the live gateway subnet. The stand-in serves
+# its marker only at /api/, so a proxy that stripped the prefix fails the test.
 #
 # Checks, per docs/ci/CONTAINER_IMAGES.md:
 #   /                  200, the SPA shell, CSP and nosniff headers present
 #   /some/deep/route   200, served the SPA shell (client-side routing fallback)
 #   /assets/<bundle>   200, served with the immutable cache header
-#   /api/...           reaches the upstream named `api` on port 8000
+#   /api/...           reaches the gateway address, /api prefix preserved
 #   logs               no [emerg] or [crit] from nginx
 set -euo pipefail
 # Every "does the output contain X" test reads a here-string, never
@@ -43,11 +45,16 @@ trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "  ok    $*"; }
 
+GATEWAY_ADDR="172.31.254.10"   # Frontend/nginx.conf's /api/ upstream
 docker network create "$NET" >/dev/null
-docker run -d --name "$UPSTREAM" --network "$NET" --network-alias api "$STUB_IMAGE" \
-  sh -c "mkdir -p /www && echo $MARKER > /www/index.html && exec httpd -f -p 8000 -h /www" >/dev/null
-docker run -d --name "$WEB" --network "$NET" -p 127.0.0.1::80 "$IMAGE" >/dev/null
-PORT="$(docker port "$WEB" 80/tcp | head -1 | sed 's/.*://')"
+# The stand-in holds the gateway's address and publishes the frontend's port:
+# the frontend joins its network namespace, so ports are published here.
+docker run -d --name "$UPSTREAM" --network "$NET" --cap-add NET_ADMIN -p 127.0.0.1::80 "$STUB_IMAGE" \
+  sh -c "ip addr add $GATEWAY_ADDR/32 dev lo && mkdir -p /www/api \
+         && echo wrong-prefix-stripped > /www/index.html && echo $MARKER > /www/api/index.html \
+         && exec httpd -f -p 8080 -h /www" >/dev/null
+docker run -d --name "$WEB" --network "container:$UPSTREAM" "$IMAGE" >/dev/null
+PORT="$(docker port "$UPSTREAM" 80/tcp | head -1 | sed 's/.*://')"
 BASE="http://127.0.0.1:$PORT"
 
 code=""
@@ -77,8 +84,8 @@ grep -qi '^cache-control:.*immutable' "$TMP/asset.h" || fail "$asset is not serv
 pass "bundle $asset served 200 with an immutable cache header"
 
 body="$(curl -s "$BASE/api/")"
-grep -q "$MARKER" <<<"$body" || fail "/api/ did not reach the upstream named api:8000"
-pass "/api/ is proxied to the upstream named api on port 8000"
+grep -q "$MARKER" <<<"$body" || fail "/api/ did not reach $GATEWAY_ADDR:8080 with its /api prefix (got: ${body:0:60})"
+pass "/api/ is proxied to the gateway at $GATEWAY_ADDR:8080 with the /api prefix kept"
 
 grep -qE '\[(emerg|crit)\]' <<<"$(docker logs "$WEB" 2>&1)" && fail "nginx logged an [emerg] or [crit]"
 pass "no [emerg] or [crit] in nginx's log"

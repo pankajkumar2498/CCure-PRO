@@ -1,5 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CcureBadge from "../components/CcureBadge";
+import CcureButton from "../components/CcureButton";
+import CcureIconButton from "../components/CcureIconButton";
+import CcureDrawer from "../components/CcureDrawer";
+import useMediaQuery from "../hooks/useMediaQuery";
+import CcureIcon from "../icons/CcureIcon";
 
 /**
  * CcureAppShell
@@ -10,7 +15,7 @@ import CcureBadge from "../components/CcureBadge";
  * It is deliberately presentational. Navigation items, the active route, the
  * user block and every action are passed in, so this component has no opinion
  * about routing, permissions or authentication — which is what lets AppLayout
- * keep SIDEBAR_SECTIONS, canSeeNavItem and superadminOnly exactly as they were
+ * keep SIDEBAR_SECTIONS and canSeeNavItem exactly as they were
  * and hand this component only what survived the filter.
  *
  * ── Landmarks ───────────────────────────────────────────────────────────────
@@ -41,7 +46,7 @@ import CcureBadge from "../components/CcureBadge";
  *     is worse than none, and this product's pages carry their own h1.
  */
 export default function CcureAppShell({
-  brand = { name: "CCure Audit", sub: "PRO", mark: "◈" },
+  brand = { name: "CCure Audit", sub: "PRO" },
   identity,
   sections = [],
   currentPath = "",
@@ -63,150 +68,178 @@ export default function CcureAppShell({
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const mainRef = useRef(null);
+  const mobile = useMediaQuery("(max-width: 768px)");
+  useEffect(() => {
+    if (!mobile) setNavOpen(false);
+  }, [mobile]);
   const hasFooter = Boolean(identity || footerNote || footerLinks.length);
+
+  const sidebarContent = (
+    <>
+      <div className="cc-sidebar__brand">
+        <span className="cc-sidebar__brand-mark" aria-hidden="true">
+          {/* One mark for the whole application, so every product's sidebar
+              opens on the same brand. */}
+          {brand.mark ?? <CcureIcon name="shield" />}
+        </span>
+        <span className="cc-sidebar__brand-text">
+          <span className="cc-sidebar__brand-name">{brand.name}</span>
+          {brand.sub ? (
+            <span className="cc-sidebar__brand-sub">{brand.sub}</span>
+          ) : null}
+        </span>
+        {onToggleCollapsed ? (
+          <CcureIconButton
+            size="sm"
+            className="cc-sidebar__collapse"
+            onClick={onToggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls="cc-sidebar"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
+          </CcureIconButton>
+        ) : null}
+      </div>
+
+      {/* Named, because the footer also contains a nav. */}
+      <nav
+        className="cc-sidebar__nav"
+        aria-label="Sections"
+        ref={navRef}
+        onScroll={onNavScroll}
+      >
+        {sections.map((section) => (
+          <div className="cc-sidebar__section" key={section.label}>
+            {/* The heading is associated with its list via aria-labelledby
+                  rather than left as a floating div, so the group is announced
+                  as a named set instead of as loose links. */}
+            <div
+              className="cc-sidebar__section-label"
+              id={`cc-navsec-${slug(section.label)}`}
+            >
+              {section.label}
+            </div>
+            <ul
+              className="cc-sidebar__list"
+              aria-labelledby={`cc-navsec-${slug(section.label)}`}
+            >
+              {section.items.map((item) => {
+                const active = item.active ?? item.route === currentPath;
+                const disabled = Boolean(item.disabled);
+                return (
+                  <li key={item.id ?? item.route}>
+                    <CcureButton
+                      as="a"
+                      variant="ghost"
+                      size="sm"
+                      disabled={disabled}
+                      className={`cc-sidebar__link${disabled ? " cc-sidebar__link--disabled" : ""}`}
+                      href={disabled ? undefined : item.route}
+                      /* "page" rather than "true": it names *what* is
+                           current, which is what a reader announces. */
+                      aria-current={active ? "page" : undefined}
+                      aria-disabled={disabled || undefined}
+                      title={collapsed ? item.label : undefined}
+                      onClick={(e) => {
+                        if (disabled) {
+                          e.preventDefault();
+                          return;
+                        }
+                        if (
+                          onNavigate &&
+                          !e.metaKey &&
+                          !e.ctrlKey &&
+                          !e.shiftKey &&
+                          !e.altKey &&
+                          e.button === 0
+                        ) {
+                          e.preventDefault();
+                          onNavigate(item.route, item);
+                          setNavOpen(false);
+                        }
+                      }}
+                    >
+                      <span className="cc-sidebar__icon" aria-hidden="true">
+                        {item.icon ?? "•"}
+                      </span>
+                      <span className="cc-sidebar__label">{item.label}</span>
+                      {disabled ? (
+                        <span className="cc-sidebar__tag">
+                          <CcureBadge variant="neutral">Soon</CcureBadge>
+                        </span>
+                      ) : null}
+                      {!disabled && item.badge > 0 ? (
+                        <span className="cc-sidebar__tag">
+                          <CcureBadge variant={item.badgeVariant || "neutral"}>
+                            {item.badge}
+                            <span className="cc-sr-only">
+                              {" "}
+                              {item.badgeLabel || "items"}
+                            </span>
+                          </CcureBadge>
+                        </span>
+                      ) : null}
+                    </CcureButton>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {sidebarFooter ? (
+        <div className="cc-sidebar__footer">{sidebarFooter}</div>
+      ) : null}
+    </>
+  );
 
   return (
     <div
       className={`cc-shell${collapsed ? " cc-shell--collapsed" : ""}${className ? ` ${className}` : ""}`}
     >
-      <a className="cc-skip-link" href="#cc-main">
+      <a
+        className="cc-skip-link"
+        href="#cc-main"
+        onClick={() => mainRef.current?.focus()}
+      >
         Skip to main content
       </a>
-
-      {/* Off-canvas backdrop (narrow viewports only, see shell.css). */}
-      <div
-        className="cc-sidebar__backdrop"
-        data-open={navOpen}
-        onClick={() => setNavOpen(false)}
-        aria-hidden="true"
-      />
-
-      <aside
-        id="cc-sidebar"
-        className="cc-sidebar"
-        data-open={navOpen}
-        data-collapsed={collapsed}
-        aria-label="Primary"
-      >
-        <div className="cc-sidebar__brand">
-          <span className="cc-sidebar__brand-mark" aria-hidden="true">
-            {brand.mark ?? "◈"}
-          </span>
-          <span className="cc-sidebar__brand-text">
-            <span className="cc-sidebar__brand-name">{brand.name}</span>
-            {brand.sub ? (
-              <span className="cc-sidebar__brand-sub">{brand.sub}</span>
-            ) : null}
-          </span>
-          {onToggleCollapsed ? (
-            <button
-              type="button"
-              className="cc-btn cc-btn--ghost cc-btn--sm cc-sidebar__collapse"
-              onClick={onToggleCollapsed}
-              aria-expanded={!collapsed}
-              aria-controls="cc-sidebar"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
-            </button>
-          ) : null}
-        </div>
-
-        {/* Named, because the footer also contains a nav. */}
-        <nav
-          className="cc-sidebar__nav"
-          aria-label="Sections"
-          ref={navRef}
-          onScroll={onNavScroll}
+      {mobile ? (
+        <CcureDrawer
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          placement="left"
+          id="cc-sidebar"
+          title="Navigation"
+          closeLabel="Close navigation"
+          className="cc-sidebar-drawer"
         >
-          {sections.map((section) => (
-            <div className="cc-sidebar__section" key={section.label}>
-              {/* The heading is associated with its list via aria-labelledby
-                  rather than left as a floating div, so the group is announced
-                  as a named set instead of as loose links. */}
-              <div
-                className="cc-sidebar__section-label"
-                id={`cc-navsec-${slug(section.label)}`}
-              >
-                {section.label}
-              </div>
-              <ul
-                className="cc-sidebar__list"
-                aria-labelledby={`cc-navsec-${slug(section.label)}`}
-              >
-                {section.items.map((item) => {
-                  const active = item.active ?? item.route === currentPath;
-                  const disabled = Boolean(item.disabled);
-                  return (
-                    <li key={item.id ?? item.route}>
-                      <a
-                        className={`cc-sidebar__link${disabled ? " cc-sidebar__link--disabled" : ""}`}
-                        href={item.route}
-                        /* "page" rather than "true": it names *what* is
-                           current, which is what a reader announces. */
-                        aria-current={active ? "page" : undefined}
-                        aria-disabled={disabled || undefined}
-                        title={collapsed ? item.label : undefined}
-                        onClick={(e) => {
-                          if (disabled) {
-                            e.preventDefault();
-                            return;
-                          }
-                          if (onNavigate) {
-                            e.preventDefault();
-                            onNavigate(item.route, item);
-                            setNavOpen(false);
-                          }
-                        }}
-                      >
-                        <span className="cc-sidebar__icon" aria-hidden="true">
-                          {item.icon ?? "•"}
-                        </span>
-                        <span className="cc-sidebar__label">{item.label}</span>
-                        {disabled ? (
-                          <span className="cc-sidebar__tag">
-                            <CcureBadge variant="neutral">Soon</CcureBadge>
-                          </span>
-                        ) : null}
-                        {!disabled && item.badge > 0 ? (
-                          <span className="cc-sidebar__tag">
-                            <CcureBadge
-                              variant={item.badgeVariant || "neutral"}
-                            >
-                              {item.badge}
-                              <span className="cc-sr-only">
-                                {" "}
-                                {item.badgeLabel || "items"}
-                              </span>
-                            </CcureBadge>
-                          </span>
-                        ) : null}
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
-
-        {sidebarFooter ? (
-          <div className="cc-sidebar__footer">{sidebarFooter}</div>
-        ) : null}
-      </aside>
-
-      <header className="cc-header">
+          {sidebarContent}
+        </CcureDrawer>
+      ) : (
+        <aside
+          id="cc-sidebar"
+          className="cc-sidebar"
+          data-collapsed={collapsed}
+          aria-label="Primary"
+        >
+          {sidebarContent}
+        </aside>
+      )}
+      <header className="cc-header cc-ux4g ux4g-navbar">
         <div className="cc-header__left">
-          <button
-            type="button"
-            className="cc-btn cc-btn--ghost cc-btn--sm cc-header__nav-toggle"
+          <CcureIconButton
+            size="sm"
+            className="cc-header__nav-toggle"
             onClick={() => setNavOpen((v) => !v)}
             aria-expanded={navOpen}
-            aria-controls="cc-sidebar"
+            aria-controls={!mobile || navOpen ? "cc-sidebar" : undefined}
             aria-label={navOpen ? "Close navigation" : "Open navigation"}
           >
-            <span aria-hidden="true">☰</span>
-          </button>
+            <CcureIcon name="menu" size="1.25em" />
+          </CcureIconButton>
           {/* h1 on the shell only when the host asks for one: this product's
               pages carry their own h1 (batches 10–11), so AppLayout does not. */}
           {title ? <h1 className="cc-header__title">{title}</h1> : null}

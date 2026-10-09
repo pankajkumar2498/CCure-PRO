@@ -54,10 +54,33 @@ if config.config_file_name is not None:
 # Ensure env var database url overrides the ini setting.
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
-# Set target metadata for autogenerate
-target_metadata = Base.metadata
+# Set target metadata for autogenerate.
+#
+# Phase 11.3: each core module keeps its tables on a MetaData of its own, in its
+# own schema, declared in its manifest.toml. Autogenerate compares all of them,
+# and sees exactly `public` plus the modules' schemas — never `audit_chain` or
+# `audit_retention`, which the DBA bootstraps own and no migration touches.
+from ccure_platform.modules import registry as module_registry
+
+target_metadata = [
+    Base.metadata,
+    *(
+        md
+        for m in module_registry.modules()
+        for md in module_registry.module_metadatas(m)
+    ),
+]
+_SCHEMAS = {m.db_schema for m in module_registry.modules()} | {"public"}
+
+
+def include_name(name, type_, parent_names):
+    """Autogenerate reflects only public and the core modules' schemas."""
+    if type_ == "schema":
+        return name is None or name in _SCHEMAS
+    return True
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -91,6 +114,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         include_object=include_object,
+        include_schemas=True,
+        include_name=include_name,
         compare_type=True,
         compare_server_default=True,
     )
@@ -117,6 +142,8 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             include_object=include_object,
+            include_schemas=True,
+            include_name=include_name,
             compare_type=True,
             compare_server_default=True,
         )

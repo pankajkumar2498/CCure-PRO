@@ -68,10 +68,8 @@ check(
 
 # -- Layer 2: engines --
 check(
-    "engines.discovery imports",
-    lambda: __import__(
-        "engines.discovery.discovery_engine", fromlist=["DiscoveryEngine"]
-    ),
+    "core.discovery imports",
+    lambda: __import__("core.discovery.engine", fromlist=["DiscoveryEngine"]),
 )
 
 check(

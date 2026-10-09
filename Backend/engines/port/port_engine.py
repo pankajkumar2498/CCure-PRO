@@ -45,7 +45,7 @@ from core.constants import (
 from core.models import FINGERPRINT_SOURCES, PortResult, ScanIntensity
 from core.nmap.wrapper import NMAP_AVAILABLE, NmapScanner, NmapScanResult
 from core.utils import extract_version
-from scans.finding_normalizer import version_precision
+from core.checks.finding_normalizer import version_precision
 
 log = logging.getLogger("ccure.port")
 

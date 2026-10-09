@@ -13,54 +13,64 @@
  *
  * Neither is solved by relaxing the CSP. Both are solved here, at build time.
  *
- * ── Output modes ────────────────────────────────────────────────────────────
- *
- *   tokens (default) — the design foundation only: every `:root` block, the
- *                      dark-theme block, and the @font-face rules for fonts on
- *                      the allowlist. This is what production ships.
- *
- *   full             — the whole stylesheet with the reset rescoped and fonts
- *                      externalised. Kept so the decision is reversible: if
- *                      CCure ever adopts `.ux4g-*` classes directly, one env
- *                      var switches it back rather than a rewrite.
- *
- * Set with `UX4G_CSS_MODE`. The choice and its evidence are recorded in
- * docs/ux4g/02-dependency-strategy.md.
+ * B.2 delivers tokens and the existing font only. The baseline owns that
+ * policy; an environment override cannot enable full component/reset CSS.
+ * See docs/ux4g/B2_ASSET_PIPELINE.md for delivery and validation.
  *
  * ── Why the generated files are gitignored ──────────────────────────────────
  * They are a pure function of the pinned package: same version in, byte-
- * identical bytes out (asserted by `npm run ux4g:verify`). Committing ~3 MB of
+ * identical bytes out (asserted by `npm run ux4g:verify`). Committing
  * derived bytes would put them under review on every bump and let the checked-in
- * copy drift from what the lockfile actually installs. Docker's `npm install`
+ * copy drift from what the lockfile actually installs. Docker's `npm ci`
  * supplies the input and `prebuild` regenerates them in-image, so the build
  * needs no network beyond the registry fetch it already performs.
  */
 
-import { readFile, writeFile, mkdir, rm, readdir } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  rm,
+  readdir,
+  rename,
+  mkdtemp,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import wawoff2 from "wawoff2";
+import {
+  APP_DARK_SELECTOR,
+  UPSTREAM_DARK_SELECTOR,
+  loadBaseline,
+  sha256,
+  verifyVendorInput,
+} from "./ux4g-baseline.mjs";
+import {
+  ASSET_LAYOUT,
+  assetPaths,
+  approvedAssetMode,
+  pipelineIdentity,
+  tokenCssProblems,
+} from "./ux4g-pipeline.mjs";
+import { componentCss } from "./ux4g-component-assets.mjs";
+import { checkFoundation } from "./check-ux4g-foundation.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 
-const PKG_DIR = path.join(ROOT, "node_modules", "ux4g-web-components");
+const BASELINE = loadBaseline(ROOT);
+const PKG_DIR = path.join(ROOT, "node_modules", BASELINE.npm.package);
 const SOURCE_CSS = path.join(PKG_DIR, "styles", "ux4g.css");
 
 /**
- * The version every guarantee in docs/ux4g/ was measured against. A mismatch is
- * fatal, not a warning: the class-collision analysis, the reset shape, the
- * token closure and the contrast figures are all properties of this exact
- * build. Bumping it means re-running Phase 1's checks, deliberately.
+ * The reviewed identity has one authority. Package, lock, installed tree and
+ * generated provenance are checked against Frontend/ux4g-baseline.json.
  */
-const PINNED_VERSION = "2.1.0";
+const PINNED_VERSION = BASELINE.npm.version;
 
-const MODE = (process.env.UX4G_CSS_MODE ?? "tokens").toLowerCase();
-if (!["tokens", "full"].includes(MODE)) {
-  throw new Error(`UX4G_CSS_MODE must be "tokens" or "full", got "${MODE}"`);
-}
+const MODE = approvedAssetMode(BASELINE);
 
 /**
  * Fonts to keep, by the `font-family` its @font-face declares.
@@ -70,9 +80,9 @@ if (!["tokens", "full"].includes(MODE)) {
  *   Noto Sans          — consumed by --ux4g-font-family-base, which
  *                        --ccure-font aliases, which every cc-* component
  *                        uses. The one face the browser actually fetched.
- *   Noto Sans Display  — no consumer in UX4G's CSS at all; reachable only via
- *                        --ccure-font-display, which nothing uses. The token
- *                        stays and falls back to the base family.
+ *   Noto Sans Display  — the display token now has Common heading consumers,
+ *                        but its face was already omitted. Preserve that
+ *                        fallback in B.2; typography migration is deferred.
  *   Material Icons ×5  — consumed ONLY by .ux4g-icon / -outlined / -round /
  *                        -sharp / -twotone, which are component classes this
  *                        build does not ship and the class policy forbids.
@@ -82,21 +92,14 @@ if (!["tokens", "full"].includes(MODE)) {
  * A face not on this list has its @font-face dropped *and* its WOFF2 not
  * written, so nothing can reference a file that is absent.
  */
-const KEEP_FONTS = new Set(["Noto Sans"]);
+const KEEP_FONTS = new Set(BASELINE.assets.retainedFonts);
 
-const FONT_OUT_DIR = path.join(ROOT, "public", "assets", "fonts", "ux4g");
-const FONT_URL_BASE = "/assets/fonts/ux4g";
-const CSS_OUT = path.join(
-  ROOT,
-  "src",
-  "design-system",
-  "tokens",
-  "ux4g.generated.css",
-);
-const MANIFEST_OUT = path.join(
-  path.dirname(CSS_OUT),
-  "ux4g.generated.manifest.json",
-);
+const {
+  fonts: FONT_OUT_DIR,
+  css: CSS_OUT,
+  manifest: MANIFEST_OUT,
+} = assetPaths(ROOT);
+const FONT_URL_BASE = ASSET_LAYOUT.fontUrl;
 
 /**
  * UX4G's universal reset. Its `:where()` wrapper means no CCure rule loses to
@@ -109,14 +112,11 @@ const MANIFEST_OUT = path.join(
  * ComplianceWorkspace and AppLayout's global search. And CCure sets an outline
  * in only 36 of its 76 focus rules, so the rest lose their focus ring.
  *
- * In `tokens` mode the reset is not emitted at all, so the problem cannot
- * arise. In `full` mode it is rescoped to UX4G's own components. Either way the
- * shape is asserted, so a repackaged upstream fails loudly instead of quietly
+ * The token-only pipeline emits no reset. Its upstream shape is still
+ * asserted, so a repackaged input fails loudly instead of quietly
  * reintroducing the defect.
  */
 const RESET_RE = /:where\(\*,:before,:after\)\{/;
-const RESET_SCOPED =
-  ':where([class*="ux4g-"],[class*="ux4g-"]:before,[class*="ux4g-"]:after){';
 
 const FACE_RE = /@font-face\{[^}]*\}/g;
 const FAMILY_RE = /font-family:\s*([^;}]+)/i;
@@ -125,7 +125,10 @@ const DATA_URI_RE =
 
 /** `:root{` but not `:root[…]{` and not ` .foo :root{` — the bare token blocks. */
 const ROOT_BLOCK_RE = /:root\{([\s\S]*?)\}/g;
-const DARK_BLOCK_RE = /:root\[data-theme=dark\]\{([\s\S]*?)\}/g;
+const DARK_BLOCK_RE = new RegExp(
+  `${UPSTREAM_DARK_SELECTOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\{([\\s\\S]*?)\\}`,
+  "g",
+);
 
 const slug = (family) =>
   family
@@ -139,26 +142,86 @@ const kb = (n) => `${(n / 1024).toFixed(1)} kB`;
 const sha = (buf) =>
   createHash("sha256").update(buf).digest("hex").slice(0, 16);
 
+/** Prepare a complete output set before replacement; restore it on write failure. */
+export async function publishAssets({
+  root = ROOT,
+  css,
+  components = "",
+  kept,
+  manifest,
+}) {
+  const outputs = assetPaths(root);
+  const lock = path.join(root, ".ux4g-assets.lock");
+  try {
+    await mkdir(lock);
+  } catch (error) {
+    if (error.code === "EEXIST")
+      throw new Error(
+        "Another UX4G asset publication is in progress (.ux4g-assets.lock)",
+      );
+    throw error;
+  }
+  let stage;
+  let recoveryFailed = false;
+  const replaced = [];
+  try {
+    stage = await mkdtemp(path.join(root, ".ux4g-assets-"));
+    const next = path.join(stage, "next");
+    await mkdir(path.join(next, "fonts"), { recursive: true });
+    for (const font of kept)
+      await writeFile(path.join(next, "fonts", font.filename), font.woff2);
+    const metadata = `${JSON.stringify(manifest, null, 2)}\n`;
+    await writeFile(path.join(next, "css"), css, "utf8");
+    await writeFile(path.join(next, "components"), components, "utf8");
+    await writeFile(path.join(next, "publicManifest"), metadata, "utf8");
+    await writeFile(path.join(next, "manifest"), metadata, "utf8");
+    for (const key of [
+      "fonts",
+      "css",
+      "components",
+      "publicManifest",
+      "manifest",
+    ]) {
+      const destination = outputs[key];
+      await mkdir(path.dirname(destination), { recursive: true });
+      const backup = path.join(stage, `old-${key}`);
+      const existed = existsSync(destination);
+      if (existed) await rename(destination, backup);
+      replaced.push({ destination, backup, existed });
+      await rename(path.join(next, key), destination);
+    }
+  } catch (error) {
+    try {
+      for (const { destination, backup, existed } of replaced.reverse()) {
+        await rm(destination, { recursive: true, force: true });
+        if (existed) await rename(backup, destination);
+      }
+    } catch (recoveryError) {
+      recoveryFailed = true;
+      throw new Error(
+        `Asset publication recovery failed; preserve backups at ${stage}: ${recoveryError.message}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  } finally {
+    if (stage && !recoveryFailed)
+      await rm(stage, { recursive: true, force: true });
+    await rm(lock, { recursive: true, force: true });
+  }
+}
+
 async function main() {
+  checkFoundation({ dependenciesOnly: true });
   // ── Integrity: the output must correspond to the installed package ───────
   if (!existsSync(SOURCE_CSS)) {
     throw new Error(
-      `UX4G stylesheet not found at ${SOURCE_CSS}.\nRun "npm install" first.`,
+      `UX4G stylesheet not found at ${SOURCE_CSS}.\nRun "npm ci" first.`,
     );
   }
-  const installed = JSON.parse(
-    await readFile(path.join(PKG_DIR, "package.json"), "utf8"),
-  );
-  if (installed.version !== PINNED_VERSION) {
-    throw new Error(
-      `ux4g-web-components is ${installed.version}, expected ${PINNED_VERSION}.\n` +
-        `Every guarantee in docs/ux4g/ was measured against ${PINNED_VERSION}: the\n` +
-        `class-collision set, the reset shape, the token closure and the contrast\n` +
-        `figures. Bump PINNED_VERSION only together with re-running those checks.`,
-    );
-  }
-
-  const source = await readFile(SOURCE_CSS, "utf8");
+  const { installed, css: vendorCss } = verifyVendorInput(BASELINE, ROOT);
+  const pipeline = pipelineIdentity(ROOT);
+  const source = vendorCss.toString("utf8");
 
   // ── Reset shape assertion (both modes) ───────────────────────────────────
   if (!RESET_RE.test(source)) {
@@ -176,10 +239,6 @@ async function main() {
       "No @font-face blocks found. Upstream has been repackaged.",
     );
   }
-
-  await rm(FONT_OUT_DIR, { recursive: true, force: true });
-  await mkdir(FONT_OUT_DIR, { recursive: true });
-  await mkdir(path.dirname(CSS_OUT), { recursive: true });
 
   // ── Fonts: externalise the kept ones, drop the rest ──────────────────────
   const kept = [];
@@ -210,7 +269,9 @@ async function main() {
     const original = Buffer.from(data[2], "base64");
     const woff2 = Buffer.from(await wawoff2.compress(original));
     const filename = `${slug(family)}.woff2`;
-    await writeFile(path.join(FONT_OUT_DIR, filename), woff2);
+    if (kept.some((font) => font.filename === filename)) {
+      throw new Error(`Duplicate font output filename: ${filename}`);
+    }
 
     rewrittenFaces.set(
       face,
@@ -227,29 +288,35 @@ async function main() {
       from: original.length,
       to: woff2.length,
       sha: sha(woff2),
+      sha256: sha256(woff2),
+      sourceSha256: sha256(original),
+      woff2,
     });
   }
 
-  if (kept.length === 0) {
+  if (
+    JSON.stringify(kept.map((font) => font.family)) !==
+    JSON.stringify([...KEEP_FONTS])
+  ) {
     throw new Error(
-      "KEEP_FONTS matched no @font-face. Check the family names.",
+      "Retained font faces do not exactly match the approved font policy.",
     );
   }
 
   // ── Assemble the stylesheet ──────────────────────────────────────────────
   let css;
-  if (MODE === "tokens") {
+  {
     // Every :root block — upstream ships SIX, not one, and taking only the
     // first silently drops 55 tokens. Plus the dark block and the kept faces.
     const roots = [...source.matchAll(ROOT_BLOCK_RE)].map(
       (m) => `:root{${m[1]}}`,
     );
     const darks = [...source.matchAll(DARK_BLOCK_RE)].map(
-      (m) => `:root[data-theme=dark]{${m[1]}}`,
+      (m) => `${APP_DARK_SELECTOR}{${m[1]}}`,
     );
     if (roots.length === 0 || darks.length === 0) {
       throw new Error(
-        `Expected :root and :root[data-theme=dark] blocks; found ` +
+        `Expected :root and ${UPSTREAM_DARK_SELECTOR} blocks; found ` +
           `${roots.length} and ${darks.length}. Upstream restructured its tokens.`,
       );
     }
@@ -258,24 +325,13 @@ async function main() {
     );
     css = [
       "/* Generated by scripts/build-ux4g-assets.mjs — do not edit.",
-      ` * Source: ux4g-web-components@${PINNED_VERSION}, mode=${MODE}`,
+      ` * Source: ${BASELINE.npm.package}@${PINNED_VERSION}, mode=${MODE}`,
       " * Design tokens and @font-face only; no component CSS, no reset.",
       " */",
       ...faceCss,
       ...roots,
       ...darks,
     ].join("\n");
-  } else {
-    css = source;
-    for (const [orig, rewritten] of rewrittenFaces) {
-      css = css.replace(orig, rewritten ?? "");
-    }
-    css = css.replace(RESET_RE, RESET_SCOPED);
-    if (/:where\(\*[,)]/.test(css)) {
-      throw new Error(
-        "A universal :where(*) reset survived scoping. Aborting.",
-      );
-    }
   }
 
   // ── Assertions on the emitted bytes ──────────────────────────────────────
@@ -307,29 +363,59 @@ async function main() {
     );
   }
 
-  await writeFile(CSS_OUT, css, "utf8");
+  const cssProblems = tokenCssProblems(
+    css,
+    kept.map((font) => font.filename),
+  );
+  if (cssProblems.length) throw new Error(cssProblems.join("\n"));
 
   // ── Manifest: what these bytes were derived from ─────────────────────────
   // Makes the gitignored output auditable and lets `ux4g:verify` prove the
   // build is deterministic without committing the artefacts themselves.
+  const components = BASELINE.assets.components?.enabled
+    ? componentCss(source, BASELINE)
+    : "";
   const manifest = {
+    schemaVersion: 2,
     generator: "scripts/build-ux4g-assets.mjs",
-    source: { package: "ux4g-web-components", version: installed.version },
+    pipeline,
+    baseline: {
+      file: "ux4g-baseline.json",
+      sha256: sha256(await readFile(path.join(ROOT, "ux4g-baseline.json"))),
+    },
+    source: {
+      package: BASELINE.npm.package,
+      version: installed.version,
+      integrity: BASELINE.npm.integrity,
+      tarball: BASELINE.npm.tarball,
+      publisher: BASELINE.npm.publisher,
+      cssSha256: sha256(vendorCss),
+    },
     mode: MODE,
-    css: { bytes: Buffer.byteLength(css), sha256_16: sha(css) },
-    fonts: kept.map(({ family, filename, to, sha: s }) => ({
-      family,
-      file: filename,
-      bytes: to,
-      sha256_16: s,
-    })),
+    css: {
+      bytes: Buffer.byteLength(css),
+      sha256: sha256(css),
+      sha256_16: sha(css),
+    },
+    components: {
+      enabled: Boolean(BASELINE.assets.components?.enabled),
+      scope: ".cc-ux4g",
+      bytes: Buffer.byteLength(components),
+      sha256: sha256(components),
+    },
+    fonts: kept.map(
+      ({ family, filename, to, sha: s, sha256: full, sourceSha256 }) => ({
+        family,
+        file: filename,
+        bytes: to,
+        sha256_16: s,
+        sha256: full,
+        sourceSha256,
+      }),
+    ),
     droppedFonts: dropped,
   };
-  await writeFile(
-    MANIFEST_OUT,
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
-  );
+  await publishAssets({ css, components, kept, manifest });
 
   // ── Report ───────────────────────────────────────────────────────────────
   console.log(
@@ -342,7 +428,9 @@ async function main() {
     );
   }
   for (const d of dropped) {
-    console.log(`  drop  ${d.padEnd(28)} ${"(no consumer)".padStart(23)}`);
+    console.log(
+      `  drop  ${d.padEnd(28)} ${"(deferred delivery)".padStart(23)}`,
+    );
   }
   console.log("  " + "─".repeat(66));
   console.log(
@@ -361,7 +449,12 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(`\n[ux4g] BUILD FAILED\n${err.message}\n`);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((err) => {
+    console.error(`\n[ux4g] BUILD FAILED\n${err.message}\n`);
+    process.exit(1);
+  });
+}

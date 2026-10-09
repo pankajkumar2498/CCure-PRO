@@ -197,7 +197,7 @@ def record_event(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def apply_sla(db, finding: Any, *, org: Any = None, actor_id: Optional[str] = None):
+def apply_sla(db, finding: Any, *, policy: Any = None, actor_id: Optional[str] = None):
     """
     Compute and store this finding's due date.
 
@@ -209,14 +209,12 @@ def apply_sla(db, finding: Any, *, org: Any = None, actor_id: Optional[str] = No
     A *changed* deadline does write one, with both values, because a due date
     moving is exactly the kind of thing an auditor asks about.
     """
-    from core.remediation.sla import due_at_for, sla_policy_for_org
+    from core.remediation.sla import due_at_for, sla_policy_for_org_id
 
-    if org is None:
-        from db.models.rbac import Organization
-
-        org = db.query(Organization).filter(Organization.id == finding.org_id).first()
-
-    policy = sla_policy_for_org(org)
+    # A caller working through many findings of one organisation passes the
+    # policy once rather than having it looked up per finding.
+    if policy is None:
+        policy = sla_policy_for_org_id(db, finding.org_id)
     new_due = due_at_for(finding, policy)
     basis = str(getattr(finding, "severity", None) or "unscored").lower()
 

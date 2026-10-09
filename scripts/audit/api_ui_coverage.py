@@ -38,7 +38,7 @@ from pathlib import Path
 #: so rather than reporting zero coverage for it.
 PAGES = {
     "credentialed": (
-        "Frontend/src/pages/scan/CredentialedResults.jsx",
+        "Frontend/src/modules/audit/pages/scan/CredentialedResults.jsx",
         "} = view;",
     ),
 }

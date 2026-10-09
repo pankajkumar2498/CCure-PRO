@@ -506,7 +506,7 @@ class AssetVulnerability(Base):
         # They are declared here as well as in migration c3h4i5j6k7l8 because
         # this project builds a schema two ways: a fresh install runs
         # Base.metadata.create_all() and stamps head, while an existing install
-        # runs alembic upgrade head. An index that only the migration knows
+        # runs alembic upgrade heads. An index that only the migration knows
         # about therefore exists on upgraded databases and not on fresh ones —
         # and c3h4i5j6k7l8.downgrade() then failed on a fresh database because
         # it dropped an index create_all() had never made.

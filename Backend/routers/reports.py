@@ -12,10 +12,12 @@ import os
 import time
 from typing import Optional
 
-from auth.dependencies import get_current_user_flexible
-from core.audit import log_audit_event
+from ccure_platform.api import CurrentUser, current_user_flexible
+from ccure_platform.api import log_audit_event
 from db.base import get_db
-from db.models import Permission, RolePermission, Scan, User
+from ccure_platform import api as platform_api
+from ccure_platform.api import acts_across_organisations, resource_organisation_allowed
+from db.models import Scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from scan_helpers import limiter
 from fastapi.responses import FileResponse
@@ -356,89 +358,33 @@ def _resolve_report_path(stored: str | None) -> str | None:
     return candidate if os.path.isfile(candidate) else None
 
 
-def _require_reports_read(user: User, db: Session) -> None:
-    role = getattr(user, "role", None)
-    role_name = (getattr(role, "name", "") or "").lower()
-
-    # Keep parity with global RBAC behavior: superadmin bypass.
-    if role_name == "superadmin":
-        return
-
-    if not role:
-        raise HTTPException(
-            status_code=403, detail="Your account does not have a role assigned."
-        )
-
-    has_reports_read = (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == role.id,
-            Permission.resource == "reports",
-            Permission.action == "read",
-        )
-        .first()
-    ) is not None
-
-    if not has_reports_read:
+def _require_reports_read(user: CurrentUser, db: Session) -> None:
+    if not platform_api.has_permission(db, user, "audit.report.read"):
         raise HTTPException(
             status_code=403,
-            detail="Insufficient privileges. Your role does not have 'reports:read' permission.",
+            detail="Insufficient privileges. Missing permission: audit.report.read.",
         )
 
 
-def _require_reports_delete(user: User, db: Session) -> None:
-    role = getattr(user, "role", None)
-    role_name = (getattr(role, "name", "") or "").lower()
-
-    if role_name == "superadmin":
-        return
-
-    if not role:
-        raise HTTPException(
-            status_code=403, detail="Your account does not have a role assigned."
-        )
-
-    has_reports_delete = (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == role.id,
-            Permission.resource == "reports",
-            Permission.action == "delete",
-        )
-        .first()
-    ) is not None
-
-    if not has_reports_delete:
+def _require_reports_delete(user: CurrentUser, db: Session) -> None:
+    if not platform_api.has_permission(db, user, "audit.report.delete"):
         raise HTTPException(
             status_code=403,
-            detail="Insufficient privileges. Your role does not have 'reports:delete' permission.",
+            detail="Insufficient privileges. Missing permission: audit.report.delete.",
         )
 
 
-def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
+def _can_read_all_org_scans(
+    user: CurrentUser, db: Session, org_id: str | None = None
+) -> bool:
+    # read_all is organisation-wide visibility *within one organisation*: the
+    # permission is evaluated for the scan's own organisation (RBAC-5).
+    return platform_api.has_permission(db, user, "audit.scan.read_all", org_id=org_id)
 
 
-def _can_read_all_org_scans(user: User, db: Session) -> bool:
-    if _is_superadmin(user):
-        return True
-    return (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == user.role_id,
-            Permission.resource == "scans",
-            Permission.action == "read_all",
-        )
-        .first()
-    ) is not None
-
-
-def _audit_report_download(db: Session, user: User, request, scan, report_format: str):
+def _audit_report_download(
+    db: Session, user: CurrentUser, request, scan, report_format: str
+):
     """
     Record that a report left the platform.
 
@@ -489,7 +435,7 @@ def download_report(
     min_severity: str = "Info",
     ticket: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     _require_reports_read(user, db)
 
@@ -505,15 +451,7 @@ def download_report(
         )
     fmt = resolved
 
-    query = db.query(Scan).filter(Scan.id == scan_id)
-    if not _is_superadmin(user):
-        query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+    scan = _scan_for_user(db, user, scan_id)
 
     fmt_upper = fmt.upper()
     type_upper = (type or "").upper()
@@ -675,7 +613,7 @@ def _safe_export_name(*parts: str) -> str:
 
 
 def _scan_for_user(
-    db: Session, user: User, scan_id: str, org_id: str | None = None
+    db: Session, user: CurrentUser, scan_id: str, org_id: str | None = None
 ) -> Scan:
     """
     The scan, or 404 — under this caller's own visibility rules.
@@ -689,23 +627,32 @@ def _scan_for_user(
     404 rather than 403 for a scan in another organisation, deliberately — a
     403 would confirm the id exists.
     """
+    reach = acts_across_organisations(user)
     query = db.query(Scan).filter(Scan.id == scan_id)
-    if _is_superadmin(user):
+    if reach:
         if org_id:
             query = query.filter(Scan.org_id == org_id)
     else:
         query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
 
     scan = query.first()
-    if not scan:
+    # The scan's own organisation, read from the stored row, decides the rest: the
+    # account must be allowed to act there, and holds read_all for it or started
+    # the scan (RBAC-5; a client-supplied organisation id proves nothing).
+    if (
+        not scan
+        or not resource_organisation_allowed(user, scan.org_id)
+        or (
+            str(scan.created_by) != str(user.id)
+            and not _can_read_all_org_scans(user, db, scan.org_id)
+        )
+    ):
         raise HTTPException(status_code=404, detail="Scan not found.")
     return scan
 
 
 def _comparison_for(
-    db: Session, scan: Scan, baseline_id: str | None, user: User | None
+    db: Session, scan: Scan, baseline_id: str | None, user: CurrentUser | None
 ):
     """
     The GAP-13 comparison for this scan, or None.
@@ -746,7 +693,7 @@ def _comparison_for(
 
 
 def _build_scan_workbook(
-    db: Session, scan: Scan, *, user: User | None = None, **filters
+    db: Session, scan: Scan, *, user: CurrentUser | None = None, **filters
 ) -> tuple[str, str]:
     """
     Assemble the whole-scan workbook and return ``(path, filename)``.
@@ -835,7 +782,7 @@ def export_scan_dataset(
     include_comparison: bool = Query(True),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     """
     Export one scan's assessment results as a workbook, a CSV or JSON.
@@ -1011,19 +958,11 @@ def _csv_safe(value) -> str:
 def delete_report(
     scan_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_flexible),
+    user: CurrentUser = Depends(current_user_flexible),
 ):
     _require_reports_delete(user, db)
 
-    query = db.query(Scan).filter(Scan.id == scan_id)
-    if not _is_superadmin(user):
-        query = query.filter(Scan.org_id == user.org_id)
-        if not _can_read_all_org_scans(user, db):
-            query = query.filter(Scan.created_by == user.id)
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+    scan = _scan_for_user(db, user, scan_id)
 
     deleted_files = 0
     for path_attr in (

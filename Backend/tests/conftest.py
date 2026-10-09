@@ -349,7 +349,27 @@ def _ensure_test_db_exists(url: str):
 # DATABASE_URL created a stray database before the check rejected the name.
 _ensure_test_db_exists(database_url)
 
-os.environ["JWT_SECRET_KEY"] = "test-secret-key-do-not-use-in-prod"
+# The platform holds no JWT secret (Phase 9.6c): if one is present in the container
+# environment it is removed, so nothing in the suite can quietly depend on it.
+os.environ.pop("JWT_SECRET_KEY", None)
+# A fixed test value, never the real one a developer's Backend/.env may carry.
+os.environ["MFA_ENCRYPTION_KEY"] = "test-mfa-key-do-not-use-in-prod"
+
+# Token issuance (Phase 9.4). The suite runs the target state — ES256 from a
+# throwaway keyset generated for this session — whatever the container's own
+# CCURE_TOKEN_* settings are, and never with the deployment's real keys. The
+# directory is created here, before config is imported, and removed at exit.
+import atexit
+import shutil
+import tempfile
+
+_TEST_TOKEN_KEYS_DIR = tempfile.mkdtemp(prefix="ccure-pytest-keys-")
+atexit.register(shutil.rmtree, _TEST_TOKEN_KEYS_DIR, ignore_errors=True)
+os.environ["CCURE_TOKEN_KEYS_DIR"] = _TEST_TOKEN_KEYS_DIR
+
+from scripts.security.manage_token_keys import generate as _generate_token_key
+
+_generate_token_key(_TEST_TOKEN_KEYS_DIR, "active", owner=None)
 
 from main import app
 
@@ -363,8 +383,13 @@ except (AttributeError, KeyError):
 
 from auth.jwt_handler import hash_password
 from db.base import Base, SessionLocal, engine, get_db
-from db.models.rbac import Organization, Role
+from db.models.rbac import Organization
+from ccure_platform.models.rbac_tables import RbacRole
 from db.models.users import User
+
+from native_rbac import create_user, system_role
+
+
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
@@ -448,15 +473,15 @@ def _build_test_schema():
     that read like application bugs. A renamed column cost a debugging session
     exactly that way.
 
-    Why this does not simply run ``alembic upgrade head`` on an empty database:
+    Why this does not simply run ``alembic upgrade heads`` on an empty database:
     revision ``7f96fc2fa41a_initial_schema`` is an intentional no-op baseline
     adopted over an already-existing schema, and no migration creates the core
-    tables. From empty, ``upgrade head`` therefore creates nothing and the first
+    tables. From empty, ``upgrade heads`` therefore creates nothing and the first
     incremental revision fails on ``ALTER TABLE organizations``. The models are
     the only complete description of the schema, so a bootstrap builds from
     them and stamps Alembic to match.
 
-    Once bootstrapped, a database stamped *behind* head is upgraded normally —
+    Once bootstrapped, a database stamped *behind* the heads is upgraded normally —
     which does exercise newly added migrations, against a populated schema,
     which is the same path a real deployment takes.
     """
@@ -468,19 +493,27 @@ def _build_test_schema():
     from alembic.script import ScriptDirectory
     from sqlalchemy import inspect
 
+    from ccure_platform.modules import registry as module_registry
+
     backend_dir = Path(__file__).absolute().parents[1]
     cfg = Config(str(backend_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     cfg.set_main_option("sqlalchemy.url", database_url)
-    head = ScriptDirectory.from_config(cfg).get_current_head()
+    # Phase 11.3: a history with a branch per core module has several heads.
+    # get_current_head() and get_current_revision() raise once there is more
+    # than one, so both sides are compared as sets.
+    heads = set(ScriptDirectory.from_config(cfg).get_heads())
+    module_schemas = [
+        m.db_schema for m in module_registry.modules() if m.db_schema != "public"
+    ]
 
     with engine.connect() as conn:
         inspector = inspect(conn)
         table_count = len(inspector.get_table_names())
-        current = MigrationContext.configure(conn).get_current_revision()
+        current = set(MigrationContext.configure(conn).get_current_heads())
 
     forced = os.getenv("PYTEST_REBUILD_SCHEMA") == "1"
-    bootstrap = forced or current is None
+    bootstrap = forced or not current
 
     if bootstrap:
         logger.info(
@@ -490,6 +523,12 @@ def _build_test_schema():
         with engine.begin() as conn:
             conn.execute(text("DROP SCHEMA public CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
+            # The core modules' schemas (Phase 11.3) are rebuilt with public:
+            # `stamp heads` below records their branches as applied, so the
+            # schemas those branches create must exist, and must be empty.
+            for schema in module_schemas:
+                conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                conn.execute(text(f'CREATE SCHEMA "{schema}"'))
 
         # Dropping the schema also drops pg_trgm, pgcrypto and uuid-ossp, which
         # live in it — without them create_all fails on the trigram index over
@@ -503,13 +542,23 @@ def _build_test_schema():
 
         with engine.begin() as conn:
             Base.metadata.create_all(bind=conn)
-        command.stamp(cfg, "head")
+            for md in (
+                md
+                for m in module_registry.modules()
+                for md in module_registry.module_metadatas(m)
+            ):
+                md.create_all(bind=conn)
+        command.stamp(cfg, "heads")
         SCHEMA_WAS_BOOTSTRAPPED = True
         return
 
-    if current != head:
-        logger.info("Applying migrations %s -> %s to test schema", current, head)
-        command.upgrade(cfg, "head")
+    if current != heads:
+        logger.info(
+            "Applying migrations %s -> %s to test schema",
+            sorted(current),
+            sorted(heads),
+        )
+        command.upgrade(cfg, "heads")
 
     # Gap-fill: models added without a migration still need their tables. Any
     # table created here is a missing migration and is reported as such.
@@ -529,7 +578,7 @@ def _build_test_schema():
 @pytest.fixture(scope="session", autouse=True)
 def seed_system_roles():
     """Seed system roles once per test session to guarantee they exist."""
-    from db.migrate_production_schema import create_partitions, seed_rbac
+    from db.migrate_production_schema import create_partitions
 
     # The guards above vet DATABASE_URL when this file loads, but test modules
     # are imported *afterwards*, during collection, and a module-level
@@ -585,11 +634,10 @@ def seed_system_roles():
                 )
             )
         create_partitions(conn)
-        seed_rbac(conn)
 
         # audit_logs' append-only enforcement is triggers and grants, which
         # SQLAlchemy metadata cannot express — so the create_all bootstrap
-        # above does not produce it, and `alembic stamp head` means the
+        # above does not produce it, and `alembic stamp heads` means the
         # migration that would never runs. Applying it here is what lets
         # tests/audit/test_audit_immutability.py actually exercise the
         # controls instead of skipping. It must come *after* create_partitions:
@@ -599,6 +647,19 @@ def seed_system_roles():
 
         apply_audit_immutability(conn)
 
+    # RBAC-8: the Platform RBAC catalogue and the five system roles are the only
+    # authorization model, so they are reference data like the legacy roles were. Applied
+    # once per session; the per-test purge leaves them (and removes the assignments).
+    from sqlalchemy.orm import Session as _RbacSeedSession
+
+    with _RbacSeedSession(engine) as _rbac_seed:
+        from ccure_platform import composition as _composition
+        from ccure_platform.rbac.catalogue import ensure_system_roles, sync
+
+        sync(_rbac_seed, _composition.load_permission_sources(), audit=False)
+        ensure_system_roles(_rbac_seed)
+        _rbac_seed.commit()
+
     # Clear anything a previously crashed run left behind, *before* the app
     # starts. The baseline is whatever exists once the app has seeded itself, so
     # a stale organisation surviving into that snapshot would be recorded as
@@ -606,6 +667,7 @@ def seed_system_roles():
     with engine.begin() as conn:
         # See _purge_test_data: DELETE, not TRUNCATE — audit_logs refuses
         # TRUNCATE and cascading into it would destroy the trail.
+        conn.execute(text("DELETE FROM rbac_user_roles"))
         conn.execute(text("DELETE FROM organizations"))
         conn.execute(text("DELETE FROM users"))
 
@@ -754,6 +816,42 @@ def relax_registration_volume_limits():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def pin_trusted_proxies_to_the_code_default():
+    """
+    Resolve client addresses against config.py's own TRUSTED_PROXIES default,
+    whatever the process environment says.
+
+    core/ip_resolver.py builds its trust list from the environment once, at
+    import, and the suite runs inside the live api container, which inherits
+    the deployment's value. Since Phase 10.7 that value is
+    `127.0.0.1,::1,172.31.254.10` — the gateway only — and every test written
+    against the code default (host nginx as 172.18.0.1) failed: sixteen of
+    them, all correct. A test must not depend on how the machine it runs on is
+    configured (the eager-mode test in CLAUDE.md is the same lesson).
+
+    The default is read from config.py's source rather than restated here, so
+    there is one list; tests that need a different trust list patch
+    `core.ip_resolver._TRUSTED_NETWORKS` for their own duration.
+    """
+    import ipaddress
+    import re
+
+    from config import AppConfig
+    from core import ip_resolver
+    from testpaths import BACKEND_ROOT
+
+    source = (BACKEND_ROOT / "config.py").read_text()
+    default = re.search(r'os\.getenv\("TRUSTED_PROXIES", "([^"]+)"\)', source).group(1)
+    entries = [e.strip() for e in default.split(",") if e.strip()]
+
+    previous = (AppConfig.TRUSTED_PROXIES, ip_resolver._TRUSTED_NETWORKS)
+    AppConfig.TRUSTED_PROXIES = entries
+    ip_resolver._TRUSTED_NETWORKS = [ipaddress.ip_network(e) for e in entries]
+    yield
+    AppConfig.TRUSTED_PROXIES, ip_resolver._TRUSTED_NETWORKS = previous
+
+
+@pytest.fixture(scope="session", autouse=True)
 def session_client(seed_email_domain_rules) -> Generator[TestClient, None, None]:
     """
     One TestClient — and therefore one application startup — per session.
@@ -830,9 +928,6 @@ _BASELINE_FRAMEWORK_IDS: set[str] = set()
 #: which point it becomes an order-dependent failure.
 _BASELINE_CONTROL_IDS: set[str] = set()
 
-#: Roles seeded by seed_rbac(); anything else is test-created.
-_SYSTEM_ROLES = ("superadmin", "org_admin", "analyst", "viewer", "scanner")
-
 
 def _purge_test_data():
     """
@@ -851,6 +946,10 @@ def _purge_test_data():
     findings) while leaving the catalog intact.
     """
     with engine.begin() as conn:
+        # RBAC assignments reference users and organisations with ON DELETE RESTRICT (the
+        # protection that stops an account losing its role history by accident), so a
+        # test's assignments go first. Roles, the catalogue and the role history stay.
+        conn.execute(text("DELETE FROM rbac_user_roles"))
         if _BASELINE_ORG_IDS:
             # Cheap guard: the cascading DELETE touches 63 tables, so it is
             # worth one indexed count to skip it when a test created nothing.
@@ -916,11 +1015,6 @@ def _purge_test_data():
                     text("DELETE FROM compliance_controls WHERE id <> ALL(:keep)"),
                     {"keep": list(_BASELINE_CONTROL_IDS)},
                 )
-
-        conn.execute(
-            text("DELETE FROM roles WHERE name <> ALL(:system_roles)"),
-            {"system_roles": list(_SYSTEM_ROLES)},
-        )
 
         _purge_synthetic_catalogue_rows(conn)
 
@@ -1159,18 +1253,18 @@ def self_registration_enabled(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def test_role_admin(db_session: Session) -> Role:
-    return db_session.query(Role).filter(Role.name == "org_admin").first()
+def test_role_admin(db_session: Session) -> RbacRole:
+    return system_role(db_session, "platform.org_admin")
 
 
 @pytest.fixture(scope="function")
-def test_role_viewer(db_session: Session) -> Role:
-    return db_session.query(Role).filter(Role.name == "viewer").first()
+def test_role_viewer(db_session: Session) -> RbacRole:
+    return system_role(db_session, "platform.viewer")
 
 
 @pytest.fixture(scope="function")
 def test_user(
-    db_session: Session, test_org: Organization, test_role_admin: Role
+    db_session: Session, test_org: Organization, test_role_admin: RbacRole
 ) -> User:
     """
     A standard authenticated user with admin rights.
@@ -1182,14 +1276,15 @@ def test_user(
     """
     from db.base import gen_user_id, utcnow
 
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, "testadmin"),
         username="testadmin",
         email="admin@test.com",
         full_name="Test Admin",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=test_role_admin.id,
+        role=test_role_admin,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

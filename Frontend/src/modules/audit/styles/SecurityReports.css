@@ -1,0 +1,190 @@
+.rh-stats {
+  display: flex;
+  gap: var(--ccure-space-2xl);
+}
+.rh-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.rh-stat-val {
+  font-size: var(--ccure-text-2xl);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-primary-text);
+}
+.rh-stat-lab {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reports-tabs {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+/* Search grows, the type select keeps a readable width, and the refresh button
+   sits on the fields' baseline instead of being pushed out of the row. */
+.reports-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-md);
+  margin-bottom: var(--ccure-space-xl);
+}
+.reports-search-field {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.reports-type-field {
+  flex: 0 1 14rem;
+  min-width: 11rem;
+}
+.reports-refresh {
+  flex: none;
+}
+
+.reports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: var(--ccure-space-xl);
+}
+
+.report-card {
+  background: var(--ccure-surface);
+  border-radius: var(--ccure-radius-lg);
+  border: 1px solid var(--ccure-border);
+  padding: var(--ccure-space-xl);
+  transition:
+    transform var(--ccure-duration-base) var(--ccure-ease),
+    box-shadow var(--ccure-duration-base) var(--ccure-ease);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  position: relative;
+  overflow: hidden;
+}
+.report-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ccure-shadow-lg);
+}
+/* The card's content sits in CcureCard's body, so the column is laid out there;
+   growing it is what lets the actions sit at the bottom of a taller neighbour's
+   row. */
+.report-card > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  flex: 1 1 auto;
+}
+
+.rc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--ccure-space-sm);
+}
+.rc-id {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  white-space: nowrap;
+}
+
+.rc-target {
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+  margin-top: var(--ccure-space-2xs);
+  word-break: break-all;
+}
+.rc-date {
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text-secondary);
+}
+
+.rc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  border-top: 1px solid var(--ccure-border-subtle);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+  padding: var(--ccure-space-md) 0;
+}
+.rc-meta-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+/* Four downloads in two columns, the destructive control in its own column at
+   the end so it can never be mistaken for, or overlap, a download. */
+.rc-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: var(--ccure-space-xs);
+  margin-top: auto;
+}
+.rc-action {
+  min-width: 0;
+  white-space: normal;
+  height: auto;
+  text-align: center;
+}
+.rc-action--delete {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+}
+
+/* The sections this build does not yet offer. */
+.reports-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-3xl) var(--ccure-space-lg);
+  text-align: center;
+  color: var(--ccure-text-secondary);
+  background: var(--ccure-surface);
+  border: 1px dashed var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+}
+.reports-placeholder p {
+  margin: 0;
+  max-width: 36rem;
+}
+.rp-icon {
+  font-size: var(--ccure-text-3xl);
+  line-height: 1;
+}
+.rp-title {
+  margin: 0;
+  font-size: var(--ccure-text-lg);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.reports-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--ccure-space-4xl);
+  gap: var(--ccure-space-lg);
+  color: var(--ccure-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .rh-stat-item {
+    align-items: flex-start;
+  }
+  .reports-search-field,
+  .reports-type-field {
+    flex-basis: 100%;
+  }
+  .report-card {
+    padding: var(--ccure-space-lg);
+  }
+}

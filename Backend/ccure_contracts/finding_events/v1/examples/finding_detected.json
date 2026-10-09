@@ -1,0 +1,93 @@
+{
+  "contract": "ccure.audit.finding_event",
+  "schema_version": "1.0",
+  "message_id": "6f708192-adbe-4fc0-9b32-4d5e6f708107",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T02:41:43Z",
+  "correlation_id": "corr-audit-scn_defa_c522b539_26sep26_k2mq",
+  "data": {
+    "event_type": "finding.detected",
+    "occurred_at": "2026-09-19T02:37:02Z",
+    "sequence": 1882,
+    "finding": {
+      "finding": {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228"
+      },
+      "definition": {
+        "definition_id": "CVE-2021-44228",
+        "definition_type": "cve",
+        "cve_id": "CVE-2021-44228",
+        "title": "Apache Log4j2 JNDI remote code execution (Log4Shell)"
+      },
+      "asset": {
+        "asset_id": "ast_org_default_192_0_2_10",
+        "ip_address": "192.0.2.10",
+        "hostname": "fin-app-01",
+        "mac_address": "00:00:5e:00:53:10"
+      },
+      "severity": "critical",
+      "cvss": {
+        "score": 10.0,
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+        "version": "3.1"
+      },
+      "detection": {
+        "method": "credentialed_package",
+        "confidence": "confirmed",
+        "qod": 97,
+        "detected_version": "2.14.1"
+      },
+      "exploit": {
+        "availability": "actively_exploited",
+        "in_cisa_kev": true,
+        "kev_due_date": "2021-12-24",
+        "epss_score": 0.94,
+        "ransomware_linked": true
+      },
+      "status": "open",
+      "first_found_at": "2026-09-19T02:37:02Z",
+      "last_found_at": "2026-09-26T02:39:55Z",
+      "remediation": {
+        "state": "assigned",
+        "sla_state": "overdue",
+        "sla_due_at": "2026-09-24T02:37:02Z",
+        "reopened_count": 0,
+        "guidance": "Upgrade Log4j to 2.17.1 or later."
+      },
+      "risk": {
+        "cvss_component": {
+          "status": "available",
+          "value": 10.0,
+          "unit": "cvss_base"
+        },
+        "asset_criticality_component": {
+          "status": "not_implemented",
+          "reason": "No asset criticality (SRS 7.3.7.3)."
+        },
+        "exposure_component": {
+          "status": "not_implemented",
+          "reason": "No exposure factor (SRS 7.3.7.5)."
+        },
+        "srs_risk_score": {
+          "status": "not_implemented",
+          "reason": "The SRS weighted score needs criticality and exposure."
+        },
+        "residual_risk_score": {
+          "status": "not_implemented",
+          "reason": "Compensating controls are not modelled on findings (SRS 7.3.7.8)."
+        },
+        "audit_priority": null
+      },
+      "last_assessment": {
+        "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+        "completed_at": "2026-09-26T02:41:17Z",
+        "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+      },
+      "evidence_refs": null
+    }
+  }
+}

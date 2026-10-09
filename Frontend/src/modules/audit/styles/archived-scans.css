@@ -1,0 +1,49 @@
+/* ============================================================================
+   Archived scans — page-specific layout
+   ----------------------------------------------------------------------------
+   Layout and one semantic colour. Everything else on this page is either a
+   CCure primitive (CcureTable, CcureButton, CcureBadge, CcureAlert,
+   CcureLoader, CcureEmptyState), a security pattern (CcureScanStatus), or the
+   the shared page structure (`CcurePage`, `CcurePageHeader`; B.13).
+
+   Nothing was deleted from the legacy stylesheets for this page. Every class it
+   used — `.data-table`, `.table-wrap`, `.action-btn`, `.action-btns`,
+   `.empty-state*`, `.btn*`, `.alert*`, `.spinner`, `.ip-code`, `.method-chip`,
+   `.muted` — still has between 2 and 32 other consumers across the
+   application. The page stops *using* them; it does not get to remove them.
+   ============================================================================ */
+
+.as-toolbar {
+  display: flex;
+  gap: var(--ccure-space-sm);
+}
+
+.as-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--ccure-space-4xl) 0;
+}
+
+.as-message {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.as-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+}
+
+/* A target address is the cell an operator scans down the column for, so it
+   carries the weight the previous inline `fontWeight: 600` gave it. The
+   monospace comes from the column's `mono` flag, not from here. */
+.as-target {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+/* Secondary tier, not a literal. The previous inline style was
+   `color: var(--text-muted)`, which is the legacy theme's token; this is the
+   CCure semantic equivalent and follows `data-theme` the same way. */
+.as-muted {
+  color: var(--ccure-text-secondary);
+}

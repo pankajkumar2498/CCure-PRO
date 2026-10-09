@@ -1,0 +1,135 @@
+/* ============================================================================
+   Page structure — CcurePage and CcurePageHeader (B.13)
+   ----------------------------------------------------------------------------
+   One inset, one header, one title style for every module. The values are the
+   Common Platform's, which was the reference; they used to live in
+   `shell/layout/platform-layout.css` scoped to `.pl-main`, while Audit pages
+   padded themselves with `styles/layout.css` pixels or their own wrappers and
+   drew nineteen different headers. Pages compose these classes and own only
+   what is inside them.
+   ============================================================================ */
+
+.cc-page {
+  min-width: 0;
+  padding: calc(var(--ccure-space-md) + var(--ccure-space-lg))
+    calc(2 * var(--ccure-space-lg)) calc(3 * var(--ccure-space-lg));
+  animation: cc-page-enter var(--ccure-duration-slow) var(--ccure-ease) both;
+}
+
+/* A short rise on entry, as the Common pages always had. Durations are zeroed by
+   the reduced-motion floor in themes.css, so it never plays for a reader who
+   asked for less motion. */
+@keyframes cc-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--ccure-space-xs));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Header to content is always `xl`. A page that lays its children out with a
+   flex or grid gap declares that gap as `--ccure-page-gap`; the header subtracts it,
+   so the distance is the same whether a page stacks with margins or with gap. */
+.cc-page-header {
+  margin-bottom: calc(var(--ccure-space-xl) - var(--ccure-page-gap, 0px));
+  min-width: 0;
+}
+
+.cc-page-header__breadcrumb {
+  margin-bottom: var(--ccure-space-sm);
+  min-width: 0;
+}
+
+.cc-page-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+}
+
+.cc-page-header__heading {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.cc-page-header__titleline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs) var(--ccure-space-sm);
+  margin: 0 0 var(--ccure-space-xs);
+}
+
+.cc-page-header__title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--ccure-font-display);
+  font-size: var(--ccure-text-2xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-normal);
+  letter-spacing: -0.02em;
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.cc-page-header__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+}
+
+.cc-page-header__subtitle {
+  margin: var(--ccure-space-2xs) 0 0;
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.cc-page-header__description {
+  margin-top: var(--ccure-space-xs);
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+  min-width: 0;
+}
+
+.cc-page-header__description > p {
+  margin: 0;
+}
+
+.cc-page-header__description > p + p {
+  margin-top: var(--ccure-space-xs);
+}
+
+.cc-page-header__subtitle a,
+.cc-page-header__description a {
+  color: var(--ccure-text-link);
+  text-decoration: underline;
+}
+
+.cc-page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  min-width: 0;
+}
+
+/* The shell's icon geometry: an outline glyph sitting on the text baseline. */
+.cc-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+
+@media (max-width: 768px) {
+  .cc-page {
+    padding: var(--ccure-space-lg) var(--ccure-space-lg) var(--ccure-space-3xl);
+  }
+}

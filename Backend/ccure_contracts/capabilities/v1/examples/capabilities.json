@@ -1,0 +1,112 @@
+{
+  "contract": "ccure.audit.capabilities",
+  "schema_version": "1.0",
+  "message_id": "a3b4c5d6-e1f2-4304-9f76-8192a3b4c50b",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-25T09:00:00Z",
+  "correlation_id": "corr-pp-capabilities-01",
+  "data": {
+    "contracts": [
+      {
+        "contract": "ccure.audit.policy_baseline",
+        "schema_versions": [
+          "1.0"
+        ],
+        "direction": "inbound",
+        "status": "draft"
+      },
+      {
+        "contract": "ccure.audit.compliance_gap_report",
+        "schema_versions": [
+          "1.0"
+        ],
+        "direction": "outbound",
+        "status": "draft"
+      },
+      {
+        "contract": "ccure.audit.assessment_result",
+        "schema_versions": [
+          "1.0"
+        ],
+        "direction": "outbound",
+        "status": "draft"
+      },
+      {
+        "contract": "ccure.audit.finding_event",
+        "schema_versions": [
+          "1.0"
+        ],
+        "direction": "outbound",
+        "status": "draft"
+      },
+      {
+        "contract": "ccure.audit.incident_evidence",
+        "schema_versions": [
+          "1.0"
+        ],
+        "direction": "inbound",
+        "status": "draft"
+      }
+    ],
+    "frameworks": [
+      {
+        "framework": {
+          "code": "ISO27001_2022",
+          "version": "2022"
+        },
+        "installed_for_tenant": true,
+        "controls_total": 93,
+        "controls_automated": 15
+      },
+      {
+        "framework": {
+          "code": "NIST_CSF_V2",
+          "version": "2.0"
+        },
+        "installed_for_tenant": true,
+        "controls_total": 106,
+        "controls_automated": 29
+      }
+    ],
+    "baseline_parameters": [],
+    "methods": [
+      {
+        "method": "discovery",
+        "implemented": true
+      },
+      {
+        "method": "port_scan",
+        "implemented": true
+      },
+      {
+        "method": "network_checks",
+        "implemented": true
+      },
+      {
+        "method": "credentialed_access",
+        "implemented": true
+      },
+      {
+        "method": "package_vulnerability",
+        "implemented": true
+      },
+      {
+        "method": "configuration_audit",
+        "implemented": true
+      },
+      {
+        "method": "web_application",
+        "implemented": true
+      },
+      {
+        "method": "malware_scan",
+        "implemented": false,
+        "note": "Antivirus presence check only (SRS 7.3.4.5)."
+      }
+    ]
+  }
+}

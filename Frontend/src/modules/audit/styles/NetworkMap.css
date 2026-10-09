@@ -1,0 +1,636 @@
+/* ============================================================================
+   Network topology map — page layout and canvas colours
+   ----------------------------------------------------------------------------
+   Batch 21. The page's own stylesheet, rebuilt on CCure tokens. The legacy
+   version carried 32 colour literals and 89 references to legacy variables,
+   and the page borrowed `btn`, `btn--primary` and `btn--secondary` from the
+   global scan.css, which is untouched: other pages still use it.
+
+   The graph is drawn on a canvas by vis-network, and a canvas cannot resolve
+   a custom property. The properties at the top of `.nmap-page` are the
+   bridge. Each names one colour the canvas draws, defined from a CCure token;
+   the page reads their computed values (readCanvasPalette in NetworkMap.jsx)
+   and reads them again whenever the theme changes. They are scoped to the
+   page rather than to :root, so defining them changes nothing elsewhere.
+
+   Labels and icon outlines use the -text tokens, and icon bodies the tinted
+   -bg tokens. The -solid steps are not used: in the light theme the warning
+   and info solids measure 2.38:1 and 2.21:1 against the surface, below the
+   3:1 a graphic needs. Every canvas pair is measured in both themes by the
+   NetworkMap tests.
+   ============================================================================ */
+
+/* ── Page frame and canvas colours ────────────────────────────────────────── */
+.nmap-page {
+  --nmap-canvas: var(--ccure-surface);
+  --nmap-label-muted: var(--ccure-text-secondary);
+  --nmap-edge: var(--ccure-border-strong);
+  --nmap-edge-highlight: var(--ccure-text);
+  --nmap-link-lldp: var(--ccure-primary-text);
+  --nmap-link-cdp: var(--ccure-warning-text);
+  --nmap-link-edp: var(--ccure-success-text);
+  --nmap-link-arp: var(--ccure-info-text);
+  --nmap-status-ok: var(--ccure-success-text);
+  --nmap-status-alert: var(--ccure-danger-text);
+  --nmap-status-info: var(--ccure-info-text);
+  --nmap-danger-ink: var(--ccure-danger-text);
+  --nmap-danger-fill: var(--ccure-danger-bg);
+  --nmap-warning-ink: var(--ccure-warning-text);
+  --nmap-warning-fill: var(--ccure-warning-bg);
+  --nmap-success-ink: var(--ccure-success-text);
+  --nmap-success-fill: var(--ccure-success-bg);
+  --nmap-info-ink: var(--ccure-info-text);
+  --nmap-info-fill: var(--ccure-info-bg);
+  --nmap-primary-ink: var(--ccure-primary-text);
+  --nmap-primary-fill: var(--ccure-primary-soft);
+  --nmap-neutral-ink: var(--ccure-text-secondary);
+  --nmap-neutral-fill: var(--ccure-surface-sunken);
+
+  --ccure-page-gap: var(--ccure-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+  color: var(--ccure-text);
+}
+
+.nmap-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-md);
+}
+
+.nmap-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-stats__value {
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-primary-text);
+}
+
+.nmap-stats__divider {
+  color: var(--ccure-border-strong);
+}
+
+/* ── Controls and data quality ────────────────────────────────────────────── */
+.nmap-toolbar,
+.nmap-quality {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+}
+
+.nmap-toolbar {
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.nmap-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+}
+
+.nmap-toolbar__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+}
+
+.nmap-field {
+  flex: 1 1 9rem;
+  min-width: 9rem;
+  margin: 0;
+}
+
+.nmap-field--search {
+  flex-basis: 15rem;
+}
+
+.nmap-quality {
+  align-items: center;
+  padding-block: var(--ccure-space-sm);
+}
+
+.nmap-quality__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nmap-quality__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ccure-space-2xs);
+  padding-inline-end: var(--ccure-space-md);
+  border-inline-end: 1px solid var(--ccure-border-subtle);
+}
+
+.nmap-quality__value {
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-primary-text);
+}
+
+.nmap-quality__label {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Graph ────────────────────────────────────────────────────────────────── */
+.nmap-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ccure-space-lg);
+  min-height: 0;
+}
+
+.nmap-graph {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: calc(100vh - 250px);
+  min-height: 450px;
+  overflow: hidden;
+  background: var(--nmap-canvas);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+}
+
+.nmap-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 450px;
+  background: var(--nmap-canvas);
+}
+
+/* Hidden while there is nothing to draw. Stated here because a class that set
+   `display` would otherwise win over the attribute. */
+.nmap-canvas[hidden] {
+  display: none;
+}
+
+/* Loading, failure and empty states cover the graph area. */
+.nmap-graph__state {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-xl);
+  text-align: center;
+}
+
+.nmap-graph__alert {
+  max-width: 32rem;
+  margin: 0;
+  text-align: start;
+}
+
+/* vis-network creates its tooltip inside the canvas container, and its own
+   stylesheet paints it the same pale colours in both themes. */
+.nmap-canvas .vis-tooltip {
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text);
+  background-color: var(--ccure-surface-raised);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  box-shadow: var(--ccure-shadow-md);
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.nmap-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--ccure-space-md);
+  width: 22.5rem;
+}
+
+.nmap-panel .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-md);
+}
+
+.nmap-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-xs);
+}
+
+.nmap-panel__title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-panel__actions {
+  display: flex;
+  gap: var(--ccure-space-3xs);
+}
+
+/* Subnet filters */
+.nmap-subnets {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nmap-subnets__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  max-height: 10rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--ccure-space-3xs);
+  list-style: none;
+}
+
+.nmap-subnet {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  cursor: pointer;
+}
+
+.nmap-subnet__label {
+  overflow: hidden;
+  font-family: var(--ccure-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Device type legend: the same colour families the canvas uses. */
+.nmap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nmap-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-legend__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nmap-swatch {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--nmap-neutral-ink);
+}
+
+.nmap-swatch--danger {
+  background: var(--nmap-danger-ink);
+}
+
+.nmap-swatch--warning {
+  background: var(--nmap-warning-ink);
+}
+
+.nmap-swatch--success {
+  background: var(--nmap-success-ink);
+}
+
+.nmap-swatch--info {
+  background: var(--nmap-info-ink);
+}
+
+.nmap-swatch--primary {
+  background: var(--nmap-primary-ink);
+}
+
+/* Selected node */
+.nmap-detail__title {
+  font-size: var(--ccure-text-base);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.nmap-detail__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+}
+
+.nmap-detail__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.nmap-detail__row dt {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-detail__row dd {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.nmap-detail__tier {
+  text-transform: capitalize;
+}
+
+.nmap-mono {
+  font-family: var(--ccure-font-mono);
+}
+
+.nmap-detail__alert {
+  margin: 0;
+  font-size: var(--ccure-text-xs);
+}
+
+.nmap-detail__quality {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ccure-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nmap-detail__quality li {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ccure-space-xs);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.nmap-detail__quality strong {
+  font-size: var(--ccure-text-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-primary-text);
+}
+
+.nmap-detail__quality span {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-detail__endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.nmap-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+  padding-top: var(--ccure-space-sm);
+  border-top: 1px solid var(--ccure-border-subtle);
+}
+
+.nmap-actions__title {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.nmap-actions__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nmap-actions__button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: start;
+  white-space: normal;
+}
+
+/* ── Endpoint evidence dialog ─────────────────────────────────────────────── */
+.nmap-evidence__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-md);
+}
+
+.nmap-evidence__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  margin: 0;
+}
+
+.nmap-evidence__summary strong {
+  font-size: var(--ccure-text-base);
+  color: var(--ccure-text);
+}
+
+.nmap-evidence__summary span {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-evidence__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.nmap-evidence__stat {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+  padding: var(--ccure-space-3xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-xs);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.nmap-evidence__stat dt {
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-evidence__stat dd {
+  margin: 0;
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-text);
+}
+
+.nmap-evidence__stat .nmap-evidence__matches {
+  color: var(--ccure-success-text);
+}
+
+.nmap-evidence__search {
+  margin: 0;
+}
+
+.nmap-evidence__table th,
+.nmap-evidence__table td {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nmap-evidence__link-type {
+  text-transform: uppercase;
+}
+
+.nmap-link {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text-link);
+  text-decoration: none;
+}
+
+.nmap-link:hover {
+  text-decoration: underline;
+}
+
+.nmap-link:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.nmap-muted {
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+}
+
+/* ── Guidance dialog ──────────────────────────────────────────────────────── */
+.nmap-help {
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+}
+
+.nmap-help p,
+.nmap-help ol,
+.nmap-help ul {
+  margin: 0;
+}
+
+.nmap-help p + p,
+.nmap-help p + ol,
+.nmap-help p + ul {
+  margin-top: var(--ccure-space-md);
+}
+
+.nmap-help ol,
+.nmap-help ul {
+  padding-inline-start: var(--ccure-space-xl);
+}
+
+.nmap-help ol {
+  list-style: decimal;
+}
+
+.nmap-help ul {
+  list-style: disc;
+}
+
+.nmap-help strong {
+  color: var(--ccure-text);
+}
+
+.nmap-help code {
+  font-family: var(--ccure-font-mono);
+  font-size: 0.95em;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .nmap-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nmap-sidebar {
+    width: auto;
+  }
+
+  .nmap-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .nmap-toolbar__fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nmap-field,
+  .nmap-field--search {
+    flex-basis: auto;
+    min-width: 0;
+  }
+}

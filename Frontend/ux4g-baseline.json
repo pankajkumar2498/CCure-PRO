@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "designSystem": {
+    "family": "3.0",
+    "figmaVersion": "3.0",
+    "cdnRelease": "3.3.2"
+  },
+  "npm": {
+    "package": "ux4g-web-components",
+    "version": "3.0.2",
+    "registry": "https://registry.npmjs.org",
+    "tarball": "https://registry.npmjs.org/ux4g-web-components/-/ux4g-web-components-3.0.2.tgz",
+    "integrity": "sha512-7FuSYAiS0eL/2NG91rY8qAhXbYOwCku3z2bRf4p6V/COOuFRvVgeq+zPszwXJt93wyQ5xnqXZEfuYnZO3HbXgA==",
+    "publisher": {
+      "name": "ux4g.npm",
+      "email": "support.ux4g@digitalindia.gov.in"
+    },
+    "publishedAt": "2026-10-06T06:35:02.973Z",
+    "dependencies": {},
+    "peerDependencies": {},
+    "optionalDependencies": {}
+  },
+  "verifiedAt": "2026-10-07",
+  "sources": {
+    "website": "https://www.ux4g.gov.in/get-started/installation",
+    "documentation": "https://doc.ux4g.gov.in/web/?path=/story/getting-started-quick-start-guide--quick-start",
+    "publisherMetadata": "https://registry.npmjs.org/ux4g-web-components/3.0.2",
+    "releaseNotes": "package/CHANGELOG.md in the verified npm distribution",
+    "cdnStylesheet": "https://cdn.ux4g.gov.in/UX4G@3.3.2/index.css"
+  },
+  "approval": {
+    "status": "approved-scoped-component-adapters",
+    "compatibility": "3.0.2 approved on 2026-10-07 after compatibility/security/CSP review (upgradeReport). Upstream renamed its dark-theme selector; the generator re-emits those tokens under the application's own :root[data-theme=dark] contract and never emits .dark or [data-mode]. Self-hosted assets and scoped official CSS through shared React adapters; runtime remains disabled.",
+    "report": "../docs/ux4g/B1_VERSION_FOUNDATION.md",
+    "upgradeReport": "../docs/ux4g/B11_UX4G_3_0_2_UPGRADE.md",
+    "pipelineReport": "../docs/ux4g/B2_ASSET_PIPELINE.md",
+    "adaptersReport": "../docs/ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md",
+    "migrationReport": "../docs/ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md",
+    "closureReport": "../docs/ux4g/B7_B10_FINAL_CLOSURE.md",
+    "standard": "../docs/ux4g/UX4G_STANDARD.md"
+  },
+  "assets": {
+    "mode": "tokens",
+    "retainedFonts": ["Noto Sans"],
+    "sourceCssSha256": "d290356ca9c326f83b07393a3308ac6acdd20c4972a6b1821de031069500c87e",
+    "delivery": "same-origin-woff2",
+    "status": "central tokens/font plus scoped component adapters; global component CSS and font policy changes remain deferred",
+    "components": {
+      "enabled": true,
+      "scope": ".cc-ux4g",
+      "status": "official component subset through central React adapters only; no global reset or full stylesheet"
+    }
+  },
+  "runtime": {
+    "enabled": false,
+    "status": "blocked-by-current-csp",
+    "reason": "Official bootstrap injects inline scripts without nonce support; script-src self remains unchanged. React retains behavior ownership."
+  },
+  "migration": {
+    "phase": "B.7 + B.8 + B.9 + B.10",
+    "officialComponentsEnabled": true,
+    "target": "One official UX4G foundation through the shared CCure Design System for Common, authentication, Audit, Policy, Rank, IR and future modules."
+  },
+  "csp": {
+    "status": "unchanged",
+    "policySha256": "74cc7d5e93ab9ebee8eb4e9aa8862609a710cac81ef4e3846cd20669b78e1ae5",
+    "scriptSources": ["'self'"],
+    "fontSources": ["'self'"]
+  }
+}

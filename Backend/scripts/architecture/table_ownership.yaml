@@ -1,0 +1,100 @@
+# Which CCure module owns every database table.
+#
+# Golden rule 1 of the modular-platform programme: no module reads or writes
+# another module's tables. This registry is the record of who owns what, and
+# tests/repo/test_architecture_guardrails.py checks it against the SQLAlchemy
+# metadata in both directions:
+#
+#   * a table the models define that is not listed here fails CI — every new
+#     table needs an owner the day it is created;
+#   * a table listed here that no model defines fails CI — a dropped table is
+#     removed from the registry in the same change.
+#
+# `platform` is what all four CCure modules share (identity, tenancy, RBAC,
+# the tamper-evident audit log, notifications). `audit` is the CCure Audit
+# module. `policy_pro`, `rank` and `ir` are reserved for the other three
+# modules, which will own tables in their own schemas.
+#
+# `capability` is the part of the module that owns the table, for the day a
+# capability is extracted or split; it is informational, not enforced.
+
+modules: [platform, audit, policy_pro, rank, ir]
+
+tables:
+  # ── platform: identity and sessions ──────────────────────────────────────
+  users: {owner: platform, capability: identity}
+  refresh_token_sessions: {owner: platform, capability: identity}
+  password_reset_tokens: {owner: platform, capability: identity}
+  email_verification_tokens: {owner: platform, capability: identity}
+  email_domain_rules: {owner: platform, capability: identity}
+  disposable_domains: {owner: platform, capability: identity}
+  # ── platform: tenancy and RBAC ───────────────────────────────────────────
+  organizations: {owner: platform, capability: tenancy}
+  # Native RBAC. Platform-owned; modules never read
+  # them — they ask ccure_platform.api (layer rule rbac-tables-are-private).
+  rbac_permissions: {owner: platform, capability: rbac}
+  rbac_roles: {owner: platform, capability: rbac}
+  rbac_role_revisions: {owner: platform, capability: rbac}
+  rbac_role_permissions: {owner: platform, capability: rbac}
+  rbac_user_roles: {owner: platform, capability: rbac}
+  rbac_default_roles: {owner: platform, capability: rbac}
+  # ── platform: cross-cutting services ─────────────────────────────────────
+  audit_logs: {owner: platform, capability: audit_log}
+  # Events no organisation owns (RBAC-2): audit_logs is tenant-bound and cannot hold them
+  platform_audit_events: {owner: platform, capability: audit_log}
+  notifications: {owner: platform, capability: notifications}
+
+  # ── audit: scan records ──────────────────────────────────────────────────
+  scans: {owner: audit, capability: scans}
+  scan_phases: {owner: audit, capability: scans}
+  scan_reports: {owner: audit, capability: reporting}
+  scan_policies: {owner: audit, capability: scan_policy}
+  scan_schedules: {owner: audit, capability: scheduling}
+  scan_schedule_runs: {owner: audit, capability: scheduling}
+  # ── audit: asset registry ────────────────────────────────────────────────
+  assets: {owner: audit, capability: assets}
+  asset_tags: {owner: audit, capability: assets}
+  asset_notes: {owner: audit, capability: assets}
+  asset_change_log: {owner: audit, capability: assets}
+  mac_vendor_cache: {owner: audit, capability: assets}
+  amt_inventory_records: {owner: audit, capability: assets}
+  network_links: {owner: audit, capability: topology}
+  # ── audit: findings and remediation ──────────────────────────────────────
+  services: {owner: audit, capability: findings}
+  tls_details: {owner: audit, capability: findings}
+  http_security_details: {owner: audit, capability: findings}
+  vulnerability_definitions: {owner: audit, capability: findings}
+  asset_vulnerabilities: {owner: audit, capability: findings}
+  finding_remediation_events: {owner: audit, capability: remediation}
+  # ── audit: web application scanning ──────────────────────────────────────
+  web_scans: {owner: audit, capability: web_dast}
+  web_assets: {owner: audit, capability: web_dast}
+  web_findings: {owner: audit, capability: web_dast}
+  web_parameters: {owner: audit, capability: web_dast}
+  web_forms: {owner: audit, capability: web_dast}
+  web_api_operations: {owner: audit, capability: web_dast}
+  # ── audit: credential vault (table name kept; ownership is not compliance) ──
+  compliance_credentials: {owner: audit, capability: credential_vault}
+  # ── audit: compliance assessment ─────────────────────────────────────────
+  compliance_frameworks: {owner: audit, capability: compliance}
+  compliance_tenant_frameworks: {owner: audit, capability: compliance}
+  compliance_controls: {owner: audit, capability: compliance}
+  compliance_rules: {owner: audit, capability: compliance}
+  compliance_rule_dependencies: {owner: audit, capability: compliance}
+  compliance_rule_controls: {owner: audit, capability: compliance}
+  compliance_remediations: {owner: audit, capability: compliance}
+  compliance_policies: {owner: audit, capability: compliance}
+  compliance_policy_rules: {owner: audit, capability: compliance}
+  compliance_scan_schedules: {owner: audit, capability: compliance}
+  compliance_scan_runs: {owner: audit, capability: compliance}
+  compliance_findings: {owner: audit, capability: compliance}
+  compliance_finding_history: {owner: audit, capability: compliance}
+  compliance_exceptions: {owner: audit, capability: compliance}
+  compliance_scores: {owner: audit, capability: compliance}
+  compliance_evidence_retention_policies: {owner: audit, capability: compliance}
+  compliance_evidence_files: {owner: audit, capability: compliance}
+  compliance_remediation_requests: {owner: audit, capability: compliance}
+  # Both exist with no code path reading them; roadmap Phase 7 decides whether
+  # the integration layer reuses or drops them.
+  compliance_integration_connectors: {owner: audit, capability: compliance}
+  compliance_notification_rules: {owner: audit, capability: compliance}

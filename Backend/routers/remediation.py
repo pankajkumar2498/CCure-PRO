@@ -60,8 +60,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
+from ccure_platform.api import log_audit_event
 from core.remediation import (
     ACTIVE_STATES,
     REMEDIATION_STATES,
@@ -79,9 +83,15 @@ from core.remediation import (
     sla_state,
     withdraw_acceptance,
 )
-from core.remediation.sla import DEFAULT_SLA_DAYS, SETTINGS_KEY
+from core.remediation.sla import (
+    DEFAULT_SLA_DAYS,
+    org_sla_setting,
+    sla_policy_for_org_id,
+    store_sla_setting,
+    stored_sla_setting,
+)
 from db.base import get_db
-from db.models import Organization, User
+from ccure_platform import api as platform_api
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, FindingRemediationEvent
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -100,16 +110,10 @@ router = APIRouter(prefix="/remediation", tags=["Remediation"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
-def _resolve_org(user: User, requested: Optional[str]) -> str:
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _get_finding(db: Session, finding_id: str, org_id: str) -> AssetVulnerability:
@@ -131,12 +135,13 @@ def _get_finding(db: Session, finding_id: str, org_id: str) -> AssetVulnerabilit
     return row
 
 
-def _org_row(db: Session, org_id: str) -> Optional[Organization]:
-    return db.query(Organization).filter(Organization.id == org_id).first()
+def _sla_setting(db: Session, org_id: str):
+    """The organisation's stored SLA setting (core.remediation.sla, the seam)."""
+    return org_sla_setting(db, org_id)
 
 
-def _serialize(finding: AssetVulnerability, *, org=None) -> Dict[str, Any]:
-    policy = sla_policy_for_org(org)
+def _serialize(finding: AssetVulnerability, *, sla_setting=None) -> Dict[str, Any]:
+    policy = sla_policy_for_org(sla_setting)
     return {
         "finding_id": finding.id,
         "asset_id": finding.asset_id,
@@ -270,7 +275,7 @@ def remediation_summary(
     response: Response,
     org_id: Optional[str] = Query(None),
     asset_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -378,11 +383,11 @@ def _listing(
         .limit(limit)
         .all()
     )
-    org_row = _org_row(db, org)
+    sla_setting = _sla_setting(db, org)
     return {
         "total": total,
         "count": len(rows),
-        "findings": [_serialize(r, org=org_row) for r in rows],
+        "findings": [_serialize(r, sla_setting=sla_setting) for r in rows],
     }
 
 
@@ -395,7 +400,7 @@ def overdue_findings(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -423,7 +428,7 @@ def pending_verification(
     owner_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -452,12 +457,12 @@ def finding_remediation(
     response: Response,
     finding_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
     finding = _get_finding(db, finding_id, org)
-    return _serialize(finding, org=_org_row(db, org))
+    return _serialize(finding, sla_setting=_sla_setting(db, org))
 
 
 @router.get("/findings/{finding_id}/history")
@@ -468,7 +473,7 @@ def finding_history(
     finding_id: str,
     org_id: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=1000),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -534,11 +539,11 @@ def get_sla_policy(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
     db: Session = Depends(get_db),
 ):
     org = _resolve_org(user, org_id)
-    policy = sla_policy_for_org(_org_row(db, org))
+    policy = sla_policy_for_org_id(db, org)
     payload = policy.as_dict()
     payload["org_id"] = org
     payload["unit"] = "calendar days"
@@ -553,7 +558,7 @@ def set_sla_policy(
     response: Response,
     body: RemediationSlaPolicyUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("settings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.remediation.manage_sla")),
     db: Session = Depends(get_db),
 ):
     """
@@ -571,12 +576,12 @@ def set_sla_policy(
     edit would alter what a past report said was overdue.
     """
     org = _resolve_org(user, org_id)
-    row = _org_row(db, org)
-    if row is None:
+    # The deadlines are the organisation's plan setting, platform-owned since
+    # Phase 8.4, read and stored through core.remediation.sla (the seam). The
+    # docstring above is the OpenAPI description and is left as it was.
+    current = stored_sla_setting(db, org)
+    if current is None:
         raise HTTPException(status_code=404, detail="Organisation not found.")
-
-    settings = dict(row.settings or {})
-    current = dict(settings.get(SETTINGS_KEY) or {})
 
     if body.days_by_severity is not None:
         merged_days = dict(current.get("days_by_severity") or {})
@@ -587,8 +592,7 @@ def set_sla_policy(
     if body.honour_kev_due_date is not None:
         current["honour_kev_due_date"] = body.honour_kev_due_date
 
-    settings[SETTINGS_KEY] = current
-    row.settings = settings
+    store_sla_setting(db, org, current)
 
     log_audit_event(
         db=db,
@@ -600,9 +604,8 @@ def set_sla_policy(
         request=request,
     )
     db.commit()
-    db.refresh(row)
 
-    policy = sla_policy_for_org(row)
+    policy = sla_policy_for_org_id(db, org)
     payload = policy.as_dict()
     payload["org_id"] = org
     payload["unit"] = "calendar days"
@@ -625,7 +628,7 @@ def assign(
     response: Response,
     body: RemediationAssign,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -642,10 +645,8 @@ def assign(
     org = _resolve_org(user, org_id)
 
     if body.owner_id:
-        owner = (
-            db.query(User).filter(User.id == body.owner_id, User.org_id == org).first()
-        )
-        if owner is None:
+        owner = platform_api.user(db, body.owner_id)
+        if owner is None or owner.org_id != org:
             raise HTTPException(
                 status_code=400,
                 detail="The owner must be a user in this organisation.",
@@ -703,7 +704,7 @@ def set_state(
     finding_id: str,
     body: RemediationStateUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -749,7 +750,7 @@ def set_state(
     )
     db.commit()
     db.refresh(finding)
-    return _serialize(finding, org=_org_row(db, org))
+    return _serialize(finding, sla_setting=_sla_setting(db, org))
 
 
 @router.post("/findings/{finding_id}/notes")
@@ -760,7 +761,7 @@ def append_note(
     finding_id: str,
     body: RemediationNote,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
     db: Session = Depends(get_db),
 ):
     """
@@ -783,7 +784,7 @@ def append_note(
     )
     db.commit()
     db.refresh(finding)
-    return _serialize(finding, org=_org_row(db, org))
+    return _serialize(finding, sla_setting=_sla_setting(db, org))
 
 
 @router.post("/findings/{finding_id}/accept-risk")
@@ -794,7 +795,7 @@ def accept_finding_risk(
     finding_id: str,
     body: RemediationAcceptRisk,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.accept_risk")),
     db: Session = Depends(get_db),
 ):
     """
@@ -845,7 +846,7 @@ def accept_finding_risk(
     )
     db.commit()
     db.refresh(finding)
-    return _serialize(finding, org=_org_row(db, org))
+    return _serialize(finding, sla_setting=_sla_setting(db, org))
 
 
 @router.post("/findings/{finding_id}/withdraw-acceptance")
@@ -856,7 +857,7 @@ def withdraw_finding_acceptance(
     finding_id: str,
     body: RemediationWithdraw,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("findings", "accept_risk")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.accept_risk")),
     db: Session = Depends(get_db),
 ):
     """Return an accepted finding to the remediation queue by hand."""
@@ -877,7 +878,7 @@ def withdraw_finding_acceptance(
     )
     db.commit()
     db.refresh(finding)
-    return _serialize(finding, org=_org_row(db, org))
+    return _serialize(finding, sla_setting=_sla_setting(db, org))
 
 
 #: Coverage areas each route answers, read by

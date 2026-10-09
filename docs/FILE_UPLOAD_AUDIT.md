@@ -23,11 +23,11 @@ Three file upload surfaces exist, and only three. Confirmed exhaustive by
 `grep -rn UploadFile Backend/ --include=*.py` (two hits outside `.venv`) and
 `grep -rn 'type="file"\|FileReader' Frontend/src` (three hits).
 
-| #   | Upload Surface                 | Frontend                                      | Backend                          | File Reaches Server?                                         |
-| --- | ------------------------------ | --------------------------------------------- | -------------------------------- | ------------------------------------------------------------ |
-| 1   | **Scan Target Upload**         | `Frontend/src/pages/scan/NewScan.jsx`         | `Backend/routers/phase_scans.py` | ❌ No — parsed client-side, only target strings sent as JSON |
-| 2   | **Compliance Evidence Upload** | `Frontend/src/pages/ComplianceWorkspace.jsx`  | `Backend/routers/compliance.py`  | ✅ Yes — multipart upload, stored on disk                    |
-| 3   | **AMT Inventory Upload**       | `Frontend/src/pages/admin/AMTIntegration.jsx` | `Backend/routers/assets.py`      | ✅ Yes — multipart upload, parsed as JSON                    |
+| #   | Upload Surface                 | Frontend                                                    | Backend                          | File Reaches Server?                                         |
+| --- | ------------------------------ | ----------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| 1   | **Scan Target Upload**         | `Frontend/src/modules/audit/pages/scan/NewScan.jsx`         | `Backend/routers/phase_scans.py` | ❌ No — parsed client-side, only target strings sent as JSON |
+| 2   | **Compliance Evidence Upload** | `Frontend/src/modules/audit/pages/ComplianceWorkspace.jsx`  | `Backend/routers/compliance.py`  | ✅ Yes — multipart upload, stored on disk                    |
+| 3   | **AMT Inventory Upload**       | `Frontend/src/modules/audit/pages/admin/AMTIntegration.jsx` | `Backend/routers/assets.py`      | ✅ Yes — multipart upload, parsed as JSON                    |
 
 ---
 

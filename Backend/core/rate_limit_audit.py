@@ -49,6 +49,21 @@ import logging
 
 logger = logging.getLogger("ccure.security.ratelimit")
 
+# How to read an access token, supplied by the application at start-up
+# (main.py registers auth.jwt_handler.decode_token). Injected rather than
+# imported since Phase 3 of the modular-platform programme: this module is
+# shared infrastructure, and importing the auth package from here made it
+# depend on a feature. With nothing registered, callers are simply not
+# attributed — the same answer given to any caller without a valid token.
+_token_decoder = None
+
+
+def set_token_decoder(decoder) -> None:
+    """Register the function that verifies and decodes an access token."""
+    global _token_decoder
+    _token_decoder = decoder
+
+
 # Tracks the last reported state per component so only transitions are logged.
 _degraded_state: dict[str, bool] = {}
 
@@ -76,9 +91,10 @@ def _caller_identity(request) -> tuple[str | None, str | None]:
         if not header.lower().startswith("bearer "):
             return None, None
 
-        from auth.jwt_handler import decode_token
+        if _token_decoder is None:
+            return None, None
 
-        payload = decode_token(header.split(" ", 1)[1].strip())
+        payload = _token_decoder(header.split(" ", 1)[1].strip())
         if not payload or payload.get("type") == "refresh":
             return None, None
         return payload.get("sub"), payload.get("org_id")

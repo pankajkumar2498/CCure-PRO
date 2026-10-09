@@ -31,7 +31,7 @@ import pytest
 from core.benchmarks.loader import load_pack_into_db, rule_row_id
 from core.benchmarks.pack import BenchmarkControl, BenchmarkPack, BenchmarkProfile
 from core.checks.contract import CheckOutcome, CheckResult, Evidence
-from core.config_audit.compliance_sync import sync_config_audit_findings
+from core.compliance_sync import sync_config_audit_findings
 from core.config_audit.spec import AbsencePolicy, ConfigCheck, Expectation
 from db.models.assets import Asset
 from db.models.compliance import (

@@ -20,6 +20,9 @@ Integrity labelling has its own suite next door
 (``test_audit_export_integrity.py``); this one is about the endpoint.
 """
 
+from native_rbac import grant_permissions, system_role, create_user, fixture_role
+
+
 import csv
 import io
 from datetime import datetime, timedelta, timezone
@@ -28,7 +31,7 @@ import pytest
 from auth.jwt_handler import create_access_token, hash_password
 from config import AppConfig
 from db.base import gen_user_id, gen_uuid, utcnow
-from db.models import AuditLog, Organization, Role, User
+from db.models import AuditLog, Organization, User
 
 BASE = "/admin/audit-logs"
 EXPORT = f"{BASE}/export"
@@ -62,7 +65,6 @@ def _headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -133,15 +135,16 @@ def other_tenant(db_session):
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter(Role.name == "org_admin").first()
-    admin = User(
+    role = system_role(db_session, "platform.org_admin")
+    admin = create_user(
+        db_session,
         id=gen_user_id(org.slug, "xotheradmin"),
         username=f"xotheradmin_{uid}",
         email=f"xotheradmin_{uid}@other.test",
         full_name="Export Other Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -156,15 +159,16 @@ def other_tenant(db_session):
 
 
 def _role_user(db_session, org, role_name: str) -> User:
-    role = db_session.query(Role).filter(Role.name == role_name).first()
+    role = system_role(db_session, role_name)
     uid = gen_uuid()[:8]
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(org.slug, f"{role_name}{uid}"),
         username=f"x{role_name}_{uid}",
         email=f"x{role_name}_{uid}@test.com",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -241,28 +245,20 @@ def test_export_refused_without_audit_export(client, db_session, test_org):
     inheriting the read one.
     """
     uid = gen_uuid()[:8]
-    role = Role(
-        name=f"reader_only_{uid}", description="audit:read only", is_system_role=False
-    )
+    role = fixture_role(db_session, f"reader_only_{uid}")
     db_session.add(role)
     db_session.flush()
 
-    from db.models import Permission, RolePermission
+    grant_permissions(db_session, role, "platform.audit_log.read")
 
-    permission = (
-        db_session.query(Permission)
-        .filter(Permission.resource == "audit", Permission.action == "read")
-        .first()
-    )
-    db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
-
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, f"readonly{uid}"),
         username=f"readonly_{uid}",
         email=f"readonly_{uid}@test.com",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -276,7 +272,7 @@ def test_export_refused_without_audit_export(client, db_session, test_org):
     assert client.get(EXPORT, headers=_headers(user)).status_code == 403
 
 
-@pytest.mark.parametrize("role_name", ["analyst", "viewer"])
+@pytest.mark.parametrize("role_name", ["platform.analyst", "platform.viewer"])
 def test_analyst_and_viewer_cannot_export(client, db_session, test_org, role_name):
     user = _role_user(db_session, test_org, role_name)
     res = client.get(EXPORT, headers=_headers(user))

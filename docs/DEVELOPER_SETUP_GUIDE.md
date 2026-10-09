@@ -10,17 +10,17 @@ the repository's actual scripts, Dockerfiles, CI workflow and configuration file
 
 ## 1. Prerequisites
 
-| Requirement             | Version                                | Why                                                                                                                                                  |
-| ----------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Python**              | **3.11** (host worker) / **3.12** (CI) | The Backend image is `python:3.11-slim`; the `start_host_scanner_worker.ps1` error message says `py -3.11 -m venv .venv`; GitHub Actions uses `3.12` |
-| **Node.js**             | **20** (image) / **22** (CI)           | `Frontend/Dockerfile` uses `node:20-slim`; CI's `setup-node` pins `22`                                                                               |
-| **npm**                 | Bundled with Node                      | `package-lock.json` is committed; CI uses `npm ci`                                                                                                   |
-| **PostgreSQL**          | 15 (container) or 18 (host)            | Compose ships `postgres:15-alpine`; the reference host deployment runs PostgreSQL 18                                                                 |
-| **Redis**               | 7                                      | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                         |
-| **Docker + Compose v2** | current                                | The `docker compose` (space) form is used throughout                                                                                                 |
-| **Nmap**                | any recent                             | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                           |
-| **Npcap**               | current                                | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                    |
-| **Git**                 | any                                    |                                                                                                                                                      |
+| Requirement             | Version                                      | Why                                                                                                                                                             |
+| ----------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Python**              | **3.11** (image, local venv) / **3.12** (CI) | The Backend image is `python:3.11-slim`; create `Backend/.venv` with `python3.11 -m venv .venv`; GitHub Actions uses `3.12`                                     |
+| **Node.js**             | **25** (image) / **22** (CI)                 | `Frontend/Dockerfile` builds on `node:25-slim` (pinned by digest); CI's `setup-node` pins `22`                                                                  |
+| **npm**                 | Bundled with Node                            | `package-lock.json` is committed; CI uses `npm ci`                                                                                                              |
+| **PostgreSQL**          | **18**                                       | Compose ships `postgres:18-alpine` (the VM's `ccure-db`) and CI uses the same; `Backend/tests/repo/test_ci_postgres_version.py` keeps them on one major version |
+| **Redis**               | 7                                            | `redis:7-alpine` — Celery broker, result backend and Pub/Sub                                                                                                    |
+| **Docker + Compose v2** | current                                      | The `docker compose` (space) form is used throughout                                                                                                            |
+| **Nmap**                | any recent                                   | Phase 2/3 port and service scanning. Optional — PortEngine falls back to async TCP connect                                                                      |
+| **Npcap**               | current                                      | **Windows only.** Scapy cannot open raw sockets without it, which disables ARP/ICMP/SYN discovery                                                               |
+| **Git**                 | any                                          |                                                                                                                                                                 |
 
 Optional external binaries — each absent tool is a **coverage gap, not an error**,
 except Nuclei in the DAST pipeline where it is essential:
@@ -53,10 +53,11 @@ CCure-Audit-PRO/
 │   ├── .env.local      VITE_API_BASE_URL
 │   └── package.json
 ├── docs/               This documentation set
-├── nginx/gateway.conf  Reverse-proxy config for the compose gateway
-├── scripts/            backup_db.ps1 · install_backup_schedule.ps1 ·
-│                       install_feed_schedule.ps1 · start/stop_host_scan_stack.ps1 ·
-│                       docker-postgres-init.sql · host-nginx/
+├── gateway/           API gateway (Phase 10): nginx config, route policy, gateway-auth
+├── scripts/            backup_db.sh · install_backup_schedule.sh ·
+│                       install_feed_schedule.sh · run_feed_sync.sh ·
+│                       docker-postgres-init.sql ·
+│                       host-nginx/ · linux/ · tls/
 ├── .env                docker-compose variables ONLY (git-ignored)
 ├── .env.example        Template for the above
 ├── docker-compose.yml
@@ -82,13 +83,13 @@ cp Backend/.env.example Backend/.env
 
 Compose refuses to start without five variables, each declared `${VAR:?message}`:
 
-| Variable                    | Set in      | Note                                                           |
-| --------------------------- | ----------- | -------------------------------------------------------------- |
-| `POSTGRES_USER`             | root `.env` |                                                                |
-| `POSTGRES_PASSWORD`         | root `.env` |                                                                |
-| `POSTGRES_DB`               | root `.env` |                                                                |
-| `JWT_SECRET_KEY`            | root `.env` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `COMPLIANCE_ENCRYPTION_KEY` | root `.env` | **Must match `Backend/.env`** on the host scanner worker       |
+| Variable                    | Set in      | Note                                                                                        |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`             | root `.env` |                                                                                             |
+| `POSTGRES_PASSWORD`         | root `.env` |                                                                                             |
+| `POSTGRES_DB`               | root `.env` |                                                                                             |
+| `MFA_ENCRYPTION_KEY`        | root `.env` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` — never change it afterwards |
+| `COMPLIANCE_ENCRYPTION_KEY` | root `.env` | **Must match `Backend/.env`** on the host scanner worker                                    |
 
 > **CAUTION:** `COMPLIANCE_ENCRYPTION_KEY` was previously defaulted to empty. The
 > API then encrypted stored credentials under the fallback key hardcoded in
@@ -130,14 +131,13 @@ curl -s http://127.0.0.1:8000/api/pipeline-modes
 docker compose logs -f api
 ```
 
-| Surface           | URL                                                                      |
-| ----------------- | ------------------------------------------------------------------------ |
-| API               | `http://127.0.0.1:8000`                                                  |
-| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**)        |
-| ReDoc             | `http://127.0.0.1:8000/redoc`                                            |
-| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                                     |
-| Frontend (direct) | `http://127.0.0.1:3200`                                                  |
-| Gateway (opt-in)  | `http://127.0.0.1:${GATEWAY_PORT:-8082}` — needs `--profile alt-gateway` |
+| Surface           | URL                                                               |
+| ----------------- | ----------------------------------------------------------------- |
+| API               | `http://127.0.0.1:8000`                                           |
+| Swagger UI        | `http://127.0.0.1:8000/docs` (**disabled when `ENV=production`**) |
+| ReDoc             | `http://127.0.0.1:8000/redoc`                                     |
+| OpenAPI JSON      | `http://127.0.0.1:8000/openapi.json`                              |
+| Frontend (direct) | `http://127.0.0.1:3200`                                           |
 
 ### 3.4 Rebuild rules
 
@@ -164,7 +164,7 @@ pip install -r requirements.txt
 ```
 
 Then create `Backend/.env` from `Backend/.env.example` and set at minimum
-`DATABASE_URL`, `JWT_SECRET_KEY`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`.
+`DATABASE_URL`, `MFA_ENCRYPTION_KEY`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`.
 
 Initialise the database (migrations + RBAC + default org):
 
@@ -219,33 +219,25 @@ npm run dev                 # http://localhost:3000
 
 ---
 
-## 5. Host scanner worker (Windows)
+## 5. Scanner worker
 
-The reference production layout runs the scanner worker outside Docker so Scapy
-and Nmap get raw-socket access to the physical network.
+The scanner worker is the `worker` compose service, run with `network_mode: host`
+and `NET_ADMIN`/`NET_RAW` so Scapy and Nmap get raw-socket access to the
+physical network. It and `web-worker` sit behind the `container-scanner` profile,
+which `COMPOSE_PROFILES=container-scanner` in `.env` turns on.
 
-```powershell
-.\Backend\scripts\scan\start_host_scanner_worker.ps1
-.\Backend\scripts\scan\start_host_scanner_worker.ps1 -Force   # replace a running worker
+```bash
+docker compose up -d                  # the whole stack, workers included
+docker compose restart worker         # after changing core/, scans/ or orchestrator/
+docker compose down
 ```
 
-The script requires `Backend\.venv\Scripts\python.exe` and **refuses to start a
-second worker** on the `scanner` queue. Two workers on one queue is a real hazard:
-tasks go to whichever grabs them first, and if the two were started from different
-working directories they can be running different code — so editing `Backend/` and
-restarting "the" worker would silently leave the other serving stale code. The
-guard counts only top-level Celery processes, because a single worker also shows a
-child `python.exe` under the venv's base interpreter.
-
-Whole-stack helpers:
-
-```powershell
-.\scripts\start_host_scan_stack.ps1
-.\scripts\stop_host_scan_stack.ps1
-```
-
-Restart the host worker after changing anything under `core/`, `scans/` or
-`orchestrator/`.
+Run **one** worker on the `scanner` queue. Two workers on one queue is a real
+hazard: tasks go to whichever grabs them first, and if they were started from
+different code they can be running different code, so restarting "the" worker
+silently leaves the other serving stale code. (The Windows deployment's
+`start_host_scanner_worker.ps1` guarded against this; it was retired on
+9 Oct 2026 with that deployment.)
 
 ---
 
@@ -293,20 +285,19 @@ otherwise `.env.test`. `SKIP_DOTENV_LOAD` disables loading entirely.
 
 ### Authentication
 
-| Variable                                         | Default                    | Effect                                                                       |
-| ------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                                 | dev default                | **Raises `RuntimeError` in production if left at a known default**           |
-| `ACCESS_TOKEN_EXPIRES_MINUTES`                   | `30`                       |                                                                              |
-| `REFRESH_TOKEN_EXPIRES_DAYS`                     | `7`                        |                                                                              |
-| `MFA_ENCRYPTION_KEY`                             | `JWT_SECRET_KEY`           | Rotating the JWT key without setting this orphans every enrolled TOTP secret |
-| `REFRESH_COOKIE_NAME`                            | `ccure_refresh_token`      |                                                                              |
-| `REFRESH_COOKIE_PATH`                            | `/`                        |                                                                              |
-| `REFRESH_COOKIE_SAMESITE`                        | `lax`                      |                                                                              |
-| `REFRESH_COOKIE_SECURE`                          | `false`                    | **Set `true` behind HTTPS**                                                  |
-| `REFRESH_COOKIE_DOMAIN`                          | unset                      |                                                                              |
-| `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` | empty                      | Seeds the first superadmin at startup                                        |
-| `COMPLIANCE_ENCRYPTION_KEY`                      | fallback (logged at ERROR) | AES-256-GCM master key for stored credentials                                |
-| `SCAN_KEY_DIR`                                   | user home                  | Directory `key_path` must resolve under                                      |
+| Variable                                         | Default                    | Effect                                                                                              |
+| ------------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ACCESS_TOKEN_EXPIRES_MINUTES`                   | `30`                       |                                                                                                     |
+| `REFRESH_TOKEN_EXPIRES_DAYS`                     | `7`                        |                                                                                                     |
+| `MFA_ENCRYPTION_KEY`                             | none (required)            | The API refuses to start without it; never change it — every enrolled TOTP secret would be orphaned |
+| `REFRESH_COOKIE_NAME`                            | `ccure_refresh_token`      |                                                                                                     |
+| `REFRESH_COOKIE_PATH`                            | `/`                        |                                                                                                     |
+| `REFRESH_COOKIE_SAMESITE`                        | `lax`                      |                                                                                                     |
+| `REFRESH_COOKIE_SECURE`                          | `false`                    | **Set `true` behind HTTPS**                                                                         |
+| `REFRESH_COOKIE_DOMAIN`                          | unset                      |                                                                                                     |
+| `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` | empty                      | Seeds the first superadmin at startup                                                               |
+| `COMPLIANCE_ENCRYPTION_KEY`                      | fallback (logged at ERROR) | AES-256-GCM master key for stored credentials                                                       |
+| `SCAN_KEY_DIR`                                   | user home                  | Directory `key_path` must resolve under                                                             |
 
 ### Scanning
 
@@ -379,8 +370,8 @@ Branches on whether the `public` schema has tables:
 
 - **Empty** → `Base.metadata.create_all()`, `create_partitions()` (8 hash
   partitions each for `audit_logs` and `asset_vulnerabilities`), then
-  `alembic stamp head`.
-- **Existing** → `alembic upgrade head`.
+  `alembic stamp heads`.
+- **Existing** → `alembic upgrade heads`.
 
 It then runs the four additive helpers (`ensure_user_schema`,
 `ensure_mac_vendor_schema`, `ensure_scan_schema`, `ensure_topology_schema`),
@@ -392,8 +383,9 @@ seeds RBAC and the default organization, and prints a table summary.
 cd Backend
 alembic current
 alembic history --verbose
-alembic upgrade head
-alembic downgrade -1
+alembic heads                       # one per branch: Audit's, then each core module's
+alembic upgrade heads
+alembic downgrade <head revision>@-1  # a bare -1 is ambiguous with several heads
 alembic revision --autogenerate -m "describe the change"
 ```
 
@@ -402,27 +394,27 @@ alembic revision --autogenerate -m "describe the change"
 
 ### Seeding
 
-| Command                                | Effect                                                               |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| `python -m scripts.seed_compliance`    | Frameworks and controls from the twelve `*_controls_seed.json` files |
-| `python -m scripts.seed_real_rules`    | Compliance rules, then evaluates them                                |
-| `python scripts/admin/create_admin.py` | Create an administrator interactively                                |
-| `python scripts/print_admin.py`        | Print the seeded admin account                                       |
-| `python scripts/seed_mock_findings.py` | Sample findings for UI work                                          |
+| Command                                                                          | Effect                                                               |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `python -m scripts.seed_compliance`                                              | Frameworks and controls from the twelve `*_controls_seed.json` files |
+| `python -m scripts.seed_real_rules`                                              | Compliance rules, then evaluates them                                |
+| `python -m scripts.rbac.bootstrap_admin --email … --reason … --allow-database …` | Make an account the platform administrator (first run or recovery)   |
+| `python scripts/print_admin.py`                                                  | Print the seeded admin account                                       |
 
 Framework seeding also runs automatically in the API lifespan when any framework's
 control count falls below its threshold.
 
 ### Backups
 
-```powershell
-$env:PGPASSWORD = '<password>'
-.\scripts\backup_db.ps1 -SkipReferenceData   # fast: operational data only
-.\scripts\install_backup_schedule.ps1        # register the 6-hourly scheduled task
-Get-ScheduledTask -TaskName 'CCure DB Backup' | Get-ScheduledTaskInfo
+```bash
+scripts/backup_db.sh --skip-reference-data   # fast: operational data only
+scripts/install_backup_schedule.sh           # the 6-hourly and nightly crontab entries
+crontab -l; tail backups/backup.log
 ```
 
-Restore: `pg_restore --clean --if-exists -d ccure_test <file>.dump`.
+Restore into a fresh database, never over the one serving, by the procedure in
+CLAUDE.md, "Backups on the VM". An operational (`_ops`) dump cannot be restored on
+its own: it lacks the catalogue tables its findings reference.
 
 > **CAUTION:** `archive_mode` is `off` on the reference deployment, so recovery
 > granularity is "since the last dump", not point-in-time. Take an ad-hoc dump
@@ -448,8 +440,8 @@ python scripts/vuln/sync_vulncheck.py         # VulnCheck KEV (needs a token)
 python scripts/vuln/backfill_finding_intel.py # Backfill existing findings
 ```
 
-```powershell
-.\scripts\install_feed_schedule.ps1           # register recurring feed sync
+```bash
+scripts/install_feed_schedule.sh   # from the repository root: schedule the nightly syncs (user crontab)
 ```
 
 Budget ~2 GB for the staged archives; `vuln_intel` itself reaches ~10 GB once
@@ -514,16 +506,15 @@ an up-to-date target cannot distinguish "matching works and the host is clean" f
 
 ### Verification scripts
 
-| Script                                            | Checks                     |
-| ------------------------------------------------- | -------------------------- |
-| `scripts/verification/verify_install.py`          | Installation prerequisites |
-| `scripts/verification/verify_permissions.py`      | RBAC seeding               |
-| `scripts/verification/check_schema.py`            | Schema state               |
-| `scripts/verification/check_compliance_data.py`   | Compliance catalog         |
-| `scripts/verification/check_cve_source.py`        | Feed connectivity          |
-| `scripts/verification/check_target_asset.py`      | One asset's record         |
-| `scripts/verification/test_scan_execution.py`     | End-to-end scan            |
-| `scripts/verification/verify_report_integrity.py` | Report generation          |
+| Script                                                                           | Checks                                                            |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `scripts/verification/verify_install.py`                                         | Installation prerequisites                                        |
+| `scripts/verification/verify_permissions.py`                                     | RBAC seeding                                                      |
+| `scripts/verification/check_compliance_data.py`                                  | Compliance catalog                                                |
+| `scripts/verification/check_cve_source.py`                                       | Feed connectivity                                                 |
+| `scripts/verification/check_target_asset.py`                                     | One asset's record                                                |
+| `scripts/verification/verify_compliance_scan_execution.py --allow-database NAME` | One compliance scan end to end; **writes** a run and its findings |
+| `scripts/verification/verify_report_integrity.py`                                | Report generation                                                 |
 
 ---
 
@@ -537,16 +528,32 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+`pre-commit install` installs two hook types, `pre-commit` and `commit-msg`
+(`default_install_hook_types`). A clone set up before 9 Oct 2026 has only the
+first: run `pre-commit install` once more to add the commit-message check.
+
 `.pre-commit-config.yaml` hooks:
 
-| Hook                                                                                | Scope                        | Configuration                                                            |
-| ----------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------ |
-| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                          | pre-commit-hooks v4.6.0                                                  |
-| `black`                                                                             | `^Backend/`                  | 24.4.2                                                                   |
-| `ruff`                                                                              | `^Backend/`                  | v0.4.8, `--fix`, ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821` |
-| `bandit`                                                                            | `^Backend/`                  | 1.7.9, `-lll`, excluding `tests`, skipping `B324,B501,B507`              |
-| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)` | prettier@3.2.5                                                           |
-| `eslint`                                                                            | `^Frontend/`                 | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                  |
+| Hook                                                                                | Scope                                                             | Configuration                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitleaks`                                                                          | all                                                               | v8.30.1, secret detection on the staged changes                                                                                                                                       |
+| `check-yaml`, `check-added-large-files`, `end-of-file-fixer`, `trailing-whitespace` | all                                                               | pre-commit-hooks v4.6.0                                                                                                                                                               |
+| `black`                                                                             | `^Backend/`                                                       | 24.4.2                                                                                                                                                                                |
+| `ruff`                                                                              | `^Backend/`                                                       | v0.4.8, `--fix`, `--select=E,F,W` (the selection CI runs), ignoring `E402,F401,F841,E711,E712,E741,F601,E722,F821,E501`                                                               |
+| `bandit`                                                                            | `^Backend/`                                                       | 1.9.4, `-lll`, excluding `tests`; no rule skipped (exceptions are `# nosec` on the line)                                                                                              |
+| `prettier`                                                                          | `^(Frontend/\|docs/.*\.md$)`                                      | prettier@3.2.5                                                                                                                                                                        |
+| `eslint`                                                                            | `^Frontend/`                                                      | eslint@8.57.0 + react + react-hooks, `--max-warnings=0`                                                                                                                               |
+| `no-ai-coauthor` (local, commit-msg stage)                                          | the commit message                                                | rejects a `Co-authored-by` trailer naming an AI agent (Claude, Anthropic, Codex, OpenAI, Copilot, …); human co-authors pass. `scripts/git/check_ai_coauthors.py`; rule in `CLAUDE.md` |
+| `openapi-contract` (local, runs last)                                               | backend `.py` except `tests/`, `openapi.json`, `requirements.txt` | regenerates `Backend/openapi.json` exactly as CI does and stages it if it changed; needs `Backend/.venv` with `requirements.txt` installed (or `CCURE_BACKEND_PYTHON`)                |
+
+> **The API contract is regenerated for you.** When a commit touches backend
+> code, `openapi-contract` rebuilds `Backend/openapi.json` from what is being
+> committed, stages it if it changed and names the operations added or
+> removed. If it cannot (no backend environment, a FastAPI or Pydantic version
+> other than the pins, or the application fails to import) the commit stops
+> with the reason. `SKIP=openapi-contract git commit …` commits without it,
+> and CI's OpenAPI Schema Diff Check still compares the contract. By hand:
+> `cd Backend && python -m scripts.openapi.generate` (or `--check`).
 
 > **NOTE:** Prettier covers `docs/*.md`, so this documentation set is
 > auto-formatted on commit.
@@ -599,7 +606,7 @@ pytest tests/repo/test_docs_integrity.py -v
 
 ### `backend-validation` (ubuntu-latest, Python 3.12)
 
-Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
+Services: `postgres:18-alpine` and `redis:7-alpine` with health checks.
 
 1. Install `requirements.txt` plus `pytest==7.4.4`, `pytest-cov`,
    `pytest-rerunfailures`, `bandit`, `ruff`.
@@ -609,8 +616,8 @@ Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
    roles the feed scripts expect.
 5. `python db/migrate_production_schema.py`, `python -m scripts.seed_compliance`,
    `python -m scripts.seed_real_rules`.
-6. **Alembic integrity** — `alembic downgrade -1` then `alembic upgrade head`, so
-   the newest migration must be reversible.
+6. **Alembic integrity** — `alembic downgrade <rev>@-1` for every head, then
+   `alembic upgrade heads`, so the newest migration on each branch must be reversible.
 7. **OpenAPI schema diff** — dumps `app.openapi()` deterministically and `diff`s
    against the committed `Backend/openapi.json`. A mismatch **fails the build**.
 8. `pytest --cov=. --cov-report=xml -v --reruns 1` with `MOCK_SCANNERS=true`.
@@ -637,40 +644,37 @@ Services: `postgres:15-alpine` and `redis:7-alpine` with health checks.
 
 ## 13. Common tasks
 
-| Task                          | Command                                                                    |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| Interactive scan CLI          | `cd Backend && python scripts/cli.py`                                      |
-| Create an admin               | `python scripts/admin/create_admin.py`                                     |
-| Clear test data               | `python scripts/admin/clear_ccure_test_data.py`                            |
-| Clean up legacy findings      | `python scripts/cleanup_legacy_findings.py`                                |
-| Inspect a scan's schema state | `python scripts/verification/check_schema.py`                              |
-| Tail API logs                 | `docker compose logs -f api`                                               |
-| Tail worker logs              | `docker compose logs -f worker`                                            |
-| Open a DB shell               | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB`            |
-| Restart after Python edits    | `docker compose restart api`                                               |
-| Rebuild the frontend          | `docker compose build frontend && docker compose up -d --no-deps frontend` |
+| Task                       | Command                                                                    |
+| -------------------------- | -------------------------------------------------------------------------- |
+| Interactive scan CLI       | `cd Backend && python scripts/cli.py`                                      |
+| Create an admin            | `python -m scripts.rbac.bootstrap_admin --help`                            |
+| Show the schema revision   | `docker exec -w /app ccure-api alembic current`                            |
+| Tail API logs              | `docker compose logs -f api`                                               |
+| Tail worker logs           | `docker compose logs -f worker`                                            |
+| Open a DB shell            | `docker compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB`            |
+| Restart after Python edits | `docker compose restart api`                                               |
+| Rebuild the frontend       | `docker compose build frontend && docker compose up -d --no-deps frontend` |
 
 ---
 
 ## 14. Troubleshooting
 
-| Symptom                                                              | Cause                                                                                      | Fix                                                              |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| API container starts but every request 500s                          | `SELECT 1` failed at startup; the lifespan logs the error and continues so you can exec in | Check `DATABASE_URL` and that `db` is healthy                    |
-| `RuntimeError: JWT_SECRET_KEY must be set to a strong, unique value` | A known development default with `ENVIRONMENT=production`                                  | Generate a real key                                              |
-| Compose refuses to start                                             | One of the five `${VAR:?}` variables is unset                                              | Set it in the root `.env`                                        |
-| Credentialed scans complete as unauthenticated audits                | `COMPLIANCE_ENCRYPTION_KEY` differs between API and host worker                            | Make them identical, then re-enter stored credentials            |
-| Phase 1 finds nothing on a LAN                                       | No raw-socket privilege, or Npcap missing on Windows                                       | Run elevated / install Npcap                                     |
-| Port scan is slow and version-poor                                   | `nmap` not on PATH — PortEngine logged a warning and fell back to TCP connect              | Install nmap                                                     |
-| `nuclei_probe` produces nothing                                      | Binary absent (logged as a coverage gap), or a two-argument `run()` was introduced         | Install nuclei; keep the three-argument serial signature         |
-| Web scan reports a tool gap                                          | `ToolCoverage` recorded `unavailable`                                                      | Install the tool, or accept the recorded gap                     |
-| CVE lookups return nothing                                           | `VULN_DB_*` unset, so `VulnIntelConfig` fell through to `DATABASE_URL`                     | Set `VULN_DB_NAME` et al., or `VULNERABILITY_INTEL_DATABASE_URL` |
-| Frontend calls hit the Vite server and 404                           | `/user`, `/compliance`, `/api` are not proxied                                             | Set `VITE_API_BASE_URL`                                          |
-| Frontend still points at the old API URL                             | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
-| `test_docs_integrity` fails on three missing files                   | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
-| CI fails on "Breaking OpenAPI changes detected"                      | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
-| Two workers serving different code                                   | A second host worker was started                                                           | Use `start_host_scanner_worker.ps1 -Force`                       |
-| Scan History shows the download time as the scan date                | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
+| Symptom                                               | Cause                                                                                      | Fix                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| API container starts but every request 500s           | `SELECT 1` failed at startup; the lifespan logs the error and continues so you can exec in | Check `DATABASE_URL` and that `db` is healthy                    |
+| Compose refuses to start                              | One of the five `${VAR:?}` variables is unset                                              | Set it in the root `.env`                                        |
+| Credentialed scans complete as unauthenticated audits | `COMPLIANCE_ENCRYPTION_KEY` differs between API and host worker                            | Make them identical, then re-enter stored credentials            |
+| Phase 1 finds nothing on a LAN                        | No raw-socket privilege, or Npcap missing on Windows                                       | Run elevated / install Npcap                                     |
+| Port scan is slow and version-poor                    | `nmap` not on PATH — PortEngine logged a warning and fell back to TCP connect              | Install nmap                                                     |
+| `nuclei_probe` produces nothing                       | Binary absent (logged as a coverage gap), or a two-argument `run()` was introduced         | Install nuclei; keep the three-argument serial signature         |
+| Web scan reports a tool gap                           | `ToolCoverage` recorded `unavailable`                                                      | Install the tool, or accept the recorded gap                     |
+| CVE lookups return nothing                            | `VULN_DB_*` unset, so `VulnIntelConfig` fell through to `DATABASE_URL`                     | Set `VULN_DB_NAME` et al., or `VULNERABILITY_INTEL_DATABASE_URL` |
+| Frontend calls hit the Vite server and 404            | `/user`, `/compliance`, `/api` are not proxied                                             | Set `VITE_API_BASE_URL`                                          |
+| Frontend still points at the old API URL              | `VITE_API_BASE_URL` is inlined at build time                                               | `docker compose build frontend`                                  |
+| `test_docs_integrity` fails on three missing files    | `./docs` not mounted into the container                                                    | Confirm the `./docs:/docs:ro` volume                             |
+| CI fails on "Breaking OpenAPI changes detected"       | Routes changed without regenerating the baseline                                           | Regenerate `Backend/openapi.json`                                |
+| Two workers serving different code                    | A second worker was started on the `scanner` queue                                         | Stop the extra one; `docker compose ps` shows one `worker`       |
+| Scan History shows the download time as the scan date | Report generation was made unconditional                                                   | Serve the stored PDF; regenerate only when missing               |
 
 ---
 

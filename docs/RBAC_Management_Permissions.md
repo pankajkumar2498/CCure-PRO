@@ -3,7 +3,7 @@
 **CCure-Audit-PRO** — the complete authorization model, derived from
 `Backend/db/migrate_production_schema.py` (definitions and grants),
 `Backend/auth/rbac.py` (enforcement), every `require_permission(...)` call site,
-and `Frontend/src/auth/permissions.js` (client-side mirror).
+and `Frontend/src/shell/auth/permissions.js` (client-side mirror).
 
 ---
 
@@ -345,41 +345,48 @@ superadmin.
 
 Derived by intersecting the grants above with the enforcement points in §3.
 
-| Capability                                | superadmin | org_admin | analyst | viewer | scanner |
-| ----------------------------------------- | :--------: | :-------: | :-----: | :----: | :-----: |
-| Launch a network scan                     |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| Launch a credentialed scan                |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| Stop a running scan                       |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
-| See the whole org's scans                 |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| See only own scans                        |     —      |     —     |    —    |   —    |   ✔    |
-| Archive / recycle / restore / purge scans |     ✔     |    ✔     |    —    |   —    |    —    |
-| View asset registry                       |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| Edit asset tags and notes                 |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| Import AMT inventory                      |     ✔     |    ✔     |    —    |   —    |    —    |
-| View findings                             |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| Triage findings                           |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| Download reports                          |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| Delete reports                            |     ✔     |    ✔     |    —    |   —    |    —    |
-| View dashboards                           |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
-| View network topology                     |     ✔     |    ✔     |   ✔    |   ✔   |   ✔    |
-| Manage users                              |     ✔     |    ✔     |    —    |   —    |    —    |
-| View roles                                |     ✔     |    ✔     |    —    |   —    |    —    |
-| Manage organizations                      |     ✔     |     —     |    —    |   —    |    —    |
-| Read the audit log                        |     ✔     |    ✔     |    —    |   —    |    —    |
-| Run compliance scans                      |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| Attest controls / request waivers         |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| Request remediation                       |     ✔     |    ✔     |   ✔    |   —    |    —    |
-| **Approve** remediation or waivers        |     ✔     |    ✔     |    —    |   —    |    —    |
-| Install compliance frameworks             |     ✔     |    ✔     |    —    |   —    |    —    |
-| Manage compliance credentials             |     ✔     |    ✔     |    —    |   —    |    —    |
-| Cross-tenant access via `?org_id=`        |     ✔     |     —     |    —    |   —    |    —    |
-| Web application scanning (all operations) |     ✔     |    ✔     |   ✔    |   ✔   |   ✔    |
+| Capability                                          | superadmin | org_admin | analyst | viewer | scanner |
+| --------------------------------------------------- | :--------: | :-------: | :-----: | :----: | :-----: |
+| Launch a network scan                               |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
+| Launch a credentialed scan                          |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
+| Stop a running scan                                 |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
+| See the whole org's scans                           |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
+| See only own scans                                  |     —      |     —     |    —    |   —    |   ✔    |
+| Archive / recycle / restore / purge scans           |     ✔     |    ✔     |    —    |   —    |    —    |
+| View asset registry                                 |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
+| Edit asset tags and notes                           |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| Import AMT inventory                                |     ✔     |    ✔     |    —    |   —    |    —    |
+| View findings                                       |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
+| Triage findings                                     |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| Download reports                                    |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
+| Delete reports                                      |     ✔     |    ✔     |    —    |   —    |    —    |
+| View dashboards                                     |     ✔     |    ✔     |   ✔    |   ✔   |    —    |
+| View network topology                               |     ✔     |    ✔     |   ✔    |   ✔   |   ✔    |
+| Manage users                                        |     ✔     |    ✔     |    —    |   —    |    —    |
+| View roles                                          |     ✔     |    ✔     |    —    |   —    |    —    |
+| Manage organizations                                |     ✔     |     —     |    —    |   —    |    —    |
+| Read the audit log                                  |     ✔     |    ✔     |    —    |   —    |    —    |
+| Run compliance scans                                |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| Attest controls / request waivers                   |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| Request remediation                                 |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| **Approve** remediation or waivers                  |     ✔     |    ✔     |    —    |   —    |    —    |
+| Install compliance frameworks                       |     ✔     |    ✔     |    —    |   —    |    —    |
+| Manage compliance credentials                       |     ✔     |    ✔     |    —    |   —    |    —    |
+| Cross-tenant access via `?org_id=`                  |     ✔     |     —     |    —    |   —    |    —    |
+| Web scans — view (`scans:read`)                     |     ✔     |    ✔     |   ✔    |   ✔   |   ✔    |
+| Web scans — launch, cancel (`scans:execute`)        |     ✔     |    ✔     |   ✔    |   —    |   ✔    |
+| Web findings — triage (`findings:update`)           |     ✔     |    ✔     |   ✔    |   —    |    —    |
+| Web findings — accept risk (`findings:accept_risk`) |     ✔     |    ✔     |   ✔    |   —    |    —    |
 
-> **CAUTION:** The `/web-scans` router uses `Depends(get_current_user)` on all
-> eight operations and enforces only organization scoping inside each handler.
-> Any authenticated user — including `viewer` — can start, cancel and triage web
-> application scans. If DAST is meant to be privileged, `require_permission` needs
-> to be added there.
+> **NOTE:** Until 25 Sep 2026 the `/web-scans` router depended on
+> `get_current_user` alone, so any authenticated user — `viewer` included — could
+> start, cancel and triage web application scans (finding F2 in
+> `docs/architecture/MODULE_INDEPENDENCE_BASELINE.md`). Every operation now
+> requires the same atom as its network-scan counterpart: `scans:execute` to
+> launch or cancel, `scans:read` to view, `findings:read` / `findings:update` for
+> findings, and `findings:accept_risk` on top of `findings:update` to set a web
+> finding to `accepted_risk`. `tests/web/test_web_scan_authorization.py` pins the
+> route-to-atom mapping. The progress WebSocket still authenticates by ticket.
 
 Topology is likewise gated on `scans:read`, which `scanner` holds, so a service
 account can read the topology graph.
@@ -509,7 +516,7 @@ though both hold identical atoms.
 
 ## 8. Client-side mirror
 
-`Frontend/src/auth/permissions.js` re-implements the same evaluation against the
+`Frontend/src/shell/auth/permissions.js` re-implements the same evaluation against the
 `role.permissions` array returned by `GET /auth/me`:
 
 ```javascript
@@ -631,7 +638,7 @@ Ordered by risk, all verified against the current tree.
 | #   | Finding                                                                                                                                                                                                | Severity                                           | Recommendation                                                                            |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | 1   | `_verify_admin` in `routers/admin_nvd.py` compares a `Role` object against strings and reads a non-existent `is_superadmin` attribute, so both `/api/v1/admin/*` routes return 403 to **every** caller | **Functional defect** — the feature is unreachable | Compare `role.name`, or switch to `require_permission("settings", "update")`              |
-| 2   | All eight `/web-scans` operations are gated only on authentication, so `viewer` can start and cancel DAST scans                                                                                        | Over-permissive                                    | Introduce `webscans:*` atoms or reuse `scans:execute` / `scans:read`                      |
+| 2   | ~~All eight `/web-scans` operations are gated only on authentication, so `viewer` can start and cancel DAST scans~~ **Resolved 25 Sep 2026** — see the note in §5                                      | Over-permissive                                    | Introduce `webscans:*` atoms or reuse `scans:execute` / `scans:read`                      |
 | 3   | `DELETE /admin/organizations/{org_id}` enforces superadmin in the handler body rather than through `require_permission`, so `organizations:delete` is never consulted                                  | Consistency, not exposure                          | Add `Depends(require_permission("organizations", "delete"))` alongside the existing check |
 | 4   | Seven atoms are defined and granted but never enforced; a further eleven are effectively inert                                                                                                         | Misleading                                         | Either wire them up or remove them, so `/admin/roles` stops overstating capability        |
 | 5   | `require_role()` is dead code                                                                                                                                                                          | Cleanliness                                        | Remove it, or convert the ad-hoc `_is_superadmin` helpers to use it                       |

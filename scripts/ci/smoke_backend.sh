@@ -27,6 +27,7 @@ RUN_ID="ccure-smoke-$$-$RANDOM"
 NET="$RUN_ID"
 DB="$RUN_ID-db"
 REDIS="$RUN_ID-redis"
+KEYS_VOLUME="$RUN_ID-keys"
 PG_IMAGE="${SMOKE_POSTGRES_IMAGE:-postgres:18-alpine}"
 REDIS_IMAGE="${SMOKE_REDIS_IMAGE:-redis:7-alpine}"
 
@@ -34,7 +35,7 @@ rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 DB_USER="smoke_$(rand 8 | tr '[:upper:]' '[:lower:]')"
 DB_PASSWORD="$(rand 32)"
 DB_NAME="ccure_smoke"
-JWT_SECRET_KEY="$(rand 48)"
+MFA_ENCRYPTION_KEY="$(rand 48)"
 COMPLIANCE_ENCRYPTION_KEY="$(rand 48)"
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB}:5432/${DB_NAME}?sslmode=disable"
 
@@ -50,12 +51,13 @@ cleanup() {
   fi
   docker rm -f "${CONTAINERS[@]}" "$DB" "$REDIS" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
+  docker volume rm "$KEYS_VOLUME" >/dev/null 2>&1 || true
   exit "$rc"
 }
 trap cleanup EXIT
 
 redact() {
-  sed -e "s/${DB_PASSWORD}/[redacted]/g" -e "s/${JWT_SECRET_KEY}/[redacted]/g" \
+  sed -e "s/${DB_PASSWORD}/[redacted]/g" -e "s/${MFA_ENCRYPTION_KEY}/[redacted]/g" \
       -e "s/${COMPLIANCE_ENCRYPTION_KEY}/[redacted]/g"
 }
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -94,15 +96,31 @@ APP_ENV_ARGS=(
   -e CELERY_RESULT_BACKEND="redis://$REDIS:6379/0"
   -e VULN_DB_HOST="$DB" -e VULN_DB_PORT=5432 -e VULN_DB_NAME=vuln_intel
   -e VULN_DB_USER="$DB_USER" -e VULN_DB_PASSWORD="$DB_PASSWORD"
-  -e JWT_SECRET_KEY="$JWT_SECRET_KEY"
+  -e MFA_ENCRYPTION_KEY="$MFA_ENCRYPTION_KEY"
   -e COMPLIANCE_ENCRYPTION_KEY="$COMPLIANCE_ENCRYPTION_KEY"
   -e CORS_ALLOW_ORIGINS=http://localhost:3000
   -e FRONTEND_URL=http://localhost:3000
 )
 
+# The api refuses to start without a token-signing keyset (Phase 9.6c: ES256 is
+# the only scheme, and there is no secret to fall back to). Make a throwaway one
+# with the image's own key tool, owned by the unprivileged user, in a volume that
+# is removed on exit, and mount it read-only into the api alone: workers hold no
+# signing keys, as in compose.
+echo "== signing keyset (throwaway, api only)"
+docker volume create "$KEYS_VOLUME" >/dev/null
+CCURE_UID="$(docker run --rm --entrypoint id "$IMAGE" -u ccure)"
+CCURE_GID="$(docker run --rm --entrypoint id "$IMAGE" -g ccure)"
+docker run --rm --user root -v "$KEYS_VOLUME:/keys" "$IMAGE" \
+  python scripts/security/manage_token_keys.py --keys-dir /keys generate \
+  --state active --owner "$CCURE_UID:$CCURE_GID" >/dev/null \
+  || fail "could not generate a throwaway token keyset"
+pass "throwaway ES256 keyset generated"
+
 echo "== api (image default user and command)"
 API="$RUN_ID-api"; CONTAINERS+=("$API")
-docker run -d --name "$API" --network "$NET" -p 127.0.0.1::8000 "${APP_ENV_ARGS[@]}" "$IMAGE" >/dev/null
+docker run -d --name "$API" --network "$NET" -p 127.0.0.1::8000 "${APP_ENV_ARGS[@]}" \
+  -e CCURE_TOKEN_KEYS_DIR=/keys -v "$KEYS_VOLUME:/keys:ro" "$IMAGE" >/dev/null
 PORT="$(docker port "$API" 8000/tcp | head -1 | sed 's/.*://')"
 code=""
 for _ in $(seq 1 90); do
@@ -177,12 +195,12 @@ pass "beat started and runs as ccure (uid $beat_uid)"
 echo "== secrets never appear in a log"
 for c in "${CONTAINERS[@]}"; do
   logs="$(docker logs "$c" 2>&1)"
-  for secret in "$DB_PASSWORD" "$JWT_SECRET_KEY" "$COMPLIANCE_ENCRYPTION_KEY"; do
+  for secret in "$DB_PASSWORD" "$MFA_ENCRYPTION_KEY" "$COMPLIANCE_ENCRYPTION_KEY"; do
     if grep -qF -- "$secret" <<<"$logs"; then
       fail "a generated secret was printed by ${c#"$RUN_ID"-}"
     fi
   done
 done
-pass "no database password, JWT key or encryption key in any log"
+pass "no database password, MFA key or encryption key in any log"
 
 echo "PASS: backend image $IMAGE"

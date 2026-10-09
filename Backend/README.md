@@ -85,7 +85,7 @@ ccure_engine/
 │
 ├── engines/
 │   ├── discovery/
-│   │   └── discovery_engine.py      Phase 1 — Host discovery (ARP/ICMP/SYN/TCP/adaptive)
+│   │   └── l2_sniffer.py            Passive CDP/LLDP/STP switch discovery (Phase 1 is core/discovery/)
 │   │
 │   ├── port/
 │   │   └── port_engine.py           Phase 2 — Async TCP port scan + banner grab

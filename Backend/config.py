@@ -5,6 +5,8 @@ Centralized configuration for CCure Audit PRO.
 Loads settings from environment variables with sensible defaults.
 """
 
+import base64
+import hashlib
 import os
 from pathlib import Path
 
@@ -84,15 +86,42 @@ class DatabaseConfig:
 class JWTConfig:
     """JWT authentication configuration."""
 
-    SECRET_KEY: str = os.getenv(
-        "JWT_SECRET_KEY",
-        "dev-secret-key-change-in-production",  # ⚠️ Never use in production
-    )
     ACCESS_TOKEN_EXPIRES_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "30")
     )
     REFRESH_TOKEN_EXPIRES_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "7"))
-    MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", SECRET_KEY)
+
+    # The secret the MFA Fernet key is derived from (it encrypts
+    # users.totp_secret). Required: there is no fallback. It was initialised to
+    # the value of the retired JWT secret so that nothing already stored changed
+    # (scripts/security/verify_mfa_key_continuity.py proved it), and it must
+    # never change afterwards. Unset, the API refuses to start (main.py).
+    MFA_ENCRYPTION_KEY: str = os.getenv("MFA_ENCRYPTION_KEY", "")
+    # ── Token issuer, audience and signing keys (Phase 9.3) ─────────────────
+    # The issuer every asymmetric token names, chosen by the project owner on
+    # 29 Sep 2026. It must not change for the life of the platform: every
+    # verifier compares against it.
+    TOKEN_ISSUER: str = os.getenv("CCURE_TOKEN_ISSUER", "https://ccurepro.cdac.in")
+    # The one audience user tokens carry (owner's decision): everything behind
+    # the gateway; each module decides authorisation itself.
+    TOKEN_USER_AUDIENCE: str = "urn:ccure:api"
+    # The keyset directory (keyset.json + PEM files), mounted read-only into the
+    # api container only. Unset means no asymmetric verification and no JWKS.
+    TOKEN_KEYS_DIR: str = os.getenv("CCURE_TOKEN_KEYS_DIR", "")
+    # The service-identity registry (Phase 9.5): services.json plus each
+    # service's public keys, mounted read-only into the api only. Unset means
+    # no service is registered, and every service assertion is refused.
+    SERVICE_REGISTRY_DIR: str = os.getenv("CCURE_SERVICE_REGISTRY_DIR", "")
+
+
+def derive_mfa_fernet_key(secret: str) -> bytes:
+    """
+    The Fernet key that encrypts ``users.totp_secret``: urlsafe base64 of
+    SHA-256 of the configured MFA secret. The formula is unchanged since
+    before Phase 9.2 — changing it would make every stored MFA secret
+    undecryptable.
+    """
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
 
 
 class ScanConfig:
@@ -687,6 +716,17 @@ class EmailDomainGuardConfig:
     )
 
 
+class RbacReauthConfig:
+    """
+    RBAC-7 step-up for sensitive governance operations (identity/reauth.py).
+    enforce            — an account with MFA enrolled must present a current code
+    require_enrolment  — an account with no MFA is refused sensitive operations
+    off                — no step-up (tests / controlled environments)
+    """
+
+    MODE: str = os.getenv("RBAC_REAUTH_MODE", "enforce").strip().lower()
+
+
 class AppConfig:
     """Application-wide configuration."""
 
@@ -712,9 +752,23 @@ class AppConfig:
     # nginx, which the API container sees as the Docker bridge gateway, plus
     # loopback for a direct local call. If you put a load balancer or WAF in
     # front, add *its* address — never the network your users sit on.
+    #
+    # Phase 10.3 (F10-1): the default was the whole Docker address pool,
+    # 172.16.0.0/12, which trusted EVERY container on the compose network —
+    # the frontend container's /api/ proxy (:3200) and any worker could then
+    # declare a client address. It is now the one peer host nginx arrives as:
+    # 172.18.0.1, the gateway of this deployment's compose network
+    # (ccure-audit-pro_default, 172.18.0.0/16), which docker-proxy uses for
+    # traffic to the loopback-published :8000. It is also the peer ANY process
+    # on the host arrives as; closing that needs :8000 unpublished (the
+    # gateway cut-over), not a narrower list. If the compose network is ever
+    # recreated on another subnet, set TRUSTED_PROXIES to its gateway — until
+    # then every client falls into one bucket (fail-safe, logged at start-up).
+    # The gateway container, once it fronts the API, is added here by its
+    # fixed address.
     TRUSTED_PROXIES: list = [
         ip.strip()
-        for ip in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12").split(",")
+        for ip in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1,172.18.0.1").split(",")
         if ip.strip()
     ]
 
@@ -859,7 +913,7 @@ class AppConfig:
         os.getenv("AUDIT_RETENTION_REQUIRE_BACKUP_HOURS", "24")
     )
 
-    # Where backup_db.ps1 writes. Read only to check the age of the newest
+    # Where scripts/backup_db.sh writes. Read only to check the age of the newest
     # dump; nothing here ever writes to or prunes this directory.
     AUDIT_RETENTION_BACKUP_DIR: str = os.getenv(
         "AUDIT_RETENTION_BACKUP_DIR", str(BACKEND_DIR.parent / "backups")
@@ -876,19 +930,19 @@ class AppConfig:
     DATABASE_ENGINE_KWARGS = DatabaseConfig.get_engine_kwargs()
 
     # JWT
-    JWT_SECRET_KEY = JWTConfig.SECRET_KEY
     ACCESS_TOKEN_EXPIRES_MINUTES = JWTConfig.ACCESS_TOKEN_EXPIRES_MINUTES
     REFRESH_TOKEN_EXPIRES_DAYS = JWTConfig.REFRESH_TOKEN_EXPIRES_DAYS
     MFA_ENCRYPTION_KEY = JWTConfig.MFA_ENCRYPTION_KEY
 
     # Derived Fernet key (32 bytes urlsafe base64 encoded)
+    # Empty when the key is not configured, never a key derived from "": the API
+    # refuses to start in that state (main.py), and a key anyone can compute must
+    # not exist to be used by mistake.
     MFA_KEY: bytes = (
-        lambda key=JWTConfig.MFA_ENCRYPTION_KEY: (
-            __import__("base64").urlsafe_b64encode(
-                __import__("hashlib").sha256(key.encode()).digest()
-            )
-        )
-    )()
+        derive_mfa_fernet_key(JWTConfig.MFA_ENCRYPTION_KEY)
+        if JWTConfig.MFA_ENCRYPTION_KEY
+        else b""
+    )
 
     # Scans
     NMAP_TIMEOUT = ScanConfig.NMAP_TIMEOUT
@@ -957,6 +1011,8 @@ class AppConfig:
     EMAIL_VERIFICATION_TTL_HOURS = AccountSecurityConfig.EMAIL_VERIFICATION_TTL_HOURS
     UNVERIFIED_ACCOUNT_TTL_DAYS = AccountSecurityConfig.UNVERIFIED_ACCOUNT_TTL_DAYS
     MAIL_INLINE_FALLBACK = AccountSecurityConfig.MAIL_INLINE_FALLBACK
+
+    RBAC_REAUTH_MODE = RbacReauthConfig.MODE
 
     # Disposable / throwaway email domain screening
     EMAIL_DOMAIN_GUARD_MODE = EmailDomainGuardConfig.MODE

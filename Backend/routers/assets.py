@@ -13,8 +13,12 @@ import json
 import logging
 from typing import Optional
 
-from auth.rbac import require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
+from ccure_platform.api import log_audit_event
 from core.upload_guard import (
     UploadTooLarge,
     looks_like_text,
@@ -23,7 +27,7 @@ from core.upload_guard import (
 )
 from core.vuln_intel import compute_priority
 from db.base import get_db
-from db.models import AMTInventoryRecord, AuditLog, User
+from db.models import AMTInventoryRecord, AuditLog
 from db.models.assets import Asset, AssetChangeLog, AssetNote, AssetTag
 from db.models.findings import (
     OBSERVED_SERVICE_STATES,
@@ -57,16 +61,10 @@ def _display_json_value(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _resolve_org(user: User, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _asset_or_404(db: Session, asset_id: str, org_id: str) -> Asset:
@@ -192,7 +190,7 @@ def list_assets(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     org = _resolve_org(user, org_id)
     q = db.query(Asset).filter(Asset.org_id == org)
@@ -299,7 +297,7 @@ def list_assets(
 @router.get("/debug-reconcile")
 def debug_reconcile(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     from core.amt_reconciliation import reconcile_amt_inventory
     from core.utils import normalize_mac
@@ -368,7 +366,7 @@ def list_global_certificates(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     """
     Retrieve a centralized inventory of all TLS/SSL certificates and configurations
@@ -484,7 +482,7 @@ def list_global_services(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     """
     Retrieve an aggregated centralized inventory of all discovered services and open ports
@@ -582,7 +580,7 @@ def list_service_assets(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     """
     Retrieve all assets running a specific service-port-protocol signature.
@@ -646,7 +644,7 @@ def list_service_assets(
 def get_coverage_stats(
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     """
     Retrieve coverage and gap statistics between scanned assets and corporate AMT inventory.
@@ -755,7 +753,7 @@ def get_reconciliation_drilldown(
     org_id: str | None = Query(None),
     export: bool = Query(False),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     """
     Retrieve paginated lists of assets or inventory records for reconciliation drilldown categories:
@@ -1041,7 +1039,7 @@ def get_asset(
     asset_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     org = _resolve_org(user, org_id)
     asset = _asset_or_404(db, asset_id, org)
@@ -1068,7 +1066,7 @@ def get_asset_services(
     asset_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1137,7 +1135,7 @@ def get_asset_findings(
     status: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1205,7 +1203,7 @@ def get_asset_changelog(
     view: str = Query("timeline", description="'timeline' (grouped) or 'raw'"),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.read")),
 ):
     from core.audit_event_translator import translate_and_group_changelog
     from db.models.scans import Scan as ScanModel
@@ -1320,7 +1318,7 @@ def update_asset(
     body: AssetUpdate,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.update")),
 ):
     org = _resolve_org(user, org_id)
     asset = _asset_or_404(db, asset_id, org)
@@ -1371,7 +1369,7 @@ def add_tag(
     body: TagBody,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.update")),
 ):
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1396,7 +1394,7 @@ def remove_tag(
     tag: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.update")),
 ):
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1425,7 +1423,7 @@ def add_note(
     body: NoteBody,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("assets", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.update")),
 ):
     org = _resolve_org(user, org_id)
     _asset_or_404(db, asset_id, org)
@@ -1552,7 +1550,7 @@ def import_amt_inventory(
     file: UploadFile = File(...),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("settings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.asset.import_amt")),
 ):
     """
     Upload an assets.json file to overwrite organization's AMT inventory reference data

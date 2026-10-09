@@ -231,6 +231,20 @@ CONTROL_THEMES = (
     "NIS2_IAM",
     "NIS2_MFA",
     "BENCHMARK",
+    # ISO/IEC 27001:2022 clauses 4–10, the management-system requirements
+    # (migration e9a1c3d5f7b2). A theme of their own because they are not
+    # Annex A controls: they are mandatory for conformity, never selected or
+    # excluded through the Statement of Applicability, and must not be scored
+    # or reported as one of Annex A's four themes.
+    "ISMS",
+    # HIPAA Security Rule, one per section of 45 CFR Part 164 Subpart C
+    # (migration f3b5d7e9a1c4): 164.308 administrative, 164.310 physical,
+    # 164.312 technical, 164.314 organizational, 164.316 documentation.
+    "HIPAA_ADM",
+    "HIPAA_PHY",
+    "HIPAA_TEC",
+    "HIPAA_ORG",
+    "HIPAA_DOC",
 )
 
 CONTROL_THEME_SQL = "theme IN %s" % _sql_in_list(CONTROL_THEMES)
@@ -655,8 +669,11 @@ class ComplianceScanRun(Base):
 
     __tablename__ = "compliance_scan_runs"
     __table_args__ = (
+        # `not_assessed` (migration d6e7f8a9b0c2): the run's scope resolved to
+        # no assets, so nothing was evaluated. Distinct from `completed`, which
+        # every reader takes to mean "these are the results".
         CheckConstraint(
-            "status IN ('queued', 'running', 'completed', 'failed')",
+            "status IN ('queued', 'running', 'completed', 'failed', 'not_assessed')",
             name="ck_run_status",
         ),
         # Scan history is always read as "this tenant's runs, newest first"

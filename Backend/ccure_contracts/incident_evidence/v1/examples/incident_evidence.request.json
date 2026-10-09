@@ -1,0 +1,82 @@
+{
+  "contract": "ccure.audit.incident_evidence",
+  "schema_version": "1.0",
+  "message_id": "8192a3b4-cfd0-41e2-9d54-6f708192a309",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "ir",
+    "module_version": "0.1.0"
+  },
+  "produced_at": "2026-09-27T16:05:00Z",
+  "correlation_id": "corr-ir-inc-2026-0142",
+  "data": {
+    "incident_id": "inc-2026-0142",
+    "incident_version": 3,
+    "title": "Exploitation attempt against fin-app-01 (Log4Shell)",
+    "status": "closed",
+    "severity": "critical",
+    "timeline": {
+      "occurred_at": "2026-09-26T21:10:00Z",
+      "detected_at": "2026-09-26T21:14:30Z",
+      "contained_at": "2026-09-26T21:52:00Z",
+      "recovered_at": "2026-09-27T09:30:00Z",
+      "closed_at": "2026-09-27T16:00:00Z"
+    },
+    "summary": "JNDI lookup strings observed in HTTP headers to fin-app-01; outbound LDAP blocked at the egress firewall; host isolated and Log4j upgraded.",
+    "related_findings": [
+      {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228"
+      }
+    ],
+    "related_assets": [
+      {
+        "asset_id": "ast_org_default_192_0_2_10",
+        "ip_address": "192.0.2.10",
+        "hostname": "fin-app-01",
+        "mac_address": "00:00:5e:00:53:10"
+      }
+    ],
+    "response_actions": [
+      {
+        "action_id": "act-1",
+        "action_type": "isolate_host",
+        "description": "Moved fin-app-01 to the quarantine VLAN.",
+        "performed_at": "2026-09-26T21:50:00Z",
+        "outcome": "succeeded"
+      },
+      {
+        "action_id": "act-2",
+        "action_type": "patch",
+        "description": "Upgraded log4j-core to 2.17.1.",
+        "performed_at": "2026-09-27T08:40:00Z",
+        "performed_by_ref": "ir-user-310",
+        "outcome": "succeeded"
+      }
+    ],
+    "remediation_claims": [
+      {
+        "finding": {
+          "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228"
+        },
+        "claim": "remediated",
+        "claimed_at": "2026-09-27T08:45:00Z",
+        "description": "log4j-core 2.14.1 replaced with 2.17.1; service restarted.",
+        "request_rescan": true
+      }
+    ],
+    "effectiveness_score": {
+      "status": "available",
+      "value": 82.0,
+      "unit": "score_0_100"
+    },
+    "evidence_files": [
+      {
+        "ir_evidence_id": "irf-88213",
+        "name": "inc-2026-0142-timeline.pdf",
+        "media_type": "application/pdf",
+        "size_bytes": 184233,
+        "sha256": "b7557f051d5191e0039229198dae6eff9223d344cff7164f7a11bb3cdd3a8154"
+      }
+    ]
+  }
+}

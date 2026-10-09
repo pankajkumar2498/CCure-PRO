@@ -1,0 +1,379 @@
+"""
+RBAC guardrails, measured from source — RBAC-1 of the RBAC programme.
+
+The frozen RBAC-0 design says authorization must never depend on a role's
+identity: not its display name, not its key, not a legacy role name. Authorization
+is permissions and scope. This file measures two things, and
+``tests/repo/test_rbac_role_identity.py`` turns them into tests:
+
+**1. The new RBAC implementation — zero tolerance.**
+Every runtime file under ``ccure_platform/rbac/``.
+In it:
+
+* no string literal may be one of the five legacy role names or the five new
+  system role keys. They are *seed data*, and the one place they may be written
+  is ``contract.py``;
+* no comparison may involve a role's ``name``, ``key``, ``display_name`` or
+  ``role_key`` — outside ``catalogue.py``, whose sync reconciles the system roles
+  to their declared grants and is seed-time code, not a request-time decision.
+
+**2. The legacy authorization code — a ratchet.**
+Existing code compares ``role.name`` to ``"superadmin"`` in a number of places and
+calls ``require_role``. RBAC-1 is dark and must not fail the repository merely
+because the legacy checks still exist; RBAC-4 removes them. So their count is
+recorded per file and may only **fall**: a new site fails, and a recorded one that
+disappears also fails until the baseline is lowered, so a removed check cannot
+quietly come back.
+
+Seed and migration contexts are exempt from the ratchet by design: ``alembic/``,
+``tests/`` and ``scripts/`` (operator tooling and bootstrap).
+
+Nothing is imported; every file is parsed with ``ast``. Run from ``Backend/``::
+
+    python -m scripts.architecture.rbac_guardrails            # counts
+    python -m scripts.architecture.rbac_guardrails --list     # every site
+    python -m scripts.architecture.rbac_guardrails --baseline # paste-able dict
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+
+from scripts.architecture.import_graph import BACKEND_ROOT
+
+#: The five original role names — retired names blocked by the ratchet, never a decision.
+LEGACY_ROLE_NAMES = frozenset(
+    {"superadmin", "org_admin", "analyst", "viewer", "scanner"}
+)
+#: The five system role keys of the new model.
+SYSTEM_ROLE_KEYS = frozenset({f"platform.{n}" for n in LEGACY_ROLE_NAMES})
+FORBIDDEN_LITERALS = LEGACY_ROLE_NAMES | SYSTEM_ROLE_KEYS
+
+#: Attributes that name a role's identity (as opposed to its state or scope).
+ROLE_IDENTITY_ATTRS = frozenset(
+    {"name", "key", "display_name", "role_key", "role_name"}
+)
+
+RBAC_PACKAGE = "ccure_platform/rbac"
+#: RBAC-8 removed the legacy authority from the package: every file under
+#: ``ccure_platform/rbac/`` is the new capability and is measured strictly.
+RBAC_LEGACY_FILES: frozenset[str] = frozenset()
+#: May hold role keys as seed data.
+RBAC_SEED_FILES = frozenset({"ccure_platform/rbac/contract.py"})
+#: Seed-time reconciliation; may compare a role's key to its declared grants.
+RBAC_SYNC_FILES = frozenset({"ccure_platform/rbac/catalogue.py"})
+
+#: Seed, bootstrap, migration and test contexts the ratchet does not measure.
+EXEMPT_DIRS = frozenset(
+    {
+        ".venv",
+        "venv",
+        "tests",
+        "alembic",
+        "scripts",
+        "__pycache__",
+        "node_modules",
+        "logs",
+        "reports",
+        "data",
+    }
+)
+EXEMPT_FILES = frozenset(
+    {
+        "ccure_platform/models/rbac_tables.py",
+    }
+)
+
+
+@dataclass(frozen=True)
+class Site:
+    path: str
+    line: int
+    kind: str  # "role_literal" | "role_identity_compare" | "role_set_compare" | "legacy_role_read" | "require_role"
+    what: str
+
+
+def _is_identity_expr(node: ast.AST) -> bool:
+    """Whether ``node`` reads a role's identity: ``x.name`` / ``x.key`` /
+    ``x.display_name``, ``getattr(x, "name")``, or a variable named for one."""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Attribute) and sub.attr in ROLE_IDENTITY_ATTRS:
+            return True
+        if (
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id == "getattr"
+            and len(sub.args) >= 2
+            and isinstance(sub.args[1], ast.Constant)
+            and sub.args[1].value in ROLE_IDENTITY_ATTRS
+        ):
+            return True
+        if isinstance(sub, ast.Name) and (sub.id in ("role_name", "role_key")):
+            return True
+        if isinstance(sub, ast.Call) and _call_name(sub) in _ROLE_HELPER_NAMES:
+            return True
+    return False
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    return func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+
+
+#: A helper that returns a role's identity (``_role_name(user)``): comparing its
+#: result is the same decision as comparing ``role.name``, one call removed.
+_ROLE_HELPER_NAMES = frozenset(
+    {"role_name", "_role_name", "get_role_name", "role_key", "_role_key", "user_role"}
+)
+
+
+def _looks_like_role_set(collection: ast.AST) -> bool:
+    """Two or more role names, or one that only a role can be (``superadmin``,
+    ``org_admin``, ``platform.*``): a lone ``viewer`` in a word list is a word."""
+    lits = {lit.lower() for lit in _literals(collection)}
+    distinctive = {"superadmin", "org_admin"}
+    return (
+        len(lits) >= 2
+        or bool(lits & distinctive)
+        or any(lit.startswith("platform.") for lit in lits)
+    )
+
+
+def _named_role_sets(tree: ast.AST) -> set[str]:
+    """Names bound to a collection holding a legacy role name or system role key
+    (``_ORG_WIDE_ROLES = {"superadmin", "org_admin"}``). Testing membership in one is
+    a role-identity decision however far from the literals it is written."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if value is None:
+            continue
+        if isinstance(value, ast.Call) and _call_name(value) in (
+            "frozenset",
+            "set",
+            "tuple",
+            "list",
+        ):
+            collection = value.args[0] if value.args else None
+        else:
+            collection = value
+        if not isinstance(collection, (ast.Set, ast.Tuple, ast.List)):
+            continue
+        if not _looks_like_role_set(collection):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        names.update(t.id for t in targets if isinstance(t, ast.Name))
+    return names
+
+
+def _role_attr_expr(node: ast.AST) -> bool:
+    """Stricter, for the new implementation: an identity attribute read off
+    something role-shaped (``role.key``, ``self.role.name``, ``r.display_name``)."""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Attribute) and sub.attr in ROLE_IDENTITY_ATTRS:
+            base = ast.unparse(sub.value).lower()
+            if sub.attr == "display_name" or "role" in base or base in ("r", "row"):
+                return True
+    return False
+
+
+def _literals(node: ast.AST) -> list[str]:
+    out = []
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            if sub.value.lower() in FORBIDDEN_LITERALS:
+                out.append(sub.value)
+    return out
+
+
+def scan_legacy_source(path: str, source: str) -> list[Site]:
+    """Role-identity comparisons and ``require_role`` calls in legacy code."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    sites: list[Site] = []
+    role_sets = _named_role_sets(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            used = {
+                o.id for o in operands if isinstance(o, ast.Name) and o.id in role_sets
+            }
+            if used:
+                sites.append(
+                    Site(path, node.lineno, "role_set_compare", ",".join(sorted(used)))
+                )
+            if any(_is_identity_expr(o) for o in operands):
+                lits = [lit for o in operands for lit in _literals(o)]
+                if lits:
+                    sites.append(
+                        Site(
+                            path,
+                            node.lineno,
+                            "role_identity_compare",
+                            ",".join(sorted(set(lits))),
+                        )
+                    )
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            )
+            if name == "require_role":
+                sites.append(
+                    Site(path, node.lineno, "require_role", "require_role(...)")
+                )
+            if (
+                name == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "role"
+                and _is_account_expr(node.args[0])
+            ):
+                sites.append(
+                    Site(path, node.lineno, "legacy_role_read", ast.unparse(node)[:80])
+                )
+        elif (
+            isinstance(node, ast.Attribute)
+            and node.attr == "role"
+            and _is_account_expr(node.value)
+        ):
+            sites.append(
+                Site(path, node.lineno, "legacy_role_read", ast.unparse(node)[:80])
+            )
+    return sites
+
+
+_ACCOUNT_NAMES = frozenset(
+    {"user", "current_user", "current", "account", "principal", "actor", "me"}
+)
+
+
+def _is_account_expr(node: ast.AST) -> bool:
+    """``user`` / ``current_user`` / ``self.user`` …: the signed-in account, whose
+    legacy ``role`` relationship was removed (revision d4f8b2c6e0a1). Reading it
+    yields nothing on a native account, so whatever decides on it decides wrongly."""
+    if isinstance(node, ast.Name):
+        return node.id in _ACCOUNT_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in _ACCOUNT_NAMES
+    return False
+
+
+def scan_new_source(path: str, source: str) -> list[Site]:
+    """Violations in the new RBAC implementation (zero tolerated)."""
+    tree = ast.parse(source)
+    sites: list[Site] = []
+    if path not in RBAC_SEED_FILES:
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value.lower() in FORBIDDEN_LITERALS
+            ):
+                sites.append(Site(path, node.lineno, "role_literal", node.value))
+    if path not in RBAC_SYNC_FILES and path not in RBAC_SEED_FILES:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare):
+                if any(_role_attr_expr(o) for o in [node.left, *node.comparators]):
+                    sites.append(
+                        Site(
+                            path,
+                            node.lineno,
+                            "role_identity_compare",
+                            ast.unparse(node)[:80],
+                        )
+                    )
+    return sites
+
+
+def _rel(path: Path) -> str:
+    return path.relative_to(BACKEND_ROOT).as_posix()
+
+
+def _python_files():
+    for path in sorted(BACKEND_ROOT.rglob("*.py")):
+        rel = _rel(path)
+        if any(
+            part in EXEMPT_DIRS for part in path.relative_to(BACKEND_ROOT).parts[:-1]
+        ):
+            continue
+        yield path, rel
+
+
+def measure_new() -> list[Site]:
+    out: list[Site] = []
+    for path in sorted((BACKEND_ROOT / RBAC_PACKAGE).glob("*.py")):
+        rel = _rel(path)
+        if rel in RBAC_LEGACY_FILES:
+            continue
+        out.extend(scan_new_source(rel, path.read_text(encoding="utf-8")))
+    return out
+
+
+def measure_legacy() -> dict[str, dict[str, int]]:
+    """``{file: {kind: count}}`` for legacy authorization code."""
+    counts: dict[str, Counter] = defaultdict(Counter)
+    for path, rel in _python_files():
+        if rel in EXEMPT_FILES:
+            continue
+        if rel.startswith(RBAC_PACKAGE + "/") and rel not in RBAC_LEGACY_FILES:
+            continue  # the new implementation: measured strictly, not here
+        for site in scan_legacy_source(rel, path.read_text(encoding="utf-8")):
+            counts[rel][site.kind] += 1
+    return {f: dict(sorted(c.items())) for f, c in sorted(counts.items())}
+
+
+def legacy_sites() -> list[Site]:
+    out = []
+    for path, rel in _python_files():
+        if rel in EXEMPT_FILES or (
+            rel.startswith(RBAC_PACKAGE + "/") and rel not in RBAC_LEGACY_FILES
+        ):
+            continue
+        out.extend(scan_legacy_source(rel, path.read_text(encoding="utf-8")))
+    return out
+
+
+#: The legacy sites measured when RBAC-1 landed (3 Oct 2026: 40 in 22 files). RBAC-4
+#: migrated 13, RBAC-5 a further 20, RBAC-7 three more and RBAC-8 the last six (the legacy
+#: rollback rule, provisioning, bootstrap and the default role). **The baseline is empty and
+#: stays empty**: a role-name authorization decision anywhere in runtime code fails
+#: ``tests/repo/test_rbac_role_identity.py``. The history is kept in
+#: ``data/rbac/role_name_site_decisions.json``.
+KNOWN_LEGACY_ROLE_IDENTITY_SITES: dict[str, dict[str, int]] = {}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--list", action="store_true", help="print every site")
+    parser.add_argument(
+        "--baseline", action="store_true", help="print the baseline dict"
+    )
+    args = parser.parse_args()
+
+    new = measure_new()
+    legacy = measure_legacy()
+    if args.baseline:
+        print("KNOWN_LEGACY_ROLE_IDENTITY_SITES = {")
+        for f, kinds in legacy.items():
+            print(f"    {f!r}: {kinds!r},")
+        print("}")
+        return
+    print(f"new RBAC implementation: {len(new)} violation(s) (must be 0)")
+    total = sum(sum(v.values()) for v in legacy.values())
+    print(f"legacy authorization code: {total} site(s) in {len(legacy)} file(s)")
+    if args.list:
+        for s in new + legacy_sites():
+            print(f"  {s.path}:{s.line}  [{s.kind}]  {s.what}")
+
+
+if __name__ == "__main__":
+    main()

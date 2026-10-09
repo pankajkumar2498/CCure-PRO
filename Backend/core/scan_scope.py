@@ -92,28 +92,6 @@ def parse_scope(raw: object) -> list[IPNetwork] | None:
     return networks
 
 
-def normalise_scope(entries: Iterable[str]) -> list[str]:
-    """
-    Validate and canonicalise operator-supplied CIDRs before storing them.
-
-    Raises ValueError on the first bad entry — unlike parse_scope, which reads
-    already-stored data, this is the write path and a typo should be rejected
-    loudly rather than silently narrowing what an admin thought they granted.
-    """
-    out: list[str] = []
-    for entry in entries:
-        text = str(entry).strip()
-        if not text:
-            continue
-        try:
-            network = ipaddress.ip_network(text, strict=False)
-        except ValueError as exc:
-            raise ValueError(f"Not a valid CIDR block: {text!r} ({exc})") from exc
-        out.append(str(network))
-    # Preserve order, drop duplicates.
-    return list(dict.fromkeys(out))
-
-
 def _addresses_for(target: str) -> list[str]:
     """Expand a target to concrete addresses, resolving hostnames."""
     from core.utils import InputValidator
@@ -151,26 +129,47 @@ def filter_to_scope(
     return allowed, denied
 
 
-def scope_for_org(org) -> list[IPNetwork] | None:
-    """Parsed scope for an Organization row, honouring REQUIRE_SCAN_SCOPE."""
+def org_scan_scope(db, org_id):
+    """
+    The organisation's authorised scope, asked of the platform.
+
+    **The Audit seam of the scan-scope plan feature (Phase 8.4).** The ranges
+    belong to the organisation's plan (``ccure_platform.plan.scan_scope``);
+    this is the only Audit code that asks for them
+    (``tests/repo/test_plan_feature_containment.py``). Every caller that checks
+    targets gets its ``ScanScopeView`` from here and hands it to
+    ``enforce_org_scan_scope`` / ``scope_for_org``. None means the organisation
+    does not exist.
+    """
+    from ccure_platform import api as platform_api
+
+    return platform_api.scan_scope(db, org_id)
+
+
+def scope_for_org(scope) -> list[IPNetwork] | None:
+    """
+    Parsed networks for an organisation's ``ScanScopeView``, honouring
+    REQUIRE_SCAN_SCOPE. ``scope`` None — the organisation does not exist — is
+    read as "no scope configured", as a missing row always was.
+    """
     from config import AppConfig
 
-    raw = getattr(org, "scan_scope_cidrs", None) if org is not None else None
-    scope = parse_scope(raw)
+    raw = scope.cidrs if scope is not None and scope.configured else None
+    scope_networks = parse_scope(raw)
 
-    if scope is None:
+    if scope_networks is None:
         if AppConfig.REQUIRE_SCAN_SCOPE:
             # Fail closed: an unconfigured org scans nothing.
             return []
         log.warning(
             "Organisation %s has no scan scope configured; scanning is "
             "unrestricted. Set scan_scope_cidrs, then REQUIRE_SCAN_SCOPE=True.",
-            getattr(org, "id", "<unknown>"),
+            getattr(scope, "org_id", "<unknown>"),
         )
-    return scope
+    return scope_networks
 
 
-def enforce_org_scan_scope(targets: Sequence[str], org) -> None:
+def enforce_org_scan_scope(targets: Sequence[str], scope) -> None:
     """
     Admission check. Raises ScanScopeError if any target leaves the scope.
 
@@ -180,11 +179,10 @@ def enforce_org_scan_scope(targets: Sequence[str], org) -> None:
     would run a different scan than the one the operator asked for and read as
     success.
     """
-    scope = scope_for_org(org)
+    org_id = getattr(scope, "org_id", "<unknown>")
+    scope = scope_for_org(scope)
     if scope is None:
         return
-
-    org_id = getattr(org, "id", "<unknown>")
 
     if not scope:
         raise ScanScopeError(

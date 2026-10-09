@@ -8,52 +8,183 @@ contract with the backend.
 
 ## 1. Stack
 
-| Concern           | Choice                                               | Version                        |
-| ----------------- | ---------------------------------------------------- | ------------------------------ |
-| UI library        | React                                                | `^18.3.1`                      |
-| Router            | react-router-dom                                     | `^6.23.1`                      |
-| HTTP client       | axios                                                | `^1.7.2`                       |
-| Build tool        | Vite                                                 | `^5.2.11`                      |
-| React plugin      | `@vitejs/plugin-react`                               | `^4.3.0`                       |
-| Test runner       | Vitest + jsdom                                       | `^1.6.0` / `^24.0.0`           |
-| Testing utilities | `@testing-library/react`, `/jest-dom`, `/user-event` | `^15.0.7`, `^6.4.5`, `^14.5.2` |
-| Graph rendering   | vis-network + vis-data                               | `^9.1.9` / `^7.1.9`            |
+The permanent rule for all modules/contributors/AI assistants and the required
+CI gates are in [`ux4g/UX4G_STANDARD.md`](ux4g/UX4G_STANDARD.md).
+The final closure is recorded in [`ux4g/B7_B10_FINAL_CLOSURE.md`](ux4g/B7_B10_FINAL_CLOSURE.md).
+The Audit UI restoration that followed it — and the cascade traps behind it
+(unlayered official CSS outranking `@layer ccure-legacy`, `CcureButton`'s label
+span, full-width fields) — is in [`ux4g/B12_AUDIT_UI_RESTORATION.md`](ux4g/B12_AUDIT_UI_RESTORATION.md).
+The one page structure and icon set every module now uses (`CcurePage`,
+`CcurePageHeader`, `CcureIcon`) is in [`ux4g/B13_APPLICATION_PAGE_STANDARD.md`](ux4g/B13_APPLICATION_PAGE_STANDARD.md).
+
+### Approved UX4G foundation (Phase B.1)
+
+`Frontend/ux4g-baseline.json` is the authoritative approved release/provenance
+definition. Package declarations, the lockfile, installed packages, generator,
+generated metadata and verification checks must agree with it. The evidence,
+compatibility boundary and coherent rollback procedure are in
+[`ux4g/B1_VERSION_FOUNDATION.md`](ux4g/B1_VERSION_FOUNDATION.md).
+
+The project standard is the latest officially published/recommended stable
+UX4G release applicable to the project, after compatibility, security and CSP
+validation, pinned exactly. Common, authentication, Audit, Policy, Rank, IR and
+future modules share that foundation through the CCure Design System. Product
+functionality may differ; product design systems may not. Competing frameworks
+require explicit approval, and custom equivalents require a documented
+technical reason. Developers and coding assistants follow the same rule.
+
+B.1 established the exact dependency foundation; B.2 centralizes and verifies
+the token/font asset pipeline, including production copies. See
+[`ux4g/B2_ASSET_PIPELINE.md`](ux4g/B2_ASSET_PIPELINE.md). Generated assets come
+only from that pipeline, never from module-local copies or CDN imports.
+B.3/B.4 add scoped official component CSS and central React adapters, documented
+in [`ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md`](ux4g/B3_B4_SHARED_PRIMITIVES_SHELL.md).
+Modules consume the CCure Design System; official classes stay inside adapters.
+React owns behavior. Full global CSS/reset, font-policy changes and runtime
+activation remain deferred. B.5/B.6 migrate Authentication and Audit
+presentation through those adapters; their component mapping, exceptions and
+validation are in
+[`ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md`](ux4g/B5_B6_AUTH_AUDIT_MIGRATION.md).
+API/RBAC behavior,
+routing and module boundaries are unchanged. This is not a declaration of full
+UX4G migration or GIGW/WCAG conformance.
+
+The dependency table below describes the application stack; `package.json` and
+the lockfile provide its executable versions.
+
+| Concern           | Choice                                               | Version                                             |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| UI library        | React                                                | `^18.3.1`                                           |
+| Router            | react-router-dom                                     | `^6.23.1`                                           |
+| HTTP client       | axios                                                | `^1.7.2`                                            |
+| Build tool        | Vite                                                 | `^8.2.2`                                            |
+| React plugin      | `@vitejs/plugin-react`                               | `^6.1.0`                                            |
+| Test runner       | Vitest + jsdom                                       | `^4.1.11` / `^24.0.0`                               |
+| UI foundation     | UX4G tokens/font + CCure adapters                    | exact approved pin in `Frontend/ux4g-baseline.json` |
+| Testing utilities | `@testing-library/react`, `/jest-dom`, `/user-event` | `^15.0.7`, `^6.4.5`, `^14.5.2`                      |
+| Graph rendering   | vis-network + vis-data                               | `^9.1.9` / `^7.1.9`                                 |
 
 `package.json` declares `"type": "module"`, name `ccure-audit-pro-unified`,
 version `2.0.0`.
 
-> **NOTE:** There is **no** TypeScript, no Redux, no React Query, no CSS framework
-> and no component library. State is React Context plus browser storage; styling
-> is 16 hand-written CSS files under `src/styles/` plus one module-scoped sheet.
+> **NOTE:** There is no TypeScript, Redux or React Query. State is React Context
+> plus browser storage. Styling currently combines the approved UX4G token/font
+> foundation, official scoped CSS through CCure adapters, shell/product styles
+> and retained domain CSS. Group 1 migrates shared primitives and the Common shell;
+> B.5/B.6 migrate Authentication and Audit. B.7–B.10 close the known in-scope
+> accessibility/responsive findings and enforce the permanent design rule.
+> Policy/Rank/IR product functionality remains unimplemented; their shared
+> entry placeholders and every future module follow the same standard.
 
 ---
 
 ## 2. Directory layout
 
+Since Phase 12 the frontend is one application holding four products
+([`architecture/PHASE12_FRONTEND_SHELL.md`](architecture/PHASE12_FRONTEND_SHELL.md)).
+Paths in the rest of this document are relative to `Frontend/src/`.
+
 ```
 Frontend/
-├── index.html                 Vite entry; loads Inter from Google Fonts
-├── vite.config.js             Dev server :3000, 11 proxy prefixes, Vitest config
-├── jsconfig.json              @/* → src/*
-├── .eslintrc.json             eslint:recommended + react + react-hooks
-├── .env.local                 VITE_API_BASE_URL (git-ignored in practice)
-├── Dockerfile                 node:20-slim build → nginx:stable-alpine
+├── modules.config.js          Where each part lives, what it may import, the aliases
+├── vite.config.js             Dev server :3000, proxy prefixes, aliases (from modules.config.js), Vitest
+├── jsconfig.json              Editor paths: @/*, @shell/*, @audit/*, @policy/*, @rank/*, @ir/*
+├── .eslintrc.json             eslint:recommended + react + react-hooks; boundary overrides
+├── Dockerfile                 node build → nginx:stable-alpine
 ├── nginx.conf                 SPA history fallback
 └── src/
-    ├── main.jsx               Provider composition
-    ├── App.jsx                All route definitions
-    ├── api/                   10 modules — the entire HTTP surface
-    ├── auth/permissions.js    Client-side RBAC evaluation
-    ├── components/            common/ · layout/ · admin/ · scan/ · assets/ · auth/
-    ├── config/scanConfig.js   Pipeline ↔ phase mapping (mirrors the backend)
-    ├── context/               AuthContext · PreferencesContext · ScanContext
-    ├── hooks/useDebounce.js
-    ├── modules/web-scanning/  Self-contained DAST feature module
-    ├── pages/                 15 top-level pages + scan/ (7) + admin/ (6)
-    ├── styles/                16 stylesheets
-    ├── utils/date.js
-    └── __tests__/             Vitest suites
+    ├── main.jsx               Composition root: providers
+    ├── App.jsx                Composition root: every route
+    ├── styles/                The global stylesheet main.jsx loads (global.css + 7 @imports)
+    ├── design-system/         UI primitives, patterns, tokens — imports nothing of the app
+    ├── shell/                 @shell — the platform, shared by every product
+    │   ├── pages/             CcureHome (/), ModuleEntryPage (/:entry)
+    │   ├── products/          GET /platform/modules: list, availability, load states
+    │   ├── admin/             /admin/*: users, deleted users, organisations, roles, email domains, audit logs; adminNav (the one list)
+    │   ├── account/           account dialog, change password, settings drawer (platform preferences)
+    │   ├── notifications/     bell, panel, useNotificationFeed
+    │   ├── navigation/        CcureHomeLink, AccountMenu, OrgSwitcher (+ hook), UserCard
+    │   ├── preferences/       PreferencesContext
+    │   ├── layout/            PlatformLayout (the platform header + frame), ProductFrame
+    │   ├── auth/              AuthContext, PrivateRoute, permissions, navVisibility, accessFallback
+    │   ├── api/               axiosInstance, tokenStorage, auth, admin, user, notifications, emailDomains
+    │   └── feedback/, hooks/, utils/   Toast, useDebounce, date
+    ├── modules/
+    │   ├── audit/             @audit — CCure Audit
+    │   │   ├── api/           one client per backend area
+    │   │   ├── components/    layout/ (AppLayout, HelpPanel, auditSettings) · scan/ · assets/ · compliance/ · remediation/ · common/
+    │   │   ├── config/        scanConfig.js, accessFallbacks.js
+    │   │   ├── context/       ScanContext
+    │   │   ├── hooks/, utils/
+    │   │   ├── pages/         every Audit page; scan/, admin/ (AMT Integration)
+    │   │   ├── styles/        page and component stylesheets
+    │   │   └── web-scanning/  the /web-scans/* feature: own router, client, styles
+    │   ├── policy/            @policy — CCure Policy Pro (README only)
+    │   ├── rank/              @rank — CCure Rank (README only)
+    │   └── ir/                @ir — CCure IR frontend integration (README only)
+    └── __tests__/             Vitest; architecture/, shell/, design-system/,
+                               modules/<key>/ mirroring each module; testPaths.js
 ```
+
+### Module boundaries
+
+`Frontend/modules.config.js` is the single statement of the layout, and
+`__tests__/architecture/moduleBoundaries.test.js` enforces it by resolving every
+import — relative and alias alike — to a file:
+
+| Part                         | May import                                                  | Must never import                                 |
+| ---------------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
+| design system                | itself                                                      | anything of the application                       |
+| shell                        | itself, the design system                                   | any product, the root, the global stylesheet      |
+| a product module             | itself, the shell, the design system, the global stylesheet | another product, the root                         |
+| root (`main.jsx`, `App.jsx`) | everything                                                  | — (nothing imports it but `main.jsx` → `App.jsx`) |
+
+The same test fails on a source file outside a place the config names (so code
+cannot drift back into the pre-12.4 `pages/`, `components/`, `api/` locations),
+on an import that does not resolve, and on a `vi.mock` path that no longer names
+a module — the move's silent failure. ESLint `no-restricted-imports` overrides
+repeat the alias half for an editor, and the test checks they agree with the
+config. Aliases are built from the config in `vite.config.js`, so the app,
+Vitest and the editor resolve `@shell/…` identically.
+
+**Product metadata has one source.** Product names, descriptions, entry
+addresses and availability come from the platform registry through
+`GET /platform/modules` (`shell/products/`); the frontend holds no copy, and a
+test fails if shell source names a product.
+
+### Adding code
+
+- **Shared by every product and specific to none** → `shell/`.
+- **A UI primitive with no application knowledge** → `design-system/`, exported
+  from its `index.js`.
+- **One product's** → that product's `modules/<key>/`, imported elsewhere as
+  `@<key>/…`; its tests under `__tests__/modules/<key>/`.
+- **A product going live** → a static route at its registry `entry_path` in
+  `App.jsx` (it outranks the shell's entry page) and, in the same change, its
+  `tile_state` set to `available` in `Backend/ccure_platform/modules/`.
+  `Backend/tests/repo/test_platform_entry_routes.py` holds the two together.
+- Never add a file to `PENDING` in `modules.config.js` to make a build pass.
+
+### Pending and recorded decisions
+
+- **Sign-in screens** (moved 6 Oct 2026). Platform screens, now in
+  `shell/auth/{pages,components,styles}/`; they name the platform ("CCure") and no
+  product, and state no figure or status they cannot back. **Still open (owner,
+  D12-9): the Terms of Service and Privacy Policy dialogs in `pages/Register.jsx`
+  name "CCure Audit PRO" and describe scanning.** That is legal copy; it is left
+  verbatim and a test records the exception.
+- **Shared platform capabilities** (owner decision, 1 Oct 2026). There is no
+  platform-admin product or team. User, organisation, role, email-domain and
+  audit-log administration, the account menu, notifications, organisation
+  switching and the platform preferences are common capabilities in `shell/`;
+  any product team may contribute to them under the same boundaries and review.
+  A shared screen renders in `ProductFrame`, whose layout the composition root
+  supplies (Audit's `AppLayout` today), so it stays inside the navigation a
+  person reached it from; the settings drawer takes a product's own sections
+  through `productSettings`. Record:
+  [`architecture/PLATFORM_SHARED_NAVIGATION.md`](architecture/PLATFORM_SHARED_NAVIGATION.md).
+- **Compliance** stays in Audit until the Policy Pro work reassesses which of
+  it belongs to Policy Pro.
 
 ---
 
@@ -67,9 +198,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <AuthProvider>
         <PreferencesProvider>
-          <ErrorBoundary>
+          <RootErrorBoundary>
             <App />
-          </ErrorBoundary>
+          </RootErrorBoundary>
         </PreferencesProvider>
       </AuthProvider>
     </BrowserRouter>
@@ -77,18 +208,29 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );
 ```
 
-`App.jsx` adds `<ScanProvider>` around `<Routes>`.
+`AuthProvider` and `PreferencesProvider` are the shell's
+(`@shell/auth/AuthContext`, `@shell/preferences/PreferencesContext`);
+`RootErrorBoundary` is Audit's (`@audit/components/common/RootErrorBoundary`).
+`App.jsx` keeps two levels apart in the route tree. Audit's routes sit under an
+`AuditProduct` layout route that mounts Audit's `ScanProvider` and nothing else
+of Audit's; CCure Home, the product entry pages and the shared administration
+screens sit outside it and render in the shell's `PlatformLayout` (a left
+sidebar of Home, the registry's products and Administration). Audit's own
+`AppLayout` carries Audit's sidebar only. The shell's `AccessFallbackProvider`
+wraps both, carrying Audit's refused-route pages.
 
 ```mermaid
 graph TD
     M["main.jsx"] --> SM["React.StrictMode"]
     SM --> BR["BrowserRouter"]
-    BR --> AP["AuthProvider<br/>user · authState · login/logout"]
-    AP --> PP["PreferencesProvider<br/>theme · sidebar"]
-    PP --> EB["ErrorBoundary"]
+    BR --> AP["AuthProvider (shell)<br/>user · authState · login/logout"]
+    AP --> PP["PreferencesProvider (shell)<br/>theme · sidebar"]
+    PP --> EB["RootErrorBoundary (audit)"]
     EB --> APP["App.jsx"]
-    APP --> SP["ScanProvider<br/>pipeline state, sessionStorage-backed"]
-    SP --> RT["Routes"]
+    APP --> AUP["AuditProviders"]
+    AUP --> SP["ScanProvider (audit)<br/>pipeline state, sessionStorage-backed"]
+    SP --> AF["AccessFallbackProvider (shell)<br/>candidates: AUDIT_ACCESS_FALLBACKS"]
+    AF --> RT["Routes"]
 ```
 
 Ordering is load-bearing: `PreferencesProvider` calls `useAuth()` and only fetches
@@ -100,15 +242,18 @@ preferences once `isAuthenticated` is true, so it must sit inside `AuthProvider`
 Two distinct error boundaries exist. They were both named `ErrorBoundary`,
 which made an import written from memory pick the wrong one silently, so they
 are named for their role now:
-`components/common/RootErrorBoundary.jsx` (app-level, used in `main.jsx`) and
-`components/common/PanelErrorBoundary.jsx` (inline, used by `WebScanningRoutes`).
+`modules/audit/components/common/RootErrorBoundary.jsx` (app-level, used in
+`main.jsx`) and `modules/audit/components/common/PanelErrorBoundary.jsx`
+(inline, used by `WebScanningRoutes`).
 
 ---
 
 ## 4. Routing
 
 All routes are declared in `src/App.jsx`. Public routes sit outside the guard;
-everything else is nested under `<Route element={<PrivateRoute />}>`.
+everything else is nested under `<Route element={<PrivateRoute />}>`. Static
+routes outrank the single-segment `/:entry` route, which outranks the `*`
+catch-all.
 
 ### Public
 
@@ -116,30 +261,45 @@ everything else is nested under `<Route element={<PrivateRoute />}>`.
 | ------------------ | -------------------------- |
 | `/login`           | `pages/Login.jsx`          |
 | `/register`        | `pages/Register.jsx`       |
+| `/verify-email`    | `pages/VerifyEmail.jsx`    |
 | `/forgot-password` | `pages/ForgotPassword.jsx` |
 | `/reset-password`  | `pages/ResetPassword.jsx`  |
 
-### Protected — core
+Sign-in lands on `/` unless the user was sent from a page (`location.state.from`,
+or `postLoginRedirect` after a session expiry), which wins.
 
-| Path                 | Component                    | Notes                                           |
-| -------------------- | ---------------------------- | ----------------------------------------------- |
-| `/` and `/dashboard` | `SecurityDashboard`          | SOC overview; the application home              |
-| `/scan`              | `Dashboard`                  | Scan-template picker (moved here from `/`)      |
-| `/assets`            | `AssetRegistry`              | `?tab=services` and `?tab=tls` select sub-views |
-| `/assets/:id`        | `AssetDetail`                |                                                 |
-| `/vulnerabilities`   | `VulnerabilityBrowser`       |                                                 |
-| `/monitor`           | `ScanHistory mode="monitor"` | Active scans                                    |
-| `/history`           | `ScanHistory mode="history"` | Full history                                    |
-| `/scan-history`      | → redirect to `/history`     | Legacy alias                                    |
-| `/archived`          | `ArchivedScans`              |                                                 |
-| `/archived-scans`    | → redirect to `/archived`    | Legacy alias                                    |
-| `/recycle-bin`       | `RecycleBin`                 |                                                 |
-| `/reports`           | `SecurityReports`            | `?tab=executive`, `?tab=trends`                 |
-| `/compliance`        | `ComplianceWorkspace`        |                                                 |
-| `/topology`          | `NetworkMap`                 |                                                 |
-| `*`                  | → redirect to `/`            | Catch-all                                       |
+### Protected — platform
 
-### Protected — scan pipeline
+| Path      | Component                     | Notes                                                                                                                                                                                                                                                                                                 |
+| --------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`       | `shell/pages/CcureHome`       | Where sign-in lands: the Product Hub — every product from `GET /platform/modules`, in registry order — in `PlatformLayout`, whose header carries the shared platform navigation (Administration by permission, organisation switcher for superadmin, notifications, settings, account menu, sign out) |
+| `/:entry` | `shell/pages/ModuleEntryPage` | A product's entry address (`/policy-dashboard`, `/rank-dashboard`, `/ir-dashboard`) while it has no page of its own; an address that is no product's entry goes to `/`                                                                                                                                |
+| `*`       | → redirect to `/`             | Catch-all                                                                                                                                                                                                                                                                                             |
+
+### Protected — Audit (`modules/audit/pages/`)
+
+| Path                                                      | Component                                                         | Notes                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `/audit-dashboard`                                        | `SecurityDashboard`                                               | Audit's dashboard — canonical address           |
+| `/dashboard`                                              | → redirect to `/audit-dashboard`                                  | Keeps query string, fragment and state          |
+| `/scan`                                                   | `Dashboard`                                                       | Scan-template picker                            |
+| `/assets`                                                 | `AssetRegistry`                                                   | `?tab=services` and `?tab=tls` select sub-views |
+| `/assets/:id`                                             | `AssetDetail`                                                     |                                                 |
+| `/vulnerabilities`                                        | `VulnerabilityBrowser`                                            |                                                 |
+| `/monitor`                                                | `ScanHistory mode="monitor"`                                      | Active scans                                    |
+| `/history`                                                | `ScanHistory mode="history"`                                      | Full history                                    |
+| `/scan-history`                                           | → redirect to `/history`                                          | Legacy alias                                    |
+| `/archived`                                               | `ArchivedScans`                                                   |                                                 |
+| `/archived-scans`                                         | → redirect to `/archived`                                         | Legacy alias                                    |
+| `/recycle-bin`                                            | `RecycleBin`                                                      |                                                 |
+| `/reports`                                                | `SecurityReports`                                                 | `?tab=executive`, `?tab=trends`                 |
+| `/compliance`                                             | `ComplianceWorkspace`                                             |                                                 |
+| `/remediation`                                            | `Remediation`                                                     |                                                 |
+| `/scan-policies`, `/scan-schedules`, `/scan-credentials`  | `scan/ScanPolicies`, `scan/ScanSchedules`, `scan/ScanCredentials` |                                                 |
+| `/configuration-checks`, `/configuration-checks/validate` | `scan/ConfigurationChecks`, `scan/ConfigurationRuleValidator`     |                                                 |
+| `/topology`                                               | `scan/NetworkMap`                                                 |                                                 |
+
+### Protected — Audit scan pipeline
 
 | Path                                                   | Component                                           |
 | ------------------------------------------------------ | --------------------------------------------------- |
@@ -149,22 +309,25 @@ everything else is nested under `<Route element={<PrivateRoute />}>`.
 | `/scan/asset-discovery`                                | `scan/Phase2Results`                                |
 | `/scan/vulnerability-audit`                            | `scan/Phase3Results`                                |
 | `/scan/advanced-scan`                                  | → redirect to `/scan/vulnerability-audit`           |
+| `/scan/comparison`                                     | `scan/ScanComparison`                               |
 | `/scan/credentialed`                                   | `scan/CredentialedScan`                             |
 | `/scan/credentialed/results`                           | `scan/CredentialedResults`                          |
 | `/scan/:scanId/phase1` · `/phase2` · `/phase3`         | `Phase1Results` · `Phase2Results` · `Phase3Results` |
 | `/scan/:scanId/credentialed` · `/credentialed-results` | `CredentialedScan` · `CredentialedResults`          |
 | `/scan/topology-map` · `/scan/:scanId/topology-map`    | `scan/NetworkMap`                                   |
 
-### Protected — permission-gated admin
+### Protected — permission-gated administration (shared, `shell/admin/pages/`; AMT is Audit's)
 
-Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`:
+Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`
+(or `superadminOnly`):
 
-| Path                   | Component                      | `requiredPermission` |
+| Path                   | Component                      | Guard                |
 | ---------------------- | ------------------------------ | -------------------- |
 | `/admin/audit-logs`    | `admin/AuditLogs`              | `audit:read`         |
-| `/admin/amt`           | `admin/AMTIntegration`         | `assets:update`      |
+| `/admin/amt`           | Audit `admin/AMTIntegration`   | `assets:update`      |
 | `/admin/users`         | `admin/UserManagement`         | `users:read`         |
 | `/admin/users/deleted` | `admin/DeletedUsers`           | `users:read`         |
+| `/admin/email-domains` | `admin/EmailDomainRules`       | superadmin only      |
 | `/admin/organizations` | `admin/OrganizationManagement` | `organizations:read` |
 | `/admin/roles`         | `admin/RoleManagement`         | `roles:read`         |
 
@@ -174,10 +337,10 @@ Each is wrapped in a **nested** `PrivateRoute` carrying `requiredPermission`:
 > `assets:update` without `settings:update` reaches the page and gets a 403 on
 > upload. The backend is authoritative.
 
-### Feature module
+### Audit feature module: web scanning
 
-`/web-scans/*` renders `modules/web-scanning/WebScanningRoutes.jsx`, which owns its
-own nested router, its own `ErrorBoundary` and its own stylesheet:
+`/web-scans/*` renders `modules/audit/web-scanning/WebScanningRoutes.jsx`, which
+owns its own nested router, its own error boundary and its own stylesheet:
 
 | Sub-path       | Component                 |
 | -------------- | ------------------------- |
@@ -193,7 +356,7 @@ own nested router, its own `ErrorBoundary` and its own stylesheet:
 
 ## 5. Route guards
 
-`src/components/auth/PrivateRoute.jsx`:
+`shell/auth/PrivateRoute.jsx`:
 
 ```jsx
 export default function PrivateRoute({ children, requiredPermission,
@@ -208,16 +371,19 @@ flowchart TD
     B --> C{"user?"}
     C -->|"no"| L["Navigate /login<br/>state: {from, reason: authState, message: authMessage}"]
     C --> D{"superadminOnly ⇒ isSuperAdmin?<br/>requiredPermission ⇒ canPermission?<br/>requiredAny ⇒ canAny?<br/>requiredAll ⇒ canAll?"}
-    D -->|"any fails"| F["Navigate fallbackPathFor(user, pathname)"]
+    D -->|"any fails"| F["Navigate fallbackPathFor(user, pathname, candidates)"]
     D --> O["children || Outlet"]
 ```
 
-`fallbackPathFor` walks an ordered candidate list and returns the first path the
-user can actually reach, excluding the one they were denied:
+The guard holds the **rule**; the **pages** belong to a product. A refused user
+goes to the first candidate they may open, other than the page they were
+refused, else to `/login`. The candidates come from `AccessFallbackProvider`
+(`shell/auth/accessFallback.jsx`); `App.jsx` supplies Audit's list,
+`modules/audit/config/accessFallbacks.js`:
 
 | Order    | Path                | Required permission |
 | -------- | ------------------- | ------------------- |
-| 1        | `/dashboard`        | `scans:execute`     |
+| 1        | `/audit-dashboard`  | `scans:execute`     |
 | 2        | `/history`          | `scans:read`        |
 | 3        | `/reports`          | `reports:read`      |
 | 4        | `/admin/users`      | `users:read`        |
@@ -225,15 +391,17 @@ user can actually reach, excluding the one they were denied:
 | fallback | `/login`            | —                   |
 
 A denied user therefore lands somewhere useful rather than on a dead end or a
-redirect loop.
+redirect loop — and never on CCure Home, which would hide that access was
+refused (D12-8).
 
-`PrivateRoute` is covered by `src/__tests__/components/auth/PrivateRoute.test.jsx`.
+`PrivateRoute` is covered by `__tests__/shell/auth/PrivateRoute.test.jsx`, and
+the whole address map, including refusals, by `__tests__/shell/AppRoutes.test.jsx`.
 
 ---
 
 ## 6. Permission evaluation
 
-`src/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
+`src/shell/auth/permissions.js` — a faithful mirror of `auth/rbac.py`:
 
 ```javascript
 const normalizeRoleName = (r = "") => String(r||"").trim().toLowerCase().replace(/\s+/g, "_");
@@ -273,7 +441,7 @@ Two properties worth stating:
 The permission set comes from `GET /auth/me` → `role.permissions[]`, which is the
 same list `role_permissions` produced server-side.
 
-Covered by `src/__tests__/auth/permissions.test.js`.
+Covered by `src/__tests__/shell/auth/permissions.test.js`.
 
 ---
 
@@ -356,7 +524,7 @@ in-memory state rather than crashing.
 
 `useScan()` throws if used outside `<ScanProvider>`.
 
-### `config/scanConfig.js`
+### `modules/audit/config/scanConfig.js`
 
 The client-side mirror of the backend's `PIPELINE_PHASES`:
 
@@ -382,23 +550,25 @@ Helpers: `getScanPipeline(mode)` (throws on unknown), `isPhaseEnabled(mode, phas
 
 ## 8. API integration layer
 
-Ten modules under `src/api/` plus one inside the web-scanning module. Every call
-goes through `axiosInstance` (or, for SSE, `fetch` carrying the same token).
+The shared client and the sign-in API are the shell's (`shell/api/`: `axiosInstance`,
+`tokenStorage`, `auth`); the rest are Audit's (`modules/audit/api/`), plus one
+inside the web-scanning feature. Every call goes through `axiosInstance` (or, for
+SSE, `fetch` carrying the same token).
 
-| Module                                    | Covers                                                                                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `axiosInstance.js`                        | The shared client, both interceptors, `authSession`                                                                                                                   |
-| `tokenStorage.js`                         | In-memory access-token custody                                                                                                                                        |
-| `auth.js`                                 | login, verifyMfa, sendEmailOtp, enable/confirm/disableMfa, register, getCurrentUser, refreshSession, logout, checkUsername, checkEmail, forgotPassword, resetPassword |
-| `admin.js`                                | Users, roles, organizations, audit logs                                                                                                                               |
-| `assets.js`                               | Registry, services, certificates, coverage, reconciliation, tags, notes, AMT import                                                                                   |
-| `findings.js`                             | List, grouped, detail, status, notes                                                                                                                                  |
-| `dashboard.js`                            | All 12 network dashboard widgets                                                                                                                                      |
-| `notifications.js`                        | List, summary, read, delete, `streamNotificationEvents`                                                                                                               |
-| `scans.js`                                | History CRUD, quota, report delete, `streamScanEvents`                                                                                                                |
-| `user.js`                                 | Profile, preferences, password, sessions                                                                                                                              |
-| `credentialedScan.js`                     | `parseTargets`, `runCredentialedScan`                                                                                                                                 |
-| `modules/web-scanning/api/webScansApi.js` | `webScansApi` + `webDashboardApi`                                                                                                                                     |
+| Module                                          | Covers                                                                                                                                                                |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `axiosInstance.js`                              | The shared client, both interceptors, `authSession`                                                                                                                   |
+| `tokenStorage.js`                               | In-memory access-token custody                                                                                                                                        |
+| `auth.js`                                       | login, verifyMfa, sendEmailOtp, enable/confirm/disableMfa, register, getCurrentUser, refreshSession, logout, checkUsername, checkEmail, forgotPassword, resetPassword |
+| `admin.js`                                      | Users, roles, organizations, audit logs                                                                                                                               |
+| `assets.js`                                     | Registry, services, certificates, coverage, reconciliation, tags, notes, AMT import                                                                                   |
+| `findings.js`                                   | List, grouped, detail, status, notes                                                                                                                                  |
+| `dashboard.js`                                  | All 12 network dashboard widgets                                                                                                                                      |
+| `notifications.js`                              | List, summary, read, delete, `streamNotificationEvents`                                                                                                               |
+| `scans.js`                                      | History CRUD, quota, report delete, `streamScanEvents`                                                                                                                |
+| `user.js`                                       | Profile, preferences, password, sessions                                                                                                                              |
+| `credentialedScan.js`                           | `parseTargets`, `runCredentialedScan`                                                                                                                                 |
+| `modules/audit/web-scanning/api/webScansApi.js` | `webScansApi` + `webDashboardApi`                                                                                                                                     |
 
 ### `axiosInstance`
 
@@ -502,24 +672,25 @@ while (!signal?.aborted) {
 ```
 
 `parseSseMessage` splits `event:` and `data:` lines and `JSON.parse`s the joined
-data. Consumer: `pages/ScanHistory.jsx`.
+data. Consumer: `modules/audit/pages/ScanHistory.jsx`.
 
 ### SSE — notifications
 
-`api/notifications.js::streamNotificationEvents({ signal, onEvent })` — identical
+`shell/api/notifications.js::streamNotificationEvents({ signal, onEvent })` — identical
 mechanism against `/notifications/stream`. Consumer:
-`components/layout/AppLayout.jsx`, which drives the notification bell badge.
+`shell/notifications/useNotificationFeed.js`, which drives the notification bell badge in
+whichever layout composes it (Audit's `AppLayout` today).
 
 ### WebSocket — scan progress
 
 Four consumers open `WS /scans/{id}/progress` or `WS /web-scans/{id}/progress`:
 
-| File                                           | Purpose                                           |
-| ---------------------------------------------- | ------------------------------------------------- |
-| `pages/scan/NewScan.jsx`                       | Live Phase 1/2 progress during a running pipeline |
-| `pages/scan/Phase3Results.jsx`                 | Live Phase 3 progress (`buildScanProgressUrl`)    |
-| `pages/scan/CredentialedResults.jsx`           | Live credentialed-audit progress                  |
-| `modules/web-scanning/hooks/useScanPolling.js` | Live DAST phase progress                          |
+| File                                                 | Purpose                                           |
+| ---------------------------------------------------- | ------------------------------------------------- |
+| `modules/audit/pages/scan/NewScan.jsx`               | Live Phase 1/2 progress during a running pipeline |
+| `modules/audit/pages/scan/Phase3Results.jsx`         | Live Phase 3 progress (`buildScanProgressUrl`)    |
+| `modules/audit/pages/scan/CredentialedResults.jsx`   | Live credentialed-audit progress                  |
+| `modules/audit/web-scanning/hooks/useScanPolling.js` | Live DAST phase progress                          |
 
 Each first calls `POST /auth/ticket`, then appends `?ticket=<jwt>` to the socket
 URL. `useScanPolling(scanId, intervalMs = 5000)` combines a WebSocket with a
@@ -533,8 +704,12 @@ the scan finishes.
 
 ### `AppLayout`
 
-`components/layout/AppLayout.jsx` is the authenticated shell: sidebar, header,
-notification stream, profile dropdown and modals.
+`modules/audit/components/layout/AppLayout.jsx` is Audit's layout: its sidebar, its header
+actions (global search, New Scan, help), its quota footer and badges, composing the shell's
+shared pieces — `CcureHomeLink`, `AccountMenu`, `OrgSwitcher` (with `useOrganizationSwitcher`),
+`UserCard`, the notification bell (`useNotificationFeed`), the account dialog and the settings
+drawer, to which it adds its "Scan Defaults" section. It is also the frame the shared
+administration screens render in.
 
 `SIDEBAR_SECTIONS` is a five-section declarative model filtered per user by
 `canSeeNavItem(user, item)` — `item.permission` must pass `canPermission`, and
@@ -555,19 +730,20 @@ notification stream, profile dropdown and modals.
 > without the other sees a link that 403s.
 
 `AppLayout` also special-cases superadmins (`isSuperAdmin(user)`) for the
-organization switcher that writes `localStorage.activeOrgId`.
+shell's organization switcher, which writes `localStorage.activeOrgId`.
 
 ### Component inventory
 
-| Directory            | Components                                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `components/common/` | `Button`, `CVELink`, `ConfirmDialog`, `EmptyState`, `ErrorBoundary`, `FormField`, `Loader`, `RoleSelector`, `Skeleton`, `Toast` |
-| `components/layout/` | `AppLayout`, `ChangePasswordModal`, `HelpPanel`, `Modal`, `NotificationsPanel`, `ProfileModal`, `ScanStepper`, `SettingsDrawer` |
-| `components/admin/`  | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                             |
-| `components/scan/`   | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                      |
-| `components/assets/` | `AuditTimeline`                                                                                                                 |
-| `components/auth/`   | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                 |
-| `components/` (root) | `ErrorBoundary`, `PrivateRoute`                                                                                                 |
+| Directory                                                                        | Components                                                                                                                                        |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/audit/components/common/`                                               | `CVELink`, `PanelErrorBoundary`, `RootErrorBoundary`                                                                                              |
+| `modules/audit/components/layout/`                                               | `AppLayout`, `HelpPanel`, `ScanStepper`, `auditSettings` (Scan Defaults section)                                                                  |
+| `shell/admin/components/`                                                        | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                                               |
+| `shell/account/`, `shell/notifications/`, `shell/navigation/`, `shell/feedback/` | `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`; `NotificationsPanel`; `CcureHomeLink`, `AccountMenu`, `OrgSwitcher`, `UserCard`; `Toast` |
+| `modules/audit/components/scan/`                                                 | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                                        |
+| `modules/audit/components/assets/`                                               | `AuditTimeline`                                                                                                                                   |
+| `shell/auth/components/` (sign-in)                                               | `AuthHeroPanel`, `AuthIcons`, `AuthTrustFooter`                                                                                                   |
+| `shell/auth/`, `shell/navigation/`                                               | `PrivateRoute`, `CcureHomeLink`                                                                                                                   |
 
 `Skeleton` and `Loader` are the two loading primitives; `EmptyState` covers the
 no-data case; `Toast` and `ConfirmDialog` cover feedback and destructive
@@ -577,16 +753,17 @@ confirmation.
 
 ## 11. Pages
 
-| Group                         | Pages                                                                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Auth                          | `Login`, `Register`, `ForgotPassword`, `ResetPassword`                                                                |
-| Dashboards                    | `SecurityDashboard`, `Dashboard` (scan launcher)                                                                      |
-| Inventory                     | `AssetRegistry`, `AssetDetail`, `VulnerabilityBrowser`                                                                |
-| Scan lifecycle                | `ScanHistory`, `ArchivedScans`, `RecycleBin`                                                                          |
-| Reporting                     | `SecurityReports`, `ComplianceWorkspace`                                                                              |
-| `pages/scan/`                 | `NewScan`, `Phase1Results`, `Phase2Results`, `Phase3Results`, `CredentialedScan`, `CredentialedResults`, `NetworkMap` |
-| `pages/admin/`                | `UserManagement`, `DeletedUsers`, `OrganizationManagement`, `RoleManagement`, `AuditLogs`, `AMTIntegration`           |
-| `modules/web-scanning/pages/` | `WebDashboard`, `ScanList`, `NewWebScan`, `ScanDetail`, `FindingsExplorer`, `AssetInventory`                          |
+| Group                               | Pages                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Auth                                | `Login`, `Register`, `ForgotPassword`, `ResetPassword`                                                                |
+| Dashboards                          | `SecurityDashboard`, `Dashboard` (scan launcher)                                                                      |
+| Inventory                           | `AssetRegistry`, `AssetDetail`, `VulnerabilityBrowser`                                                                |
+| Scan lifecycle                      | `ScanHistory`, `ArchivedScans`, `RecycleBin`                                                                          |
+| Reporting                           | `SecurityReports`, `ComplianceWorkspace`                                                                              |
+| `modules/audit/pages/scan/`         | `NewScan`, `Phase1Results`, `Phase2Results`, `Phase3Results`, `CredentialedScan`, `CredentialedResults`, `NetworkMap` |
+| `shell/admin/pages/`                | `UserManagement`, `DeletedUsers`, `OrganizationManagement`, `RoleManagement`, `EmailDomainRules`, `AuditLogs`         |
+| `modules/audit/pages/admin/`        | `AMTIntegration`                                                                                                      |
+| `modules/audit/web-scanning/pages/` | `WebDashboard`, `ScanList`, `NewWebScan`, `ScanDetail`, `FindingsExplorer`, `AssetInventory`                          |
 
 `NetworkMap` renders the `/topology/map` graph with **vis-network**, consuming the
 `{nodes, edges}` payload directly — the backend emits vis-network-compatible
@@ -648,22 +825,27 @@ Test configuration lives in the same file: `globals: true`, `environment: "jsdom
 | `npm run preview` | Serve the built bundle locally                  |
 | `npm test`        | `vitest run`                                    |
 
-There is **no `lint` script** in `package.json`, although `.eslintrc.json` exists
-and both pre-commit and CI invoke ESLint. CI's `npm run lint` step is written as
-`npm run lint || echo "Lint warnings found"`, so the missing script does not fail
-the build.
+`npm run lint` runs ESLint (`.eslintrc.json`) over `src/`, the browser tests and
+the harness scripts with `--max-warnings=0`. CI's Frontend Validation runs it as a
+blocking step, and pre-commit runs ESLint on the staged files.
 
 ### Container build
 
 ```dockerfile
-FROM node:20-slim AS build
-COPY package*.json ./ && RUN npm install
-COPY . . && ARG VITE_API_BASE_URL=/api && RUN npm run build
+FROM node:25-slim@sha256:… AS build
+COPY package.json package-lock.json ./ && RUN npm ci --no-audit --no-fund
+COPY . . && ARG VITE_API_BASE_URL=/api
+RUN npm run ux4g:check -- --dependencies-only && npm run build
 
-FROM nginx:stable-alpine AS runtime
+FROM nginx:stable-alpine@sha256:… AS runtime
+RUN apk upgrade --no-cache pcre2 libexpat
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 ```
+
+Abridged from `Frontend/Dockerfile`, which is authoritative. Both base images are
+pinned by digest, and the `apk upgrade` line patches only the base-image packages
+the image scan flagged (`docs/ci/CONTAINER_IMAGES.md`).
 
 `nginx.conf` provides the SPA history fallback so a deep link like
 `/scan/:id/phase2` reloads correctly.
@@ -672,13 +854,13 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 ## 14. Tests
 
-| File                                              | Covers                                                           |
-| ------------------------------------------------- | ---------------------------------------------------------------- |
-| `__tests__/auth/permissions.test.js`              | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
-| `__tests__/components/auth/PrivateRoute.test.jsx` | Loading, redirect, permission gating, fallback selection         |
-| `__tests__/pages/scan/NewScan.test.jsx`           | Scan launch form and pipeline wiring                             |
-| `__tests__/pages/scan/NetworkMap.test.jsx`        | Topology graph rendering                                         |
-| `__tests__/setupTests.js`                         | `@testing-library/jest-dom` matchers                             |
+| File                                                     | Covers                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `__tests__/shell/auth/permissions.test.js`               | `can`, `canAny`, `canAll`, superadmin bypass, role normalisation |
+| `__tests__/shell/auth/PrivateRoute.test.jsx`             | Loading, redirect, permission gating, fallback selection         |
+| `__tests__/modules/audit/pages/scan/NewScan.test.jsx`    | Scan launch form and pipeline wiring                             |
+| `__tests__/modules/audit/pages/scan/NetworkMap.test.jsx` | Topology graph rendering                                         |
+| `__tests__/setupTests.js`                                | `@testing-library/jest-dom` matchers                             |
 
 Run with `npm test` (`vitest run`).
 

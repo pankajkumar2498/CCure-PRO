@@ -55,7 +55,7 @@ Check both `upgrade()` and `downgrade()` before applying. Alembic can miss inten
 6. Apply the migration to the development/test database.
 
 ```powershell
-alembic upgrade head
+alembic upgrade heads
 ```
 
 7. Run the app or tests and verify the change.
@@ -79,7 +79,7 @@ $env:APP_ENV="production"
 3. Apply the already-reviewed migrations.
 
 ```powershell
-alembic upgrade head
+alembic upgrade heads
 ```
 
 4. Clear production mode after finishing.
@@ -91,10 +91,27 @@ Remove-Item Env:APP_ENV
 ## Important Rules
 
 - Use `alembic revision --autogenerate` against the development/test database.
-- Use `alembic upgrade head` against the real database only after reviewing the generated migration.
+- Use `alembic upgrade heads` against the real database only after reviewing the generated migration.
 - Do not edit `config.py` or `alembic/env.py` just to switch databases.
 - Do not keep `APP_ENV=production` permanently set in your normal development terminal.
 - If `DATABASE_URL` is set in the terminal, it overrides both `.env.test` and `.env`.
+
+## Several Heads: Each Core Module Has Its Own Branch
+
+Since Phase 11.3 the history is not a single line. Audit's revisions live in
+`alembic/versions/`; Policy Pro's and Rank's live in `ccure_policy/migrations/`
+(branch `policy_pro`) and `ccure_rank/migrations/` (branch `rank`), each with a
+base revision that creates only its module's empty schema. `version_locations`
+in `alembic.ini` lists the three folders once the branches are activated
+(`python -m scripts.db.alembic_module_branches --status`).
+
+- Always `alembic upgrade heads` / `alembic stamp heads`. `head` (singular)
+  fails once there is more than one head.
+- `alembic downgrade -1` is ambiguous with several heads. Name the branch or
+  revision: `alembic downgrade rank@-1`, `alembic downgrade <revision>@-1`.
+- A new module migration: `alembic revision --head <branch>@head -m "..."`.
+  An Audit migration: `alembic revision --head <audit head> -m "..."`.
+- `alembic_version` holds one row per head.
 
 ## Quick Command Reference
 
@@ -104,7 +121,7 @@ Development/test database:
 cd Backend
 Remove-Item Env:APP_ENV -ErrorAction SilentlyContinue
 alembic revision --autogenerate -m "your change"
-alembic upgrade head
+alembic upgrade heads
 ```
 
 Real/main database:
@@ -112,6 +129,6 @@ Real/main database:
 ```powershell
 cd Backend
 $env:APP_ENV="production"
-alembic upgrade head
+alembic upgrade heads
 Remove-Item Env:APP_ENV
 ```

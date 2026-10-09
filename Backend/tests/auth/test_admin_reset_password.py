@@ -4,52 +4,19 @@ tests/test_admin_reset_password.py
 Integration tests for admin-driven password reset.
 """
 
+from native_rbac import system_role, create_user, grant_permissions
+
+
 from auth.jwt_handler import create_access_token, verify_password
-from db.models import (
-    Organization,
-    Permission,
-    RefreshTokenSession,
-    Role,
-    RolePermission,
-    User,
-)
+from db.models import Organization, RefreshTokenSession, User
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-
-def _grant_permission(
-    db_session: Session, role: Role, resource: str, action: str
-) -> None:
-    permission = (
-        db_session.query(Permission)
-        .filter(Permission.resource == resource, Permission.action == action)
-        .first()
-    )
-    if permission is None:
-        permission = Permission(
-            resource=resource, action=action, description=f"{resource}:{action}"
-        )
-        db_session.add(permission)
-        db_session.flush()
-
-    exists = (
-        db_session.query(RolePermission)
-        .filter(
-            RolePermission.role_id == role.id,
-            RolePermission.permission_id == permission.id,
-        )
-        .first()
-    )
-    if exists is None:
-        db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
-        db_session.flush()
 
 
 def _auth_headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -66,28 +33,37 @@ def test_superadmin_reset_password_success(client: TestClient, db_session: Sessi
     )
     db_session.add(org)
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, superadmin_role, "users", "update")
+    grant_permissions(
+        db_session,
+        superadmin_role,
+        "platform.user.approve",
+        "platform.user.assign_role",
+        "platform.user.reset_credentials",
+        "platform.user.update",
+    )
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         id="usr_sa_admin_1234",
         username="sa-admin",
         email="sa-admin@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    target_user = User(
+    target_user = create_user(
+        db_session,
         id="usr_sa_target_1234",
         username="sa-target",
         email="sa-target@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=analyst_role.id,
+        role=analyst_role,
         is_active=True,
         is_verified=True,
     )
@@ -118,38 +94,48 @@ def test_org_admin_reset_password_tenant_isolation(
     )
     db_session.add_all([org_a, org_b])
 
-    org_admin_role = db_session.query(Role).filter_by(name="org_admin").first()
-    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
+    org_admin_role = system_role(db_session, "platform.org_admin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, org_admin_role, "users", "update")
+    grant_permissions(
+        db_session,
+        org_admin_role,
+        "platform.user.approve",
+        "platform.user.assign_role",
+        "platform.user.reset_credentials",
+        "platform.user.update",
+    )
 
-    admin_a = User(
+    admin_a = create_user(
+        db_session,
         id="usr_orga_admin_1111",
         username="admin-a",
         email="admin-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=org_admin_role.id,
+        role=org_admin_role,
         is_active=True,
         is_verified=True,
     )
-    user_a = User(
+    user_a = create_user(
+        db_session,
         id="usr_orga_user_1111",
         username="user-a",
         email="user-a@test.com",
         password_hash="hash",
         org_id=org_a.id,
-        role_id=analyst_role.id,
+        role=analyst_role,
         is_active=True,
         is_verified=True,
     )
-    user_b = User(
+    user_b = create_user(
+        db_session,
         id="usr_orgb_user_2222",
         username="user-b",
         email="user-b@test.com",
         password_hash="hash",
         org_id=org_b.id,
-        role_id=analyst_role.id,
+        role=analyst_role,
         is_active=True,
         is_verified=True,
     )
@@ -186,28 +172,37 @@ def test_reset_password_revokes_sessions(client: TestClient, db_session: Session
     )
     db_session.add(org)
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
-    analyst_role = db_session.query(Role).filter_by(name="analyst").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
+    analyst_role = system_role(db_session, "platform.analyst")
 
-    _grant_permission(db_session, superadmin_role, "users", "update")
+    grant_permissions(
+        db_session,
+        superadmin_role,
+        "platform.user.approve",
+        "platform.user.assign_role",
+        "platform.user.reset_credentials",
+        "platform.user.update",
+    )
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         id="usr_sa_admin_5555",
         username="sa-admin-rev",
         email="sa-admin-rev@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    target_user = User(
+    target_user = create_user(
+        db_session,
         id="usr_target_rev_5555",
         username="target-rev",
         email="target-rev@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=analyst_role.id,
+        role=analyst_role,
         is_active=True,
         is_verified=True,
     )
@@ -269,27 +264,36 @@ def test_reset_password_weak_password_validation(
     )
     db_session.add(org)
 
-    superadmin_role = db_session.query(Role).filter_by(name="superadmin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
 
-    _grant_permission(db_session, superadmin_role, "users", "update")
+    grant_permissions(
+        db_session,
+        superadmin_role,
+        "platform.user.approve",
+        "platform.user.assign_role",
+        "platform.user.reset_credentials",
+        "platform.user.update",
+    )
 
-    superadmin = User(
+    superadmin = create_user(
+        db_session,
         id="usr_sa_admin_9999",
         username="sa-admin-weak",
         email="sa-admin-weak@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )
-    target_user = User(
+    target_user = create_user(
+        db_session,
         id="usr_target_weak_9999",
         username="target-weak",
         email="target-weak@test.com",
         password_hash="hash",
         org_id=org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
     )

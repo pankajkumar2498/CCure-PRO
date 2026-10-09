@@ -5,8 +5,10 @@
  * This file only defines Routes.
  *
  * Route changes from original:
- *   /           → SecurityDashboard (new SOC overview)
- *   /dashboard  → SecurityDashboard
+ *   /           → CCure Home, the platform's Product Hub (Phase 12.2)
+ *   /audit-dashboard → SecurityDashboard, Audit's canonical dashboard address
+ *   /dashboard  → redirect to /audit-dashboard (old links and bookmarks)
+ *   /:entry     → a product's entry page from the registry (Policy Pro, Rank, IR)
  *   /scan       → Dashboard.jsx (scan template picker, moved from /)
  *   /assets     → AssetRegistry
  *   /assets/:id → AssetDetail
@@ -18,46 +20,62 @@
  */
 
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import PrivateRoute from "./components/auth/PrivateRoute";
-import { ScanProvider } from "./context/ScanContext";
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import PrivateRoute from "@shell/auth/PrivateRoute";
+import { AccessFallbackProvider } from "@shell/auth/accessFallback";
+import { AUDIT_ACCESS_FALLBACKS } from "@audit/config/accessFallbacks";
+import { AMT_PERMISSION } from "@audit/config/permissions";
+import {
+  AUDIT_NOTIFICATION_CATEGORIES,
+  AUDIT_NOTIFICATION_TYPES,
+} from "@audit/config/notificationPresentation";
+import { NotificationPresentationProvider } from "@shell/notifications/notificationPresentation";
+import { LegalDocumentsProvider } from "@shell/auth/legalDocuments";
+import { AUDIT_LEGAL_DOCUMENTS } from "@audit/legal/legalDocuments";
+import { ScanProvider } from "@audit/context/ScanContext";
 
 // ── New dashboard pages ───────────────────────────────────────────────────────
-import SecurityDashboard from "./pages/SecurityDashboard";
-import AssetRegistry from "./pages/AssetRegistry";
-import AssetDetail from "./pages/AssetDetail";
-import VulnerabilityBrowser from "./pages/VulnerabilityBrowser";
-import ComplianceWorkspace from "./pages/ComplianceWorkspace";
+import SecurityDashboard from "@audit/pages/SecurityDashboard";
+import AssetRegistry from "@audit/pages/AssetRegistry";
+import AssetDetail from "@audit/pages/AssetDetail";
+import VulnerabilityBrowser from "@audit/pages/VulnerabilityBrowser";
+import ComplianceWorkspace from "@audit/pages/ComplianceWorkspace";
 
 // ── Existing pages (all verified to exist on disk) ────────────────────────────
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard"; // scan launcher → /scan
-import ScanHistory from "./pages/ScanHistory";
-import ScanSchedules from "./pages/scan/ScanSchedules";
-import ConfigurationChecks from "./pages/scan/ConfigurationChecks";
-import ConfigurationRuleValidator from "./pages/scan/ConfigurationRuleValidator";
-import ScanCredentials from "./pages/scan/ScanCredentials";
-import ArchivedScans from "./pages/ArchivedScans";
-import RecycleBin from "./pages/RecycleBin";
-import SecurityReports from "./pages/SecurityReports";
+import Login from "@shell/auth/pages/Login";
+import Register from "@shell/auth/pages/Register";
+import VerifyEmail from "@shell/auth/pages/VerifyEmail";
+import ForgotPassword from "@shell/auth/pages/ForgotPassword";
+import ResetPassword from "@shell/auth/pages/ResetPassword";
+import AuthErrorBoundary from "@shell/auth/components/AuthErrorBoundary";
+import Dashboard from "@audit/pages/Dashboard"; // scan launcher → /scan
+import ScanHistory from "@audit/pages/ScanHistory";
+import ScanSchedules from "@audit/pages/scan/ScanSchedules";
+import ConfigurationChecks from "@audit/pages/scan/ConfigurationChecks";
+import ConfigurationRuleValidator from "@audit/pages/scan/ConfigurationRuleValidator";
+import ScanCredentials from "@audit/pages/scan/ScanCredentials";
+import ArchivedScans from "@audit/pages/ArchivedScans";
+import RecycleBin from "@audit/pages/RecycleBin";
+import SecurityReports from "@audit/pages/SecurityReports";
 
 // Scan sub-pages
-import NewScan from "./pages/scan/NewScan";
-import Phase1Results from "./pages/scan/Phase1Results";
-import Phase2Results from "./pages/scan/Phase2Results";
-import Phase3Results from "./pages/scan/Phase3Results";
-import CredentialedScan from "./pages/scan/CredentialedScan";
-import CredentialedResults from "./pages/scan/CredentialedResults";
-import ScanComparison from "./pages/scan/ScanComparison";
-import ScanPolicies from "./pages/scan/ScanPolicies";
-import Remediation from "./pages/Remediation";
-import NetworkMap from "./pages/scan/NetworkMap";
+import NewScan from "@audit/pages/scan/NewScan";
+import Phase1Results from "@audit/pages/scan/Phase1Results";
+import Phase2Results from "@audit/pages/scan/Phase2Results";
+import Phase3Results from "@audit/pages/scan/Phase3Results";
+import CredentialedScan from "@audit/pages/scan/CredentialedScan";
+import CredentialedResults from "@audit/pages/scan/CredentialedResults";
+import ScanComparison from "@audit/pages/scan/ScanComparison";
+import ScanPolicies from "@audit/pages/scan/ScanPolicies";
+import Remediation from "@audit/pages/Remediation";
+import NetworkMap from "@audit/pages/scan/NetworkMap";
 
-import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
+import WebScanningRoutes from "@audit/web-scanning/WebScanningRoutes";
+
+// ── Platform shell (Phase 12): CCure Home and the product entry pages ────────
+import CcureHome from "@shell/pages/CcureHome";
+import ModuleEntryPage from "@shell/pages/ModuleEntryPage";
+import AccessDenied from "@shell/pages/AccessDenied";
 
 // ── Design-system showcase, development builds only ─────────────────────────
 // `import.meta.env.DEV` is a literal `false` in a production build, so Rollup
@@ -69,195 +87,281 @@ import WebScanningRoutes from "./modules/web-scanning/WebScanningRoutes";
 // reachable in development without an auth gate. It exists to exercise the
 // primitives in both themes; it is not, and must not become, a product page.
 const Ux4gShowcase = import.meta.env.DEV
-  ? lazy(() => import("./pages/DesignSystemShowcase"))
+  ? lazy(() => import("@audit/pages/DesignSystemShowcase"))
   : null;
 
 // Admin pages
-import AuditLogs from "./pages/admin/AuditLogs";
-import EmailDomainRules from "./pages/admin/EmailDomainRules";
-import UserManagement from "./pages/admin/UserManagement";
-import OrganizationManagement from "./pages/admin/OrganizationManagement";
-import RoleManagement from "./pages/admin/RoleManagement";
-import DeletedUsers from "./pages/admin/DeletedUsers";
-import AMTIntegration from "./pages/admin/AMTIntegration";
+import AuditLogs from "@shell/admin/pages/AuditLogs";
+import EmailDomainRules from "@shell/admin/pages/EmailDomainRules";
+import UserManagement from "@shell/admin/pages/UserManagement";
+import OrganizationManagement from "@shell/admin/pages/OrganizationManagement";
+import RoleManagement from "@shell/admin/pages/RoleManagement";
+import DeletedUsers from "@shell/admin/pages/DeletedUsers";
+import AMTIntegration from "@audit/pages/admin/AMTIntegration";
+
+// /dashboard → /audit-dashboard, keeping the query string, fragment and router
+// state, so a link carrying any of them lands exactly where it pointed.
+function AuditDashboardRedirect() {
+  const { search, hash, state } = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: "/audit-dashboard", search, hash }}
+      state={state}
+      replace
+    />
+  );
+}
+
+// Audit's own state, mounted only around Audit's routes (see AuditProduct
+// below). CCure Home, the product entry pages and the shared administration
+// screens sit outside it: they are the platform's, not Audit's.
+function AuditProduct() {
+  return (
+    <ScanProvider>
+      <Outlet />
+    </ScanProvider>
+  );
+}
+
+/**
+ * What the composition root hands the shell on a product's behalf: how Audit's
+ * notifications look in the shared panel, and the legal wording the sign-up screen
+ * shows (a product's words, so not the shell's — D12-9). One component, so the
+ * route tree below keeps its shape.
+ */
+function ProductPresentation({ children }) {
+  return (
+    <NotificationPresentationProvider
+      types={AUDIT_NOTIFICATION_TYPES}
+      categories={AUDIT_NOTIFICATION_CATEGORIES}
+    >
+      <LegalDocumentsProvider documents={AUDIT_LEGAL_DOCUMENTS}>
+        {children}
+      </LegalDocumentsProvider>
+    </NotificationPresentationProvider>
+  );
+}
 
 export default function App() {
   return (
-    <ScanProvider>
-      <Routes>
-        {/* ── Public ── */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        {/* Target of the emailed verification link. Public by necessity: the
-            whole point is that the visitor cannot authenticate yet. */}
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+    // Where a refused route falls back to is the platform guard's rule with
+    // Audit's pages as candidates (Phase 12.3); it is not Audit's state.
+    <AccessFallbackProvider candidates={AUDIT_ACCESS_FALLBACKS}>
+      {/* How Audit's notifications look in the shared panel: the shell
+          describes the platform's own and takes a product's from here. */}
+      <ProductPresentation>
+        <Routes>
+          {/* ── Public ── */}
+          <Route element={<AuthErrorBoundary />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            {/* Target of the emailed verification link. Public by necessity: the
+              whole point is that the visitor cannot authenticate yet. */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+          </Route>
 
-        {/* Development-only, see the declaration above. Absent from every
+          {/* Development-only, see the declaration above. Absent from every
             production build. */}
-        {Ux4gShowcase ? (
-          <Route
-            path="/design-system"
-            element={
-              <Suspense fallback={null}>
-                <Ux4gShowcase />
-              </Suspense>
-            }
-          />
-        ) : null}
+          {Ux4gShowcase ? (
+            <Route
+              path="/design-system"
+              element={
+                <Suspense fallback={null}>
+                  <Ux4gShowcase />
+                </Suspense>
+              }
+            />
+          ) : null}
 
-        {/* ── Protected ── */}
-        <Route element={<PrivateRoute />}>
-          {/* SOC Security Dashboard — new home */}
-          <Route path="/" element={<SecurityDashboard />} />
-          <Route path="/dashboard" element={<SecurityDashboard />} />
+          {/* ── Protected ── */}
+          <Route element={<PrivateRoute />}>
+            {/* CCure Home — the Product Hub, read from the platform registry */}
+            <Route path="/" element={<CcureHome />} />
 
-          {/* Original scan launcher (moved from / to /scan) */}
-          <Route path="/scan" element={<Dashboard />} />
+            {/* ── CCure Audit — the product. Everything in this group is Audit's
+              (its state, its pages, its own layout and sidebar); nothing the
+              platform owns is. Addresses are unchanged. ── */}
+            <Route element={<AuditProduct />}>
+              {/* Audit's Security Dashboard. /dashboard was its address until
+              Phase 12 and stays a redirect, so bookmarks, report links and
+              anything outside the repository still land (D12-7). */}
+              <Route path="/audit-dashboard" element={<SecurityDashboard />} />
+              <Route path="/dashboard" element={<AuditDashboardRedirect />} />
 
-          {/* Asset Registry */}
-          <Route path="/assets" element={<AssetRegistry />} />
-          <Route path="/assets/:id" element={<AssetDetail />} />
+              {/* Original scan launcher (moved from / to /scan) */}
+              <Route path="/scan" element={<Dashboard />} />
 
-          {/* Vulnerability Browser */}
-          <Route path="/vulnerabilities" element={<VulnerabilityBrowser />} />
+              {/* Asset Registry */}
+              <Route path="/assets" element={<AssetRegistry />} />
+              <Route path="/assets/:id" element={<AssetDetail />} />
 
-          {/* Scan history + lifecycle */}
-          <Route path="/monitor" element={<ScanHistory mode="monitor" />} />
-          <Route path="/history" element={<ScanHistory mode="history" />} />
-          <Route path="/scan-schedules" element={<ScanSchedules />} />
-          <Route path="/scan-credentials" element={<ScanCredentials />} />
-          <Route path="/scan-policies" element={<ScanPolicies />} />
-          <Route path="/remediation" element={<Remediation />} />
-          <Route
-            path="/configuration-checks"
-            element={<ConfigurationChecks />}
-          />
-          {/* Its own route rather than a panel on the catalogue: that page's
+              {/* Vulnerability Browser */}
+              <Route
+                path="/vulnerabilities"
+                element={<VulnerabilityBrowser />}
+              />
+
+              {/* Scan history + lifecycle */}
+              <Route path="/monitor" element={<ScanHistory mode="monitor" />} />
+              <Route path="/history" element={<ScanHistory mode="history" />} />
+              <Route path="/scan-schedules" element={<ScanSchedules />} />
+              <Route path="/scan-credentials" element={<ScanCredentials />} />
+              <Route path="/scan-policies" element={<ScanPolicies />} />
+              <Route path="/remediation" element={<Remediation />} />
+              <Route
+                path="/configuration-checks"
+                element={<ConfigurationChecks />}
+              />
+              {/* Its own route rather than a panel on the catalogue: that page's
               contract is no POST of any kind, pinned by a test that drives
               every control on it. */}
-          <Route
-            path="/configuration-checks/validate"
-            element={<ConfigurationRuleValidator />}
-          />
-          <Route
-            path="/scan-history"
-            element={<Navigate to="/history" replace />}
-          />
-          <Route path="/archived" element={<ArchivedScans />} />
-          <Route
-            path="/archived-scans"
-            element={<Navigate to="/archived" replace />}
-          />
-          <Route path="/recycle-bin" element={<RecycleBin />} />
+              <Route
+                path="/configuration-checks/validate"
+                element={<ConfigurationRuleValidator />}
+              />
+              <Route
+                path="/scan-history"
+                element={<Navigate to="/history" replace />}
+              />
+              <Route path="/archived" element={<ArchivedScans />} />
+              <Route
+                path="/archived-scans"
+                element={<Navigate to="/archived" replace />}
+              />
+              <Route path="/recycle-bin" element={<RecycleBin />} />
 
-          {/* Scan sub-pages (existing + legacy compatibility routes) */}
-          <Route path="/scan/new" element={<NewScan />} />
-          <Route path="/scan/active/:scanId" element={<NewScan />} />
-          <Route path="/scan/host-discovery" element={<Phase1Results />} />
-          <Route path="/scan/asset-discovery" element={<Phase2Results />} />
-          <Route path="/scan/vulnerability-audit" element={<Phase3Results />} />
-          <Route
-            path="/scan/advanced-scan"
-            element={<Navigate to="/scan/vulnerability-audit" replace />}
-          />
-          {/* One route, scan chosen by query string, so a comparison can be
+              {/* Scan sub-pages (existing + legacy compatibility routes) */}
+              <Route path="/scan/new" element={<NewScan />} />
+              <Route path="/scan/active/:scanId" element={<NewScan />} />
+              <Route path="/scan/host-discovery" element={<Phase1Results />} />
+              <Route path="/scan/asset-discovery" element={<Phase2Results />} />
+              <Route
+                path="/scan/vulnerability-audit"
+                element={<Phase3Results />}
+              />
+              <Route
+                path="/scan/advanced-scan"
+                element={<Navigate to="/scan/vulnerability-audit" replace />}
+              />
+              {/* One route, scan chosen by query string, so a comparison can be
               linked to and shared. */}
-          <Route path="/scan/comparison" element={<ScanComparison />} />
-          <Route path="/scan/credentialed" element={<CredentialedScan />} />
-          <Route
-            path="/scan/credentialed/results"
-            element={<CredentialedResults />}
-          />
-          <Route path="/scan/:scanId/phase1" element={<Phase1Results />} />
-          <Route path="/scan/:scanId/phase2" element={<Phase2Results />} />
-          <Route path="/scan/:scanId/phase3" element={<Phase3Results />} />
-          <Route
-            path="/scan/:scanId/credentialed"
-            element={<CredentialedScan />}
-          />
-          <Route
-            path="/scan/:scanId/credentialed-results"
-            element={<CredentialedResults />}
-          />
-
-          {/* Network Topology Map */}
-          <Route path="/scan/topology-map" element={<NetworkMap />} />
-          <Route path="/scan/:scanId/topology-map" element={<NetworkMap />} />
-          <Route path="/topology" element={<NetworkMap />} />
-
-          {/* Web Application Scanning */}
-          <Route path="/web-scans/*" element={<WebScanningRoutes />} />
-
-          {/* Reports */}
-          <Route path="/reports" element={<SecurityReports />} />
-          <Route path="/compliance" element={<ComplianceWorkspace />} />
-
-          {/* Admin — RBAC-gated */}
-          <Route
-            element={
-              <PrivateRoute
-                requiredPermission={{ resource: "audit", action: "read" }}
+              <Route path="/scan/comparison" element={<ScanComparison />} />
+              <Route path="/scan/credentialed" element={<CredentialedScan />} />
+              <Route
+                path="/scan/credentialed/results"
+                element={<CredentialedResults />}
               />
-            }
-          >
-            <Route path="/admin/audit-logs" element={<AuditLogs />} />
-          </Route>
-          <Route
-            element={
-              <PrivateRoute
-                requiredPermission={{ resource: "assets", action: "update" }}
+              <Route path="/scan/:scanId/phase1" element={<Phase1Results />} />
+              <Route path="/scan/:scanId/phase2" element={<Phase2Results />} />
+              <Route path="/scan/:scanId/phase3" element={<Phase3Results />} />
+              <Route
+                path="/scan/:scanId/credentialed"
+                element={<CredentialedScan />}
               />
-            }
-          >
-            <Route path="/admin/amt" element={<AMTIntegration />} />
-          </Route>
-          <Route
-            element={
-              <PrivateRoute
-                requiredPermission={{ resource: "users", action: "read" }}
+              <Route
+                path="/scan/:scanId/credentialed-results"
+                element={<CredentialedResults />}
               />
-            }
-          >
-            <Route path="/admin/users" element={<UserManagement />} />
-            <Route path="/admin/users/deleted" element={<DeletedUsers />} />
-          </Route>
-          {/* Superadmin only, matching require_role("superadmin") on the
+
+              {/* Network Topology Map */}
+              <Route path="/scan/topology-map" element={<NetworkMap />} />
+              <Route
+                path="/scan/:scanId/topology-map"
+                element={<NetworkMap />}
+              />
+              <Route path="/topology" element={<NetworkMap />} />
+
+              {/* Web Application Scanning */}
+              <Route path="/web-scans/*" element={<WebScanningRoutes />} />
+
+              {/* Reports */}
+              <Route path="/reports" element={<SecurityReports />} />
+              <Route path="/compliance" element={<ComplianceWorkspace />} />
+
+              {/* AMT Integration is Audit's (an Audit device integration). */}
+              <Route
+                element={<PrivateRoute requiredPermission={AMT_PERMISSION} />}
+              >
+                <Route path="/admin/amt" element={<AMTIntegration />} />
+              </Route>
+            </Route>
+
+            {/* ── CCure Platform — outside Audit. ── */}
+            {/* A product's entry page — /policy-dashboard, /rank-dashboard,
+              /ir-dashboard — looked up in the registry. Every static route
+              outranks it; an address that is no product's entry falls through
+              to / exactly as the catch-all below does. */}
+            <Route path="/:entry" element={<ModuleEntryPage />} />
+
+            {/* Shared administration — RBAC-gated, rendered in the platform shell */}
+            <Route
+              element={
+                <PrivateRoute
+                  deniedElement={<AccessDenied />}
+                  requiredPermission={"platform.audit_log.read"}
+                />
+              }
+            >
+              <Route path="/admin/audit-logs" element={<AuditLogs />} />
+            </Route>
+            <Route
+              element={
+                <PrivateRoute
+                  deniedElement={<AccessDenied />}
+                  requiredPermission={"platform.user.read"}
+                />
+              }
+            >
+              <Route path="/admin/users" element={<UserManagement />} />
+              <Route path="/admin/users/deleted" element={<DeletedUsers />} />
+            </Route>
+            {/* Superadmin only, matching require_role("superadmin") on the
               router. These rules are platform-wide: an org_admin denying a
               domain would be blocking another tenant's customers. */}
-          <Route element={<PrivateRoute superadminOnly />}>
-            <Route path="/admin/email-domains" element={<EmailDomainRules />} />
-          </Route>
-          <Route
-            element={
-              <PrivateRoute
-                requiredPermission={{
-                  resource: "organizations",
-                  action: "read",
-                }}
-              />
-            }
-          >
             <Route
-              path="/admin/organizations"
-              element={<OrganizationManagement />}
-            />
-          </Route>
-          <Route
-            element={
-              <PrivateRoute
-                requiredPermission={{ resource: "roles", action: "read" }}
+              element={
+                <PrivateRoute
+                  requiredPermission="platform.email_domain.read"
+                  deniedElement={<AccessDenied />}
+                />
+              }
+            >
+              <Route
+                path="/admin/email-domains"
+                element={<EmailDomainRules />}
               />
-            }
-          >
-            <Route path="/admin/roles" element={<RoleManagement />} />
-          </Route>
+            </Route>
+            <Route
+              element={
+                <PrivateRoute
+                  deniedElement={<AccessDenied />}
+                  requiredPermission={"platform.organization.read"}
+                />
+              }
+            >
+              <Route
+                path="/admin/organizations"
+                element={<OrganizationManagement />}
+              />
+            </Route>
+            <Route
+              element={
+                <PrivateRoute
+                  deniedElement={<AccessDenied />}
+                  requiredPermission={"platform.role.read"}
+                />
+              }
+            >
+              <Route path="/admin/roles" element={<RoleManagement />} />
+            </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </ScanProvider>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </ProductPresentation>
+    </AccessFallbackProvider>
   );
 }

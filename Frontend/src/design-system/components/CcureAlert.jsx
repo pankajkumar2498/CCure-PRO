@@ -20,11 +20,15 @@
  * its banners aloud before the user has asked for anything. Live regions are
  * for things that change after the page settles.
  */
+import CcureIcon from "../icons/CcureIcon";
+
+/* The application's outline icons, not text glyphs: "⚠" and "ℹ" render as
+   colour emoji on some platforms and as monochrome text on others. */
 const ICONS = {
-  info: "ℹ",
-  success: "✓",
-  warning: "⚠",
-  danger: "✕",
+  info: "info",
+  success: "check-circle",
+  warning: "alert-triangle",
+  danger: "alert-octagon",
 };
 
 export default function CcureAlert({
@@ -42,7 +46,7 @@ export default function CcureAlert({
 
   return (
     <div
-      className={`cc-alert cc-alert--${variant} ${className}`.trim()}
+      className={`cc-alert cc-ux4g ux4g-alert ux4g-alert-${variant === "danger" ? "error" : variant} cc-alert--${variant}${title ? " cc-alert--titled" : ""} ${className}`.trim()}
       role={role}
       {...rest}
     >
@@ -50,19 +54,21 @@ export default function CcureAlert({
           already carry, so it is hidden from assistive tech. Its job is to keep
           the meaning legible for a user who cannot distinguish the colours —
           WCAG 1.4.1, which colour-only status styling fails. */}
-      <span className="cc-alert__icon" aria-hidden="true">
-        {ICONS[variant] ?? ICONS.info}
+      <span className="cc-alert__icon ux4g-alert-icon" aria-hidden="true">
+        <CcureIcon name={ICONS[variant] ?? ICONS.info} size="1.25em" />
       </span>
 
-      <div className="cc-alert__body">
-        {title ? <div className="cc-alert__title">{title}</div> : null}
-        <div>{children}</div>
+      <div className="cc-alert__body ux4g-alert-content">
+        {title ? (
+          <div className="cc-alert__title ux4g-alert-title">{title}</div>
+        ) : null}
+        <div className="ux4g-alert-message">{children}</div>
       </div>
 
       {onDismiss ? (
         <button
           type="button"
-          className="cc-alert__dismiss"
+          className="cc-alert__dismiss ux4g-alert-close"
           onClick={onDismiss}
           /* An icon-only control needs a name. "×" is announced as "times" or
              skipped entirely depending on the reader. */

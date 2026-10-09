@@ -1,0 +1,33 @@
+{
+  "contract": "ccure.audit.incident_evidence_receipt",
+  "schema_version": "1.0",
+  "message_id": "92a3b4c5-d0e1-42f3-8e65-708192a3b40a",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-27T16:05:01Z",
+  "correlation_id": "corr-ir-inc-2026-0142",
+  "causation_id": "8192a3b4-cfd0-41e2-9d54-6f708192a309",
+  "data": {
+    "receipt_id": "ire_inc-2026-0142_3",
+    "incident_id": "inc-2026-0142",
+    "incident_version": 3,
+    "content_sha256": "f2f76af6c7dec00c57ebebbc5e86b64e29cded218d09ec5467982a7b8369800b",
+    "received_at": "2026-09-27T16:05:01Z",
+    "findings": [
+      {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228",
+        "linked": true
+      }
+    ],
+    "claims": [
+      {
+        "finding_id": "fnd_ast_org_default_192_0_2_10_credentialed_package_CVE-2021-44228",
+        "disposition": "rescan_requested",
+        "remediation_state_after": "pending_verification"
+      }
+    ]
+  }
+}

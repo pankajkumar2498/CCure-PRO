@@ -13,8 +13,10 @@ Each of these guards a specific defect, not a general principle:
   * The credential-encryption fallback key is published in this repository.
 """
 
+from native_rbac import system_role, create_user
+
 import pytest
-from db.models import ComplianceRule, Organization, Role, User
+from db.models import ComplianceRule, Organization
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -68,15 +70,16 @@ def test_superadmin_can_edit_the_rule_catalogue(
     """The route must still work for the role that is allowed to use it."""
     from auth.jwt_handler import create_access_token
 
-    superadmin_role = db_session.query(Role).filter(Role.name == "superadmin").first()
+    superadmin_role = system_role(db_session, "platform.superadmin")
     from db.base import utcnow
 
-    sa = User(
+    sa = create_user(
+        db_session,
         username="rulesuperadmin",
         email="rulesuperadmin@test.com",
         password_hash="x",
         org_id=test_org.id,
-        role_id=superadmin_role.id,
+        role=superadmin_role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

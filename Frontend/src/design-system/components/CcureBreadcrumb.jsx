@@ -25,26 +25,32 @@ export default function CcureBreadcrumb({
   if (items.length === 0) return null;
 
   return (
-    <nav aria-label={label} className={`cc-breadcrumb ${className}`.trim()}>
-      <ol className="cc-breadcrumb__list">
+    <nav
+      aria-label={label}
+      className={`cc-breadcrumb cc-ux4g ux4g-breadcrumb ${className}`.trim()}
+    >
+      <ol className="cc-breadcrumb__list ux4g-breadcrumb-list">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           const key = item.key ?? item.href ?? `${item.label}-${index}`;
 
           return (
-            <li key={key} className="cc-breadcrumb__item">
+            <li key={key} className="cc-breadcrumb__item ux4g-breadcrumb-item">
               {isLast ? (
                 <span className="cc-breadcrumb__current" aria-current="page">
                   {item.label}
                 </span>
               ) : item.href ? (
-                <a className="cc-breadcrumb__link" href={item.href}>
+                <a
+                  className="cc-breadcrumb__link ux4g-breadcrumb-link"
+                  href={item.href}
+                >
                   {item.label}
                 </a>
               ) : item.onClick ? (
                 <button
                   type="button"
-                  className="cc-breadcrumb__link"
+                  className="cc-breadcrumb__link ux4g-breadcrumb-link"
                   onClick={item.onClick}
                 >
                   {item.label}

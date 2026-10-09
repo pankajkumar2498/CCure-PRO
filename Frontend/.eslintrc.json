@@ -77,5 +77,157 @@
     // one is free; introducing a new one fails the build. When the count drops,
     // lower the number in package.json to lock the gain in.
     "react-hooks/exhaustive-deps": "warn"
-  }
+  },
+
+  // ── Module boundaries (Phase 12.3) ───────────────────────────────────
+  // The alias half of Frontend/modules.config.js, for feedback in an editor.
+  // The authority is src/__tests__/architecture/moduleBoundaries.test.js,
+  // which resolves every import — relative ones included, which a pattern
+  // on the import string cannot judge — and checks these overrides agree.
+  "overrides": [
+    {
+      "files": ["src/shell/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@audit",
+                  "@audit/*",
+                  "@policy",
+                  "@policy/*",
+                  "@rank",
+                  "@rank/*",
+                  "@ir",
+                  "@ir/*"
+                ],
+                "message": "The shell is shared by every product and imports none of them (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/design-system/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@shell",
+                  "@shell/*",
+                  "@audit",
+                  "@audit/*",
+                  "@policy",
+                  "@policy/*",
+                  "@rank",
+                  "@rank/*",
+                  "@ir",
+                  "@ir/*"
+                ],
+                "message": "The design system is a leaf: it imports nothing of the application (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/audit/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@policy",
+                  "@policy/*",
+                  "@rank",
+                  "@rank/*",
+                  "@ir",
+                  "@ir/*"
+                ],
+                "message": "A product module imports only itself, the shell and the design system; share through the shell (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/policy/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@audit",
+                  "@audit/*",
+                  "@rank",
+                  "@rank/*",
+                  "@ir",
+                  "@ir/*"
+                ],
+                "message": "A product module imports only itself, the shell and the design system; share through the shell (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/rank/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@audit",
+                  "@audit/*",
+                  "@policy",
+                  "@policy/*",
+                  "@ir",
+                  "@ir/*"
+                ],
+                "message": "A product module imports only itself, the shell and the design system; share through the shell (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/ir/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@audit",
+                  "@audit/*",
+                  "@policy",
+                  "@policy/*",
+                  "@rank",
+                  "@rank/*"
+                ],
+                "message": "A product module imports only itself, the shell and the design system; share through the shell (Frontend/modules.config.js)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

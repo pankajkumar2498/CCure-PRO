@@ -54,7 +54,8 @@ from core.topology.identity import (
     normalize_mac,
 )
 from db.base import gen_asset_id, gen_network_link_id, utcnow
-from db.models import Asset, Organization, Scan
+from ccure_platform import api as platform_api
+from db.models import Asset, Scan
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -862,7 +863,7 @@ def run_topology_mapping(
 
     creds = SNMPCredentials.from_dict(snmp_config)
 
-    org = db.query(Organization).filter(Organization.id == org_id).first()
+    org = platform_api.organisation(db, org_id)
     org_slug = org.slug if org else org_id
 
     if not target_ips:

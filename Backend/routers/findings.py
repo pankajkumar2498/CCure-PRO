@@ -23,12 +23,15 @@ the frontend keys its badge classes on "Critical"/"High"/...
 import logging
 from typing import Any, Optional
 
-from auth.rbac import require_permission
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
 from engines.credentialed.vuln_matcher import compare_distro_versions
-from core.audit import log_audit_event
+from ccure_platform.api import log_audit_event
 from core.vuln_intel import compute_priority
 from db.base import get_db, utcnow
-from db.models import User
 from db.models.assets import Asset
 from db.models.findings import AssetVulnerability, VulnerabilityDefinition
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -42,16 +45,10 @@ log = logging.getLogger("ccure.findings")
 router = APIRouter(prefix="/findings", tags=["Findings"])
 
 
-def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _resolve_org(user: User, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 def _priority_label_sql():
@@ -102,7 +99,7 @@ def list_findings(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -299,7 +296,7 @@ def list_findings_grouped(
     limit: int = Query(50, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """
     Findings rolled up to the component that would be remediated.
@@ -449,7 +446,7 @@ def get_finding(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -626,7 +623,7 @@ def update_finding_status(
     body: StatusUpdate,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     org = _resolve_org(user, org_id)
 
@@ -799,7 +796,7 @@ def update_finding_notes(
     body: NotesUpdate,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("findings", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     org = _resolve_org(user, org_id)
     row = (

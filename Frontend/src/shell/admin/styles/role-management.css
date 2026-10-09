@@ -1,0 +1,186 @@
+/* ============================================================================
+   Roles & Permissions — page-specific layout
+   ----------------------------------------------------------------------------
+   Deliberately small. Everything that could be a primitive is one: the panels
+   are CcureCard, the table is CcureTable, the action chips are CcureBadge, the
+   loading and empty states are CcureLoader and CcureEmptyState.
+
+   What remains is the one thing that is genuinely specific to this page — a
+   vertical list of selectable roles driving a detail panel beside it. It is
+   not abstracted into a shared component because it has exactly one consumer,
+   which is the condition the design system's own rules say not to abstract on.
+
+   Replaces `.role-card`, `.role-list`, `.role-list-item`,
+   `.role-list-item__title`, `.role-list-item__subtitle` and `.section-loader`
+   in styles/scan.css, all of which had this page as their only consumer.
+
+   Every value is a `--ccure-*` token; the previous implementation carried
+   `#fef2f2`, `#dc2626`, `#f0f9ff`, `#0369a1`, `rgba(37,99,235,.05)` and
+   `var(--primary)` — the last of which is not a token this application defines,
+   so it resolved to nothing and the text simply inherited its colour.
+   ============================================================================ */
+
+.rm-role-list {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ccure-space-sm);
+  gap: var(--ccure-space-3xs);
+}
+
+/* CcureButton centres its label, which is right for a button and wrong for a
+   list row. These four declarations are the whole reason this file exists. */
+.rm-role {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ccure-space-3xs);
+  height: auto;
+  padding: var(--ccure-space-md);
+  text-align: start;
+}
+
+.rm-role__name {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.rm-role__description {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-regular);
+  color: var(--ccure-text-secondary);
+  /* A long description must not widen the column and push the detail panel
+     off-screen. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Selection keys on aria-pressed, so the visual state and the announced state
+   are the same fact and cannot drift apart — the pattern the design system
+   uses for the sidebar's aria-current and the tab strip's aria-selected. */
+.rm-role[aria-pressed="true"] {
+  background: var(--ccure-primary-soft);
+}
+
+.rm-role[aria-pressed="true"] .rm-role__name {
+  color: var(--ccure-primary-text);
+}
+
+/* Colour is not the only marker of the selected row — WCAG 1.4.1. */
+.rm-role[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: var(--ccure-space-2xs);
+  width: 3px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+}
+
+.rm-role {
+  position: relative;
+}
+
+.rm-alert {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+.rm-grid {
+  display: grid;
+  grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
+  gap: var(--ccure-space-2xl);
+  margin-top: var(--ccure-space-xl);
+}
+
+.rm-grid > .cc-card {
+  min-width: 0;
+}
+
+.rm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-md);
+}
+
+/* RBAC-7: administration additions */
+.rm-section {
+  margin-block: var(--ccure-space-lg);
+}
+.rm-section > h3 {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+}
+.rm-muted {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-relaxed);
+}
+.rm-perms {
+  display: grid;
+  gap: var(--ccure-space-md);
+  min-width: 0;
+  max-height: 22rem;
+  overflow: auto;
+}
+.rm-perm-module__title {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+  text-transform: capitalize;
+}
+.rm-perm-resource {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--ccure-space-sm);
+  min-width: 0;
+}
+.rm-perm-resource legend {
+  font-weight: var(--ccure-weight-semibold);
+  font-size: var(--ccure-text-base);
+}
+.rm-perm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  align-items: center;
+  padding: var(--ccure-space-2xs) 0;
+}
+.rm-perm--off {
+  color: var(--ccure-text-secondary);
+}
+.rm-perm__action {
+  font-family: var(--ccure-font-mono);
+  min-width: 8rem;
+}
+.rm-perm__desc {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: var(--ccure-text-sm);
+  overflow-wrap: anywhere;
+}
+.rm-history {
+  margin: 0;
+  padding-inline-start: var(--ccure-space-xl);
+  font-size: var(--ccure-text-sm);
+  overflow-wrap: anywhere;
+}
+.rm-replace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-md);
+  align-items: end;
+  margin-top: var(--ccure-space-md);
+}
+
+.rm-replace > .cc-field {
+  flex: 1 1 16rem;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+@media (max-width: 992px) {
+  .rm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,129 @@
+/* Common Platform: the platform shell around the shared CcurePage structure. */
+
+.pl-shell {
+  grid-template-columns: var(--ccure-sidebar-width) minmax(0, 1fr);
+}
+
+.pl-shell > .pl-main {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* The page inset, header and title styles that used to be scoped here are the
+   design system's CcurePage / CcurePageHeader (B.13), shared by every module. */
+
+/* ── CCure Home ─────────────────────────────────────────────────────────── */
+
+.ph-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--ccure-space-lg);
+}
+
+.ph-grid > li {
+  display: flex;
+  min-width: 0;
+}
+
+.ph-card {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Pages own one set of gutters, just as they do in the Audit Platform. */
+@media (max-width: 768px) {
+  .pl-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ph-card .cc-card__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.ph-card__description {
+  margin: 0;
+  flex: 1;
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+}
+
+.ph-card__action {
+  align-self: flex-start;
+}
+
+.ph-retry {
+  margin-top: var(--ccure-space-md);
+}
+
+/* ── Module entry page ──────────────────────────────────────────────────── */
+
+.pm-statement {
+  margin: 0 0 var(--ccure-space-xl);
+}
+
+.pm-back {
+  margin-top: var(--ccure-space-md);
+}
+
+/* ── Shared navigation in the platform header ────────────────────────────── */
+/* The notification panel opens below the bell, aligned to its right edge —
+   the same placement a product's layout gives it. */
+.pl-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--ccure-space-xs));
+  z-index: var(--ccure-z-drawer);
+}
+
+.pl-signout {
+  flex-shrink: 0;
+}
+
+/* On a phone the header has no room for a second sign-out control: the account
+   menu beside it carries Sign Out, so the standalone button yields. */
+@media (max-width: 40rem) {
+  .pl-signout {
+    display: none;
+  }
+  .pl-shell .cc-header__right {
+    gap: var(--ccure-space-xs);
+  }
+  .pl-shell .sh-org-btn .cc-badge {
+    display: none;
+  }
+  .pl-shell .sh-org-name {
+    max-width: 5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pl-main .cc-pagination__controls {
+    flex-wrap: wrap;
+  }
+  .pl-main .cc-pagination__size {
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 40rem) {
+  .pl-popover {
+    position: fixed;
+    inset-inline: var(--ccure-space-md);
+    top: calc(var(--ccure-header-height) + var(--ccure-space-xs));
+  }
+  .pl-popover .shn-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+}

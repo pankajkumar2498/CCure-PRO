@@ -55,8 +55,12 @@ alternative for an operator who wants the old configuration left alone.
 import logging
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
+from ccure_platform.api import log_audit_event
 from core.scan_policy.spec import (
     CHECK_FAMILIES,
     CONFIG_KEYS,
@@ -67,7 +71,8 @@ from core.scan_policy.spec import (
 )
 from core.scan_policy.validation import validate_policy
 from db.base import gen_org_token, get_db
-from db.models import Organization, ScanSchedule, User
+from ccure_platform import api as platform_api
+from db.models import ScanSchedule
 from db.models.scan_policies import (
     POLICY_STATUS_ACTIVE,
     POLICY_STATUS_ARCHIVED,
@@ -90,17 +95,11 @@ router = APIRouter(prefix="/scan-policies", tags=["Scan Policies"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
-def _resolve_org(user: User, requested: Optional[str]) -> str:
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     """Only a superadmin may act on another organisation; everyone else is pinned."""
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _get_policy(db: Session, policy_id: str, org_id: str) -> ScanPolicy:
@@ -131,7 +130,7 @@ def _gen_policy_id(org_slug: str) -> str:
 
 def _audit_policy_change(
     db: Session,
-    user: User,
+    user: CurrentUser,
     action: str,
     policy: ScanPolicy,
     request: Request,
@@ -307,7 +306,7 @@ def list_policies(
     status: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
     usable_only: bool = Query(False, description="Only policies a scan may use now"),
-    user: User = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -334,7 +333,7 @@ def list_policies(
 def policy_settings(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
 ):
     """
     The vocabularies this build honours, read from the code that honours them.
@@ -358,7 +357,7 @@ def validate_policy_body(
     request: Request,
     response: Response,
     body: ScanPolicyValidate,
-    user: User = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
 ):
     """
     Check a configuration without storing it.
@@ -379,7 +378,7 @@ def create_policy(
     response: Response,
     body: ScanPolicyCreate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -415,7 +414,7 @@ def create_policy(
         .all()
     ]
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     policy = ScanPolicy(
         id=_gen_policy_id(org.slug if org else resolved_org),
         org_id=resolved_org,
@@ -446,7 +445,7 @@ def get_policy(
     response: Response,
     policy_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     policy = _get_policy(db, policy_id, _resolve_org(user, org_id))
@@ -461,7 +460,7 @@ def update_policy(
     policy_id: str,
     body: ScanPolicyUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -551,7 +550,7 @@ def enable_policy(
     policy_id: str,
     body: ScanPolicyEnable,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -606,7 +605,7 @@ def set_policy_status(
     policy_id: str,
     body: ScanPolicyStatus,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -678,7 +677,7 @@ def new_policy_version(
     policy_id: str,
     body: ScanPolicyVersion,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -718,7 +717,7 @@ def new_policy_version(
     ]
     version = next_version_number(versions)
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     successor = ScanPolicy(
         id=_gen_policy_id(org.slug if org else resolved_org),
         org_id=resolved_org,
@@ -782,7 +781,7 @@ def policy_usage(
     response: Response,
     policy_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_policies", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -832,7 +831,7 @@ def delete_policy(
     force: bool = Query(
         False, description="Delete even though schedules reference this policy"
     ),
-    user: User = Depends(require_permission("scan_policies", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_policy.delete")),
     db: Session = Depends(get_db),
 ):
     """

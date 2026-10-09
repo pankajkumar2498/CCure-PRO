@@ -588,6 +588,19 @@ describe("CcureBadge", () => {
    ══════════════════════════════════════════════════════════════════════════ */
 
 describe("CcureLoader", () => {
+  it("does not duplicate an existing domain loading announcement", () => {
+    const { container } = render(
+      <span role="status">
+        <CcureLoader decorative size="sm" /> Port scan running
+      </span>,
+    );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("Port scan running");
+    expect(container.querySelector(".cc-loader__spinner")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
   it("announces itself politely with accessible text", () => {
     render(<CcureLoader label="Loading findings" />);
     const status = screen.getByRole("status");
@@ -721,5 +734,46 @@ describe("controlled state", () => {
     expect(screen.getByTestId("value")).toHaveTextContent("services");
     await userEvent.click(screen.getByRole("tab", { name: /Vulnerabilities/ }));
     expect(screen.getByTestId("value")).toHaveTextContent("vulns");
+  });
+});
+
+// URL-controlled report and registry tabs use an empty value for their default view.
+describe("URL-controlled default tabs", () => {
+  it("returns to the empty-id view with arrows and Home, with panel association", async () => {
+    const user = userEvent.setup();
+    function RegistryTabs() {
+      const [value, setValue] = useState("services");
+      return (
+        <>
+          <CcureTabs
+            id="registry-test"
+            label="Registry views"
+            tabs={[
+              { id: "", label: "Inventory" },
+              { id: "services", label: "Services" },
+            ]}
+            value={value}
+            onChange={setValue}
+          />
+          <CcureTabPanel tabsId="registry-test" id={value} active>
+            Current view
+          </CcureTabPanel>
+        </>
+      );
+    }
+    render(<RegistryTabs />);
+    screen.getByRole("tab", { name: "Services" }).focus();
+    await user.keyboard("{ArrowLeft}");
+    const inventory = screen.getByRole("tab", { name: "Inventory" });
+    expect(inventory).toHaveFocus();
+    expect(inventory).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAccessibleName("Inventory");
+    expect(inventory).toHaveAttribute(
+      "aria-controls",
+      screen.getByRole("tabpanel").id,
+    );
+    await user.keyboard("{ArrowRight}{Home}");
+    expect(inventory).toHaveFocus();
+    expect(inventory).toHaveAttribute("aria-selected", "true");
   });
 });

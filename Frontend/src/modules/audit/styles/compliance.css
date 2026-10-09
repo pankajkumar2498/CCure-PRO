@@ -1,0 +1,28 @@
+/**
+ * Frontend/src/modules/audit/styles/compliance.css
+ * Styled design system tokens for the Policy Compliance Workspace.
+ * Aligned with CCure Audit PRO light theme.
+ */
+
+/* Metrics Grid */
+
+.radial-score--low {
+  color: var(--danger);
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.radial-score--medium {
+  color: var(--warn);
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.radial-score--high {
+  color: var(--ok);
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

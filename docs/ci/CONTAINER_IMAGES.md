@@ -15,13 +15,14 @@ never rebuild it anywhere else.
 Two images are built from this repository. Everything else in
 `docker-compose.yml` is an upstream image the repository only configures.
 
-| Image                      | Built from            | Compose services using it                                                                    | Runs as                                                  |
-| -------------------------- | --------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `ccure-audit-pro-backend`  | `Backend/Dockerfile`  | `api`                                                                                        | `ccure` (image default)                                  |
-|                            |                       | `worker`, `web-worker`                                                                       | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
-|                            |                       | `beat`                                                                                       | root, then `setpriv` to `ccure`                          |
-| `ccure-audit-pro-frontend` | `Frontend/Dockerfile` | `frontend`                                                                                   | nginx (master root, workers `nginx`)                     |
-| —                          | upstream              | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `gateway` (profile `alt-gateway`) | —                                                        |
+| Image                      | Built from                                                 | Compose services using it                                                                       | Runs as                                                  |
+| -------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `ccure-audit-pro-backend`  | `Backend/Dockerfile`                                       | `api`                                                                                           | `ccure` (image default)                                  |
+|                            |                                                            | `worker`, `web-worker`                                                                          | root (compose `user:`; raw sockets, `cap_add NET_ADMIN`) |
+|                            |                                                            | `beat`                                                                                          | root, then `setpriv` to `ccure`                          |
+| `ccure-audit-pro-frontend` | `Frontend/Dockerfile`                                      | `frontend`                                                                                      | nginx (master root, workers `nginx`)                     |
+| `ccure-gateway-auth`       | `gateway/token_check/Dockerfile`, from the repository root | `gateway-auth`                                                                                  | `gwauth` (10001), read-only root, no capabilities        |
+| —                          | upstream                                                   | `db` (postgres:18-alpine), `redis`, `clamav`, `portainer`, `api-gateway` (nginx, digest-pinned) | —                                                        |
 
 The backend is **one image in four roles**, chosen by command. That's why it
 has no `HEALTHCHECK`: an HTTP check would mark the worker and beat containers
@@ -54,10 +55,20 @@ and "what runs" are not the same thing.
 
 ## CI: what each run does
 
-For both images, on every pull request, push to `master`, and on demand:
+For all three images, after every merge to `master` (push), nightly at 02:30 IST,
+and on demand (Actions → Images → Run workflow). **Not on pull requests:** a PR
+is gated on what it changes in the application, while an image scan reports on
+OS packages and binaries whose advisories arrive with no commit, so as a PR
+check it failed PRs for advisories nobody had introduced. See
+[BRANCH_PROTECTION.md](BRANCH_PROTECTION.md#what-gates-a-pr-and-what-runs-after-it).
 
-1. **Build** with BuildKit and a GitHub Actions layer cache, loaded into the
-   runner's Docker. Nothing is pushed.
+1. **Build** with BuildKit, loaded into the runner's Docker. Nothing is pushed.
+   The GitHub Actions layer cache is scoped to the UTC day, so the day's first
+   build installs current OS packages; the nightly build uses no cache. A
+   long-lived cache kept serving packages from the day a layer was first built
+   (8 Oct 2026: a cached Chromium 153 carried 80 HIGH/CRITICAL findings fixed in
+   154), which failed the gate on findings a fresh build does not have. The
+   refresh changes what is installed, never what is scanned or how.
 2. **Report** every vulnerability Trivy finds, counted by package type,
    severity and fix availability, in the job summary. This never fails.
 3. **Gate:** fail on CRITICAL or HIGH findings **with a published fix**, minus
@@ -65,26 +76,35 @@ For both images, on every pull request, push to `master`, and on demand:
 4. **Smoke test** the image the way compose runs it.
 5. **Record** the tag, image ID, size and revision label in the job summary.
 
-Required checks: `Backend Image` and `Frontend Image`; see
-[BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
+`Backend Image`, `Frontend Image` and `Gateway-auth Image` are **not** required checks: they do not
+run on pull requests, so a required one would never report and every PR would
+wait for it. A red run on `master` or at night is a finding to fix; run the
+workflow manually on the commit being released.
 
 ## Vulnerability policy
 
-| Finding                                    | What happens                                          | Why                                                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| CRITICAL or HIGH, fix published            | **Blocks**, unless it's in the image's exception file | Someone can act on it.                                                                                                           |
-| CRITICAL or HIGH, no fix published         | Reported                                              | Blocking leaves the build red with nothing anyone can do. It reaches the image through a base-image update.                      |
-| MEDIUM, LOW, UNKNOWN                       | Reported                                              | Visible in every run's summary; not a merge decision.                                                                            |
-| Python packages in the app's site-packages | Left to pip-audit (`security.yml`)                    | They already have a reviewed backlog there. Gating them twice would put one advisory under two exception lists that drift apart. |
+| Finding                                    | What happens                                                 | Why                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| CRITICAL or HIGH, fix published            | **Fails the run**, unless it's in the image's exception file | Someone can act on it.                                                                                                           |
+| CRITICAL or HIGH, no fix published         | Reported                                                     | Blocking leaves the build red with nothing anyone can do. It reaches the image through a base-image update.                      |
+| MEDIUM, LOW, UNKNOWN                       | Reported                                                     | Visible in every run's summary; not a merge decision.                                                                            |
+| Python packages in the app's site-packages | Left to pip-audit (`security.yml`)                           | They already have a reviewed backlog there. Gating them twice would put one advisory under two exception lists that drift apart. |
 
 The Python base image's **own** tooling (its setuptools and the packages that
 setuptools bundles) isn't an application requirement, so pip-audit never sees
 it. It's gated here.
 
+**gateway-auth is the exception to the pip-audit row.** pip-audit audits only
+`Backend/requirements.txt`, so for this image Trivy is the gate for its Python
+packages too, and nothing is skipped. They are pinned to the core's versions on
+purpose (`gateway/token_check/requirements.txt`, so the token check runs on the
+core's libraries), and `trivy-gateway-auth.yaml` repeats only decisions the
+core's pip-audit backlog already records, each naming its entry there.
+
 ### Vulnerability exceptions
 
-`.github/security/trivy-backend.yaml` and `trivy-frontend.yaml`, one file per
-image, so an exception for one can't hide a finding in the other. Every entry:
+`.github/security/trivy-backend.yaml`, `trivy-frontend.yaml` and
+`trivy-gateway-auth.yaml`, one file per image, so an exception for one can't hide a finding in the other. Every entry:
 
 - names **one vulnerability ID**, and on the backend is scoped to **one path**
   (the binary or package carrying it). The same CVE in another binary is
@@ -114,20 +134,38 @@ The scanner-tool exceptions are the largest item. These binaries talk to hosts
 under assessment, which are untrusted by definition, so upgrading them is the
 first follow-up.
 
+### Base-image packages patched in the Dockerfiles (7 Oct 2026)
+
+Both base images are pinned by digest, so a fix the distribution publishes
+after the pin never arrives on its own. Where the gate flags a base-image
+package that has a published fix, the Dockerfile upgrades **that package
+only** and leaves the rest of the base as pinned:
+
+| Image                     | Packages                                                    | Advisories                                      | Step                                    |
+| ------------------------- | ----------------------------------------------------------- | ----------------------------------------------- | --------------------------------------- |
+| frontend                  | `pcre2` 10.48-r0 → 10.49-r0, `libexpat` 2.8.4-r0 → 2.8.5-r0 | CVE-2026-103111, CVE-2026-93990                 | `apk upgrade --no-cache pcre2 libexpat` |
+| backend                   | `openssl` and `pcre2` packages                              | CVE-2026-75804, CVE-2026-84782, CVE-2026-103111 | `apt-get install --only-upgrade …`      |
+| gateway-auth (9 Oct 2026) | the same, on the same base                                  | the same                                        | the same step                           |
+
+The frontend libexpat entry above was an exception until this patch made it
+unnecessary; it was removed a day before it expired, and
+`trivy-frontend.yaml` holds no exceptions now. Drop each upgrade once the
+digest moves to a base that already carries the fix.
+
 ## Changes made, with the evidence for each
 
 Measured on this VM on 24 Sep 2026, building from the committed tree.
 
-| Change                                                                                                                        | Evidence                                                                                                                                                                                                   | Effect                                                                                                |
-| ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `COPY --chown` instead of `COPY` then `RUN chown -R`                                                                          | Each recursive chown wrote a second full copy of its files: 488 MB of Python packages, 690 MB of Playwright browser, 90 MB of app code                                                                     | Backend **5,270 MB → 3,223 MB**                                                                       |
-| Compiler toolchain (`gcc`, `python3-dev`, `libpq-dev`) moved to the builder stage; `wget`, `unzip`, `curl` to the tools stage | Nothing at runtime uses them (`psycopg2-binary` bundles libpq; the scanner builds `curl …` reproduction commands as text). `linux-libc-dev`, pulled in by `python3-dev`, carried 88 of 191 HIGH advisories | Backend Debian findings: CRITICAL 2 → 1, HIGH 191 → 69, MEDIUM 1,593 → 118. No compiler in production |
-| `.dockerignore`: tenant data, local databases, logs; `**/` for nested patterns                                                | The image deployed today contains **125 compliance-evidence uploads and 3 SQLite databases** from the VM's working copy; `__pycache__` and `*.log` only ever matched the top level                         | A build from the same directory now contains none of them; tracked seed data unaffected               |
-| SHA-256 checks on the nuclei, subfinder and ffuf downloads                                                                    | A version pin says which release was requested; only a checksum says the bytes are that release                                                                                                            | A tampered or corrupted download fails the build                                                      |
-| ffuf wordlist pinned to a SecLists commit and checksummed                                                                     | Fetched from `master` with `\|\| echo skipped`, so it changed upstream and a failed download shipped an image whose ffuf had nothing to try                                                                | Byte-identical to what the image carried before (checked)                                             |
-| Base images pinned by digest; Dependabot `docker` ecosystem                                                                   | Tags move; a rebuild of one commit could start from different bytes                                                                                                                                        | Reproducible base; updates arrive as reviewed PRs                                                     |
-| Frontend `npm ci` (was `npm install`) on Node 22 (was 20)                                                                     | `npm install` may re-resolve and rewrite the lock during a build; CI tests on 22                                                                                                                           | Same bundle hash as before (`index-B--j4ngv.js`), now guaranteed by the lock                          |
-| `/app` handed to `ccure` explicitly                                                                                           | `--chown` covers copied files, not the directory copied into; `start.sh`'s `sed -i` needs to write there                                                                                                   | Ownership of every file identical to before (compared file by file)                                   |
+| Change                                                                                                                        | Evidence                                                                                                                                                                                                   | Effect                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COPY --chown` instead of `COPY` then `RUN chown -R`                                                                          | Each recursive chown wrote a second full copy of its files: 488 MB of Python packages, 690 MB of Playwright browser, 90 MB of app code                                                                     | Backend **5,270 MB → 3,223 MB**                                                                                                                                                                                                                |
+| Compiler toolchain (`gcc`, `python3-dev`, `libpq-dev`) moved to the builder stage; `wget`, `unzip`, `curl` to the tools stage | Nothing at runtime uses them (`psycopg2-binary` bundles libpq; the scanner builds `curl …` reproduction commands as text). `linux-libc-dev`, pulled in by `python3-dev`, carried 88 of 191 HIGH advisories | Backend Debian findings: CRITICAL 2 → 1, HIGH 191 → 69, MEDIUM 1,593 → 118. No compiler in production                                                                                                                                          |
+| `.dockerignore`: tenant data, local databases, logs; `**/` for nested patterns                                                | The image deployed today contains **125 compliance-evidence uploads and 3 SQLite databases** from the VM's working copy; `__pycache__` and `*.log` only ever matched the top level                         | A build from the same directory now contains none of them; tracked seed data unaffected                                                                                                                                                        |
+| SHA-256 checks on the nuclei, subfinder and ffuf downloads                                                                    | A version pin says which release was requested; only a checksum says the bytes are that release                                                                                                            | A tampered or corrupted download fails the build                                                                                                                                                                                               |
+| ffuf wordlist pinned to a SecLists commit and checksummed                                                                     | Fetched from `master` with `\|\| echo skipped`, so it changed upstream and a failed download shipped an image whose ffuf had nothing to try                                                                | Byte-identical to what the image carried before (checked)                                                                                                                                                                                      |
+| Base images pinned by digest; Dependabot `docker` ecosystem                                                                   | Tags move; a rebuild of one commit could start from different bytes                                                                                                                                        | Reproducible base; security rebuilds of the same version line arrive as reviewed PRs. Version changes (Python 3.11 → 3.14, Node 22 → 25) are excluded: Dependabot's first run proposed both, and 3.14 fails to build Pillow 10.3.0 from source |
+| Frontend `npm ci` (was `npm install`) on Node 22 (was 20)                                                                     | `npm install` may re-resolve and rewrite the lock during a build; CI tests on 22                                                                                                                           | Same bundle hash as before (`index-B--j4ngv.js`), now guaranteed by the lock                                                                                                                                                                   |
+| `/app` handed to `ccure` explicitly                                                                                           | `--chown` covers copied files, not the directory copied into; `start.sh`'s `sed -i` needs to write there                                                                                                   | Ownership of every file identical to before (compared file by file)                                                                                                                                                                            |
 
 **Checked for parity against the previous image:** same file ownership and
 modes across `/app`, the Python packages, Playwright, the templates and the
@@ -163,8 +201,8 @@ smoke test passes on both.
 
 ## Smoke tests
 
-`scripts/ci/smoke_backend.sh <image>` and `scripts/ci/smoke_frontend.sh <image>`
-run in CI and work the same way locally.
+`scripts/ci/smoke_backend.sh <image>`, `scripts/ci/smoke_frontend.sh <image>` and
+`scripts/ci/smoke_gateway_auth.sh <image>` run in CI and work the same way locally.
 
 **Backend:**
 
@@ -185,10 +223,21 @@ URL names anything else.
 
 **Frontend:** the SPA shell with its Content-Security-Policy and `nosniff`
 headers (the CSP was once silently lost to nginx's `add_header` inheritance),
-client-side route fallback, an immutable-cached bundle, `/api/` reaching an
-upstream named `api:8000`, and no `[emerg]` or `[crit]` from nginx.
+client-side route fallback, an immutable-cached bundle, `/api/` reaching the
+API gateway at `172.31.254.10:8080` with its `/api` prefix kept (Phase 10.7;
+the stand-in owns that address on its own loopback and the frontend shares its
+network namespace, so the test needs `NET_ADMIN` and no host network on the
+live subnet), and no `[emerg]` or `[crit]` from nginx.
 
-**Both scripts were tested against broken images:** missing `sqlmap` fails;
+**Gateway-auth:** run hardened as compose runs it (read-only root, every
+capability dropped, `no-new-privileges`, tmpfs `/tmp`) against a stand-in JWKS
+for a throwaway key the image itself generates: user `10001:10001`, `/healthz`
+200 once the key set loads, `/check` 204 for a route needing no credential, 403
+with `X-Ccure-Refusal` for a missing token and 401 for one that does not verify,
+500 for an unknown route policy (fail closed), no secret-shaped file in the
+image and no traceback in the log.
+
+**The backend and frontend scripts were tested against broken images:** missing `sqlmap` fails;
 a `start.sh` that prints the JWT key fails; a frontend without its CSP
 fails. The secret check first **passed** the leaking image. Under
 `set -o pipefail`, `printf … | grep -q` makes the producer die of SIGPIPE at

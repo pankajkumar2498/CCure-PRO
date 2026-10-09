@@ -40,8 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     # Without a timeout a hung pytest, or a postgres service that never
     # reports healthy, runs to GitHub's 6-hour ceiling before anyone is told.
-    # The suite takes about 3 minutes; 30 is generous headroom, not a target.
-    timeout-minutes: 30
+    # The job took 29 minutes on a hosted runner on 8 Oct 2026, against a
+    # 30-minute limit: one slower runner would have cancelled a passing run.
+    # 45 is headroom for that, not a target.
+    timeout-minutes: 45
     env:
       PGHOST: localhost
       PGPORT: 5432
@@ -52,7 +54,7 @@ jobs:
       VULNERABILITY_INTEL_DATABASE_URL: postgresql://ccure_user:ccure_admin_2026@localhost:5432/ccure_test
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
-      JWT_SECRET_KEY: test_secret_key_32_chars_minimum_value
+      MFA_ENCRYPTION_KEY: test_mfa_key_32_chars_minimum_value
 
     services:
       postgres:
@@ -140,10 +142,30 @@ jobs:
       - name: Run Alembic Migration Integrity Check
         run: |
           cd Backend
-          # Run rollback check on the latest migration
-          alembic downgrade -1
-          # Re-apply the migration to return to head
-          alembic upgrade head
+          # Roll back the newest migration on every branch, then re-apply them.
+          # Each core module has its own branch (Phase 11.3), so the history has
+          # several heads and a bare `downgrade -1` is ambiguous: step back from
+          # each head by name instead.
+          #
+          # A migration that deliberately cannot be reversed is listed here
+          # and skipped, never worked around: its downgrade() raises on
+          # purpose, so rolling back from it would fail the build for a
+          # reason that is the migration's design, not a regression.
+          #   d4f8b2c6e0a1  removes the legacy RBAC tables (4 Oct 2026); the
+          #                 data is gone and only a recovery snapshot has it.
+          # Reversibility is only exercised above such a revision; the
+          # forward upgrade below still runs through all of them.
+          IRREVERSIBLE_REVISIONS="d4f8b2c6e0a1"
+          for rev in $(alembic heads | awk '{print $1}'); do
+            case " ${IRREVERSIBLE_REVISIONS} " in
+              *" ${rev} "*)
+                echo "Skipping rollback of ${rev}: recorded as irreversible."
+                continue
+                ;;
+            esac
+            alembic downgrade "${rev}@-1"
+          done
+          alembic upgrade heads
 
       - name: OpenAPI Schema Diff Check
         run: |
@@ -189,6 +211,26 @@ jobs:
           # summary and the job still passes.
           pytest --cov=. --cov-report=xml -v --reruns 1 -rR
 
+      # The gateway (Phase 10). gateway-auth decides every API request before
+      # the core sees it, and its verification rules are the core's own file
+      # (Backend/ccure_platform/identity/verification.py, baked into its
+      # image), so a backend change can break the gateway without touching
+      # gateway/. Neither suite ran in CI before 9 Oct 2026. These two are the
+      # hermetic ones (no network, no Docker, about 10 s together) and run
+      # inside this required job, so they block a PR without a ruleset change.
+      # The Docker harnesses (refusal matrix, fail-closed, trust boundary) need
+      # the backend image and run in gateway.yml. docs/ci/BRANCH_PROTECTION.md.
+      - name: Gateway Tests (gateway-auth unit and FastAPI parity)
+        env:
+          PYTHONPATH: gateway:Backend
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m pytest -q -p no:cacheprovider gateway/token_check/tests
+
+      - name: Gateway Tests (production configuration, static)
+        run: |
+          python -m pytest -q -p no:cacheprovider gateway/production/tests
+
       - name: Verify Documentation Build & Integrity
         run: |
           cd Backend
@@ -198,7 +240,12 @@ jobs:
   frontend-validation:
     name: Frontend Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The browser checks here run in Chromium only (see the browser step). The
+    # 75-minute budget was set for all three engines, which took about 15
+    # minutes on an 8-core workstation and did not fit 30 on a hosted runner
+    # (7 Oct 2026). It is left as it was; lower it once Chromium-only runs
+    # show what this job really takes.
+    timeout-minutes: 75
 
     steps:
       - name: Checkout Repository
@@ -216,6 +263,11 @@ jobs:
           cd Frontend
           npm ci
 
+      - name: Verify Approved UX4G Dependency Foundation
+        run: |
+          cd Frontend
+          npm run ux4g:check -- --dependencies-only
+
       # npm audit lives in security.yml ("npm Dependency Audit"), which also
       # runs it nightly. The step that stood here ended in `|| echo` and could
       # not fail.
@@ -227,14 +279,57 @@ jobs:
       # all. `prebuild` generates the UX4G assets from the pinned package, so
       # this step needs no network beyond `npm ci`.
       - name: Build Frontend
+        env:
+          VITE_API_BASE_URL: /api
         run: |
           cd Frontend
           npm run build
+
+      - name: Verify Reproducible UX4G Assets and Provenance
+        run: |
+          cd Frontend
+          npm run ux4g:verify
+          npm run ux4g:check -- --dist
 
       - name: Run Frontend Tests
         run: |
           cd Frontend
           npm test
+
+      - name: Verify UX4G UI Boundaries and Documentation
+        run: |
+          cd Frontend
+          npm run ux4g:architecture
+          node scripts/build-authorization-inventory.mjs --check
+
+      # Chromium on every PR and push: the same accessibility, keyboard,
+      # responsive and reflow checks, in one engine. Firefox and WebKit run the
+      # identical suite every night in browser-matrix.yml, which is where a
+      # cross-engine regression shows up. Three engines here made this the
+      # slowest check on every PR and did not finish on a hosted runner.
+      - name: Install Pinned Browser Engine (Chromium)
+        run: |
+          cd Frontend
+          npx --no-install playwright install --with-deps chromium
+
+      - name: Check Accessibility, Responsive UI and Browser Contracts (Chromium)
+        env:
+          UX4G_BROWSER_OUTPUT: ${{ runner.temp }}/ux4g-browser-results
+          UX4G_BROWSER_REPORT: ${{ runner.temp }}/ux4g-browser-report.json
+        run: |
+          cd Frontend
+          npm run test:browser -- --project=chromium
+
+      - name: Retain Browser Failure Evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ux4g-browser-evidence
+          path: |
+            ${{ runner.temp }}/ux4g-browser-results
+            ${{ runner.temp }}/ux4g-browser-report.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       # No `|| echo` on this step, deliberately.
       #

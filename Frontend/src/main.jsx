@@ -2,9 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { AuthProvider } from "./context/AuthContext";
-import { PreferencesProvider } from "./context/PreferencesContext";
-import RootErrorBoundary from "./components/common/RootErrorBoundary";
+import { AuthProvider } from "@shell/auth/AuthContext";
+import { PreferencesProvider } from "@shell/preferences/PreferencesContext";
+import RootErrorBoundary from "@audit/components/common/RootErrorBoundary";
 
 // ── Stylesheet order is load-bearing ─────────────────────────────────────────
 // The design system (UX4G tokens + CCure semantics + CCure components) must be

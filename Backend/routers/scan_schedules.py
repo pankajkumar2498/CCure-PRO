@@ -41,8 +41,12 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from auth.rbac import require_permission
-from core.audit import log_audit_event
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    resolve_active_organisation,
+)
+from ccure_platform.api import log_audit_event
 from core.scheduling.dispatcher import advance_schedule, dispatch_schedule
 from core.scheduling.recurrence import (
     MAX_RUN_MINUTE,
@@ -54,7 +58,8 @@ from core.scheduling.recurrence import (
     parse_hhmm,
 )
 from db.base import gen_scan_schedule_id, get_db
-from db.models import ComplianceCredential, Organization, User
+from ccure_platform import api as platform_api
+from db.models import ComplianceCredential
 from db.models.scan_schedules import (
     DISPATCHABLE_SCAN_KINDS,
     RECURRENCE_CUSTOM,
@@ -82,13 +87,7 @@ router = APIRouter(prefix="/scan-schedules", tags=["Scan Schedules"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
-    return (getattr(getattr(user, "role", None), "name", "") or "").lower() == (
-        "superadmin"
-    )
-
-
-def _resolve_org(user: User, requested: Optional[str]) -> str:
+def _resolve_org(user: CurrentUser, requested: Optional[str]) -> str:
     """
     The organisation this request acts on.
 
@@ -96,9 +95,9 @@ def _resolve_org(user: User, requested: Optional[str]) -> str:
     parameter is otherwise ignored rather than rejected, so a client that sends
     its own org id redundantly still works.
     """
-    if requested and _is_superadmin(user):
-        return requested
-    return str(user.org_id)
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested)
 
 
 def _validate_policy(
@@ -442,8 +441,9 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
     cleaned = [str(t).strip() for t in (targets or []) if str(t or "").strip()]
     if not cleaned:
         raise HTTPException(status_code=400, detail="At least one target is required.")
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    return validate_scan_targets(cleaned, org=org)
+    from core.scan_scope import org_scan_scope
+
+    return validate_scan_targets(cleaned, scope=org_scan_scope(db, org_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -456,7 +456,7 @@ def _validate_targets_now(db: Session, org_id: str, targets: List[str]) -> List[
 def list_timezones(
     request: Request,
     response: Response,
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
 ):
     """
     The IANA zones this server can resolve.
@@ -475,7 +475,7 @@ def list_selectable_credentials(
     request: Request,
     response: Response,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     """
@@ -522,7 +522,7 @@ def list_schedules(
     org_id: Optional[str] = Query(None),
     scan_kind: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -542,7 +542,7 @@ def create_schedule(
     response: Response,
     body: ScanScheduleCreate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "create")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -571,7 +571,7 @@ def create_schedule(
             detail=f"A schedule named {body.name!r} already exists.",
         )
 
-    org = db.query(Organization).filter(Organization.id == resolved_org).first()
+    org = platform_api.organisation(db, resolved_org)
     schedule = ScanSchedule(
         id=gen_scan_schedule_id(org.slug if org else resolved_org),
         org_id=resolved_org,
@@ -625,7 +625,7 @@ def get_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     schedule = _get_schedule(db, schedule_id, _resolve_org(user, org_id))
@@ -640,7 +640,7 @@ def update_schedule(
     schedule_id: str,
     body: ScanScheduleUpdate,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -742,7 +742,7 @@ def set_enabled(
     schedule_id: str,
     body: ScanScheduleEnableBody,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "update")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -782,7 +782,7 @@ def run_now(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -830,7 +830,7 @@ def list_runs(
     schedule_id: str,
     limit: int = Query(50, ge=1, le=500),
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.read")),
     db: Session = Depends(get_db),
 ):
     resolved_org = _resolve_org(user, org_id)
@@ -855,7 +855,7 @@ def delete_schedule(
     response: Response,
     schedule_id: str,
     org_id: Optional[str] = Query(None),
-    user: User = Depends(require_permission("scan_schedules", "delete")),
+    user: CurrentUser = Depends(require_authorized("audit.scan_schedule.delete")),
     db: Session = Depends(get_db),
 ):
     """

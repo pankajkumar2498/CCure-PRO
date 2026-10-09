@@ -1,0 +1,483 @@
+/* ============================================================================
+   Scan history and active scans — page layout and meaning
+   ----------------------------------------------------------------------------
+   Batch 22. ScanHistory drew itself from about 85 classes in the global
+   scan.css (filter tabs, action buttons, the confirmation and detail modals,
+   monitor cards, progress bars, toasts) and from 43 inline style objects with
+   24 colour literals. Everything here resolves through `--ccure-*` tokens in
+   both themes. The table, buttons, badges, status, progress, dialogs, loader,
+   empty state and pagination are design-system components; this file lays
+   them out.
+
+   scan.css is untouched: other pages still use every class this page used.
+   ============================================================================ */
+
+/* ── Page frame ───────────────────────────────────────────────────────────── */
+.sh-page {
+  --ccure-page-gap: var(--ccure-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+  color: var(--ccure-text);
+}
+
+.sh-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm);
+}
+
+/* The live sync state. The words carry the state; the dot repeats it. */
+.sh-live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  margin: 0;
+  padding: var(--ccure-space-3xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-full);
+}
+
+.sh-live__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-border-strong);
+}
+
+.sh-live--connected .sh-live__dot {
+  background: var(--ccure-success-solid);
+}
+
+.sh-live--connecting .sh-live__dot,
+.sh-live--reconnecting .sh-live__dot {
+  background: var(--ccure-warning-solid);
+}
+
+.sh-live--polling .sh-live__dot {
+  background: var(--ccure-info-solid);
+}
+
+/* ── Filters ──────────────────────────────────────────────────────────────── */
+.sh-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-md) var(--ccure-space-lg);
+  padding: var(--ccure-space-md) var(--ccure-space-lg);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+}
+
+.sh-filters__search {
+  min-width: 14rem;
+  margin: 0;
+}
+
+.sh-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  min-width: 0;
+}
+
+.sh-filter__label {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.sh-filter__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+}
+
+/* The selected option: tint, border and weight, not colour alone. */
+.sh-filter__option[aria-pressed="true"] {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-primary-text);
+  background: var(--ccure-primary-soft);
+  border-color: var(--ccure-primary);
+}
+
+.sh-filter__option:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+/* ── Messages and states ──────────────────────────────────────────────────── */
+.sh-message {
+  margin: 0;
+}
+
+.sh-state {
+  display: flex;
+  justify-content: center;
+  padding: var(--ccure-space-4xl) 0;
+}
+
+/* ── History table ────────────────────────────────────────────────────────── */
+/* Positioned so the table's visually hidden caption and progress labels are
+   contained by it rather than by the page. */
+.sh-table {
+  position: relative;
+}
+
+.sh-target {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sh-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ccure-space-2xs);
+  min-width: 8rem;
+}
+
+.sh-progress {
+  width: 100%;
+}
+
+/* Each row's bar is named "Scan N progress" for assistive technology; the
+   percentage beside it is what a sighted reader needs. */
+.sh-progress .cc-progress__labels > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sh-hosts-count {
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-success-text);
+}
+
+.sh-muted {
+  color: var(--ccure-text-secondary);
+}
+
+.sh-mono {
+  font-family: var(--ccure-font-mono);
+}
+
+.sh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ccure-space-3xs);
+}
+
+.sh-footnote {
+  margin: 0;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  text-align: center;
+}
+
+/* ── Active scans ─────────────────────────────────────────────────────────── */
+.sh-monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  gap: var(--ccure-space-lg);
+}
+
+.sh-monitor-card .cc-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ccure-space-xs);
+  overflow-wrap: anywhere;
+}
+
+.sh-monitor-card .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.sh-monitor-card__target {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sh-monitor-card__meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.sh-monitor-card__meta dt {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sh-monitor-card__meta dd {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.sh-monitor-card__stats {
+  display: flex;
+  gap: var(--ccure-space-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sh-monitor-card__stats li {
+  display: flex;
+  flex-direction: column;
+}
+
+.sh-stat__value {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-lg);
+  color: var(--ccure-text);
+}
+
+.sh-stat__value--danger {
+  color: var(--ccure-danger-text);
+}
+
+.sh-stat__label {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Confirmation dialogs ─────────────────────────────────────────────────── */
+.sh-confirm__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: 0 0 var(--ccure-space-md);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.sh-confirm__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ccure-space-md);
+  font-size: var(--ccure-text-sm);
+}
+
+.sh-confirm__row dt {
+  color: var(--ccure-text-secondary);
+}
+
+.sh-confirm__row dd {
+  margin: 0;
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.sh-confirm__warning {
+  margin: 0;
+}
+
+/* ── Scan details dialog ──────────────────────────────────────────────────── */
+.sh-detail__state {
+  padding: var(--ccure-space-2xl) 0;
+}
+
+.sh-detail__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--ccure-space-sm) var(--ccure-space-lg);
+  margin: 0 0 var(--ccure-space-md);
+}
+
+.sh-detail__meta dt {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.sh-detail__meta dd {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.sh-detail__alert {
+  margin: 0 0 var(--ccure-space-md);
+}
+
+.sh-detail__section {
+  margin-top: var(--ccure-space-lg);
+}
+
+.sh-detail__heading {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.sh-detail__count {
+  margin-inline-start: var(--ccure-space-xs);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-regular);
+}
+
+.sh-detail__summary {
+  margin: 0;
+}
+
+.sh-detail__summary-row {
+  display: flex;
+  gap: var(--ccure-space-md);
+  padding: var(--ccure-space-2xs) 0;
+  font-size: var(--ccure-text-sm);
+  border-bottom: 1px solid var(--ccure-border-subtle);
+}
+
+.sh-detail__summary-row dt {
+  min-width: 10rem;
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text-secondary);
+}
+
+.sh-detail__summary-row dd {
+  margin: 0;
+  font-family: var(--ccure-font-mono);
+  color: var(--ccure-text);
+}
+
+.sh-hosts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sh-host {
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.sh-host__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs) var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+}
+
+.sh-host__ip {
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.sh-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-3xs);
+  margin: var(--ccure-space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sh-port {
+  padding: var(--ccure-space-3xs) var(--ccure-space-xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text);
+  background: var(--ccure-surface);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-sm);
+}
+
+.sh-cves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin: var(--ccure-space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sh-cve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+}
+
+.sh-cve__desc {
+  color: var(--ccure-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.sh-more {
+  margin: var(--ccure-space-xs) 0 0;
+  font-size: var(--ccure-text-xs);
+}
+
+.sh-detail__actions {
+  margin-top: var(--ccure-space-lg);
+}
+
+.sh-detail a:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .sh-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sh-filters__search {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .sh-header__actions {
+    justify-content: flex-start;
+  }
+
+  .sh-monitor-card__meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The table fills its scroll region, so a wrapping actions cell shrinks to
+     one button and stacks all four. Keep them on one line and let the region
+     scroll. */
+  .sh-actions {
+    flex-wrap: nowrap;
+  }
+}

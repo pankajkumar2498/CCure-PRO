@@ -1,0 +1,28 @@
+# Ccure Audit — what this module contributes to the core service (Phase 11).
+#
+# The platform owns Audit's identity (key "audit", schema "public", no route
+# prefix — Audit's URLs predate the registry and never change) in
+# ccure_platform/modules/registry.py. This file is Audit's own half.
+#
+# Deliberately empty: main.py still mounts Audit's 28 routers itself and
+# core/celery_app.py still lists Audit's task modules, until Phase 16 moves
+# Audit's code into ccure_audit one capability at a time. Declaring them here as
+# well would mount every Audit router twice.
+
+# The one thing Audit does declare is where its audit-event definitions are
+# registered: the platform loads that module by name in every process that
+# writes an audit event (API, Celery workers, scripts), so Audit's events are
+# classified wherever they are emitted — see ccure_audit/audit_events.py.
+
+[module]
+key = "audit"
+routers = []
+task_modules = []
+models = []
+audit_event_modules = ["ccure_audit.audit_events"]
+# Where this module declares its RBAC permission catalogue (RBAC-1/RBAC-2): the
+# module exports PERMISSIONS, a tuple of ccure_platform.api.PermissionDecl. The
+# namespace ("audit") is the platform's, in ccure_platform/modules/registry.py.
+# RBAC learns what is declared as data from the composition root and never imports
+# this package.
+permission_modules = ["ccure_audit.permissions"]

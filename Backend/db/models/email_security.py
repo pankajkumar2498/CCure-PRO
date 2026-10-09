@@ -14,7 +14,7 @@ They have different lifecycles, different sizes and different blast radii.
 
 `email_domain_rules` holds roughly a hundred rows, each one a decision somebody
 made on purpose: "this customer's domain is fine", "this domain is banned here".
-It is small, precious, and inside the six-hourly `backup_db.ps1` dump.
+It is small, precious, and inside the six-hourly `backup_db.sh` dump.
 
 `disposable_domains` holds ~93,000 rows rebuilt from upstream lists by
 `scripts/security/sync_disposable_domains.py`. It is disposable in its own

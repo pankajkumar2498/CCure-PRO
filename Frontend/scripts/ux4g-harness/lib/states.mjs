@@ -93,6 +93,10 @@ import {
   NS_COMPLETE_FRAMES,
   nsSession,
   nsSocketScript,
+  PLATFORM_MODULES,
+  PH_ORG_ADMIN,
+  PH_SUPERADMIN,
+  PH_ORGS,
 } from "./fixtures.mjs";
 
 const BOTH = ["light", "dark"];
@@ -407,7 +411,8 @@ const SHARED_TRACKED = [
 
 /* ── SecurityDashboard (batch 17) ─────────────────────────────────────────── */
 const SD_BASE = {
-  route: "/dashboard",
+  // Audit's dashboard address since Phase 12.2; /dashboard redirects here.
+  route: "/audit-dashboard",
   persona: ANALYST,
   stubs: SD_STUBS,
   tracked: [...PAGE_TRACKED, "h2"],
@@ -1984,7 +1989,7 @@ const AMT_STATES = [
     themes: LIGHT,
     persona: ASSETS_READONLY,
     stubs: SD_STUBS,
-    ready: `location.pathname === "/dashboard" && ${sdReady}`,
+    ready: `location.pathname === "/audit-dashboard" && ${sdReady}`,
   },
 ];
 
@@ -3055,6 +3060,112 @@ const NS_STATES = [
   },
 ];
 
+/* ── Platform Home (after sign-in) ───────────────────────────────────────────
+   CCure Home at /, the three product entry pages, and the platform header's
+   shared navigation: Administration, organisation switcher, notifications,
+   settings and the account menu. Added with the platform header, so the page a
+   person lands on after sign-in is captured like every other screen. */
+const PH_TRACKED = ["h1", "h2", "[role=menu]", "[role=dialog]", ".pl-header"];
+const PH_BASE = {
+  route: "/",
+  persona: ANALYST,
+  stubs: {
+    "/platform/modules": PLATFORM_MODULES,
+    // GET /notifications answers a bare list (response_model=list[...]), which
+    // is what the panel reads. The shared stub's object shape is left alone:
+    // the dashboard states request it and their captures must not change.
+    "/notifications": [],
+  },
+  tracked: PH_TRACKED,
+};
+const phReady = `document.querySelectorAll('ul[aria-label="CCure products"] > li').length === 4`;
+const PH_STATES = [
+  { ...PH_BASE, id: "ph-home", themes: BOTH, ready: phReady },
+  {
+    ...PH_BASE,
+    id: "ph-home-mobile",
+    themes: LIGHT,
+    viewport: [390, 1400],
+    ready: phReady,
+  },
+  {
+    ...PH_BASE,
+    id: "ph-admin-menu",
+    themes: LIGHT,
+    persona: PH_ORG_ADMIN,
+    ready: phReady,
+    actions: [
+      { click: byText("button", "/Administration/") },
+      {
+        waitFor: `!!document.querySelector('[role=menu][aria-label="Administration"]')`,
+      },
+    ],
+  },
+  {
+    ...PH_BASE,
+    id: "ph-superadmin",
+    themes: LIGHT,
+    persona: PH_SUPERADMIN,
+    stubs: { ...PH_BASE.stubs, "/admin/organizations/": PH_ORGS },
+    ready: `${phReady} && /Harness Org/.test(document.body.innerText)`,
+    actions: [
+      {
+        click: `document.querySelector('button[aria-label^="Switch organization"]')`,
+      },
+      {
+        waitFor: `!!document.querySelector('[role=menu][aria-label="Switch Organization"]')`,
+      },
+    ],
+  },
+  {
+    ...PH_BASE,
+    id: "ph-notifications",
+    themes: LIGHT,
+    ready: phReady,
+    actions: [
+      {
+        click: `document.querySelector('button[aria-label^="Notifications"]')`,
+      },
+      { waitFor: `!!document.getElementById("sh-notifications")` },
+    ],
+  },
+  {
+    ...PH_BASE,
+    id: "ph-settings",
+    themes: BOTH,
+    ready: phReady,
+    actions: [
+      { click: `document.querySelector('button[aria-label="Settings"]')` },
+      { waitFor: hasText("/Rows per page/") },
+    ],
+  },
+  {
+    ...PH_BASE,
+    id: "ph-account-menu",
+    themes: LIGHT,
+    ready: phReady,
+    actions: [
+      {
+        click: `document.querySelector('button[aria-label^="Account menu for"]')`,
+      },
+      {
+        waitFor: `!!document.querySelector('[role=menu][aria-label="Account"]')`,
+      },
+    ],
+  },
+  ...[
+    ["ph-entry-policy", "/policy-dashboard", "CCure Policy Pro"],
+    ["ph-entry-rank", "/rank-dashboard", "CCure Rank"],
+    ["ph-entry-ir", "/ir-dashboard", "CCure IR"],
+  ].map(([id, route, title]) => ({
+    ...PH_BASE,
+    id,
+    route,
+    themes: LIGHT,
+    ready: `document.querySelector("h1")?.textContent === ${JSON.stringify(title)} && /is not available yet/.test(document.body.innerText)`,
+  })),
+];
+
 export const STATES = [
   ...AR_STATES,
   ...VB_STATES,
@@ -3075,6 +3186,7 @@ export const STATES = [
   ...CW29_STATES,
   ...CW30_STATES,
   ...CW31_STATES,
+  ...PH_STATES,
 ];
 
 /** States whose output Batch 31 must leave byte-for-byte unchanged: every page
@@ -3101,6 +3213,9 @@ export const REGRESSION_PREFIXES = [
   "cr-",
   "p3-",
   "ns-",
+  // Platform Home and the platform header, captured since they gained the
+  // shared navigation.
+  "ph-",
 ];
 
 /** States the sensitivity gate injects into. */

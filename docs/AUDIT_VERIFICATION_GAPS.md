@@ -65,8 +65,8 @@ would drop columns holding real audit data.
 
 **To close:** restore the phase-3 backup
 (`backups/ccure_test_20260824_212028_ops.dump`) into a disposable
-`pytest_`-prefixed database, run `alembic downgrade -1` twice and
-`alembic upgrade head` again, and confirm the schema, the partition indexes'
+`pytest_`-prefixed database, run `alembic downgrade <Audit head>@-2` and
+`alembic upgrade heads` again, and confirm the schema, the partition indexes'
 `indisvalid`, and the trigger set match. Until then the migrations are
 correctly described as _forward-verified only_.
 
@@ -82,7 +82,7 @@ reconstruct them.
 **Unproven.** The append-only enforcement has two installation routes, and
 only one of them has been executed.
 
-- **Migrated install** — `alembic upgrade head` calls
+- **Migrated install** — `alembic upgrade heads` calls
   `apply_audit_immutability()`. Verified live on `ccure_test`: 18 triggers,
   both indexes valid, 9/9 tamper attempts refused.
 - **Fresh install** — `db/migrate_production_schema.py` builds the schema with

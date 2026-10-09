@@ -8,7 +8,10 @@
 #
 # Base images are pinned by digest, so a rebuild of the same commit starts from
 # the same bytes. Dependabot (docker ecosystem, .github/dependabot.yml) opens a
-# PR when the tag moves, which is how security updates to the base still arrive.
+# PR when the image behind the tag is rebuilt, which is how security updates to
+# the base still arrive. It never moves the Python version: 3.11 -> 3.14 is an
+# upgrade (no Pillow 10.3.0 or psycopg2-binary 2.9.9 wheels there), made by
+# editing the tag deliberately.
 # ── Base Image ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9 AS base
 
@@ -51,6 +54,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     libcap2-bin \
     chromium \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# The pinned base image carries openssl and pcre2 builds that Debian has since
+# fixed (CVE-2026-75804, CVE-2026-84782, CVE-2026-103111). Upgrade exactly
+# those packages; --only-upgrade installs nothing new and leaves every other
+# package at the base's version. Drop this once the digest moves to a base that
+# already carries them.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade \
+    libssl3t64 \
+    openssl \
+    openssl-provider-legacy \
+    libpcre2-8-0 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

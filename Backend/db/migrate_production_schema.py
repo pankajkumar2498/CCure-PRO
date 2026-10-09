@@ -5,7 +5,7 @@ Schema initialization and RBAC seeding script.
 
 This script:
   1. Runs Alembic migrations to create/update all database schema
-  2. Seeds the 5 built-in RBAC roles and permission atoms
+  2. Synchronizes the native RBAC catalogue and five system roles
   3. Seeds a default 'default' Organization
   4. Prints a final summary of what was created
 
@@ -36,7 +36,7 @@ if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
 # Import all models to register them in Base.metadata for bootstrapping
-import db.models
+import db.models  # noqa: F401 -- register every table in Base.metadata
 from db.base import Base, engine, gen_org_id
 from sqlalchemy import text
 
@@ -104,335 +104,6 @@ def _print_header(title: str):
     print("=" * 60)
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    result = conn.execute(
-        text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name=:t)"
-        ),
-        {"t": table_name},
-    )
-    return result.scalar()
-
-
-def _row_count(conn, table_name: str) -> int:
-    try:
-        from sqlalchemy import func, select, table
-
-        stmt = select(func.count()).select_from(table(table_name))
-        return conn.execute(stmt).scalar()
-    except Exception:
-        return -1
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Step 1 — Run Alembic Migrations
-# ─────────────────────────────────────────────────────────────────────────────
-
-SYSTEM_ROLES = [
-    {
-        "name": "superadmin",
-        "description": "Full platform access — not bound to any specific organization.",
-        "is_system_role": True,
-    },
-    {
-        "name": "org_admin",
-        "description": "Full access within their Organization: manage users, assets, scans, and reports.",
-        "is_system_role": True,
-    },
-    {
-        "name": "analyst",
-        "description": "Can run scans, view all results within their org, and generate reports.",
-        "is_system_role": True,
-    },
-    {
-        "name": "viewer",
-        "description": "Read-only access: view dashboards and existing scan history. Cannot run scans.",
-        "is_system_role": True,
-    },
-    {
-        "name": "scanner",
-        "description": "API service account: can submit scan jobs and read back results programmatically.",
-        "is_system_role": True,
-    },
-]
-
-# resource × action permission atoms
-PERMISSIONS = [
-    # Scans
-    ("scans", "create", "Create and start new scan sessions"),
-    ("scans", "read", "View your own scan history and results"),
-    ("scans", "read_all", "View all scan history within the organization"),
-    ("scans", "update", "Modify scan configuration"),
-    ("scans", "archive", "Move scans to the archived area"),
-    ("scans", "restore", "Restore archived or recycled scans"),
-    ("scans", "recycle", "Move scans to the recycle bin"),
-    ("scans", "purge", "Permanently delete recycled scans"),
-    ("scans", "execute", "Trigger scan execution via API"),
-    ("scans", "cancel", "Cancel an in-progress scan"),
-    # Scan scheduling (Phase 1). A separate resource rather than more actions
-    # on "scans", because the questions are genuinely different: "may this
-    # person start a scan" and "may this person point the platform at a network
-    # unattended, every night, indefinitely" are not the same authorisation.
-    ("scan_schedules", "create", "Create scheduled and recurring scans"),
-    ("scan_schedules", "read", "View scan schedules and their run history"),
-    ("scan_schedules", "update", "Edit, enable or disable scan schedules"),
-    ("scan_schedules", "delete", "Delete scan schedules"),
-    ("scan_schedules", "execute", "Trigger a scheduled scan immediately (Run Now)"),
-    # Scan policies (Phase 17). A separate resource for the same reason
-    # scheduling is: "may this person run a scan" and "may this person decide
-    # what every scan in this organisation assesses" are different
-    # authorisations, and the second is the one that can quietly narrow an
-    # audit until it finds nothing.
-    ("scan_policies", "create", "Create reusable scan policies"),
-    ("scan_policies", "read", "View scan policies and their configuration"),
-    ("scan_policies", "update", "Edit, enable, disable or archive scan policies"),
-    ("scan_policies", "delete", "Delete scan policies"),
-    # Assets
-    ("assets", "create", "Manually add assets to the registry"),
-    ("assets", "read", "View asset inventory and details"),
-    ("assets", "update", "Edit asset metadata, tags, and notes"),
-    ("assets", "delete", "Remove assets from the registry"),
-    ("assets", "export", "Export asset list to CSV/JSON"),
-    # Vulnerabilities / Findings
-    ("findings", "read", "View vulnerability findings"),
-    ("findings", "update", "Update finding status (accept, suppress, remediate)"),
-    ("findings", "export", "Export findings to CSV/JSON/PDF"),
-    # Remediation (Phase 18). Its own atom, deliberately: "may this person
-    # move work through the queue" and "may this person decide the
-    # organisation will carry a critical risk" are different
-    # authorisations, and without the split anyone who can edit a finding
-    # could clear their own overdue list by accepting everything on it.
-    (
-        "findings",
-        "accept_risk",
-        "Accept the risk on a finding, with a reason and an approver",
-    ),
-    # Reports
-    ("reports", "create", "Generate reports"),
-    ("reports", "read", "View and download reports"),
-    ("reports", "delete", "Delete generated reports"),
-    # Users
-    ("users", "create", "Invite and create user accounts"),
-    ("users", "read", "List and view user accounts"),
-    ("users", "update", "Edit user details and roles"),
-    ("users", "delete", "Deactivate or delete user accounts"),
-    # Credentials
-    ("credentials", "create", "Store scan credentials"),
-    ("credentials", "read", "List stored credential profiles (not the secrets)"),
-    ("credentials", "update", "Edit stored credential profiles"),
-    ("credentials", "validate", "Test a stored credential against a target host"),
-    ("credentials", "delete", "Remove stored credential profiles"),
-    # Settings / Org
-    ("settings", "read", "View organization settings"),
-    ("settings", "update", "Change organization settings and feature flags"),
-    # Dashboard
-    ("dashboard", "read", "View the security analytics dashboard"),
-    # Roles & Permissions
-    ("roles", "read", "View system roles and permissions"),
-    ("roles", "create", "Create custom roles"),
-    ("roles", "update", "Modify role permissions"),
-    ("roles", "delete", "Delete custom roles"),
-    # Organizations (multi-tenant)
-    ("organizations", "read", "View organizations"),
-    ("organizations", "create", "Create new organizations"),
-    ("organizations", "update", "Update organization settings"),
-    ("organizations", "delete", "Delete organizations"),
-    # Audit Logs
-    ("audit", "read", "View the immutable audit log"),
-    # Taking a copy of the trail off the platform is a distinct act from
-    # reading it on screen, and is audited as one. It is a permission rather
-    # than a role check because the export is tenant-scoped -- unlike the
-    # platform-wide email-domain rules, which are superadmin-only for exactly
-    # the opposite reason.
-    ("audit", "export", "Export the audit log as CSV or PDF"),
-    # Phase 6a. Gates the read-only retention *preview* only -- no HTTP
-    # endpoint deletes an audit row. Execution is the beat task or the CLI,
-    # so destroying audit history needs shell access to the host as well as
-    # this permission. Superadmin only: a purge is not tenant-scoped in
-    # effect, because it destroys a record other parties may need.
-    ("audit", "purge", "Preview audit-log retention and what it would remove"),
-    # Compliance
-    ("compliance", "read", "View compliance dashboards and findings"),
-    ("compliance", "scan", "Trigger manual compliance scans"),
-    ("compliance", "manage_schedules", "Manage recurring compliance scan schedules"),
-    ("compliance", "attest", "Record manual control attestation and evidence"),
-    ("compliance", "remediate", "Apply remediation scripts and status updates"),
-    ("compliance", "manage_rules", "Create and edit compliance policies and rules"),
-    ("compliance", "manage_frameworks", "Install and configure compliance frameworks"),
-    (
-        "compliance",
-        "manage_retention",
-        "Configure compliance evidence retention policies",
-    ),
-    (
-        "compliance",
-        "manage_integrations",
-        "Configure compliance notifications and integrations",
-    ),
-    (
-        "compliance",
-        "approve_exception",
-        "Approve or reject compliance exception waivers",
-    ),
-    (
-        "compliance",
-        "export_report",
-        "Export Statement of Applicability and executive reports",
-    ),
-]
-
-# Which permissions are granted to each role
-# superadmin gets everything; others get a subset
-ROLE_PERMISSIONS = {
-    "superadmin": "*",  # all permissions
-    "org_admin": [
-        "scans:create",
-        "scans:read",
-        "scans:read_all",
-        "scans:update",
-        "scans:archive",
-        "scans:restore",
-        "scans:recycle",
-        "scans:purge",
-        "scans:execute",
-        "scans:cancel",
-        "scan_schedules:create",
-        "scan_schedules:read",
-        "scan_schedules:update",
-        "scan_schedules:delete",
-        "scan_schedules:execute",
-        "scan_policies:create",
-        "scan_policies:read",
-        "scan_policies:update",
-        "scan_policies:delete",
-        "credentials:create",
-        "credentials:read",
-        "credentials:update",
-        "credentials:validate",
-        "credentials:delete",
-        "assets:create",
-        "assets:read",
-        "assets:update",
-        "assets:delete",
-        "assets:export",
-        "findings:read",
-        "findings:update",
-        "findings:export",
-        "findings:accept_risk",
-        "reports:create",
-        "reports:read",
-        "reports:delete",
-        "users:create",
-        "users:read",
-        "users:update",
-        "users:delete",
-        "roles:read",
-        "credentials:create",
-        "credentials:read",
-        "credentials:delete",
-        "settings:read",
-        "settings:update",
-        "dashboard:read",
-        "audit:read",
-        "audit:export",
-        "compliance:read",
-        "compliance:scan",
-        "compliance:manage_schedules",
-        "compliance:attest",
-        "compliance:remediate",
-        "compliance:manage_rules",
-        "compliance:manage_frameworks",
-        "compliance:manage_retention",
-        "compliance:manage_integrations",
-        "compliance:approve_exception",
-        "compliance:export_report",
-    ],
-    "analyst": [
-        "scans:create",
-        "scans:read",
-        "scans:read_all",
-        "scans:execute",
-        "scans:cancel",
-        "scan_schedules:create",
-        "scan_schedules:read",
-        "scan_schedules:update",
-        "scan_schedules:execute",
-        "scan_policies:create",
-        "scan_policies:read",
-        "scan_policies:update",
-        "credentials:create",
-        "credentials:read",
-        "credentials:update",
-        "credentials:validate",
-        "assets:read",
-        "assets:update",
-        "assets:export",
-        "findings:read",
-        "findings:update",
-        "findings:export",
-        "findings:accept_risk",
-        "reports:create",
-        "reports:read",
-        "credentials:read",
-        "settings:read",
-        "dashboard:read",
-        "compliance:read",
-        "compliance:scan",
-        "compliance:manage_schedules",
-        "compliance:attest",
-        "compliance:remediate",
-        "compliance:export_report",
-    ],
-    "viewer": [
-        "scans:read",
-        "scans:read_all",
-        # A viewer who can see scans can see what is scheduled to produce them.
-        # Read only: no create, update, delete or execute.
-        "scan_schedules:read",
-        "scan_policies:read",
-        "assets:read",
-        "findings:read",
-        "reports:read",
-        "settings:read",
-        "dashboard:read",
-        "compliance:read",
-    ],
-    "scanner": [
-        "scans:create",
-        "scans:read",
-        "scans:execute",
-        "scan_policies:read",
-        "credentials:read",
-    ],
-}
-
-DEFAULT_ORG_NAME = "superadmin"
-DEFAULT_ORG_SLUG = "KING"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _print_header(title: str):
-    print(f"\n{'=' * 60}")
-    print(f"  {title}")
-    print("=" * 60)
-
-
-def _table_exists(conn, table_name: str) -> bool:
-    result = conn.execute(
-        text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name=:t)"
-        ),
-        {"t": table_name},
-    )
-    return result.scalar()
-
-
 def _row_count(conn, table_name: str) -> int:
     try:
         from sqlalchemy import func, select, table
@@ -464,7 +135,7 @@ def run_alembic_migrations():
 
         # Triggers and grants cannot be expressed in SQLAlchemy metadata, so
         # `create_all` does not produce them and the migration that would has
-        # just been skipped by the `stamp head` below. Without this call a
+        # just been skipped by the stamp below. Without this call a
         # fresh install would come up with `audit_logs` fully mutable while an
         # upgraded install was append-only — the fresh-vs-migrated divergence
         # `tests/repo/test_schema_drift.py` exists to catch, except that test
@@ -505,18 +176,57 @@ def run_alembic_migrations():
             "    cannot be cryptographically verified."
         )
 
-        print("  ✓ Schema bootstrap complete; stamping Alembic head.")
-        command = [sys.executable, "-m", "alembic", "stamp", "head"]
+        # Phase 11.3: each core module has its own branch, so the history has
+        # several heads. `create_all` built Audit's and the platform's tables
+        # only (Base.metadata), so only Audit's history is stamped; the module
+        # branches then run as real migrations and create their own schemas.
+        # Stamping `heads` instead would record a CREATE SCHEMA that never ran.
+        audit_heads = _audit_heads()
+        print(
+            f"  ✓ Schema bootstrap complete; stamping Audit's head {', '.join(audit_heads)}."
+        )
+        commands = [
+            [sys.executable, "-m", "alembic", "stamp", *audit_heads],
+            [sys.executable, "-m", "alembic", "upgrade", "heads"],
+        ]
     else:
-        command = [sys.executable, "-m", "alembic", "upgrade", "head"]
+        # `heads`, not `head`: with several heads `head` fails with "Multiple
+        # head revisions", which here would stop the API starting.
+        commands = [[sys.executable, "-m", "alembic", "upgrade", "heads"]]
 
+    for command in commands:
+        _run_alembic(command)
+
+
+def _audit_heads() -> list[str]:
+    """The heads of Audit's own history, ``alembic/versions`` — not the core
+    modules' branches, which live in their packages' ``migrations`` folders."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory.from_config(Config(os.path.join(_BACKEND, "alembic.ini")))
+    versions = os.path.realpath(os.path.join(_BACKEND, "alembic", "versions"))
+    heads = sorted(
+        h
+        for h in script.get_heads()
+        if os.path.dirname(os.path.realpath(script.get_revision(h).path)) == versions
+    )
+    if not heads:
+        print("  ✗ Audit's history has no head in alembic/versions")
+        sys.exit(1)
+    return heads
+
+
+def _run_alembic(command: list[str]) -> None:
     try:
         result = subprocess.run(
             command, cwd=_BACKEND, capture_output=True, text=True, timeout=120
         )
 
         if result.returncode == 0:
-            print("  ✓ Alembic command completed successfully")
+            print(
+                f"  ✓ Alembic command completed successfully: {' '.join(command[3:])}"
+            )
             if result.stdout:
                 for line in result.stdout.strip().split("\n"):
                     if line.strip():
@@ -538,121 +248,13 @@ def run_alembic_migrations():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def seed_rbac(conn):
-    _print_header("Step 2: Seeding RBAC Roles & Permissions")
-
-    # ── Roles ─────────────────────────────────────────────────────────────────
-    role_ids = {}
-    for role_data in SYSTEM_ROLES:
-        existing = conn.execute(
-            text("SELECT id FROM roles WHERE name = :name"), {"name": role_data["name"]}
-        ).fetchone()
-        if existing:
-            role_ids[role_data["name"]] = existing[0]
-            print(f"  ✓ role '{role_data['name']}' already exists (id={existing[0]})")
-        else:
-            result = conn.execute(
-                text(
-                    """
-                    INSERT INTO roles (name, description, is_system_role, created_at)
-                    VALUES (:name, :description, :is_system_role, NOW())
-                    RETURNING id
-                """
-                ),
-                role_data,
-            )
-            new_id = result.fetchone()[0]
-            role_ids[role_data["name"]] = new_id
-            print(f"  + Created role '{role_data['name']}' (id={new_id})")
-
-    # ── Permissions ───────────────────────────────────────────────────────────
-    perm_ids = {}
-    for resource, action, description in PERMISSIONS:
-        key = f"{resource}:{action}"
-        existing = conn.execute(
-            text("SELECT id FROM permissions WHERE resource=:r AND action=:a"),
-            {"r": resource, "a": action},
-        ).fetchone()
-        if existing:
-            perm_ids[key] = existing[0]
-        else:
-            result = conn.execute(
-                text(
-                    """
-                    INSERT INTO permissions (resource, action, description)
-                    VALUES (:resource, :action, :description)
-                    RETURNING id
-                """
-                ),
-                {"resource": resource, "action": action, "description": description},
-            )
-            perm_ids[key] = result.fetchone()[0]
-            print(f"  + Permission: {key}")
-
-    print(f"\n  Total permissions: {len(perm_ids)}")
-
-    legacy_scan_delete_ids = [
-        row[0]
-        for row in conn.execute(
-            text(
-                "SELECT id FROM permissions WHERE resource='scans' AND action='delete'"
-            )
-        ).fetchall()
-    ]
-    if legacy_scan_delete_ids:
-        conn.execute(
-            text(
-                """
-                DELETE FROM role_permissions
-                WHERE permission_id IN (
-                    SELECT id FROM permissions
-                    WHERE resource='scans' AND action='delete'
-                )
-            """
-            )
-        )
-        conn.execute(
-            text("DELETE FROM permissions WHERE resource='scans' AND action='delete'")
-        )
-        print("  - Removed legacy permission: scans:delete")
-
-    # ── Role ↔ Permission assignments ─────────────────────────────────────────
-    print("\n  Assigning permissions to roles...")
-    all_perm_ids = list(perm_ids.values())
-
-    for role_name, perms in ROLE_PERMISSIONS.items():
-        role_id = role_ids.get(role_name)
-        if not role_id:
-            continue
-
-        target_perm_ids = (
-            all_perm_ids
-            if perms == "*"
-            else [perm_ids[p] for p in perms if p in perm_ids]
-        )
-
-        for perm_id in target_perm_ids:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO role_permissions (role_id, permission_id)
-                    VALUES (:role_id, :perm_id)
-                    ON CONFLICT DO NOTHING
-                """
-                ),
-                {"role_id": role_id, "perm_id": perm_id},
-            )
-
-        count = conn.execute(
-            text("SELECT COUNT(*) FROM role_permissions WHERE role_id=:r"),
-            {"r": role_id},
-        ).scalar()
-        print(f"  ✓ {role_name:12s} → {count} permissions")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3 — Default Organization
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+DEFAULT_ORG_NAME = os.getenv("DEFAULT_ORG_NAME", "superadmin")
+DEFAULT_ORG_SLUG = os.getenv("DEFAULT_ORG_SLUG", "KING")
 
 
 def seed_default_org(conn):
@@ -698,9 +300,9 @@ def print_summary(conn):
 
     tables = [
         ("organizations", "Tenant organizations"),
-        ("roles", "RBAC roles"),
-        ("permissions", "Permission atoms"),
-        ("role_permissions", "Role ↔ Permission assignments"),
+        ("rbac_roles", "RBAC roles"),
+        ("rbac_permissions", "Permission catalogue"),
+        ("rbac_role_permissions", "Role ↔ Permission grants"),
         ("users", "User accounts"),
         ("refresh_token_sessions", "Active JWT sessions"),
         ("audit_logs", "Immutable audit trail"),
@@ -786,7 +388,7 @@ def run_migration():
 
     # 3. Scans schema (might fail on Windows permission issues with scapy)
     try:
-        from scans.schema_bootstrap import ensure_scan_schema
+        from db.models.scans import ensure_scan_schema
 
         ensure_scan_schema()
         print("  ✓ Scan schema verified and migrated")
@@ -804,8 +406,15 @@ def run_migration():
 
     # Step 2 & 3: Seed RBAC and default org in a transaction
     with engine.begin() as conn:
-        seed_rbac(conn)
         seed_default_org(conn)
+
+    # Use the operator entry point, as schema initialization uses Alembic.
+    # The database layer does not import the authorization capability.
+    subprocess.run(
+        [sys.executable, "-m", "scripts.rbac.sync_catalogue", "--apply"],
+        cwd=_BACKEND,
+        check=True,
+    )
 
     # Step 4: Print summary
     with engine.connect() as conn:

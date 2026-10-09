@@ -1,0 +1,28 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# EMERGENCY ONLY (Phase 10.7): restore the API's direct :8000 path.
+#
+# Normal operation never reads this file. Production ingress is
+# :443 → host nginx → api-gateway → api, and the api publishes no port.
+# If the gateway path is broken and cannot be fixed quickly:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.emergency-direct.yml up -d --no-deps api
+#   sudo scripts/linux/gateway_edge_switch.sh rollback
+#
+# and to return to normal:
+#
+#   docker compose up -d --no-deps api
+#   sudo scripts/linux/gateway_edge_switch.sh cutover
+#
+# It restores exactly the post-10.3 direct configuration that ran in
+# production until the 10.5 cut-over: the loopback publish, host nginx's
+# docker-proxy peer (172.18.0.1) as a trusted proxy, and uvicorn on all of the
+# container's interfaces. Procedure and evidence:
+# docs/architecture/phase10/PHASE10_7_GATEWAY_ONLY.md §6.
+# ──────────────────────────────────────────────────────────────────────────────
+services:
+  api:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - TRUSTED_PROXIES=127.0.0.1,::1,172.18.0.1,172.31.254.10
+      - API_BIND_HOST=0.0.0.0

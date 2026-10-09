@@ -1,0 +1,382 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Application shell — header controls, sidebar footer, and the three header
+   panels (notifications, help, settings).  Checkpoint 3C batch 12.
+
+   The chrome itself (grid, sidebar, header, main, skip link) is the design
+   system's CcureAppShell + shell.css. This sheet owns what AppLayout composes
+   on top of it: `sh-*` for header/sidebar-footer controls, `shn-*` for the
+   notifications panel, `shh-*` for the help panel, `shs-*` for the settings
+   drawer. Every colour is a CCure token, so the panels follow data-theme.
+
+   The legacy rules these replace (layout.css shell selectors, and the np-*,
+   hp-*, sd-*, pd-*, profile-* families in animations.css) are left in place
+   with zero consumers, pending a census-backed prune.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Inheritance boundary ────────────────────────────────────────────────────
+   The shell root must not change what PAGES inherit. `.cc-shell` sets the
+   design-system font, size and colour for the spike; under AppLayout those
+   would cascade into every page's unstyled text (measured: Segoe UI 15px →
+   Noto Sans 13.125px on all 34 batch-11 states). Pages keep inheriting from
+   <body> exactly as before; the chrome opts into the design-system type on
+   its own elements. `.cc-main` padding is zeroed for the same reason — pages
+   own their inset through `CcurePage` (B.13). */
+.cc-shell.sh-shell {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  grid-template-rows: auto 1fr auto;
+}
+
+.sh-shell > .cc-sidebar,
+.sh-shell > .cc-header {
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-base);
+  line-height: var(--ccure-leading-normal);
+  color: var(--ccure-text);
+}
+
+.sh-shell > .cc-main {
+  padding: 0;
+}
+
+/* ── Header composition ──────────────────────────────────────────────────── */
+.sh-savestatus {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+}
+
+.sh-savestatus--ok {
+  color: var(--ccure-success-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sh-savestatus--bad {
+  color: var(--ccure-danger-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sh-newscan {
+  gap: var(--ccure-space-2xs);
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none;
+  }
+}
+
+/* Global search: CcureInput with a keyboard hint as its adornment. */
+.sh-search {
+  position: relative;
+  width: 18.75rem;
+  max-width: 40vw;
+}
+
+.sh-search #sh-global-search {
+  padding-inline-start: 2rem;
+}
+
+.sh-search-icon {
+  position: absolute;
+  left: var(--ccure-space-xs);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ccure-text-secondary);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+.sh-kbd {
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  background: var(--ccure-surface-sunken);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-sm);
+  padding: 0 var(--ccure-space-3xs);
+}
+
+/* Popovers anchored under the header controls */
+.sh-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--ccure-space-xs));
+  z-index: var(--ccure-z-drawer);
+}
+
+.sh-popover--help {
+  right: var(--ccure-space-lg);
+}
+
+/* ── Sidebar footer: quota and user ──────────────────────────────────────── */
+.sh-quota {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-2xs);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.sh-quota-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sh-quota-bar .cc-progress__labels {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.cc-shell--collapsed .sh-quota,
+.cc-shell--collapsed .sh-user-info {
+  display: none;
+}
+
+.cc-shell--collapsed .sh-user {
+  flex-direction: column;
+}
+
+/* ── Help panel ──────────────────────────────────────────────────────────── */
+.shh-search-wrap {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.shh-faqs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-xs);
+}
+
+.shh-faq-item {
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  overflow: hidden;
+}
+
+.shh-faq-item--open {
+  border-color: var(--ccure-border-strong);
+}
+
+.shh-faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-medium);
+  color: var(--ccure-text);
+  cursor: pointer;
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.shh-faq-q.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+}
+
+.shh-faq-q:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.shh-faq-chevron {
+  display: inline-flex;
+  color: var(--ccure-text-secondary);
+  transition: transform var(--ccure-duration-base) var(--ccure-ease);
+}
+
+.shh-faq-chevron--open {
+  transform: rotate(90deg);
+}
+
+.shh-faq-a {
+  padding: 0 var(--ccure-space-md) var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  line-height: var(--ccure-leading-relaxed);
+}
+
+.shh-links-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ccure-space-xs);
+}
+
+.shh-link-card {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  color: var(--ccure-text);
+  text-decoration: none;
+  font-size: var(--ccure-text-sm);
+}
+
+.shh-link-card:hover {
+  background: var(--ccure-surface-hover);
+  border-color: var(--ccure-border-strong);
+}
+
+.shh-link-title {
+  flex: 1;
+}
+
+.shh-whats-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.shh-release-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ccure-space-xs);
+  margin-bottom: var(--ccure-space-2xs);
+}
+
+.shh-release-ver {
+  font-weight: var(--ccure-weight-bold);
+  color: var(--ccure-primary-text);
+}
+
+.shh-release-date {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.shh-release-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+}
+
+.shh-release-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text);
+}
+
+.shh-release-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+  flex: none;
+}
+
+.shh-section-title {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.shh-support {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+  align-items: flex-start;
+}
+
+.shh-support .cc-field {
+  width: 100%;
+}
+
+.shh-support-textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.cc-shell.sh-shell > .cc-header {
+  height: auto;
+  flex-wrap: wrap;
+  min-height: var(--ccure-header-height);
+  padding-block: var(--ccure-space-2xs);
+  row-gap: var(--ccure-space-xs);
+}
+.sh-shell .cc-header__left,
+.sh-shell .cc-header__right {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.sh-shell .cc-header__right {
+  margin-inline-start: auto;
+}
+.sh-shell .sh-user-btn,
+.sh-shell .sh-newscan,
+.sh-shell .sh-menu-anchor,
+.sh-shell .sh-home {
+  flex-shrink: 0;
+}
+.sh-shell .sh-org-name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-shell .shh-panel > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+@media (max-width: 768px) {
+  .sh-shell .cc-header__left,
+  .sh-shell .cc-header__right {
+    gap: var(--ccure-space-2xs);
+  }
+  .sh-shell .sh-org-name {
+    max-width: 8rem;
+  }
+  .sh-shell .sh-org-btn .cc-badge {
+    display: none;
+  }
+  .sh-shell .sh-popover--help {
+    right: var(--ccure-space-xs);
+    max-width: calc(100vw - var(--ccure-space-md));
+  }
+  .sh-shell .shh-panel {
+    width: min(23.75rem, calc(100vw - var(--ccure-space-md)));
+  }
+}
+
+@media (max-width: 768px) {
+  .sh-shell--organization .cc-header__left,
+  .sh-shell--organization .cc-header__right {
+    flex-basis: 100%;
+  }
+  .sh-shell .cc-header__right {
+    justify-content: flex-end;
+  }
+  .sh-shell .sh-search {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+}

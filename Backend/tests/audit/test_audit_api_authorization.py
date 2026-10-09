@@ -13,12 +13,15 @@ tenant's event to any caller who can guess or capture an id — and audit rows
 carry usernames, email addresses and source IPs.
 """
 
+from native_rbac import system_role, create_user, fixture_role
+
+
 from datetime import datetime, timezone
 
 import pytest
 from auth.jwt_handler import create_access_token, hash_password
 from db.base import gen_user_id, gen_uuid, utcnow
-from db.models import AuditLog, Organization, Permission, Role, RolePermission, User
+from db.models import AuditLog, Organization, User
 
 BASE = "/admin/audit-logs/"
 
@@ -44,7 +47,6 @@ def _headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -65,15 +67,16 @@ def other_tenant(db_session):
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter(Role.name == "org_admin").first()
-    admin = User(
+    role = system_role(db_session, "platform.org_admin")
+    admin = create_user(
+        db_session,
         id=gen_user_id(org.slug, "otheradmin"),
         username=f"otheradmin_{uid}",
         email=f"otheradmin_{uid}@other.test",
         full_name="Other Admin",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -91,20 +94,19 @@ def other_tenant(db_session):
 def no_audit_user(db_session, test_org):
     """A user in the caller's tenant whose role lacks `audit:read` entirely."""
     uid = gen_uuid()[:8]
-    role = Role(
-        name=f"no_audit_{uid}", description="No audit access", is_system_role=False
-    )
+    role = fixture_role(db_session, f"no_audit_{uid}")
     db_session.add(role)
     db_session.flush()
 
-    user = User(
+    user = create_user(
+        db_session,
         id=gen_user_id(test_org.slug, f"noaudit{uid}"),
         username=f"noaudit_{uid}",
         email=f"noaudit_{uid}@test.com",
         full_name="No Audit",
         password_hash=hash_password("securepassword123"),
         org_id=test_org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -148,16 +150,17 @@ def test_detail_refused_without_audit_read(client, db_session, no_audit_user):
 
 def test_analyst_and_viewer_cannot_read_the_audit_trail(client, db_session, test_org):
     """`audit:read` is held by org_admin and superadmin only."""
-    for role_name in ("analyst", "viewer"):
-        role = db_session.query(Role).filter(Role.name == role_name).first()
+    for role_name in ("platform.analyst", "platform.viewer"):
+        role = system_role(db_session, role_name)
         uid = gen_uuid()[:8]
-        user = User(
+        user = create_user(
+            db_session,
             id=gen_user_id(test_org.slug, f"{role_name}{uid}"),
             username=f"{role_name}_{uid}",
             email=f"{role_name}_{uid}@test.com",
             password_hash=hash_password("securepassword123"),
             org_id=test_org.id,
-            role_id=role.id,
+            role=role,
             is_active=True,
             is_verified=True,
             approved_at=utcnow(),

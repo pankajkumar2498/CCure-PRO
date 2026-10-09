@@ -508,7 +508,7 @@ class TestTheWholeCredentialedAuditEndToEnd:
         ), patch(
             "engines.credentialed.vuln_matcher.VulnMatcher", StubMatcher
         ), patch(
-            "routers.credentialed._detect_os", return_value="linux"
+            "engines.credentialed.os_detection.detect_os", return_value="linux"
         ), patch(
             "core.vuln_intel.csaf_advisories_for", return_value={}
         ), patch(

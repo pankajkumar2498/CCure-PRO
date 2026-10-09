@@ -1,14 +1,12 @@
 /* ============================================================================
    CCure design system — token entry point
    ----------------------------------------------------------------------------
-   The import order below is load-bearing. Three of the four relationships in it
-   are decided by CSS cascade rules rather than by preference:
+   The import order mirrors the approved central asset pipeline:
 
    1. ux4g.generated.css FIRST.
-      Its reset is wrapped in `:where(…)`, which has zero specificity, so any
-      CCure rule beats it on specificity alone. But two zero-specificity rules
-      (UX4G's `:where(*)` and CCure's own `*` reset in theme.css) are decided by
-      SOURCE ORDER. UX4G must come first for CCure's reset to win the tie.
+      Only approved vendor tokens and same-origin font faces are generated.
+      The global vendor reset is excluded; scoped official component CSS is
+      loaded separately through the shared design-system entrypoint.
 
    2. ccure-tokens.css SECOND.
       It resolves `--ccure-*` against `--ux4g-*`. Custom properties are resolved
@@ -17,12 +15,11 @@
       the same direction as the architecture.
 
    3. themes.css LAST of the three.
-      It repairs `outline:0` from UX4G's reset. That repair is a real cascade
-      interaction and only holds if it is parsed after the rule it repairs.
+      It supplies the theme bridge, visible focus floor and reduced motion.
 
    4. This file is imported BEFORE styles/global.css in main.jsx, so all of
       CCure's existing stylesheets continue to load after UX4G and keep winning
-      every tie. That is what makes an unmigrated page render byte-identically.
+      every tie. Adapter rules own the scoped official component presentation.
 
    Nothing here imports the UX4G JavaScript runtime, and nothing may. The
    runtime injects its library as an inline <script> via textContent, which the

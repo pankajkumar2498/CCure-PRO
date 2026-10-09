@@ -10,13 +10,12 @@
 
        document.documentElement.setAttribute("data-theme", "dark")
 
-   written by src/context/PreferencesContext.jsx from the server-persisted
+   written by src/shell/preferences/PreferencesContext.jsx from the server-persisted
    `preferences.theme` field. It predates UX4G and is a backend contract.
 
-   UX4G happens to use the identical selector — `:root[data-theme=dark]`, under
-   which it redefines 217 of its own tokens — so the one attribute drives both
-   token sets with no adapter, no bridging class and no second mechanism. That
-   is a measured fact about ux4g-web-components 2.1.0, not an assumption; it is
+   The approved UX4G 3.0.0 package uses the identical selector —
+   `:root[data-theme=dark]`. The central generator retains its theme tokens and
+   this bridge supplies accessible CCure semantic colors. The contract is
    re-checked by src/__tests__/design-system/tokens.test.js.
 
    Two things follow, and both must hold:
@@ -29,28 +28,8 @@
        override would silently contradict the account setting the user chose.
    ============================================================================ */
 
-/* ── Focus restoration ───────────────────────────────────────────────────────
-   NOT cosmetic. This exists to repair an accessibility regression that
-   importing UX4G would otherwise introduce across the whole application.
-
-   UX4G's reset is `:where(*,:before,:after){ … outline:0 … }`. The `:where()`
-   wrapper gives it zero specificity, which is why UX4G can be imported at all
-   without restyling CCure — every existing CCure rule outranks it. But
-   `outline:0` still applies to every element for which *nothing else* sets an
-   outline, and CCure sets one in only 36 of its 76 focus rules. The remainder
-   were relying on the browser default, which `outline:0` removes.
-
-   The consequence would be a keyboard user losing the focus indicator on
-   controls across pages nobody had touched — a WCAG 2.4.7 failure introduced by
-   a stylesheet import.
-
-   `:focus-visible` carries specificity (0,1,0), so it beats the `:where()`
-   reset while still losing to any component's own focus styling. The net effect
-   is a floor: every focusable element has a visible focus indicator, and
-   components may still style their own.
-
-   Ordering matters — this file must load after ux4g.generated.css. index.css
-   is what guarantees that. */
+/* Visible keyboard focus is a shared floor. The vendor reset stays excluded;
+   component rules may provide a more specific indicator using the same tokens. */
 :focus-visible {
   outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
   outline-offset: var(--ccure-focus-ring-offset);

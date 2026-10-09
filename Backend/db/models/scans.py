@@ -137,10 +137,8 @@ class Scan(Base):
         super().__init__(**kwargs)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    organization = relationship("Organization", back_populates="scans")
-    created_by_user = relationship(
-        "User", back_populates="scans", foreign_keys=[created_by]
-    )
+    organization = relationship("Organization")
+    created_by_user = relationship("User", foreign_keys=[created_by])
     phases = relationship(
         "ScanPhase",
         back_populates="scan",
@@ -220,3 +218,120 @@ class ScanPhase(Base):
 
     def __repr__(self):
         return f"<ScanPhase {self.id!r} status={self.status!r}>"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Additive schema update, run at startup
+# ─────────────────────────────────────────────────────────────────────────────
+# Moved here from scans/schema_bootstrap.py (Phase 3 of the modular-platform
+# programme), beside the model it patches — where ensure_user_schema,
+# ensure_mac_vendor_schema and ensure_topology_schema already live. The
+# bootstrap script in db/ had to import the scans package to reach it.
+
+
+def ensure_scan_schema():
+    """
+    Add and backfill human-facing scan numbers without touching UUID identity.
+
+    create_all() will create the column on fresh databases, but existing
+    databases need this additive migration because SQLAlchemy does not alter
+    already-created tables.
+    """
+    from db.base import engine
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "scans" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("scans")}
+    dialect = engine.dialect.name
+
+    with engine.begin() as conn:
+        if "scan_no" not in columns:
+            if dialect == "postgresql":
+                conn.execute(text("ALTER TABLE scans ADD COLUMN scan_no BIGINT"))
+            else:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN scan_no INTEGER"))
+
+        if dialect == "postgresql":
+            conn.execute(
+                text(
+                    """
+                WITH existing AS (
+                    SELECT org_id, COALESCE(MAX(scan_no), 0) AS max_scan_no
+                    FROM scans
+                    WHERE scan_no IS NOT NULL
+                    GROUP BY org_id
+                ),
+                numbered AS (
+                    SELECT
+                        s.id,
+                        COALESCE(e.max_scan_no, 0) +
+                        ROW_NUMBER() OVER (
+                            PARTITION BY s.org_id
+                            ORDER BY s.created_at ASC, s.id ASC
+                        ) AS next_scan_no
+                    FROM scans s
+                    LEFT JOIN existing e
+                      ON e.org_id = s.org_id
+                    WHERE s.scan_no IS NULL
+                )
+                UPDATE scans
+                SET scan_no = numbered.next_scan_no
+                FROM numbered
+                WHERE scans.id = numbered.id
+            """
+                )
+            )
+            conn.execute(text("DROP INDEX IF EXISTS uq_scans_org_user_scan_no_idx"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_scans_org_scan_no_idx"))
+            conn.execute(
+                text(
+                    """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_scans_org_scan_no_idx
+                ON scans (org_id, scan_no)
+                WHERE scan_no IS NOT NULL
+            """
+                )
+            )
+        else:
+            rows = conn.execute(
+                text(
+                    """
+                SELECT id, org_id
+                FROM scans
+                WHERE scan_no IS NULL
+                ORDER BY org_id, created_at ASC, id ASC
+            """
+                )
+            ).fetchall()
+            counters = {}
+            for scan_id, org_id in rows:
+                key = str(org_id)
+                if key not in counters:
+                    counters[key] = (
+                        conn.execute(
+                            text(
+                                """
+                        SELECT COALESCE(MAX(scan_no), 0)
+                        FROM scans
+                        WHERE org_id = :org_id
+                          AND scan_no IS NOT NULL
+                    """
+                            ),
+                            {"org_id": org_id},
+                        ).scalar()
+                        or 0
+                    )
+                counters[key] += 1
+                conn.execute(
+                    text(
+                        """
+                    UPDATE scans
+                    SET scan_no = :scan_no
+                    WHERE id = :id
+                """
+                    ),
+                    {"scan_no": counters[key], "id": scan_id},
+                )

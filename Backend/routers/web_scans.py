@@ -17,12 +17,23 @@ import asyncio
 import json
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional
 
-from auth.dependencies import get_current_user
+from ccure_platform.api import (
+    CurrentUser,
+    require_authorized,
+    has_permission,
+    resolve_active_organisation,
+    acts_across_organisations,
+)
 from auth.jwt_handler import decode_token
+from ccure_platform.api import log_audit_event
 from db.base import SessionLocal, gen_web_scan_id, get_db, utcnow
+from ccure_platform import api as platform_api
 from db.models import User
+from core.web.finding_view import (  # noqa: F401  (the old private names stay)
+    finding_curl as _finding_curl,
+    finding_detail as _finding_detail,
+)
 from core.web.auth.secrets import encrypt_auth_config
 from db.models.web_scans import (
     WebApiOperation,
@@ -45,7 +56,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, field_validator
 from scan_helpers import limiter
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.routers.web_scans")
 
@@ -55,16 +66,10 @@ router = APIRouter(prefix="/web-scans", tags=["Web Scans"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _resolve_org(user: User, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
+def _resolve_org(user: CurrentUser, requested_org: str | None) -> str:
+    # Scope is decided by the platform (RBAC-5): a client-named organisation is a
+    # request, honoured only with cross-organisation reach and an active target.
+    return resolve_active_organisation(user, requested_org)
 
 
 IDEMPOTENCY_WINDOW = timedelta(minutes=10)
@@ -448,7 +453,7 @@ def start_web_scan(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     Start a new web application scan.
@@ -493,9 +498,7 @@ def start_web_scan(
     idempotency_key = _normalize_idempotency_key(idempotency_key)
     target_org_id = _resolve_org(user, org_id)
 
-    from db.models.rbac import Organization
-
-    org = db.query(Organization).filter(Organization.id == target_org_id).first()
+    org = platform_api.organisation(db, target_org_id)
     org_slug = org.slug if org else target_org_id
 
     duplicate_scan = _find_duplicate_web_scan(
@@ -545,6 +548,31 @@ def start_web_scan(
         started_at=utcnow(),
     )
     db.add(scan)
+    # Recorded in the same commit as the row, so a web scan cannot exist
+    # without the trail saying who launched it, against what, and that they
+    # confirmed authorisation. That confirmation is a client-supplied boolean;
+    # the audit entry is the only durable record that it was given, and by whom.
+    # The auth block is summarised by type only — it carries passwords, tokens,
+    # TOTP secrets and cookies, none of which belongs in an audit row.
+    log_audit_event(
+        db=db,
+        user=user,
+        action="web_scan.created",
+        resource_type="web_scan",
+        resource_id=scan_id,
+        changes={
+            "target_url": target_url,
+            "scan_name": body.scan_name,
+            "authorization_confirmed": True,
+            "auth_type": body.auth.type,
+            "include_subdomains": body.scan_scope.include_subdomains,
+            "max_depth": body.scan_scope.max_depth,
+            "scan_policy": body.options.scan_policy,
+            "rate_limit": body.options.rate_limit,
+        },
+        request=request,
+        org_id=target_org_id,
+    )
     db.commit()
     db.refresh(scan)
 
@@ -582,7 +610,7 @@ def list_web_scans(
     status: str | None = Query(None),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """List web scans for the resolved organization."""
     target_org_id = _resolve_org(user, org_id)
@@ -619,7 +647,7 @@ def get_web_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Get detailed web scan information including phase progress."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -670,7 +698,7 @@ def get_web_scan_findings(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """Get findings for a web scan with filtering and pagination."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -718,7 +746,7 @@ def get_web_scan_assets(
     per_page: int = Query(50, ge=1, le=200),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Get discovered web assets/endpoints for a scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -757,7 +785,7 @@ def get_web_scan_parameters(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     The attack surface at parameter granularity (Phase 23b relational model):
@@ -840,7 +868,7 @@ def get_web_scan_forms(
     per_page: int = Query(100, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """The discovered form inventory (Codex item 1) — first-class WebForm rows
     with their inputs, file-upload and password flags."""
@@ -888,7 +916,7 @@ def get_web_scan_api_operations(
     per_page: int = Query(200, ge=1, le=500),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """The API operation inventory (Codex item 1) — REST/GraphQL/SOAP operations
     as first-class WebApiOperation rows, with a per-kind roll-up."""
@@ -938,9 +966,10 @@ def get_web_scan_api_operations(
 @router.post("/{scan_id}/cancel")
 def cancel_web_scan(
     scan_id: str,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """Cancel a running web scan."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -963,6 +992,7 @@ def cancel_web_scan(
         except Exception as exc:
             log.warning("Failed to revoke task %s: %s", scan.current_task_id, exc)
 
+    previous_status = scan.status
     db.query(WebScan).filter(WebScan.id == scan_id).update(
         {
             "status": "cancelled",
@@ -970,10 +1000,35 @@ def cancel_web_scan(
             "updated_at": utcnow(),
         }
     )
+    log_audit_event(
+        db=db,
+        user=user,
+        action="web_scan.cancelled",
+        resource_type="web_scan",
+        resource_id=scan_id,
+        changes={"status": {"from": previous_status, "to": "cancelled"}},
+        request=request,
+        org_id=scan.org_id,
+    )
     db.commit()
 
     log.info("Web scan %s cancelled by user %s", scan_id, user.id)
     return {"success": True, "message": "Web scan cancelled"}
+
+
+#: One audit action per triage outcome, so each carries its own severity in
+#: core/audit_taxonomy.py — accepting a risk is what an auditor looks for, and
+#: must not share a severity with reopening a finding. Keys are exactly the
+#: statuses `triage_finding` accepts; the variants are pinned in
+#: tests/audit/test_audit_action_inventory.py.
+_TRIAGE_AUDIT_ACTIONS = {
+    "open": "web_finding.open",
+    "confirmed": "web_finding.confirmed",
+    "false_positive": "web_finding.false_positive",
+    "accepted_risk": "web_finding.accepted_risk",
+    "fixed": "web_finding.fixed",
+    "reopened": "web_finding.reopened",
+}
 
 
 @router.patch("/{scan_id}/findings/{finding_id}")
@@ -981,9 +1036,10 @@ def triage_finding(
     scan_id: str,
     finding_id: str,
     body: TriageFindingRequest,
+    request: Request,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.finding.update")),
 ):
     """Triage a finding — mark as false positive, accepted risk, confirmed, etc."""
     scan = _get_scan_or_404(db, scan_id, user, org_id)
@@ -1014,6 +1070,23 @@ def triage_finding(
             detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
+    # Accepting a risk is its own authorisation, as it is for network findings
+    # (`findings:accept_risk`, routers/remediation.py). Without the split,
+    # anyone able to edit a finding could clear their own list by accepting
+    # everything on it. The route's own dependency is `findings:update`; only
+    # the body says which status was asked for, so this check lives here.
+    if body.status == "accepted_risk" and not has_permission(
+        db, user, "audit.finding.accept_risk"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Accepting a risk requires the 'audit.finding.accept_risk' permission, "
+                "which your account does not hold."
+            ),
+        )
+
+    previous_status = finding.status
     finding.status = body.status
     finding.updated_at = utcnow()
 
@@ -1026,6 +1099,20 @@ def triage_finding(
         finding.fixed_at = utcnow()
         finding.remediation_notes = body.reason
 
+    log_audit_event(
+        db=db,
+        user=user,
+        action=_TRIAGE_AUDIT_ACTIONS[body.status],
+        resource_type="web_finding",
+        resource_id=finding_id,
+        changes={
+            "web_scan_id": scan_id,
+            "status": {"from": previous_status, "to": body.status},
+            "reason": body.reason,
+        },
+        request=request,
+        org_id=scan.org_id,
+    )
     db.commit()
 
     log.info(
@@ -1045,7 +1132,7 @@ def get_finding_screenshot(
     finding_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.finding.read")),
 ):
     """
     Serve the proof screenshot captured for a finding (Codex item 10), e.g. a
@@ -1087,7 +1174,7 @@ def download_web_scan_report(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Generate and download a PDF report for a completed web scan.
@@ -1194,10 +1281,7 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
             WebScan.id == scan_id,
             WebScan.is_deleted == False,
         )
-        if (
-            getattr(getattr(current_user, "role", None), "name", "").lower()
-            != "superadmin"
-        ):
+        if not acts_across_organisations(current_user):
             query = query.filter(WebScan.org_id == str(current_user.org_id))
         scan = query.first()
 
@@ -1253,7 +1337,7 @@ async def web_scan_progress_ws(websocket: WebSocket, scan_id: str):
         await pubsub.close()
 
 
-def _get_websocket_user(websocket: WebSocket) -> User:
+def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
     ticket = websocket.query_params.get("ticket")
     if not ticket:
         raise HTTPException(
@@ -1268,12 +1352,7 @@ def _get_websocket_user(websocket: WebSocket) -> User:
 
     db = SessionLocal()
     try:
-        user = (
-            db.query(User)
-            .options(joinedload(User.role))
-            .filter(User.id == str(payload["sub"]))
-            .first()
-        )
+        user = db.query(User).filter(User.id == str(payload["sub"])).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
         if getattr(user, "is_deleted", False) or not getattr(user, "is_active", True):
@@ -1342,7 +1421,7 @@ def _normalize_idempotency_key(value: str | None) -> str | None:
 
 def _find_duplicate_web_scan(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     target_url: str,
     idempotency_key: str | None,
@@ -1395,7 +1474,7 @@ def _start_scan_response(
 
 
 def _get_scan_or_404(
-    db: Session, scan_id: str, user: User, org_id: str | None = None
+    db: Session, scan_id: str, user: CurrentUser, org_id: str | None = None
 ) -> WebScan:
     target_org_id = _resolve_org(user, org_id)
     scan = (
@@ -1437,75 +1516,6 @@ def _scan_summary(scan: WebScan) -> dict:
         "started_at": _iso(scan.started_at),
         "completed_at": _iso(scan.completed_at),
     }
-
-
-def _finding_detail(f: WebFinding) -> dict:
-    return {
-        "id": f.id,
-        "finding_type": f.finding_type,
-        "title": f.title,
-        "description": f.description,
-        "severity": f.severity,
-        "cvss_score": f.cvss_score,
-        "cvss_vector": f.cvss_vector,
-        "detected_by": f.detected_by,
-        "template_id": f.template_id,
-        "matched_at": f.matched_at,
-        "request_method": f.request_method,
-        "request_url": f.request_url,
-        "payload_used": f.payload_used,
-        "response_code": f.response_code,
-        # Proof-based evidence (Phase 22, Item 10): the full HTTP request and
-        # response are persisted but were dropped here — a reader could not
-        # answer "which exact request caused this?". They are now exposed, plus
-        # a curl that reproduces the request.
-        "request_headers": f.request_headers,
-        "request_body": f.request_body,
-        "response_headers": f.response_headers,
-        "response_body": f.response_body,
-        "curl_command": f.curl_command or _finding_curl(f),
-        # Proof-based evidence completeness (Codex item 10).
-        "confidence": f.confidence,
-        "auth_context": f.auth_context,
-        "screenshot_path": f.screenshot_path,
-        "owasp_category": f.owasp_category,
-        "compliance_tags": f.compliance_tags,
-        "cve_id": f.cve_id,
-        "cwe_id": f.cwe_id,
-        "remediation": f.remediation,
-        "status": f.status,
-        "is_verified": f.is_verified,
-        "created_at": _iso(f.created_at),
-    }
-
-
-def _finding_curl(f: WebFinding) -> str | None:
-    """A curl command reproducing the finding's request (proof-based evidence).
-
-    Built from the persisted request fields; returns None when there is no
-    request URL to reproduce."""
-    url = f.request_url or f.matched_at
-    if not url:
-        return None
-
-    def _q(s: str) -> str:
-        return "'" + str(s).replace("'", "'\\''") + "'"
-
-    parts = ["curl", "-i", "-X", (f.request_method or "GET").upper()]
-    # request_headers is stored as text; emit it as a single -H when present and
-    # header-shaped, so the reproduction carries auth/content-type the scan used.
-    rh = (f.request_headers or "").strip()
-    if rh and ":" in rh and "\n" not in rh and len(rh) <= 300:
-        parts += ["-H", _q(rh)]
-    if f.request_body and (f.request_method or "").upper() in (
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-    ):
-        parts += ["--data-raw", _q(str(f.request_body)[:2000])]
-    parts.append(_q(url))
-    return " ".join(parts)
 
 
 def _asset_detail(a: WebAsset) -> dict:

@@ -76,7 +76,11 @@ def capture_state(db) -> dict:
     return {
         "database": db.execute(text("SELECT current_database()")).scalar(),
         "alembic_revision": db.execute(
-            text("SELECT version_num FROM alembic_version")
+            # Every head, in order: one row per Alembic branch since Phase 11.3.
+            text(
+                "SELECT string_agg(version_num, ',' ORDER BY version_num) "
+                "FROM alembic_version"
+            )
         ).scalar(),
         "chain_schema": schema,
         "trigger_points_at": db.execute(
@@ -188,7 +192,7 @@ def main() -> int:
         # `alembic_revision` is here rather than in `must_hold` because the
         # documented sequence deliberately applies the guard revision
         # (b8c9d0e1f2a3) after the move, and `start.sh` also runs
-        # `alembic upgrade head` on container restart. Treating it as an
+        # `alembic upgrade heads` on container restart. Treating it as an
         # invariant made this tool report a violation on a database that was
         # entirely correct — a false alarm on the one report that exists to be
         # trusted. It is still printed, so an unexpected revision is visible.

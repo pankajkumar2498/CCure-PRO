@@ -15,12 +15,13 @@ The tests that matter here are the denials and the fail-closed behaviour.
 import ipaddress
 
 import pytest
+from ccure_platform.api import ScanScopeView
+from ccure_platform.plan.scan_scope import normalise_scope
 from core.scan_scope import (
     ScanScopeError,
     enforce_org_scan_scope,
     filter_to_scope,
     is_in_scope,
-    normalise_scope,
     parse_scope,
     scope_for_org,
 )
@@ -29,12 +30,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 
-class _Org:
-    """Minimal stand-in — scope_for_org only reads scan_scope_cidrs and id."""
-
-    def __init__(self, cidrs, id="org_test"):
-        self.scan_scope_cidrs = cidrs
-        self.id = id
+def _Org(cidrs, id="org_test"):
+    """
+    The organisation's scope as the platform reports it (Phase 8.4): ``None``
+    stored is "not configured", a list is the configured ranges.
+    """
+    return ScanScopeView(
+        org_id=id, configured=cidrs is not None, cidrs=tuple(cidrs or ())
+    )
 
 
 # ── Parsing ───────────────────────────────────────────────────────────────────

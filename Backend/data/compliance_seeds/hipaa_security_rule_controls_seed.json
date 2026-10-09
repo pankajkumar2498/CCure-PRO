@@ -1,0 +1,1005 @@
+{
+  "framework": {
+    "code": "HIPAA_SECURITY_RULE",
+    "name": "HIPAA Security Rule (45 CFR Part 164, Subpart C)",
+    "version": "45 CFR 164.308-316",
+    "source": "45 CFR 164.308, 164.310, 164.312, 164.314 and 164.316 and Appendix A to Subpart C (Security Standards Matrix), as published on 28 Sep 2026. US federal regulation, public domain; descriptions carry the regulation's own text.",
+    "total_controls": 65,
+    "themes": [
+      {
+        "code": "HIPAA_ADM",
+        "name": "Administrative safeguards",
+        "section": "164.308"
+      },
+      {
+        "code": "HIPAA_PHY",
+        "name": "Physical safeguards",
+        "section": "164.310"
+      },
+      {
+        "code": "HIPAA_TEC",
+        "name": "Technical safeguards",
+        "section": "164.312"
+      },
+      {
+        "code": "HIPAA_ORG",
+        "name": "Organizational requirements",
+        "section": "164.314"
+      },
+      {
+        "code": "HIPAA_DOC",
+        "name": "Policies, procedures and documentation",
+        "section": "164.316"
+      }
+    ]
+  },
+  "controls": [
+    {
+      "id": "164_308_a_1_i",
+      "control_number": "164.308(a)(1)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Security management process",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(1)(i) Standard: Security management process. Implement policies and procedures to prevent, detect, contain, and correct security violations.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_1_ii_a",
+      "control_number": "164.308(a)(1)(ii)(A)",
+      "theme": "HIPAA_ADM",
+      "title": "Risk analysis",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(1)(ii)(A) Risk analysis (Required). Conduct an accurate and thorough assessment of the potential risks and vulnerabilities to the confidentiality, integrity, and availability of electronic protected health information held by the covered entity or business associate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_1_ii_b",
+      "control_number": "164.308(a)(1)(ii)(B)",
+      "theme": "HIPAA_ADM",
+      "title": "Risk management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(1)(ii)(B) Risk management (Required). Implement security measures sufficient to reduce risks and vulnerabilities to a reasonable and appropriate level to comply with § 164.306(a).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_1_ii_c",
+      "control_number": "164.308(a)(1)(ii)(C)",
+      "theme": "HIPAA_ADM",
+      "title": "Sanction policy",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(1)(ii)(C) Sanction policy (Required). Apply appropriate sanctions against workforce members who fail to comply with the security policies and procedures of the covered entity or business associate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_1_ii_d",
+      "control_number": "164.308(a)(1)(ii)(D)",
+      "theme": "HIPAA_ADM",
+      "title": "Information system activity review",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(1)(ii)(D) Information system activity review (Required). Implement procedures to regularly review records of information system activity, such as audit logs, access reports, and security incident tracking reports.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_2",
+      "control_number": "164.308(a)(2)",
+      "theme": "HIPAA_ADM",
+      "title": "Assigned security responsibility",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(2) Standard: Assigned security responsibility. Identify the security official who is responsible for the development and implementation of the policies and procedures required by this subpart for the covered entity or business associate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_3_i",
+      "control_number": "164.308(a)(3)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Workforce security",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(3)(i) Standard: Workforce security. Implement policies and procedures to ensure that all members of its workforce have appropriate access to electronic protected health information, as provided under paragraph (a)(4) of this section, and to prevent those workforce members who do not have access under paragraph (a)(4) of this section from obtaining access to electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_3_ii_a",
+      "control_number": "164.308(a)(3)(ii)(A)",
+      "theme": "HIPAA_ADM",
+      "title": "Authorization and/or supervision",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(3)(ii)(A) Authorization and/or supervision (Addressable). Implement procedures for the authorization and/or supervision of workforce members who work with electronic protected health information or in locations where it might be accessed.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_3_ii_b",
+      "control_number": "164.308(a)(3)(ii)(B)",
+      "theme": "HIPAA_ADM",
+      "title": "Workforce clearance procedure",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(3)(ii)(B) Workforce clearance procedure (Addressable). Implement procedures to determine that the access of a workforce member to electronic protected health information is appropriate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_3_ii_c",
+      "control_number": "164.308(a)(3)(ii)(C)",
+      "theme": "HIPAA_ADM",
+      "title": "Termination procedures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(3)(ii)(C) Termination procedures (Addressable). Implement procedures for terminating access to electronic protected health information when the employment of, or other arrangement with, a workforce member ends or as required by determinations made as specified in paragraph (a)(3)(ii)(B) of this section.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_4_i",
+      "control_number": "164.308(a)(4)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Information access management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(4)(i) Standard: Information access management. Implement policies and procedures for authorizing access to electronic protected health information that are consistent with the applicable requirements of subpart E of this part.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_4_ii_a",
+      "control_number": "164.308(a)(4)(ii)(A)",
+      "theme": "HIPAA_ADM",
+      "title": "Isolating health care clearinghouse functions",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(4)(ii)(A) Isolating health care clearinghouse functions (Required). If a health care clearinghouse is part of a larger organization, the clearinghouse must implement policies and procedures that protect the electronic protected health information of the clearinghouse from unauthorized access by the larger organization.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_4_ii_b",
+      "control_number": "164.308(a)(4)(ii)(B)",
+      "theme": "HIPAA_ADM",
+      "title": "Access authorization",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(4)(ii)(B) Access authorization (Addressable). Implement policies and procedures for granting access to electronic protected health information, for example, through access to a workstation, transaction, program, process, or other mechanism.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_4_ii_c",
+      "control_number": "164.308(a)(4)(ii)(C)",
+      "theme": "HIPAA_ADM",
+      "title": "Access establishment and modification",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(4)(ii)(C) Access establishment and modification (Addressable). Implement policies and procedures that, based upon the covered entity's or the business associate's access authorization policies, establish, document, review, and modify a user's right of access to a workstation, transaction, program, or process.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_5_i",
+      "control_number": "164.308(a)(5)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Security awareness and training",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(5)(i) Standard: Security awareness and training. Implement a security awareness and training program for all members of its workforce (including management).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_5_ii_a",
+      "control_number": "164.308(a)(5)(ii)(A)",
+      "theme": "HIPAA_ADM",
+      "title": "Security reminders",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(5)(ii)(A) Security reminders (Addressable). Periodic security updates.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_5_ii_b",
+      "control_number": "164.308(a)(5)(ii)(B)",
+      "theme": "HIPAA_ADM",
+      "title": "Protection from malicious software",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(5)(ii)(B) Protection from malicious software (Addressable). Procedures for guarding against, detecting, and reporting malicious software.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_5_ii_c",
+      "control_number": "164.308(a)(5)(ii)(C)",
+      "theme": "HIPAA_ADM",
+      "title": "Log-in monitoring",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(5)(ii)(C) Log-in monitoring (Addressable). Procedures for monitoring log-in attempts and reporting discrepancies.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_5_ii_d",
+      "control_number": "164.308(a)(5)(ii)(D)",
+      "theme": "HIPAA_ADM",
+      "title": "Password management",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(5)(ii)(D) Password management (Addressable). Procedures for creating, changing, and safeguarding passwords.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_6_i",
+      "control_number": "164.308(a)(6)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Security incident procedures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(6)(i) Standard: Security incident procedures. Implement policies and procedures to address security incidents.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_6_ii",
+      "control_number": "164.308(a)(6)(ii)",
+      "theme": "HIPAA_ADM",
+      "title": "Response and reporting",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(6)(ii) Implementation specification: Response and reporting (Required). Identify and respond to suspected or known security incidents; mitigate, to the extent practicable, harmful effects of security incidents that are known to the covered entity or business associate; and document security incidents and their outcomes.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_7_i",
+      "control_number": "164.308(a)(7)(i)",
+      "theme": "HIPAA_ADM",
+      "title": "Contingency plan",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(i) Standard: Contingency plan. Establish (and implement as needed) policies and procedures for responding to an emergency or other occurrence (for example, fire, vandalism, system failure, and natural disaster) that damages systems that contain electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_a_7_ii_a",
+      "control_number": "164.308(a)(7)(ii)(A)",
+      "theme": "HIPAA_ADM",
+      "title": "Data backup plan",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(ii)(A) Data backup plan (Required). Establish and implement procedures to create and maintain retrievable exact copies of electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_7_ii_b",
+      "control_number": "164.308(a)(7)(ii)(B)",
+      "theme": "HIPAA_ADM",
+      "title": "Disaster recovery plan",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(ii)(B) Disaster recovery plan (Required). Establish (and implement as needed) procedures to restore any loss of data.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_7_ii_c",
+      "control_number": "164.308(a)(7)(ii)(C)",
+      "theme": "HIPAA_ADM",
+      "title": "Emergency mode operation plan",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(ii)(C) Emergency mode operation plan (Required). Establish (and implement as needed) procedures to enable continuation of critical business processes for protection of the security of electronic protected health information while operating in emergency mode.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_a_7_ii_d",
+      "control_number": "164.308(a)(7)(ii)(D)",
+      "theme": "HIPAA_ADM",
+      "title": "Testing and revision procedures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(ii)(D) Testing and revision procedures (Addressable). Implement procedures for periodic testing and revision of contingency plans.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_7_ii_e",
+      "control_number": "164.308(a)(7)(ii)(E)",
+      "theme": "HIPAA_ADM",
+      "title": "Applications and data criticality analysis",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(7)(ii)(E) Applications and data criticality analysis (Addressable). Assess the relative criticality of specific applications and data in support of other contingency plan components.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_308_a_8",
+      "control_number": "164.308(a)(8)",
+      "theme": "HIPAA_ADM",
+      "title": "Evaluation",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(a)(8) Standard: Evaluation. Perform a periodic technical and nontechnical evaluation, based initially upon the standards implemented under this rule and, subsequently, in response to environmental or operational changes affecting the security of electronic protected health information, that establishes the extent to which a covered entity's or business associate's security policies and procedures meet the requirements of this subpart.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_308_b_1",
+      "control_number": "164.308(b)(1)",
+      "theme": "HIPAA_ADM",
+      "title": "Business associate contracts and other arrangements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(b)(1) Business associate contracts and other arrangements. A covered entity may permit a business associate to create, receive, maintain, or transmit electronic protected health information on the covered entity's behalf only if the covered entity obtains satisfactory assurances, in accordance with § 164.314(a), that the business associate will appropriately safeguard the information. A covered entity is not required to obtain such satisfactory assurances from a business associate that is a subcontractor.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_308_b_3",
+      "control_number": "164.308(b)(3)",
+      "theme": "HIPAA_ADM",
+      "title": "Written contract or other arrangement",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.308(b)(3) Implementation specifications: Written contract or other arrangement (Required). Document the satisfactory assurances required by paragraph (b)(1) or (b)(2) of this section through a written contract or other arrangement with the business associate that meets the applicable requirements of § 164.314(a).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_310_a_1",
+      "control_number": "164.310(a)(1)",
+      "theme": "HIPAA_PHY",
+      "title": "Facility access controls",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(a)(1) Standard: Facility access controls. Implement policies and procedures to limit physical access to its electronic information systems and the facility or facilities in which they are housed, while ensuring that properly authorized access is allowed.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_310_a_2_i",
+      "control_number": "164.310(a)(2)(i)",
+      "theme": "HIPAA_PHY",
+      "title": "Contingency operations",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(a)(2)(i) Contingency operations (Addressable). Establish (and implement as needed) procedures that allow facility access in support of restoration of lost data under the disaster recovery plan and emergency mode operations plan in the event of an emergency.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_310_a_2_ii",
+      "control_number": "164.310(a)(2)(ii)",
+      "theme": "HIPAA_PHY",
+      "title": "Facility security plan",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(a)(2)(ii) Facility security plan (Addressable). Implement policies and procedures to safeguard the facility and the equipment therein from unauthorized physical access, tampering, and theft.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_310_a_2_iii",
+      "control_number": "164.310(a)(2)(iii)",
+      "theme": "HIPAA_PHY",
+      "title": "Access control and validation procedures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(a)(2)(iii) Access control and validation procedures (Addressable). Implement procedures to control and validate a person's access to facilities based on their role or function, including visitor control, and control of access to software programs for testing and revision.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_310_a_2_iv",
+      "control_number": "164.310(a)(2)(iv)",
+      "theme": "HIPAA_PHY",
+      "title": "Maintenance records",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(a)(2)(iv) Maintenance records (Addressable). Implement policies and procedures to document repairs and modifications to the physical components of a facility which are related to security (for example, hardware, walls, doors, and locks).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_310_b",
+      "control_number": "164.310(b)",
+      "theme": "HIPAA_PHY",
+      "title": "Workstation use",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(b) Standard: Workstation use. Implement policies and procedures that specify the proper functions to be performed, the manner in which those functions are to be performed, and the physical attributes of the surroundings of a specific workstation or class of workstation that can access electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_310_c",
+      "control_number": "164.310(c)",
+      "theme": "HIPAA_PHY",
+      "title": "Workstation security",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(c) Standard: Workstation security. Implement physical safeguards for all workstations that access electronic protected health information, to restrict access to authorized users.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_310_d_1",
+      "control_number": "164.310(d)(1)",
+      "theme": "HIPAA_PHY",
+      "title": "Device and media controls",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(d)(1) Standard: Device and media controls. Implement policies and procedures that govern the receipt and removal of hardware and electronic media that contain electronic protected health information into and out of a facility, and the movement of these items within the facility.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_310_d_2_i",
+      "control_number": "164.310(d)(2)(i)",
+      "theme": "HIPAA_PHY",
+      "title": "Disposal",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(d)(2)(i) Disposal (Required). Implement policies and procedures to address the final disposition of electronic protected health information, and/or the hardware or electronic media on which it is stored.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_310_d_2_ii",
+      "control_number": "164.310(d)(2)(ii)",
+      "theme": "HIPAA_PHY",
+      "title": "Media re-use",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(d)(2)(ii) Media re-use (Required). Implement procedures for removal of electronic protected health information from electronic media before the media are made available for re-use.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_310_d_2_iii",
+      "control_number": "164.310(d)(2)(iii)",
+      "theme": "HIPAA_PHY",
+      "title": "Accountability",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(d)(2)(iii) Accountability (Addressable). Maintain a record of the movements of hardware and electronic media and any person responsible therefore.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_310_d_2_iv",
+      "control_number": "164.310(d)(2)(iv)",
+      "theme": "HIPAA_PHY",
+      "title": "Data backup and storage",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.310(d)(2)(iv) Data backup and storage (Addressable). Create a retrievable, exact copy of electronic protected health information, when needed, before movement of equipment.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_312_a_1",
+      "control_number": "164.312(a)(1)",
+      "theme": "HIPAA_TEC",
+      "title": "Access control",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(a)(1) Standard: Access control. Implement technical policies and procedures for electronic information systems that maintain electronic protected health information to allow access only to those persons or software programs that have been granted access rights as specified in § 164.308(a)(4).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_312_a_2_i",
+      "control_number": "164.312(a)(2)(i)",
+      "theme": "HIPAA_TEC",
+      "title": "Unique user identification",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(a)(2)(i) Unique user identification (Required). Assign a unique name and/or number for identifying and tracking user identity.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_312_a_2_ii",
+      "control_number": "164.312(a)(2)(ii)",
+      "theme": "HIPAA_TEC",
+      "title": "Emergency access procedure",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(a)(2)(ii) Emergency access procedure (Required). Establish (and implement as needed) procedures for obtaining necessary electronic protected health information during an emergency.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_312_a_2_iii",
+      "control_number": "164.312(a)(2)(iii)",
+      "theme": "HIPAA_TEC",
+      "title": "Automatic logoff",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(a)(2)(iii) Automatic logoff (Addressable). Implement electronic procedures that terminate an electronic session after a predetermined time of inactivity.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_312_a_2_iv",
+      "control_number": "164.312(a)(2)(iv)",
+      "theme": "HIPAA_TEC",
+      "title": "Encryption and decryption",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(a)(2)(iv) Encryption and decryption (Addressable). Implement a mechanism to encrypt and decrypt electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_312_b",
+      "control_number": "164.312(b)",
+      "theme": "HIPAA_TEC",
+      "title": "Audit controls",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(b) Standard: Audit controls. Implement hardware, software, and/or procedural mechanisms that record and examine activity in information systems that contain or use electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_312_c_1",
+      "control_number": "164.312(c)(1)",
+      "theme": "HIPAA_TEC",
+      "title": "Integrity",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(c)(1) Standard: Integrity. Implement policies and procedures to protect electronic protected health information from improper alteration or destruction.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_312_c_2",
+      "control_number": "164.312(c)(2)",
+      "theme": "HIPAA_TEC",
+      "title": "Mechanism to authenticate electronic protected health information",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(c)(2) Implementation specification: Mechanism to authenticate electronic protected health information (Addressable). Implement electronic mechanisms to corroborate that electronic protected health information has not been altered or destroyed in an unauthorized manner.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_312_d",
+      "control_number": "164.312(d)",
+      "theme": "HIPAA_TEC",
+      "title": "Person or entity authentication",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(d) Standard: Person or entity authentication. Implement procedures to verify that a person or entity seeking access to electronic protected health information is the one claimed.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_312_e_1",
+      "control_number": "164.312(e)(1)",
+      "theme": "HIPAA_TEC",
+      "title": "Transmission security",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(e)(1) Standard: Transmission security. Implement technical security measures to guard against unauthorized access to electronic protected health information that is being transmitted over an electronic communications network.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_312_e_2_i",
+      "control_number": "164.312(e)(2)(i)",
+      "theme": "HIPAA_TEC",
+      "title": "Integrity controls",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(e)(2)(i) Integrity controls (Addressable). Implement security measures to ensure that electronically transmitted electronic protected health information is not improperly modified without detection until disposed of.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_312_e_2_ii",
+      "control_number": "164.312(e)(2)(ii)",
+      "theme": "HIPAA_TEC",
+      "title": "Encryption",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.312(e)(2)(ii) Encryption (Addressable). Implement a mechanism to encrypt electronic protected health information whenever deemed appropriate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "addressable"
+      ]
+    },
+    {
+      "id": "164_314_a_1",
+      "control_number": "164.314(a)(1)",
+      "theme": "HIPAA_ORG",
+      "title": "Business associate contracts or other arrangements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(a)(1) Standard: Business associate contracts or other arrangements. The contract or other arrangement required by § 164.308(b)(3) must meet the requirements of paragraph (a)(2)(i), (a)(2)(ii), or (a)(2)(iii) of this section, as applicable.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_314_a_2_i",
+      "control_number": "164.314(a)(2)(i)",
+      "theme": "HIPAA_ORG",
+      "title": "Business associate contracts",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(a)(2)(i) Business associate contracts. The contract must provide that the business associate will— (A) Comply with the applicable requirements of this subpart; (B) In accordance with § 164.308(b)(2), ensure that any subcontractors that create, receive, maintain, or transmit electronic protected health information on behalf of the business associate agree to comply with the applicable requirements of this subpart by entering into a contract or other arrangement that complies with this section; and (C) Report to the covered entity any security incident of which it becomes aware, including breaches of unsecured protected health information as required by § 164.410.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_314_a_2_ii",
+      "control_number": "164.314(a)(2)(ii)",
+      "theme": "HIPAA_ORG",
+      "title": "Other arrangements",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(a)(2)(ii) Other arrangements. The covered entity is in compliance with paragraph (a)(1) of this section if it has another arrangement in place that meets the requirements of § 164.504(e)(3).",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_314_a_2_iii",
+      "control_number": "164.314(a)(2)(iii)",
+      "theme": "HIPAA_ORG",
+      "title": "Business associate contracts with subcontractors",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(a)(2)(iii) Business associate contracts with subcontractors. The requirements of paragraphs (a)(2)(i) and (a)(2)(ii) of this section apply to the contract or other arrangement between a business associate and a subcontractor required by § 164.308(b)(4) in the same manner as such requirements apply to contracts or other arrangements between a covered entity and business associate.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_314_b_1",
+      "control_number": "164.314(b)(1)",
+      "theme": "HIPAA_ORG",
+      "title": "Requirements for group health plans",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(b)(1) Standard: Requirements for group health plans. Except when the only electronic protected health information disclosed to a plan sponsor is disclosed pursuant to § 164.504(f)(1)(ii) or (iii), or as authorized under § 164.508, a group health plan must ensure that its plan documents provide that the plan sponsor will reasonably and appropriately safeguard electronic protected health information created, received, maintained, or transmitted to or by the plan sponsor on behalf of the group health plan.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_314_b_2",
+      "control_number": "164.314(b)(2)",
+      "theme": "HIPAA_ORG",
+      "title": "Group health plan documents",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.314(b)(2) Implementation specifications (Required). The plan documents of the group health plan must be amended to incorporate provisions to require the plan sponsor to— (i) Implement administrative, physical, and technical safeguards that reasonably and appropriately protect the confidentiality, integrity, and availability of the electronic protected health information that it creates, receives, maintains, or transmits on behalf of the group health plan; (ii) Ensure that the adequate separation required by § 164.504(f)(2)(iii) is supported by reasonable and appropriate security measures; (iii) Ensure that any agent to whom it provides this information agrees to implement reasonable and appropriate security measures to protect the information; and (iv) Report to the group health plan any security incident of which it becomes aware.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_316_a",
+      "control_number": "164.316(a)",
+      "theme": "HIPAA_DOC",
+      "title": "Policies and procedures",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.316(a) Standard: Policies and procedures. Implement reasonable and appropriate policies and procedures to comply with the standards, implementation specifications, or other requirements of this subpart, taking into account those factors specified in § 164.306(b)(2)(i), (ii), (iii), and (iv). This standard is not to be construed to permit or excuse an action that violates any other standard, implementation specification, or other requirements of this subpart. A covered entity or business associate may change its policies and procedures at any time, provided that the changes are documented and are implemented in accordance with this subpart.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard",
+        "required"
+      ]
+    },
+    {
+      "id": "164_316_b_1",
+      "control_number": "164.316(b)(1)",
+      "theme": "HIPAA_DOC",
+      "title": "Documentation",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.316(b)(1) Standard: Documentation. (i) Maintain the policies and procedures implemented to comply with this subpart in written (which may be electronic) form; and (ii) If an action, activity or assessment is required by this subpart to be documented, maintain a written (which may be electronic) record of the action, activity, or assessment.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "standard"
+      ]
+    },
+    {
+      "id": "164_316_b_2_i",
+      "control_number": "164.316(b)(2)(i)",
+      "theme": "HIPAA_DOC",
+      "title": "Time limit",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.316(b)(2)(i) Time limit (Required). Retain the documentation required by paragraph (b)(1) of this section for 6 years from the date of its creation or the date when it last was in effect, whichever is later.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_316_b_2_ii",
+      "control_number": "164.316(b)(2)(ii)",
+      "theme": "HIPAA_DOC",
+      "title": "Availability",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.316(b)(2)(ii) Availability (Required). Make documentation available to those persons responsible for implementing the procedures to which the documentation pertains.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    },
+    {
+      "id": "164_316_b_2_iii",
+      "control_number": "164.316(b)(2)(iii)",
+      "theme": "HIPAA_DOC",
+      "title": "Updates",
+      "scannability": "manual",
+      "scan_module_hint": null,
+      "description": "45 CFR 164.316(b)(2)(iii) Updates (Required). Review documentation periodically, and update as needed, in response to environmental or operational changes affecting the security of the electronic protected health information.",
+      "evidence_checklist": [],
+      "crosswalk": [],
+      "tags": [
+        "implementation_specification",
+        "required"
+      ]
+    }
+  ],
+  "summary_counts": {
+    "standards": 22,
+    "implementation_specifications": 43,
+    "required": 28,
+    "addressable": 22,
+    "total": 65
+  }
+}

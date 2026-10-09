@@ -3,7 +3,17 @@ core/quota.py
 ─────────────────────────────────────────────────────────────────────────────
 Per-Organisation Scan Quota & Rate-Limit Enforcement
 
-Plan tiers and their hard limits
+**The Audit seam of the scan-limits plan feature (Phase 8.4).** The limits
+belong to the organisation's plan, which is platform-owned
+(``ccure_platform.plan.scan_limits``, reached through ``ccure_platform.api``).
+What is Audit's is here: counting this organisation's own scans against those
+limits and refusing with a message. This module is the only Audit code that
+asks the platform for scan limits
+(``tests/repo/test_plan_feature_containment.py``), so removing quota is this
+module, its callers' calls into it, and the platform feature — nothing in the
+scan pipeline.
+
+Plan tiers and their hard limits (defined in ccure_platform.plan.scan_limits)
 ─────────────────────────────────
   community  →  5  scans/day,  /24  max target  (254 IPs)
   pro        →  50 scans/day,  /16  max target  (65 534 IPs)
@@ -32,6 +42,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+from ccure_platform import api as platform_api
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -39,22 +50,28 @@ log = logging.getLogger("ccure.quota")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Plan definitions
+# The plan's limits — asked of the platform, never read from the organisation row
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PLAN_LIMITS = {
-    # plan         max_scans_per_day  max_concurrent  max_prefix  max_ips_per_scan  max_ports
-    "community": (5, 1, 24, 254, 100),
-    "pro": (50, 5, 16, 65_534, 1000),
-    "enterprise": (None, 20, 8, 16_777_214, 65535),
-}
 
-_DEFAULT_PLAN = "community"
+def effective_scan_limits(db: Session, org_id: str):
+    """The organisation's limits as admission enforces them (overrides applied)."""
+    return platform_api.scan_limits(db, org_id)
 
 
-def _limits(plan: str) -> tuple:
-    """Return (max_day, max_concurrent, max_prefix, max_ips, max_ports) for a plan."""
-    return _PLAN_LIMITS.get((plan or "").lower(), _PLAN_LIMITS[_DEFAULT_PLAN])
+def displayed_scan_limits(db: Session, org_id: str) -> tuple:
+    """
+    ``(plan, max_scans_per_day, max_concurrent_scans)`` as the dashboard shows
+    them: the plan's own figures, without the per-organisation overrides that
+    admission applies. That difference is finding F2 of the Phase 8.4 design,
+    kept exactly as it was until it is decided.
+    """
+    limits = platform_api.scan_limits(db, org_id)
+    return (
+        limits.plan,
+        limits.plan_defaults.scans_per_day,
+        limits.plan_defaults.concurrent_scans,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,19 +167,6 @@ def _running_scans(db: Session, org_id: str) -> int:
     )
 
 
-def _get_org(db: Session, org_id: str):
-    """Return the Organisation ORM row (or None)."""
-    from db.models.rbac import Organization
-
-    return db.query(Organization).filter(Organization.id == org_id).first()
-
-
-def _get_org_plan(db: Session, org_id: str) -> str:
-    """Return the plan string for the organisation."""
-    org = _get_org(db, org_id)
-    return (org.plan or _DEFAULT_PLAN) if org else _DEFAULT_PLAN
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,15 +201,14 @@ def check_scan_quota(
         HTTPException 400 — target subnet exceeds plan limit or custom ports limit.
         HTTPException 429 — concurrent or daily quota exceeded.
     """
-    org = _get_org(db, org_id)
-    plan = (org.plan or _DEFAULT_PLAN) if org else _DEFAULT_PLAN
-    max_day, max_concurrent, max_prefix, max_ips, max_ports = _limits(plan)
-
-    # Per-org overrides (superadmin can raise/lower limits per org)
-    if org and getattr(org, "max_scans_per_day", None) is not None:
-        max_day = org.max_scans_per_day
-    if org and getattr(org, "max_concurrent_scans", None) is not None:
-        max_concurrent = org.max_concurrent_scans
+    # The plan's limits with any per-organisation override a superadmin set.
+    limits = effective_scan_limits(db, org_id)
+    plan = limits.plan
+    max_day = limits.effective.scans_per_day
+    max_concurrent = limits.effective.concurrent_scans
+    max_prefix = limits.effective.largest_subnet_prefix
+    max_ips = limits.effective.ips_per_scan
+    max_ports = limits.effective.custom_ports
 
     # ── 1b. Custom Ports limit check ──────────────────────────────────────────
     if custom_ports:
@@ -308,8 +311,14 @@ def get_quota_status(db: Session, org_id: str) -> dict:
         }
     """
     try:
-        plan = _get_org_plan(db, org_id)
-        max_day, max_concurrent, max_prefix, max_ips, max_ports = _limits(plan)
+        # The plan's own figures, not the overrides admission applies (F2).
+        limits = platform_api.scan_limits(db, org_id)
+        plan = limits.plan
+        max_day = limits.plan_defaults.scans_per_day
+        max_concurrent = limits.plan_defaults.concurrent_scans
+        max_prefix = limits.plan_defaults.largest_subnet_prefix
+        max_ips = limits.plan_defaults.ips_per_scan
+        max_ports = limits.plan_defaults.custom_ports
 
         used_day = _scans_in_last_24h(db, org_id)
         running = _running_scans(db, org_id)

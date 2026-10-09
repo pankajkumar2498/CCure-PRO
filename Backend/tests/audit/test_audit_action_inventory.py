@@ -19,11 +19,13 @@ thing. A static walk over the call sites is the only thing that catches them.
 import ast
 import re
 
-from core.audit_taxonomy import SEVERITY_BY_ACTION
+from core.audit_taxonomy import all_severities
 from testpaths import BACKEND_ROOT
 
 #: Directories that legitimately call log_audit_event.
-_SOURCE_DIRS = ("routers", "auth", "scans", "core")
+# ccure_platform and ccure_audit since the backend alignment moved the platform's
+# routers there; the audit-log's own modules are walked with them.
+_SOURCE_DIRS = ("routers", "auth", "scans", "core", "ccure_platform", "ccure_audit")
 
 #: Positional index of each parameter in log_audit_event's signature.
 #: (db, user, action, resource_type, resource_id, changes, request, status)
@@ -132,18 +134,18 @@ def test_every_literal_action_is_classified():
     (`scan.{status}`, `finding_{status}`) cannot be resolved statically and are
     covered by the enumerated-variant test below instead.
     """
-    unmapped = sorted(_literal_actions() - set(SEVERITY_BY_ACTION))
+    unmapped = sorted(_literal_actions() - set(all_severities()))
     assert not unmapped, (
-        "actions emitted by a router but absent from SEVERITY_BY_ACTION:\n  - "
+        "actions emitted by a router but absent from every module's event definitions:\n  - "
         + "\n  - ".join(unmapped)
     )
 
 
 def test_dynamic_action_variants_are_classified():
     """
-    Three call sites build the action from a variable: `scan.{status}`,
-    `finding_{body.status}` and the `approve_remediation`/`approve_rollback`
-    label. Their possible values cannot be read statically, so they are pinned
+    Four call sites build the action from a variable: `scan.{status}`,
+    `finding_{body.status}`, the `approve_remediation`/`approve_rollback`
+    label, and the web-finding triage lookup `_TRIAGE_AUDIT_ACTIONS`. Their possible values cannot be read statically, so they are pinned
     here — a new scan state or finding state must be classified too.
     """
     expected = {
@@ -158,8 +160,15 @@ def test_dynamic_action_variants_are_classified():
         "finding_ignored",
         "approve_remediation",
         "approve_rollback",
+        # routers/web_scans.py `_TRIAGE_AUDIT_ACTIONS`, one per triage status
+        "web_finding.open",
+        "web_finding.confirmed",
+        "web_finding.false_positive",
+        "web_finding.accepted_risk",
+        "web_finding.fixed",
+        "web_finding.reopened",
     }
-    missing = sorted(expected - set(SEVERITY_BY_ACTION))
+    missing = sorted(expected - set(all_severities()))
     assert not missing, f"dynamic action variants not classified: {missing}"
 
 

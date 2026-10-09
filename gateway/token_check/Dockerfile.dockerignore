@@ -1,0 +1,11 @@
+# Allow-list: everything is excluded unless named below.
+*
+!gateway/token_check/requirements.txt
+!gateway/token_check/__init__.py
+!gateway/token_check/config.py
+!gateway/token_check/jwks.py
+!gateway/token_check/checker.py
+!gateway/token_check/app.py
+!Backend/ccure_platform/__init__.py
+!Backend/ccure_platform/identity/__init__.py
+!Backend/ccure_platform/identity/verification.py

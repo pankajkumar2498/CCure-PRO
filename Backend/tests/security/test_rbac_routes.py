@@ -29,6 +29,16 @@ PUBLIC_ROUTE_WHITELIST = {
     # control in a comment without a test that fails when it goes away.
     "/auth/verify-email",
     "/auth/resend-verification",
+    # The token-verification public keys (Phase 9.3). Public by design: a
+    # verifier must be able to fetch them before it can check any token. It
+    # serves public key material only, which tests/auth/test_token_keys.py
+    # asserts, and its rate limit is asserted there too.
+    "/auth/jwks.json",
+    # Service identities (Phase 9.5). Unauthenticated in the FastAPI sense
+    # because the caller is a service proving itself with a signed assertion,
+    # which the route verifies; rate-limited, and covered by
+    # tests/auth/test_service_identity.py.
+    "/auth/service-token",
     "/docs",
     "/redoc",
     "/openapi.json",

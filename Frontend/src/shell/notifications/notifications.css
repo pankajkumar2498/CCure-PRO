@@ -1,0 +1,354 @@
+/* src/shell/notifications/notifications.css — the notification bell and panel.
+   Moved from Audit's app-shell.css with the component (Phase 12
+   navigation refactor); rules unchanged, class names unchanged. */
+
+/* ── Notifications panel ─────────────────────────────────────────────────── */
+.shn-bell-btn {
+  position: relative;
+}
+
+.shn-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 3px;
+  background: var(--ccure-danger-solid);
+  color: var(--ccure-text-inverse);
+  border-radius: var(--ccure-radius-full);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shn-panel,
+.shh-panel {
+  width: 23.75rem;
+  max-width: calc(100vw - 2 * var(--ccure-space-md));
+  background: var(--ccure-surface);
+  border-radius: var(--ccure-radius-lg);
+  box-shadow: var(--ccure-shadow-xl);
+  border: 1px solid var(--ccure-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ccure-text);
+}
+
+.shn-panel {
+  height: 30rem;
+}
+
+.shh-panel {
+  max-height: 33.75rem;
+}
+
+.shn-panel:focus,
+.shh-panel:focus,
+.shs-drawer:focus {
+  outline: none;
+}
+
+.shn-header,
+.shh-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  border-bottom: 1px solid var(--ccure-border);
+}
+
+.shn-header-left,
+.shh-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  font-weight: var(--ccure-weight-semibold);
+  font-size: var(--ccure-text-base);
+}
+
+.shn-header-badge {
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  background: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+  border-radius: var(--ccure-radius-full);
+  padding: 0 var(--ccure-space-2xs);
+}
+
+.shn-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ccure-space-2xs);
+}
+
+.shn-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  background: none;
+  border: none;
+  color: var(--ccure-text-link);
+  font-family: var(--ccure-font);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-medium);
+  cursor: pointer;
+  padding: var(--ccure-space-3xs) var(--ccure-space-2xs);
+  border-radius: var(--ccure-radius-sm);
+}
+
+.shn-text-btn:hover {
+  text-decoration: underline;
+}
+
+.shn-close,
+.shh-close {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ccure-radius-full);
+  border: none;
+  background: none;
+  color: var(--ccure-text-secondary);
+  cursor: pointer;
+}
+
+.shn-close:hover,
+.shh-close:hover {
+  background: var(--ccure-surface-hover);
+  color: var(--ccure-text);
+}
+
+.shn-close:focus-visible,
+.shh-close:focus-visible,
+.shn-text-btn:focus-visible,
+.shn-action-btn:focus-visible,
+.shh-faq-q:focus-visible,
+.shh-link-card:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.shn-tabs,
+.shh-tabs {
+  padding: 0 var(--ccure-space-sm);
+}
+
+.shn-body,
+.shh-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.shh-body {
+  padding: var(--ccure-space-md);
+}
+
+.shn-error {
+  margin: var(--ccure-space-sm) var(--ccure-space-md);
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  background: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+  border: 1px solid var(--ccure-danger-border);
+  border-radius: var(--ccure-radius-sm);
+  font-size: var(--ccure-text-sm);
+}
+
+.shn-loading {
+  display: grid;
+  place-items: center;
+  padding: var(--ccure-space-2xl);
+}
+
+.shn-empty {
+  text-align: center;
+  padding: var(--ccure-space-2xl) var(--ccure-space-md);
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+}
+
+.shn-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-sm) var(--ccure-space-md);
+  position: relative;
+  border-bottom: 1px solid var(--ccure-border-subtle);
+  transition: background var(--ccure-duration-fast) var(--ccure-ease);
+}
+
+.shn-item:last-child {
+  border-bottom: none;
+}
+
+.shn-item:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.shn-item--unread {
+  background: var(--ccure-primary-soft);
+}
+
+.shn-item--unread::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ccure-primary);
+}
+
+.shn-item-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--ccure-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--ccure-text-lg);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.shn-item-icon--success {
+  background: var(--ccure-success-bg);
+  color: var(--ccure-success-text);
+}
+.shn-item-icon--danger {
+  background: var(--ccure-danger-bg);
+  color: var(--ccure-danger-text);
+}
+.shn-item-icon--warning {
+  background: var(--ccure-warning-bg);
+  color: var(--ccure-warning-text);
+}
+.shn-item-icon--info {
+  background: var(--ccure-info-bg);
+  color: var(--ccure-info-text);
+}
+.shn-item-icon--primary {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+}
+.shn-item-icon--neutral {
+  background: var(--ccure-surface-sunken);
+  color: var(--ccure-text-secondary);
+}
+
+.shn-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.shn-item-title {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+}
+
+.shn-item-msg {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.shn-item-time {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  margin-top: var(--ccure-space-3xs);
+}
+
+.shn-item-actions {
+  display: flex;
+  gap: var(--ccure-space-3xs);
+  flex: none;
+}
+
+.shn-action-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--ccure-radius-sm);
+  border: none;
+  background: none;
+  color: var(--ccure-text-secondary);
+  cursor: pointer;
+}
+
+.shn-action-btn:hover {
+  background: var(--ccure-surface-sunken);
+  color: var(--ccure-text);
+}
+
+.shn-action-btn--delete:hover {
+  color: var(--ccure-danger-text);
+}
+
+/* Rich notification content is a shared Card disclosure, not an action menu. */
+.shn-panel.cc-card {
+  max-height: min(30rem, calc(100dvh - var(--ccure-header-height) - 2rem));
+}
+.shn-panel > .cc-card__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.shn-panel .shn-header {
+  flex: none;
+  flex-wrap: wrap;
+}
+.shn-panel .shn-header-actions {
+  flex-wrap: wrap;
+}
+.shn-panel .shn-tabs {
+  flex: none;
+}
+.shn-badge.cc-badge {
+  padding: 0 3px;
+  min-width: 1rem;
+  height: 1rem;
+}
+.shn-item-actions {
+  flex-wrap: wrap;
+  width: 2rem;
+}
+
+.shn-item-content {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  gap: var(--ccure-space-xs);
+}
+.shn-item-content.cc-btn {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  white-space: normal;
+}
+.shn-item-content.cc-btn > span {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  gap: var(--ccure-space-xs);
+  min-width: 0;
+}
+.shn-item-body,
+.shn-item-title,
+.shn-item-msg,
+.shn-item-time {
+  display: block;
+}
+.shn-item-title {
+  overflow-wrap: anywhere;
+}

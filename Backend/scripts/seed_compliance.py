@@ -21,6 +21,48 @@ from db.base import SessionLocal
 from db.models.compliance import ComplianceControl, ComplianceFramework
 
 
+#: Catalogues whose seed ``control_number`` is honoured. See ``_control_number``.
+#:
+#: CERT-In, NIS 2 and NIST SP 800-53 also carry a ``control_number`` that
+#: differs from their ``id`` (``CERT-IR-01`` against ``cert_in_ir_1``,
+#: ``NIS2-Art20-01`` against ``gov_01``, ``AC-1`` against ``ac-1``), and their
+#: stored numbers are the ids — the same defect. They are deliberately not in
+#: this set: their stored numbers feed crosswalk resolution and rule seeding
+#: for three parked catalogues, and changing them needs its own verification
+#: rather than riding along with a change for two others.
+EXPLICIT_NUMBER_FRAMEWORKS = frozenset(
+    {"cfw_iso27001_2022", "cfw_hipaa_security_rule", "cfw_pci_dss_v4"}
+)
+
+
+def _control_number(framework_id: str, ctrl: dict) -> str:
+    """
+    The identifier the control is published under — what a report prints and
+    what another module names the control by (the contract's ``control_id``).
+
+    For the catalogues in ``EXPLICIT_NUMBER_FRAMEWORKS`` an explicit
+    ``control_number`` in the seed wins. Otherwise the seed's ``id`` is used,
+    and ISO/IEC 27001 ids gain the ``A.`` of Annex A.
+
+    The explicit field exists because ``id`` doubles as the row-id suffix and
+    cannot always be the published number:
+
+    * PCI DSS ids are ``pci_10_1_1``; storing that as the number published an
+      internal key where the standard's ``10.1.1`` belonged.
+    * ISO/IEC 27001's management-system clauses (4.1 … 10.2) share numbers with
+      Annex A (clause 5.1 against control A.5.1), so their ids must differ
+      (``clause_5.1``) while their published number stays ``5.1`` — never
+      ``A.5.1``, which the implicit prefix would make it.
+    """
+    explicit = ctrl.get("control_number")
+    if explicit and framework_id in EXPLICIT_NUMBER_FRAMEWORKS:
+        return str(explicit)
+    raw_num = str(ctrl["id"])
+    if framework_id == "cfw_iso27001_2022" and not raw_num.startswith("A."):
+        return f"A.{raw_num}"
+    return raw_num
+
+
 def seed_framework_and_controls(db: Session, seed_file_path: str):
     """Parses the JSON seed file and upserts records into PostgreSQL."""
     if not os.path.exists(seed_file_path):
@@ -51,6 +93,11 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
         db.add(framework)
         print(f"Seeding framework: {fw_data['name']} ({framework_id})")
     else:
+        # Name and version follow the seed. They used to be written on creation
+        # only, so a catalogue moving to a new edition (PCI DSS 4.0 → 4.0.1)
+        # kept announcing the old one for ever.
+        framework.name = fw_data["name"]
+        framework.version = fw_data["version"]
         print(f"Framework {framework_id} already exists. Synchronizing controls...")
 
     db.flush()
@@ -59,11 +106,7 @@ def seed_framework_and_controls(db: Session, seed_file_path: str):
     controls_seeded = 0
     for ctrl in data["controls"]:
         raw_num = str(ctrl["id"])
-        ctrl_num = (
-            f"A.{raw_num}"
-            if (framework_id == "cfw_iso27001_2022" and not raw_num.startswith("A."))
-            else raw_num
-        )
+        ctrl_num = _control_number(framework_id, ctrl)
         control_id = f"cct_{fw_data['code'].lower()}_{raw_num.lower().replace('.', '_').replace('-', '_')}"
         control = (
             db.query(ComplianceControl)

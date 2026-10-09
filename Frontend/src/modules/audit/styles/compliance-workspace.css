@@ -1,0 +1,227 @@
+/* ============================================================================
+   Compliance workspace — the page shell
+   ----------------------------------------------------------------------------
+   Batch 32. The header, its framework and filter selects, the tab bar, the
+   error banner and the loading bar drew themselves with fifty-four inline
+   style objects, dashboard.css (.db-page, .db-page-header, .db-btn, .db-alert)
+   and compliance.css (.cw-pagination-select, .loading-bar). The header's
+   choices are CcureSelects, its actions CcureButtons, the tab bar is
+   CcureTabs with one CcureTabPanel, the banner a CcureAlert, the loading bar
+   a CcureProgress and the dialog container CcureModal; this file lays them
+   out. Everything resolves through `--ccure-*` tokens in both themes.
+   ============================================================================ */
+
+/* The page is a CcurePage with the shared CcurePageHeader (B.13): its inset,
+   title and the header's bottom spacing are the application's. The header band
+   and padded tab strip it used to draw are gone with them. */
+
+/* ── The loading bar ──────────────────────────────────────────────────────────
+   A thin bar along the top of the window, as before, so a read does not push
+   the page down. Its name is kept for assistive technology and hidden from
+   view. */
+.cwh-loading {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: var(--ccure-z-modal);
+  pointer-events: none;
+}
+
+.cwh-loading .cc-progress__labels {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cwh-loading .cc-progress__track {
+  height: 3px;
+  border-radius: 0;
+}
+
+/* The choices wrap as the chosen framework adds its own filters. */
+.cwh-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--ccure-space-sm) var(--ccure-space-md);
+  min-width: 0;
+}
+
+.cwh-filter {
+  flex: 0 1 14rem;
+  min-width: 10rem;
+}
+
+.cwh-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-xs);
+  min-height: 2.5rem;
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  cursor: pointer;
+}
+
+.cwh-check input {
+  margin: 0;
+}
+
+.cwh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+}
+
+/* ── The tab bar and the chosen tab ───────────────────────────────────────── */
+.cc-tabs.cwh-tabs {
+  margin-bottom: var(--ccure-space-xl);
+}
+
+.cwh-error {
+  margin-bottom: var(--ccure-space-xl);
+}
+
+/* ── The dialog container ─────────────────────────────────────────────────── */
+/* The guides, the log and the gap analysis keep the width the legacy
+   container gave them. */
+.cc-modal.cwh-modal--wide {
+  max-width: 62.5rem;
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cwh-toolbar {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .cwh-filter {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+/* ── P1-3: the evidence behind a verdict ─────────────────────────────────── */
+
+.cwh-ev-kv {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+}
+
+.cwh-ev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-xs);
+  padding: var(--ccure-space-3xs) 0;
+}
+
+.cwh-ev-row dt {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one term pinned at a width the others no longer share. */
+  flex: 0 0 11rem;
+  min-width: 0;
+  color: var(--ccure-text-secondary, var(--ccure-text-secondary));
+}
+
+.cwh-ev-row dd {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  word-break: break-word;
+}
+
+.cwh-ev-h {
+  font-size: var(--ccure-text-md);
+  margin: var(--ccure-space-md) 0 var(--ccure-space-2xs);
+}
+
+.cwh-ev-obs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.cwh-ev-obs__item {
+  border-left: 2px solid var(--ccure-border, currentColor);
+  padding-left: var(--ccure-space-sm);
+}
+
+.cwh-ev-obs__desc {
+  margin: 0 0 var(--ccure-space-2xs);
+}
+
+.cwh-ev-raw {
+  overflow-x: auto;
+  font-family: var(--ccure-font-mono, monospace);
+  font-size: var(--ccure-text-xs);
+  padding: var(--ccure-space-xs);
+  border: 1px solid var(--ccure-border, currentColor);
+  border-radius: var(--ccure-radius-sm);
+  white-space: pre-wrap;
+}
+
+.cwh-ev-muted {
+  color: var(--ccure-text-secondary, var(--ccure-text-secondary));
+}
+
+/* ── P3-2: compliance schedules and the waiver decision ──────────────────── */
+
+.cwh-sch__lede {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-sm);
+  margin: 0 0 var(--ccure-space-sm);
+}
+
+.cwh-sch__muted {
+  color: var(--ccure-text-secondary);
+}
+
+.cwh-sch__new {
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-sm);
+  margin-bottom: var(--ccure-space-sm);
+}
+
+.cwh-sch__form > * {
+  /* Reset the basis when the row stacks, so a narrow viewport does not leave
+     one control pinned at a width the others no longer share. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.cwh-sch__formactions {
+  display: flex;
+  gap: var(--ccure-space-xs);
+  flex: 0 0 auto;
+}
+
+.cwh-sch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-decide {
+  display: flex;
+  gap: var(--ccure-space-2xs);
+}
+
+.cwh-muted {
+  color: var(--ccure-text-secondary);
+}

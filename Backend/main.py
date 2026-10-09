@@ -22,38 +22,50 @@ from orchestrator.host_discovery_api import HostDiscoveryAPI
 
 # ── Router imports ────────────────────────────────────────────────────────────
 from auth.router import router as auth_router
+from ccure_platform.hub.router import router as platform_hub_router
+from ccure_platform.administration.rbac_admin import router as platform_rbac_router
+from ccure_platform.service_identity.router import (
+    router as service_identity_router,
+)
 from db.models.users import ensure_user_schema
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from routers.admin_email_domains import router as admin_email_domains_router
+from ccure_platform.administration.email_domains import (
+    router as admin_email_domains_router,
+)
 from routers.admin_nvd import router as admin_nvd_router
-from routers.admin_orgs import router as admin_orgs_router
-from routers.admin_rbac import router as admin_rbac_router
-from routers.admin_users import router as admin_users_router
+from ccure_platform.administration.organizations import router as admin_orgs_router
+from ccure_platform.administration.users import router as admin_users_router
 from routers.assets import router as assets_router
-from routers.audit import router as audit_router
+from ccure_platform.audit_log.router import router as audit_router
 from routers.compliance import router as compliance_router
 from routers.credentialed import router as credentialed_router
 from routers.dashboard import router as dashboard_router
 from routers.findings import router as findings_router
 from routers.health import router as health_router
-from routers.notifications import router as notifications_router
+from routers.scan_progress import router as scan_progress_router
+from ccure_platform.notifications.router import router as notifications_router
 from routers.phase_scans import router as phase_scans_router
 from routers.reports import router as reports_router
 from routers.topology import router as topology_router
 from routers.traditional_scans import router as traditional_scans_router
-from routers.user_profile import router as user_profile_router
+from ccure_platform.identity.profile import router as user_profile_router
 from routers.web_scans import router as web_scans_router
 from scan_helpers import set_api
-from scans.schema_bootstrap import ensure_scan_schema
+from db.models.scans import ensure_scan_schema
 from routers.scan_history import router as scans_router
 from routers.config_audit import router as config_audit_router
 from routers.credentials import router as credentials_router
 from routers.remediation import router as remediation_router
 from routers.scan_policies import router as scan_policies_router
 from routers.scan_schedules import router as scan_schedules_router
+
+# Audit registers what it detaches from a purged account (ccure_platform/offboarding.py).
+import ccure_audit.offboarding  # noqa: F401,E402
+import ccure_audit.preferences  # noqa: F401,E402  (Audit's user-preference block)
+import scans.notification_vocabulary  # noqa: F401,E402  (registers Audit's category)
 
 # ── Structured JSON Logging ──────────────────────────────────────────────────
 
@@ -114,6 +126,63 @@ async def lifespan(app: FastAPI):
     # so anything logged then had no handler to reach.
     log_trust_boundary()
 
+    from config import JWTConfig
+
+    # The token keyset (Phase 9.3): which kids are published, or why none is.
+    # Every token is refused without one.
+    from ccure_platform.identity.tokens import keyset_status, public_jwks
+
+    if public_jwks() is not None:
+        logging.getLogger("ccure.security").info("Token keyset: %s", keyset_status())
+    else:
+        logging.getLogger("ccure.security").warning("Token keyset %s", keyset_status())
+
+    # How tokens will be issued (Phase 9.4). A core that cannot sign must not
+    # come up half-working (design §3.7), so with ES256 selected and no usable
+    # active key the API refuses to start — here, before any database work.
+    from ccure_platform.identity.tokens import (
+        SigningUnavailable,
+        assert_signing_ready,
+    )
+
+    try:
+        _issuing = assert_signing_ready()
+    except SigningUnavailable as exc:
+        logging.getLogger("ccure.security").critical(
+            "Refusing to start: tokens cannot be issued (%s). Activate a "
+            "signing key (scripts/security/manage_token_keys.py).",
+            exc,
+        )
+        raise
+    logging.getLogger("ccure.security").info("Token issuance: %s", _issuing)
+
+    # Service identities (Phase 9.5). A refused registry authenticates no
+    # service but must not stop human sign-in, so it is a warning, not a stop.
+    from ccure_platform.service_identity.registry import (
+        current_registry,
+        registry_status,
+    )
+
+    if current_registry() is None:
+        logging.getLogger("ccure.security").warning(
+            "Service identities %s", registry_status()
+        )
+    else:
+        logging.getLogger("ccure.security").info(
+            "Service identities: %s", registry_status()
+        )
+
+    # The key protecting stored MFA secrets has no fallback: a key derived from
+    # nothing, or from some other secret, would silently orphan every enrolled
+    # authenticator. Refuse to start rather than guess.
+    if not JWTConfig.MFA_ENCRYPTION_KEY:
+        logging.getLogger("ccure.security").critical(
+            "Refusing to start: MFA_ENCRYPTION_KEY is not set. It must be the "
+            "value stored MFA secrets were encrypted under (never change it; "
+            "scripts/security/verify_mfa_key_continuity.py)."
+        )
+        raise RuntimeError("MFA_ENCRYPTION_KEY is not set")
+
     # Whether the audit tamper-evidence chain is armed. Reported for the same
     # reason and at the same point.
     #
@@ -160,62 +229,90 @@ async def lifespan(app: FastAPI):
         # We no longer raise RuntimeError to allow the container to start.
         # The app will likely fail on requests, but the container stays alive for debugging/migration.
 
-    # 1. Ensure basic roles and default organization exist (Data Seeding)
+    # 1. Ensure the default organization exists (Data Seeding)
     # This assumes Alembic migrations have already run.
     from db.migrate_production_schema import (
         DEFAULT_ORG_SLUG,
         seed_default_org,
-        seed_rbac,
     )
 
     try:
         with engine.begin() as conn:
-            seed_rbac(conn)
             seed_default_org(conn)
     except Exception as e:
         log.warning(
-            f"Skipping RBAC seeding (schema may not be fully migrated yet): {e}"
+            f"Skipping default organization seeding (schema may not be fully migrated yet): {e}"
         )
 
-    # 1.6. Ensure first admin exists
+    # 1.5b. The RBAC catalogue and system roles (idempotent). RBAC is the only
+    # authorization model: without them nobody holds any permission, so a failure is
+    # logged loudly, not swallowed — but it does not stop the API, which an operator
+    # needs in order to see and repair it.
+    try:
+        from ccure_platform import composition
+        from ccure_platform.rbac.catalogue import ensure_system_roles, sync
+        from db.base import SessionLocal as _RbacSession
+
+        with _RbacSession() as rbac_db:
+            sync(rbac_db, composition.load_permission_sources(), audit=False)
+            ensure_system_roles(rbac_db)
+            rbac_db.commit()
+    except Exception as e:  # noqa: BLE001
+        log.critical("RBAC catalogue could not be applied: %s", e, exc_info=True)
+
+    # 1.6. First administrator — first run only.
+    #
+    # An empty installation has nobody to grant anything, so the configured default
+    # administrator is created and given the platform-administrator role through
+    # ``rbac.provisioning.grant_platform_administrator``: an ordinary, audited,
+    # revocable assignment, never a role-name rule. It runs only while the database has
+    # no users. A system that has lost its last administrator is recovered with the
+    # operator's script (scripts/rbac/bootstrap_admin.py), not by restarting with a
+    # setting.
     from auth.email_utils import email_matches, normalize_email
     from auth.jwt_handler import hash_password
     from db.base import SessionLocal, gen_user_id, utcnow
-    from db.models.rbac import Organization, Role
+    from db.models.rbac import Organization
     from db.models.users import User
 
     with SessionLocal() as db:
         if AppConfig.DEFAULT_ADMIN_EMAIL and AppConfig.DEFAULT_ADMIN_PASSWORD:
             admin_email = normalize_email(AppConfig.DEFAULT_ADMIN_EMAIL)
-            if (
-                not db.query(User)
-                .filter(email_matches(User.email, admin_email))
-                .first()
-            ):
+            existing = (
+                db.query(User).filter(email_matches(User.email, admin_email)).first()
+            )
+            first_run = db.query(User).count() == 0
+            if not existing and first_run:
                 log.info(f"Seeding default admin user: {admin_email}")
                 org = (
                     db.query(Organization)
                     .filter(Organization.slug == DEFAULT_ORG_SLUG)
                     .first()
                 )
-                role = db.query(Role).filter(Role.name == "superadmin").first()
-                if org and role:
+                if org:
                     admin = User(
                         id=gen_user_id(org.slug, "admin"),  # e.g. usr_def_admin_x9v1
                         username="admin",
                         email=admin_email,
                         password_hash=hash_password(AppConfig.DEFAULT_ADMIN_PASSWORD),
                         org_id=org.id,
-                        role_id=role.id,
                         is_active=True,
                         is_verified=True,
-                        # There is no other admin yet to approve this one —
-                        # it is the bootstrap superadmin the approval gate
-                        # exists to be granted by.
+                        # There is no other admin yet to approve this one.
                         approved_at=utcnow(),
                     )
                     db.add(admin)
                     try:
+                        db.flush()
+                        from ccure_platform.rbac.provisioning import (
+                            grant_platform_administrator,
+                        )
+
+                        grant_platform_administrator(
+                            db,
+                            admin.id,
+                            reason="first-run bootstrap",
+                        )
                         db.commit()
                         log.info(f"Successfully seeded admin user: {admin_email}")
                     except Exception as e:
@@ -223,12 +320,11 @@ async def lifespan(app: FastAPI):
                         log.error(f"Failed to seed admin: {e}")
                 else:
                     log.warning(
-                        "Could not seed admin: default org or superadmin role "
-                        "missing."
+                        "Could not seed admin: the default organisation is missing."
                     )
             else:
                 log.debug(
-                    f"Default admin '{admin_email}' already exists; skipping seed."
+                    f"Default admin '{admin_email}' not seeded (exists or not first run)."
                 )
         else:
             if db.query(User).count() == 0:
@@ -315,6 +411,18 @@ async def lifespan(app: FastAPI):
                 .filter(ComplianceFramework.id == "cfw_cis_v8_1")
                 .first()
             )
+            # HIPAA Security Rule (45 CFR Part 164 Subpart C), added 28 Sep
+            # 2026 and parked. 65 controls: 22 standards, 43 specifications.
+            hipaa_fw = (
+                db.query(ComplianceFramework)
+                .filter(ComplianceFramework.id == "cfw_hipaa_security_rule")
+                .first()
+            )
+            hipaa_ctrl_count = (
+                db.query(ComplianceControl)
+                .filter(ComplianceControl.framework_id == "cfw_hipaa_security_rule")
+                .count()
+            )
             nist_ctrl_count = (
                 db.query(ComplianceControl)
                 .filter(ComplianceControl.framework_id == "cfw_nist_csf_v2")
@@ -394,7 +502,9 @@ async def lifespan(app: FastAPI):
                 or not nist82_fw
                 or not nerc_cip_fw
                 or not nis2_fw
-                or ctrl_count < 93
+                # ISO/IEC 27001:2022: 93 Annex A controls plus the 25
+                # management-system clauses (4.1 … 10.2) added on 28 Sep 2026.
+                or ctrl_count < 118
                 # NIST CSF 2.0 defines exactly 106 Subcategories. The threshold
                 # here was 20 — every other framework's is its real control
                 # count — so a NIST catalogue truncated to any size above 20
@@ -421,6 +531,8 @@ async def lifespan(app: FastAPI):
                 # reason CLAUDE.md records: a condition that can never be
                 # satisfied re-runs the whole seeder on every container start.
                 or cis_ctrl_count < 150
+                or not hipaa_fw
+                or hipaa_ctrl_count < 65
                 or rule_count < 20
             ):
                 log.info(
@@ -495,6 +607,11 @@ async def lifespan(app: FastAPI):
                     )
                     if os.path.exists(nis2_seed):
                         seed_framework_and_controls(db, nis2_seed)
+                    hipaa_seed = os.path.join(
+                        base_scripts_dir, "hipaa_security_rule_controls_seed.json"
+                    )
+                    if os.path.exists(hipaa_seed):
+                        seed_framework_and_controls(db, hipaa_seed)
                     if os.path.exists(cis_seed):
                         seed_framework_and_controls(db, cis_seed)
 
@@ -659,6 +776,14 @@ app = FastAPI(
 from config import AppConfig
 from core.rate_limit_middleware import BaselineRateLimitMiddleware
 
+# 429 audit records name the caller when a valid access token was presented.
+# The rate-limit audit module is infrastructure and does not import auth, so
+# the composition root hands it the decoder (Phase 3).
+from auth.jwt_handler import decode_token as _decode_token
+from core.rate_limit_audit import set_token_decoder
+
+set_token_decoder(_decode_token)
+
 app.add_middleware(
     BaselineRateLimitMiddleware,
     limit=AppConfig.API_DEFAULT_RATE_LIMIT,
@@ -793,7 +918,10 @@ _SECURITY_HEADERS = {
 }
 
 # Strict-Transport-Security is sent only on requests that actually arrived over
-# TLS, decided from the X-Forwarded-Proto that host Nginx sets.
+# TLS, decided from the request's scheme. That scheme comes from the
+# X-Forwarded-Proto host Nginx sets — but only because host Nginx is a trusted
+# proxy (core/trusted_proxy.py). Reading the raw header here, as this used to,
+# let any caller that could reach :8000 claim HTTPS (finding F10-1).
 #
 # Two reasons not to send it unconditionally. A browser ignores the header on a
 # plain-HTTP response, so an unconditional one would be decoration that makes
@@ -815,9 +943,6 @@ _HSTS_VALUE = "max-age=300"
 
 
 def _is_secure_request(request: Request) -> bool:
-    forwarded = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip()
-    if forwarded:
-        return forwarded.lower() == "https"
     return request.url.scheme == "https"
 
 
@@ -877,6 +1002,17 @@ async def _request_id_middleware(request: Request, call_next):
             "%s %s returned %s", request.method, request.url.path, response.status_code
         )
     return response
+
+
+# ── Proxy trust boundary (Phase 10.3, F10-1) ─────────────────────────────────────
+#
+# Registered last, so it runs FIRST: the client address and scheme every other
+# middleware, the rate limiters, the audit trail and the HSTS decision see are
+# the ones only a trusted proxy (AppConfig.TRUSTED_PROXIES) may assert. uvicorn
+# runs with --no-proxy-headers (start.sh); see core/trusted_proxy.py for why.
+from core.trusted_proxy import TrustedProxyHeadersMiddleware  # noqa: E402
+
+app.add_middleware(TrustedProxyHeadersMiddleware)
 
 
 # ── Global HTTP exception handler (unified error envelope) ───────────────────────
@@ -964,8 +1100,10 @@ async def _scrubbed_validation_error(request: Request, exc: RequestValidationErr
 # ── Router registration ──────────────────────────────────────────────────────
 
 app.include_router(auth_router)
+app.include_router(service_identity_router)
 app.include_router(scans_router)
 app.include_router(health_router)
+app.include_router(scan_progress_router)
 app.include_router(traditional_scans_router)
 app.include_router(phase_scans_router)
 app.include_router(credentialed_router)
@@ -977,7 +1115,6 @@ app.include_router(config_audit_router)
 app.include_router(reports_router)
 app.include_router(admin_users_router)
 app.include_router(admin_email_domains_router)
-app.include_router(admin_rbac_router)
 app.include_router(admin_orgs_router)
 app.include_router(admin_nvd_router)
 app.include_router(audit_router)
@@ -989,6 +1126,19 @@ app.include_router(findings_router)
 app.include_router(web_scans_router)
 app.include_router(topology_router)
 app.include_router(compliance_router)
+# CCure Home's product list (Phase 12.1). Mounted after every existing router so
+# the route table — and the gateway route policy generated from it — only grows
+# at the end.
+app.include_router(platform_hub_router)
+app.include_router(platform_rbac_router)
+
+# Module routers from the platform registry (Phase 11), each under its module's
+# prefix. Audit's routers are the explicit list above until Phase 16 moves them
+# into ccure_audit; Policy Pro and Rank are registered but disabled and declare
+# nothing, so today this mounts no route.
+from ccure_platform.modules import mount_module_routers  # noqa: E402
+
+mount_module_routers(app)
 
 
 # ── Dev entrypoint ────────────────────────────────────────────────────────────

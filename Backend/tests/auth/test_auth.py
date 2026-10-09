@@ -4,6 +4,8 @@ tests/test_auth.py
 Integration tests for authentication flows (login, refresh, logout) and RBAC.
 """
 
+from native_rbac import create_user
+
 from auth.jwt_handler import hash_password
 from db.models.users import User
 from fastapi.testclient import TestClient
@@ -96,9 +98,12 @@ def test_register_creates_pending_account_without_tokens(
     assert user.is_verified is False
     assert user.is_active is False
     assert user.approved_at is None
-    # Read-only role, not analyst: approval must not be a rubber stamp on
+    # Signup grants nothing privileged: with no default role configured the
+    # account holds no assignment at all; approval is not a rubber stamp on
     # scan execution that was granted at signup.
-    assert user.role.name == "viewer"
+    from ccure_platform.api import has_permission
+
+    assert not has_permission(db_session, user, "audit.scan.run")
 
 
 def test_register_pending_account_cannot_log_in(
@@ -239,12 +244,13 @@ def test_rbac_denies_unauthorized_role(
     # refusing the scan endpoint, not about the account gates refusing login.
     from db.base import utcnow
 
-    viewer = User(
+    viewer = create_user(
+        db_session,
         username="viewer",
         email="viewer@test.com",
         password_hash=hash_password("password123"),
         org_id=test_org.id,
-        role_id=test_role_viewer.id,
+        role=test_role_viewer,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),

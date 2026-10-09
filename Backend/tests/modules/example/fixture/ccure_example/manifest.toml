@@ -1,0 +1,8 @@
+# TEST-ONLY proof module — its own half of the registration, exactly as a real
+# module writes it (ccure_policy/manifest.toml, ccure_rank/manifest.toml).
+
+[module]
+key = "example"
+routers = ["ccure_example.api.routes:router"]
+task_modules = ["ccure_example.workers.ping"]
+models = ["ccure_example.models.tables:metadata"]

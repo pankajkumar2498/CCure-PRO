@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import useFocusTrap from "../hooks/useFocusTrap";
+import useModalEnvironment from "../hooks/useModalEnvironment";
+import CcureIconButton from "./CcureIconButton";
+import useFocusTrap, { isTopTrap } from "../hooks/useFocusTrap";
 
 /**
  * CcureModal
@@ -39,12 +41,15 @@ export default function CcureModal({
   initialFocus,
   "aria-label": ariaLabel,
   className = "",
+  placement = "center",
+  id,
 }) {
   const dialogRef = useRef(null);
   const titleId = useId();
   const subtitleId = useId();
 
   useFocusTrap(dialogRef, open, { initialFocus });
+  useModalEnvironment(dialogRef, open);
 
   // Escape is handled here rather than in the trap because whether a dialog may
   // be dismissed is the owner's decision — a destructive confirmation may
@@ -52,8 +57,9 @@ export default function CcureModal({
   useEffect(() => {
     if (!open || !closeOnEscape) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
+      if (e.key === "Escape" && isTopTrap(dialogRef.current)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         onClose?.();
       }
     };
@@ -97,10 +103,11 @@ export default function CcureModal({
       // Using click meant a drag that began inside the dialog — selecting text
       // in a field and releasing outside — closed the dialog and discarded the
       // user's input.
-      if (!closeOnOverlayClick) return;
+      if (!closeOnOverlayClick || !isTopTrap(dialogRef.current)) return;
       if (e.target !== e.currentTarget) return;
+      const overlay = e.currentTarget;
       const onUp = (up) => {
-        if (up.target === e.currentTarget) onClose?.();
+        if (up.target === overlay) onClose?.();
         document.removeEventListener("mouseup", onUp);
       };
       document.addEventListener("mouseup", onUp);
@@ -113,9 +120,13 @@ export default function CcureModal({
   const labelledBy = title ? titleId : undefined;
 
   return createPortal(
-    <div className="cc-modal__overlay" onMouseDown={onOverlayMouseDown}>
+    <div
+      className={`cc-modal__overlay cc-ux4g ux4g-modal-backdrop ux4g-modal-backdrop-50 ${placement !== "center" ? "cc-drawer-overlay" : ""}`}
+      onMouseDown={onOverlayMouseDown}
+    >
       <div
         ref={dialogRef}
+        id={id}
         role="dialog"
         aria-modal="true"
         /* Exactly one naming route. A dialog with neither is announced as
@@ -126,38 +137,51 @@ export default function CcureModal({
         /* Lets the trap park focus on the container when the dialog holds no
            focusable child at all. Not in the tab order — it is -1. */
         tabIndex={-1}
-        className={`cc-modal cc-modal--${size} ${className}`.trim()}
+        className={`cc-modal cc-ux4g ux4g-modal-box ux4g-modal-${{ sm: "s", md: "m", lg: "l", xl: "l" }[size] || "m"} cc-modal--${size} ${placement !== "center" ? `cc-drawer ux4g-drawer ux4g-drawer-${placement} ux4g-drawer-open` : ""} ${className}`.trim()}
       >
         {(title || onClose) && (
-          <div className="cc-modal__header">
+          <div
+            className={`cc-modal__header ${placement !== "center" ? "ux4g-drawer-header" : "ux4g-modal-header"}`}
+          >
             <div>
               {title ? (
-                <h2 className="cc-modal__title" id={titleId}>
+                <h2
+                  className={`cc-modal__title ${placement !== "center" ? "ux4g-drawer-title" : "ux4g-modal-header-title"}`}
+                  id={titleId}
+                >
                   {title}
                 </h2>
               ) : null}
               {subtitle ? (
-                <p className="cc-modal__subtitle" id={subtitleId}>
+                <p
+                  className="cc-modal__subtitle ux4g-modal-header-sub-heading"
+                  id={subtitleId}
+                >
                   {subtitle}
                 </p>
               ) : null}
             </div>
             {onClose ? (
-              <button
-                type="button"
+              <CcureIconButton
                 className="cc-modal__close"
                 onClick={onClose}
                 aria-label={closeLabel}
               >
                 <span aria-hidden="true">×</span>
-              </button>
+              </CcureIconButton>
             ) : null}
           </div>
         )}
 
-        <div className="cc-modal__body">{children}</div>
+        <div
+          className={`cc-modal__body ${placement !== "center" ? "ux4g-drawer-body" : "ux4g-modal-body"}`}
+        >
+          {children}
+        </div>
 
-        {footer ? <div className="cc-modal__footer">{footer}</div> : null}
+        {footer ? (
+          <div className="cc-modal__footer ux4g-modal-actions">{footer}</div>
+        ) : null}
       </div>
     </div>,
     document.body,

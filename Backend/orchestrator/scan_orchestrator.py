@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from core.asset_correlation import AssetCorrelationEngine
-from core.constants import PDF_AVAILABLE
+from reporting.availability import PDF_AVAILABLE
 
 # ── NEW imports for refactored architecture ───────────────────────────────────
 from core.discovery.engine import DiscoveryEngine
@@ -1086,11 +1086,12 @@ class ScanOrchestrator:
                     pass
         return networks
 
-    def apply_scan_scope(self, org) -> None:
-        """Bind this run to an organisation's authorised scan scope."""
+    def apply_scan_scope(self, scope) -> None:
+        """Bind this run to an organisation's authorised scan scope (a
+        ``ScanScopeView`` from core.scan_scope.org_scan_scope, or None)."""
         from core.scan_scope import scope_for_org
 
-        self.scan_scope = scope_for_org(org)
+        self.scan_scope = scope_for_org(scope)
 
     def _drop_out_of_scope(self, ips: list[str]) -> list[str]:
         """

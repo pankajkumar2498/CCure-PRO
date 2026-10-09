@@ -146,7 +146,7 @@ class Asset(Base):
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    organization = relationship("Organization", back_populates="assets")
+    organization = relationship("Organization")
     last_scan = relationship("Scan", foreign_keys=[last_scan_id])
     tags = relationship(
         "AssetTag", back_populates="asset", cascade="all, delete-orphan"
@@ -200,7 +200,7 @@ class AssetTag(Base):
     created_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow)
 
     asset = relationship("Asset", back_populates="tags")
-    created_by_user = relationship("User", back_populates="asset_tags")
+    created_by_user = relationship("User")
 
     def __repr__(self):
         return f"<AssetTag asset={self.asset_id!r} tag={self.tag!r}>"
@@ -233,7 +233,7 @@ class AssetNote(Base):
     updated_at = Column(TIMESTAMPTZ, nullable=False, default=utcnow, onupdate=utcnow)
 
     asset = relationship("Asset", back_populates="notes")
-    user = relationship("User", back_populates="asset_notes")
+    user = relationship("User")
 
     def __repr__(self):
         return f"<AssetNote asset={self.asset_id!r} len={len(self.content or '')}>"

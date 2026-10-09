@@ -179,24 +179,6 @@ def gen_notification_id(user_id: str, notif_type: str) -> str:
     return f"ntf_{user_part}_{type_part}_{_rand()}"
 
 
-def gen_audit_id(org_slug: str, action: str) -> str:
-    """
-    Generate a readable Audit Log ID.
-    Example: aud_defa_1a2b3c4d_scan_created_x9v1
-    """
-    org_part = gen_org_token(org_slug)
-    action_part = _safe_id_part(action)[:20]
-    return f"aud_{org_part}_{action_part}_{_rand()}"
-
-
-def gen_vuln_finding_id(asset_id: str, vuln_id: str) -> str:
-    """
-    Generate a readable AssetVulnerability (Finding) ID.
-    Example: fnd_ast_def_192.168.1.5_CVE-2024-4577
-    """
-    return f"fnd_{asset_id}_{vuln_id}"
-
-
 # ─── Web Scan ID Generators ──────────────────────────────────────────────────
 
 

@@ -47,8 +47,8 @@ UNAUTHENTICATED_WITHOUT_LIMIT = {
     # first is what monitoring polls for liveness — limiting it would make a
     # health check into a source of false alarms.
     "routers.health.root",
-    "routers.health.pipeline_modes",
-    "routers.health.workflow_example",
+    "routers.scan_progress.pipeline_modes",
+    "routers.scan_progress.workflow_example",
 }
 
 SENSITIVE_WITHOUT_LIMIT = {
@@ -99,7 +99,7 @@ SENSITIVE_WITHOUT_LIMIT = {
     # Polled by the SPA for the duration of a scan. A limit tight enough to
     # matter would break the progress display; a limit loose enough not to
     # would measure nothing.
-    "routers.health.get_scan_progress",
+    "routers.scan_progress.get_scan_progress",
     "routers.phase_scans.get_scan_quota",
     # One long-lived SSE connection rather than a stream of requests, so a
     # per-request ceiling does not describe it. Bounded by limit_conn in nginx.

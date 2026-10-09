@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 /**
  * Focusable elements, in the order the browser would tab through them.
@@ -26,13 +26,28 @@ const FOCUSABLE = [
 
 function focusableWithin(root) {
   if (!root) return [];
-  return Array.from(root.querySelectorAll(FOCUSABLE)).filter((el) => {
-    // offsetParent is null for display:none, but also for position:fixed —
-    // which a dialog's own children can legitimately be. Checking the client
-    // rects as well avoids excluding those.
-    if (el.hidden) return false;
-    if (el.closest("[inert]")) return false;
-    return el.offsetParent !== null || el.getClientRects().length > 0;
+  const candidates = Array.from(root.querySelectorAll(FOCUSABLE)).filter(
+    (el) => {
+      // offsetParent is null for display:none, but also for position:fixed —
+      // which a dialog's own children can legitimately be. Checking the client
+      // rects as well avoids excluding those.
+      if (el.hidden || el.matches(":disabled")) return false;
+      if (el.closest("[inert]")) return false;
+      if (getComputedStyle(el).visibility === "hidden") return false;
+      return el.offsetParent !== null || el.getClientRects().length > 0;
+    },
+  );
+  // A native radio group contributes one Tab stop; arrow keys own the others.
+  // Treating every radio as tabbable breaks wraparound at the dialog edge.
+  return candidates.filter((el) => {
+    if (!el.matches('input[type="radio"]') || !el.name) return true;
+    const group = candidates.filter(
+      (other) =>
+        other.matches('input[type="radio"]') &&
+        other.name === el.name &&
+        other.form === el.form,
+    );
+    return el === (group.find((radio) => radio.checked) || group[0]);
   });
 }
 
@@ -70,14 +85,15 @@ function focusableWithin(root) {
  * and the outer trap resumes. Single-dialog behaviour is unchanged.
  */
 const ACTIVE_TRAPS = [];
-const isTopTrap = (root) => ACTIVE_TRAPS[ACTIVE_TRAPS.length - 1] === root;
+export const isTopTrap = (root) =>
+  ACTIVE_TRAPS[ACTIVE_TRAPS.length - 1] === root;
 
 export default function useFocusTrap(ref, active, { initialFocus } = {}) {
   // Captured in a ref rather than state: writing it must not schedule a render,
   // and it has to survive the whole open lifetime unchanged.
   const restoreRef = useRef(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) return undefined;
 
     const root = ref.current;
@@ -96,21 +112,9 @@ export default function useFocusTrap(ref, active, { initialFocus } = {}) {
       (initialFocus && initialFocus.current) ||
       focusableWithin(root)[0] ||
       root;
-    // rAF so the element is laid out before we focus it; focusing a node that
-    // is still display:none silently does nothing.
-    //
-    // By the time the frame fires, focus may already be inside the dialog: a
-    // child with autoFocus, or a user (or a test's userEvent.type) who clicked
-    // into a field first. Moving it then is a focus steal — the first stop in
-    // every CcureModal is its close button, so half a typed password would
-    // land on a button. Measured under CI load: the frame fired between two
-    // keystrokes, the field never filled, submit stayed disabled and the API
-    // mock was never called. Only place focus if nothing inside holds it.
-    const raf = requestAnimationFrame(() => {
-      const current = document.activeElement;
-      if (current && current !== root && root.contains(current)) return;
-      target?.focus?.();
-    });
+    // Focus before background isolation, so aria-hidden never covers the
+    // currently focused opener. Preserve child autoFocus when already inside.
+    if (!root.contains(document.activeElement)) target?.focus?.();
 
     const onKeyDown = (e) => {
       if (e.key !== "Tab" || !isTopTrap(root)) return;
@@ -155,7 +159,6 @@ export default function useFocusTrap(ref, active, { initialFocus } = {}) {
     document.addEventListener("focusin", onFocusIn, true);
 
     return () => {
-      cancelAnimationFrame(raf);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("focusin", onFocusIn, true);
       const at = ACTIVE_TRAPS.lastIndexOf(root);
@@ -166,7 +169,26 @@ export default function useFocusTrap(ref, active, { initialFocus } = {}) {
       // node, which silently focuses <body> and loses the position anyway —
       // but throws off anything watching activeElement.
       const el = restoreRef.current;
-      if (el && document.contains(el)) el.focus?.();
+      // Isolation is restored by the owner's next layout-effect cleanup.
+      // Wait for that before focusing; an inert opener cannot receive focus.
+      queueMicrotask(() => {
+        const top = ACTIVE_TRAPS.at(-1);
+        if (top && (!el || !top.contains(el))) return;
+        let available =
+          el && document.contains(el) && !el.closest("[inert],[hidden]");
+        for (
+          let ancestor = el;
+          available && ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const style = getComputedStyle(ancestor);
+          if (style.display === "none" || style.visibility === "hidden")
+            available = false;
+        }
+        if (available) el.focus?.();
+        // Navigation/resize can remove or hide the original trigger.
+        else if (!top) document.querySelector('main[tabindex="-1"]')?.focus();
+      });
       restoreRef.current = null;
     };
   }, [ref, active, initialFocus]);

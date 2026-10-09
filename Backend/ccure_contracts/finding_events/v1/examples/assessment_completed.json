@@ -1,0 +1,291 @@
+{
+  "contract": "ccure.audit.finding_event",
+  "schema_version": "1.0",
+  "message_id": "708192a3-becf-40d1-8c43-5e6f70819208",
+  "tenant_id": "org_default",
+  "source": {
+    "module": "audit",
+    "module_version": "2026.09.25"
+  },
+  "produced_at": "2026-09-26T02:41:44Z",
+  "correlation_id": "corr-audit-scn_defa_c522b539_26sep26_k2mq",
+  "data": {
+    "event_type": "assessment.completed",
+    "occurred_at": "2026-09-26T02:41:17Z",
+    "sequence": 1890,
+    "assessment_completed": {
+      "assessment": {
+        "assessment_id": "scn_defa_c522b539_26sep26_k2mq",
+        "completed_at": "2026-09-26T02:41:17Z",
+        "scan_policy_fingerprint": "2db3b329538d902c98280a30062737bf7f7daccb72e669d3899363578dc500ae"
+      },
+      "status": "completed",
+      "result_id": "ar_scn_defa_c522b539_26sep26_k2mq",
+      "assets": [
+        {
+          "assessment": {
+            "asset": {
+              "asset_id": "ast_org_default_192_0_2_10",
+              "ip_address": "192.0.2.10",
+              "hostname": "fin-app-01",
+              "mac_address": "00:00:5e:00:53:10"
+            },
+            "os": {
+              "family": "windows",
+              "name": "Windows Server 2022",
+              "version": "10.0.20348.2700"
+            },
+            "device_category": "server",
+            "coverage": "ASSESSED",
+            "methods": [
+              {
+                "method": "discovery",
+                "outcome": "completed"
+              },
+              {
+                "method": "port_scan",
+                "outcome": "completed"
+              },
+              {
+                "method": "network_checks",
+                "outcome": "completed"
+              },
+              {
+                "method": "credentialed_access",
+                "outcome": "completed"
+              },
+              {
+                "method": "package_vulnerability",
+                "outcome": "completed"
+              },
+              {
+                "method": "configuration_audit",
+                "outcome": "completed"
+              },
+              {
+                "method": "malware_scan",
+                "outcome": "not_implemented",
+                "reason": "Audit checks antivirus presence only (SRS 7.3.4.5)."
+              }
+            ],
+            "credentialed": {
+              "outcome": "SUCCEEDED",
+              "credential_ref": "cred_default_winadm",
+              "transport": "winrm",
+              "port": 5985,
+              "auth_method": "ntlm",
+              "privilege": {
+                "is_administrator": true,
+                "is_system": false
+              },
+              "inventory_complete": true
+            },
+            "finding_counts": {
+              "critical": 1,
+              "high": 0,
+              "medium": 1,
+              "low": 0,
+              "none": 0,
+              "unscored": 0
+            },
+            "risk": {
+              "audit_host_risk_score": {
+                "status": "available",
+                "value": 78,
+                "unit": "score_0_100"
+              },
+              "asset_criticality": {
+                "status": "not_implemented",
+                "reason": "Audit has no asset criticality attribute (SRS 7.3.7.3)."
+              },
+              "exposure": {
+                "status": "not_implemented",
+                "reason": "Exposure factor not computed (SRS 7.3.7.5)."
+              }
+            }
+          },
+          "failed_controls": [
+            {
+              "control": {
+                "framework": {
+                  "code": "ISO27001_2022",
+                  "version": "2022"
+                },
+                "control_id": "A.8.8"
+              },
+              "rule_ids": [
+                "crl_vuln_critical_v1"
+              ]
+            }
+          ]
+        },
+        {
+          "assessment": {
+            "asset": {
+              "asset_id": "ast_org_default_192_0_2_20",
+              "ip_address": "192.0.2.20",
+              "hostname": "web-02"
+            },
+            "os": {
+              "family": "linux",
+              "name": "Ubuntu",
+              "version": "24.04"
+            },
+            "device_category": "server",
+            "coverage": "PARTIALLY_ASSESSED",
+            "coverage_reason": "Credential rejected; unauthenticated checks only.",
+            "methods": [
+              {
+                "method": "discovery",
+                "outcome": "completed"
+              },
+              {
+                "method": "port_scan",
+                "outcome": "completed"
+              },
+              {
+                "method": "network_checks",
+                "outcome": "completed"
+              },
+              {
+                "method": "credentialed_access",
+                "outcome": "failed",
+                "reason": "Authentication rejected by the target."
+              },
+              {
+                "method": "package_vulnerability",
+                "outcome": "not_run",
+                "reason": "Requires an authenticated session."
+              },
+              {
+                "method": "configuration_audit",
+                "outcome": "not_run",
+                "reason": "Requires an authenticated session."
+              }
+            ],
+            "credentialed": {
+              "outcome": "AUTHENTICATION_REJECTED",
+              "credential_ref": "cred_default_linux_ro",
+              "transport": "ssh",
+              "port": 22,
+              "auth_method": "password",
+              "failure_detail": "Permission denied (publickey,password)."
+            },
+            "finding_counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 1,
+              "none": 0,
+              "unscored": 0
+            },
+            "risk": {
+              "audit_host_risk_score": {
+                "status": "available",
+                "value": 22,
+                "unit": "score_0_100"
+              },
+              "asset_criticality": {
+                "status": "not_implemented",
+                "reason": "Audit has no asset criticality attribute (SRS 7.3.7.3)."
+              },
+              "exposure": {
+                "status": "not_implemented",
+                "reason": "Exposure factor not computed (SRS 7.3.7.5)."
+              }
+            }
+          }
+        },
+        {
+          "assessment": {
+            "asset": {
+              "asset_id": "ast_org_default_192_0_2_30",
+              "ip_address": "192.0.2.30"
+            },
+            "device_category": "printer",
+            "coverage": "PARTIALLY_ASSESSED",
+            "coverage_reason": "No credential in scope for this asset.",
+            "methods": [
+              {
+                "method": "discovery",
+                "outcome": "completed"
+              },
+              {
+                "method": "port_scan",
+                "outcome": "completed"
+              },
+              {
+                "method": "network_checks",
+                "outcome": "completed"
+              },
+              {
+                "method": "credentialed_access",
+                "outcome": "not_run",
+                "reason": "No credential in scope for this asset."
+              }
+            ],
+            "finding_counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 0,
+              "none": 0,
+              "unscored": 0
+            },
+            "risk": {
+              "audit_host_risk_score": {
+                "status": "available",
+                "value": 5,
+                "unit": "score_0_100"
+              },
+              "asset_criticality": {
+                "status": "not_implemented",
+                "reason": "Audit has no asset criticality attribute (SRS 7.3.7.3)."
+              },
+              "exposure": {
+                "status": "not_implemented",
+                "reason": "Exposure factor not computed (SRS 7.3.7.5)."
+              }
+            }
+          }
+        },
+        {
+          "assessment": {
+            "asset": {
+              "asset_id": "ast_org_default_192_0_2_40",
+              "ip_address": "192.0.2.40"
+            },
+            "coverage": "NOT_ASSESSED",
+            "coverage_reason": "Discovered; the port scan did not reach it before the phase time limit.",
+            "methods": [
+              {
+                "method": "discovery",
+                "outcome": "completed"
+              },
+              {
+                "method": "port_scan",
+                "outcome": "failed",
+                "reason": "Phase soft time limit reached."
+              }
+            ],
+            "finding_counts": null,
+            "risk": {
+              "audit_host_risk_score": {
+                "status": "not_collected",
+                "reason": "Asset not assessed."
+              },
+              "asset_criticality": {
+                "status": "not_implemented",
+                "reason": "Audit has no asset criticality attribute (SRS 7.3.7.3)."
+              },
+              "exposure": {
+                "status": "not_implemented",
+                "reason": "Exposure factor not computed (SRS 7.3.7.5)."
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

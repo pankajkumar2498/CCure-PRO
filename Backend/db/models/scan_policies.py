@@ -82,9 +82,10 @@ POLICY_STATUSES = (
 
 _STATUS_SQL = "status IN (" + ", ".join(f"'{s}'" for s in POLICY_STATUSES) + ")"
 
-#: Which pipeline a policy may drive. Imported from the spec so the API, the
-#: model and the resolver cannot disagree about what "credentialed" means.
-from core.scan_policy.spec import POLICY_SCAN_KINDS  # noqa: E402
+#: Which pipeline a policy may drive. One definition, shared with the spec, so
+#: the API, the model and the resolver cannot disagree about what
+#: "credentialed" means.
+from db.scan_policy_kinds import POLICY_SCAN_KINDS  # noqa: E402
 
 _KIND_SQL = "scan_kind IN (" + ", ".join(f"'{k}'" for k in POLICY_SCAN_KINDS) + ")"
 

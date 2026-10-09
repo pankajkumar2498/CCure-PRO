@@ -1,0 +1,487 @@
+{
+  "$defs": {
+    "AssessmentMethod": {
+      "description": "The assessment methods Audit applies to an asset.",
+      "enum": [
+        "discovery",
+        "port_scan",
+        "network_checks",
+        "credentialed_access",
+        "package_vulnerability",
+        "configuration_audit",
+        "web_application",
+        "malware_scan"
+      ],
+      "title": "AssessmentMethod",
+      "type": "string"
+    },
+    "CcureCapabilitiesDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_parameters": {
+          "description": "Parameter vocabulary.",
+          "items": {
+            "$ref": "#/$defs/CcureParameterCapabilityV1"
+          },
+          "title": "Baseline Parameters",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "contracts": {
+          "description": "Contracts spoken.",
+          "items": {
+            "$ref": "#/$defs/CcureContractSupportV1"
+          },
+          "title": "Contracts",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "frameworks": {
+          "description": "Assessable frameworks.",
+          "items": {
+            "$ref": "#/$defs/CcureFrameworkCapabilityV1"
+          },
+          "title": "Frameworks",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "methods": {
+          "description": "Assessment methods.",
+          "items": {
+            "$ref": "#/$defs/CcureMethodCapabilityV1"
+          },
+          "title": "Methods",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "contracts",
+        "frameworks",
+        "methods"
+      ],
+      "title": "CcureCapabilitiesDataV1",
+      "type": "object"
+    },
+    "CcureContractSupportV1": {
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "description": "Contract name.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Contract",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "direction": {
+          "description": "Relative to Audit.",
+          "enum": [
+            "inbound",
+            "outbound"
+          ],
+          "title": "Direction",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "schema_versions": {
+          "description": "Versions accepted or produced.",
+          "items": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Schema Versions",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "status": {
+          "description": "Lifecycle.",
+          "enum": [
+            "draft",
+            "published",
+            "deprecated"
+          ],
+          "title": "Status",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "contract",
+        "schema_versions",
+        "direction",
+        "status"
+      ],
+      "title": "CcureContractSupportV1",
+      "type": "object"
+    },
+    "CcureFrameworkCapabilityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "controls_automated": {
+          "description": "Controls with at least one automated rule.",
+          "minimum": 0,
+          "title": "Controls Automated",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "controls_total": {
+          "description": "Controls in Audit's catalogue.",
+          "minimum": 0,
+          "title": "Controls Total",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "framework": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/CcureFrameworkRefV1"
+            }
+          ],
+          "description": "The framework.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "installed_for_tenant": {
+          "description": "Enabled for the caller's tenant.",
+          "title": "Installed For Tenant",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "framework",
+        "installed_for_tenant",
+        "controls_total",
+        "controls_automated"
+      ],
+      "title": "CcureFrameworkCapabilityV1",
+      "type": "object"
+    },
+    "CcureFrameworkRefV1": {
+      "additionalProperties": false,
+      "description": "A compliance framework, named by code and version (e.g. ISO27001_2022 / 2022).",
+      "properties": {
+        "code": {
+          "description": "Framework code from the shared framework vocabulary (open decision D3).",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        },
+        "version": {
+          "description": "Framework version as published.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "platform"
+        }
+      },
+      "required": [
+        "code",
+        "version"
+      ],
+      "title": "CcureFrameworkRefV1",
+      "type": "object"
+    },
+    "CcureMethodCapabilityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "implemented": {
+          "description": "Whether this build implements it.",
+          "title": "Implemented",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "method": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/AssessmentMethod"
+            }
+          ],
+          "description": "Method.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Limitation, if any.",
+          "title": "Note",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "method",
+        "implemented"
+      ],
+      "title": "CcureMethodCapabilityV1",
+      "type": "object"
+    },
+    "CcureParameterCapabilityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "datatype": {
+          "description": "Type.",
+          "enum": [
+            "integer",
+            "number",
+            "boolean",
+            "string"
+          ],
+          "title": "Datatype",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "description": {
+          "description": "Meaning.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "honoured": {
+          "description": "Whether Audit's rules use the value today. False until rule parameterisation (plan Phase 17) — a truthful false, not a missing value.",
+          "title": "Honoured",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "name": {
+          "description": "Parameter name a baseline may carry.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unit.",
+          "title": "Unit",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "name",
+        "datatype",
+        "honoured",
+        "description"
+      ],
+      "title": "CcureParameterCapabilityV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/capabilities/v1/Capabilities.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.capabilities",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.capabilities"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureCapabilitiesDataV1"
+        }
+      ],
+      "description": "Capabilities.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "audit"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcureCapabilitiesV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

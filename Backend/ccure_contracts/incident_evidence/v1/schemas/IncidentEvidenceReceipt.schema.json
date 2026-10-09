@@ -1,0 +1,360 @@
+{
+  "$defs": {
+    "CcureClaimOutcomeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "disposition": {
+          "description": "What Audit did. 'recorded_pending_verification' moves the finding to pending_verification; nothing here reaches verified_fixed.",
+          "enum": [
+            "recorded",
+            "recorded_pending_verification",
+            "rescan_requested",
+            "rejected"
+          ],
+          "title": "Disposition",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "finding_id": {
+          "description": "Echo of the finding.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Finding Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why, when rejected.",
+          "title": "Reason",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "remediation_state_after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemediationState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The finding's remediation state after the claim.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "finding_id",
+        "disposition"
+      ],
+      "title": "CcureClaimOutcomeV1",
+      "type": "object"
+    },
+    "CcureIncidentEvidenceReceiptDataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "claims": {
+          "description": "Outcome per remediation claim.",
+          "items": {
+            "$ref": "#/$defs/CcureClaimOutcomeV1"
+          },
+          "title": "Claims",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "content_sha256": {
+          "description": "Digest of the evidence as stored.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "findings": {
+          "description": "Link outcome per related finding.",
+          "items": {
+            "$ref": "#/$defs/CcureLinkOutcomeV1"
+          },
+          "title": "Findings",
+          "type": "array",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "incident_id": {
+          "description": "Echo.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Incident Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "incident_version": {
+          "description": "Echo.",
+          "minimum": 1,
+          "title": "Incident Version",
+          "type": "integer",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "receipt_id": {
+          "description": "Audit's identifier for the stored record.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Receipt Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        },
+        "received_at": {
+          "description": "When Audit first stored this version.",
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "incident_id",
+        "incident_version",
+        "content_sha256",
+        "received_at",
+        "findings"
+      ],
+      "title": "CcureIncidentEvidenceReceiptDataV1",
+      "type": "object"
+    },
+    "CcureLinkOutcomeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "description": "Echo of the referenced finding.",
+          "maxLength": 400,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+          "title": "Finding Id",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "ir"
+        },
+        "linked": {
+          "description": "Whether the finding exists in this tenant. An unknown id is simply not linked; the receipt never says whether it exists elsewhere.",
+          "title": "Linked",
+          "type": "boolean",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "audit"
+        }
+      },
+      "required": [
+        "finding_id",
+        "linked"
+      ],
+      "title": "CcureLinkOutcomeV1",
+      "type": "object"
+    },
+    "CcureSourceV1": {
+      "additionalProperties": false,
+      "description": "Which module, and which build of it, produced a message.",
+      "properties": {
+        "instance": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The deployment instance, where a module runs more than one.",
+          "title": "Instance",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Module"
+            }
+          ],
+          "description": "The producing module.",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        },
+        "module_version": {
+          "description": "The producing module's release, for diagnosing a bad message.",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Module Version",
+          "type": "string",
+          "x-ccure-availability": "available",
+          "x-ccure-owner": "producer"
+        }
+      },
+      "required": [
+        "module",
+        "module_version"
+      ],
+      "title": "CcureSourceV1",
+      "type": "object"
+    },
+    "Module": {
+      "description": "The four CCure modules, plus the shared platform.",
+      "enum": [
+        "policy_pro",
+        "audit",
+        "rank",
+        "ir",
+        "platform"
+      ],
+      "title": "Module",
+      "type": "string"
+    },
+    "RemediationState": {
+      "description": "Where the work to fix a finding stands. ``verified_fixed`` is reached only\nby a scan, never by a person and never by another module.",
+      "enum": [
+        "open",
+        "assigned",
+        "in_remediation",
+        "pending_verification",
+        "verified_fixed",
+        "reopened",
+        "risk_accepted"
+      ],
+      "title": "RemediationState",
+      "type": "string"
+    }
+  },
+  "$id": "https://ccurepro.cdac.in/contracts/incident_evidence/v1/IncidentEvidenceReceipt.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "causation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The message_id of the message that directly caused this one, if any.",
+      "title": "Causation Id",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "contract": {
+      "const": "ccure.audit.incident_evidence_receipt",
+      "description": "Contract name.",
+      "enum": [
+        "ccure.audit.incident_evidence_receipt"
+      ],
+      "title": "Contract",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "correlation_id": {
+      "description": "Ties together every message and log line caused by one originating request or event. Propagated unchanged from the message that caused this one; a new root starts a new id.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Correlation Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureIncidentEvidenceReceiptDataV1"
+        }
+      ],
+      "description": "The receipt.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "audit"
+    },
+    "message_id": {
+      "description": "Unique per message and stable across retries of the same message. It is the idempotency key: a receiver that has seen it answers with its original result and does nothing else.",
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "produced_at": {
+      "description": "When the message was produced. RFC 3339, timezone required.",
+      "format": "date-time",
+      "title": "Produced At",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "schema_version": {
+      "description": "The contract's schema version, 1.<minor>. A minor increase only adds optional fields.",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "title": "Schema Version",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/CcureSourceV1"
+        }
+      ],
+      "description": "The producing module.",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "producer"
+    },
+    "tenant_id": {
+      "description": "The organisation (platform tenant) the message belongs to. Checked against the tenant bound to the caller's service credential.",
+      "maxLength": 400,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@\\-]*$",
+      "title": "Tenant Id",
+      "type": "string",
+      "x-ccure-availability": "available",
+      "x-ccure-owner": "platform"
+    }
+  },
+  "required": [
+    "contract",
+    "schema_version",
+    "message_id",
+    "tenant_id",
+    "source",
+    "produced_at",
+    "correlation_id",
+    "data"
+  ],
+  "title": "CcureIncidentEvidenceReceiptV1",
+  "type": "object",
+  "x-ccure-schema-version": "1.0",
+  "x-ccure-status": "draft"
+}

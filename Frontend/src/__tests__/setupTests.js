@@ -14,3 +14,33 @@ import { configure } from "@testing-library/react";
 // vite.config.js; the two must stay consistent or the outer one fires first
 // with a less useful message.
 configure({ asyncUtilTimeout: 5000 });
+
+// Test providers attach payloads from explicit native permissionKeys and platformReach.
+// Existing authorization payloads are passed through unchanged.
+// Production code never derives permissions from these fixture fields.
+//
+// It is installed in `beforeEach`, not at setup time: importing AuthContext here
+// would load its real dependencies before a test file's own `vi.mock` calls apply.
+import React from "react";
+import { beforeEach } from "vitest";
+import { personaFrom } from "./fixtures/authorization";
+
+let patched = false;
+beforeEach(async () => {
+  if (patched) return;
+  let Context;
+  try {
+    // a test that mocks the module without a default export has no Provider to wrap
+    Context = (await import("@shell/auth/AuthContext")).default;
+  } catch {
+    return;
+  }
+  if (!Context || !Context.Provider) return;
+  const Original = Context.Provider;
+  Context.Provider = function PersonaProvider({ value, children }) {
+    const next =
+      value && value.user ? { ...value, user: personaFrom(value.user) } : value;
+    return React.createElement(Original, { value: next }, children);
+  };
+  patched = true;
+});

@@ -1,0 +1,21 @@
+/**
+ * src/modules/audit/config/accessFallbacks.js — Audit's pages for a refused route.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * When a signed-in user is refused an Audit route, the shell's route guard
+ * sends them to the first of these they may open (other than the refused
+ * page), else to sign-in. Audit's own pages, so Audit's list: the shell holds
+ * the rule, not the addresses (Phase 12.3). Order is significant.
+ */
+export const AUDIT_ACCESS_FALLBACKS = [
+  {
+    path: "/audit-dashboard",
+    permission: "audit.scan.run",
+  },
+  { path: "/history", permission: "audit.scan.read" },
+  { path: "/reports", permission: "audit.report.read" },
+  { path: "/admin/users", permission: "platform.user.read" },
+  {
+    path: "/admin/audit-logs",
+    permission: "platform.audit_log.read",
+  },
+];

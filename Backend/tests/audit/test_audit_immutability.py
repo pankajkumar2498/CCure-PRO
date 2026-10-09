@@ -47,7 +47,7 @@ def require_hardening(db_session):
     if not _hardening_installed(db_session):
         pytest.skip(
             "audit_logs append-only enforcement is not installed in this "
-            "database (migration f5a6b7c8d9e0). Run `alembic upgrade head`."
+            "database (migration f5a6b7c8d9e0). Run `alembic upgrade heads`."
         )
 
 
@@ -282,6 +282,9 @@ def test_deleting_a_user_still_works_and_preserves_their_events(
     from db.models import User
 
     user = db_session.get(User, test_user.id)
+    db_session.execute(
+        text("DELETE FROM rbac_user_roles WHERE user_id = :u"), {"u": user.id}
+    )
     db_session.delete(user)
     db_session.commit()
 

@@ -12,12 +12,12 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from auth.jwt_handler import decode_token
-from auth.rbac import require_permission
+from ccure_platform.api import CurrentUser, require_authorized
 from db.base import SessionLocal, get_db, utcnow
-from db.models import Permission, RolePermission, User
+from ccure_platform import api as platform_api
+from db.models import User
 from db.models.scans import Scan
 from fastapi import (
     APIRouter,
@@ -33,6 +33,11 @@ from fastapi.responses import StreamingResponse
 
 from scan_helpers import limiter
 from scans.legacy_json_builder import build_legacy_scan_results
+from scans.scan_access import (  # noqa: F401  (the old private names stay)
+    get_scan_or_404 as _get_scan_or_404,
+    resolve_org as _resolve_org,
+    user_can_read_all_scans as _user_can_read_all_scans,
+)
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -60,18 +65,6 @@ TERMINAL_STATUSES = {
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _is_superadmin(user: User) -> bool:
-    return (
-        getattr(getattr(user, "role", None), "name", "") or ""
-    ).lower() == "superadmin"
-
-
-def _resolve_org(user: User, requested_org: str | None) -> str:
-    if _is_superadmin(user) and requested_org:
-        return requested_org
-    return str(user.org_id)
 
 
 def _as_utc_iso(dt: datetime | None) -> str | None:
@@ -158,40 +151,6 @@ def _scan_to_dict(
     return d
 
 
-def _user_can_read_all_scans(user: User, db: Session) -> bool:
-    if getattr(getattr(user, "role", None), "name", "").lower() == "superadmin":
-        return True
-
-    return (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == user.role_id,
-            Permission.resource == "scans",
-            Permission.action == "read_all",
-        )
-        .first()
-    ) is not None
-
-
-def _get_scan_or_404(
-    scan_id: str, user: User, db: Session, org_id: str | None = None
-) -> Scan:
-    target_org_id = _resolve_org(user, org_id)
-    query = (
-        db.query(Scan)
-        .options(joinedload(Scan.created_by_user))
-        .filter(Scan.id == scan_id, Scan.org_id == target_org_id)
-    )
-    if not _user_can_read_all_scans(user, db):
-        query = query.filter(Scan.created_by == str(user.id))
-
-    scan = query.first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    return scan
-
-
 def _scan_progress_percentage(scan: Scan, pipeline_mode: str) -> int:
     """Return a stable history-list progress value derived from persisted DB state."""
     status = (scan.status or "").lower()
@@ -240,7 +199,7 @@ SORTABLE_COLUMNS = {
 
 def _build_scans_query(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     scope: str,
     created_by: str | None = None,
@@ -261,14 +220,14 @@ def _build_scans_query(
     if created_by:
         if created_by == "me":
             query = query.filter(Scan.created_by == str(user.id))
-        elif _user_can_read_all_scans(user, db):
+        elif _user_can_read_all_scans(user, db, org_id):
             query = query.filter(Scan.created_by == created_by)
         else:
             raise HTTPException(
                 status_code=403,
                 detail="Insufficient privileges to view other users' scans.",
             )
-    elif not _user_can_read_all_scans(user, db):
+    elif not _user_can_read_all_scans(user, db, org_id):
         query = query.filter(Scan.created_by == str(user.id))
 
     if scope == "active":
@@ -343,7 +302,7 @@ def _build_scans_query(
 
 def _scan_history_snapshot(
     db: Session,
-    user: User,
+    user: CurrentUser,
     org_id: str,
     scope: str,
     skip: int,
@@ -393,7 +352,7 @@ def _scan_history_snapshot(
     }
 
 
-def _get_websocket_user(websocket: WebSocket) -> User:
+def _get_websocket_user(websocket: WebSocket) -> CurrentUser:
     ticket = websocket.query_params.get("ticket")
 
     if not ticket:
@@ -420,28 +379,12 @@ def _get_websocket_user(websocket: WebSocket) -> User:
 
     db = SessionLocal()
     try:
-        user = (
-            db.query(User)
-            .options(joinedload(User.role))
-            .filter(User.id == str(user_id))
-            .first()
-        )
+        user = db.query(User).filter(User.id == str(user_id)).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found.")
 
-        if getattr(user.role, "name", "").lower() != "superadmin":
-            has_perm = (
-                db.query(RolePermission)
-                .join(Permission, Permission.id == RolePermission.permission_id)
-                .filter(
-                    RolePermission.role_id == user.role_id,
-                    Permission.resource == "scans",
-                    Permission.action == "read",
-                )
-                .first()
-            ) is not None
-            if not has_perm:
-                raise HTTPException(status_code=403, detail="Insufficient privileges.")
+        if not platform_api.has_permission(db, user, "audit.scan.read"):
+            raise HTTPException(status_code=403, detail="Insufficient privileges.")
 
         return user
     finally:
@@ -478,7 +421,7 @@ def list_scans(
     ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Return the current user's scan history, archived scans, or recycle-bin entries.
@@ -518,7 +461,7 @@ async def stream_scan_history(
     status: str | None = Query(None),
     search: str | None = Query(None),
     pipeline_mode: str | None = Query(None),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     Stream scan history snapshots whenever persisted DB state changes.
@@ -601,9 +544,9 @@ async def scan_progress_ws(websocket: WebSocket, scan_id: str):
     db = SessionLocal()
     try:
         query = db.query(Scan).filter(Scan.id == scan_id)
-        if getattr(current_user.role, "name", "").lower() != "superadmin":
+        if not platform_api.acts_across_organisations(current_user):
             query = query.filter(Scan.org_id == current_user.org_id)
-            if not _user_can_read_all_scans(current_user, db):
+            if not _user_can_read_all_scans(current_user, db, current_user.org_id):
                 query = query.filter(Scan.created_by == str(current_user.id))
 
         scan = query.first()
@@ -693,7 +636,7 @@ def get_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """Return full detail of one scan including all phase results."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -711,7 +654,7 @@ def scan_policy_record(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     The assessment configuration this scan actually ran under.
@@ -832,7 +775,7 @@ def compare_scan(
     include_findings: bool = Query(True),
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "read")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.read")),
 ):
     """
     What changed between this scan and a baseline.
@@ -892,7 +835,7 @@ def archive_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "archive")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Archive a scan so it is hidden from My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -922,7 +865,7 @@ def stop_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "execute")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.run")),
 ):
     """
     Terminates an active scan session.
@@ -1005,7 +948,7 @@ def restore_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "restore")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Restore an archived scan back to My Scan Jobs."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -1046,7 +989,7 @@ def delete_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "recycle")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.lifecycle")),
 ):
     """Move a scan that belongs to the current user into the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)
@@ -1072,7 +1015,7 @@ def purge_scan(
     scan_id: str,
     org_id: str | None = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("scans", "purge")),
+    user: CurrentUser = Depends(require_authorized("audit.scan.purge")),
 ):
     """Permanently delete a scan that is already in the recycle bin."""
     scan = _get_scan_or_404(scan_id, user, db, org_id)

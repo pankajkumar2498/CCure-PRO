@@ -1,4 +1,7 @@
-/* ============================================================================
+/* Retained compatibility styles for existing literal cc-* consumers.
+   Official unlayered adapter CSS takes precedence. */
+@layer ccure-legacy {
+  /* ============================================================================
    CCure design-system components
    ----------------------------------------------------------------------------
    Every declaration resolves through `--ccure-*`. No literal colour, no literal
@@ -11,478 +14,468 @@
    neither set, so these styles cannot collide in either direction.
    ============================================================================ */
 
-/* ── Button ───────────────────────────────────────────────────────────────── */
-.cc-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ccure-space-sm);
-  border: 1px solid transparent;
-  border-radius: var(--ccure-radius-md);
-  font-family: var(--ccure-font);
-  font-weight: var(--ccure-weight-semibold);
-  line-height: var(--ccure-leading-tight);
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-  transition:
-    background-color var(--ccure-duration-fast) var(--ccure-ease),
-    border-color var(--ccure-duration-fast) var(--ccure-ease),
-    color var(--ccure-duration-fast) var(--ccure-ease);
-}
+  /* ── Button ───────────────────────────────────────────────────────────────── */
+  .cc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ccure-space-sm);
+    border: 1px solid transparent;
+    border-radius: var(--ccure-radius-md);
+    font-family: var(--ccure-font);
+    font-weight: var(--ccure-weight-semibold);
+    line-height: var(--ccure-leading-tight);
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      background-color var(--ccure-duration-fast) var(--ccure-ease),
+      border-color var(--ccure-duration-fast) var(--ccure-ease),
+      color var(--ccure-duration-fast) var(--ccure-ease);
+  }
 
-/* Sizes. Min-height rather than padding alone: a 44px target is the WCAG 2.5.5
+  /* Sizes. Min-height rather than padding alone: a 44px target is the WCAG 2.5.5
    guidance and padding alone collapses when the label is a single glyph. */
-.cc-btn--sm {
-  min-height: 32px;
-  padding: 0 var(--ccure-space-md);
-  font-size: var(--ccure-text-sm);
-}
-.cc-btn--md {
-  min-height: 40px;
-  padding: 0 var(--ccure-space-lg);
-  font-size: var(--ccure-text-base);
-}
-.cc-btn--lg {
-  min-height: 48px;
-  padding: 0 var(--ccure-space-xl);
-  font-size: var(--ccure-text-md);
-}
+  .cc-btn--sm {
+    min-height: 32px;
+    padding: 0 var(--ccure-space-md);
+    font-size: var(--ccure-text-sm);
+  }
+  .cc-btn--md {
+    min-height: 40px;
+    padding: 0 var(--ccure-space-lg);
+    font-size: var(--ccure-text-base);
+  }
+  .cc-btn--lg {
+    min-height: 48px;
+    padding: 0 var(--ccure-space-xl);
+    font-size: var(--ccure-text-md);
+  }
 
-.cc-btn--primary {
-  background: var(--ccure-primary);
-  color: var(--ccure-on-primary);
-  border-color: var(--ccure-primary);
-}
-.cc-btn--primary:hover:not(:disabled) {
-  background: var(--ccure-primary-hover);
-  border-color: var(--ccure-primary-hover);
-}
+  .cc-btn--primary {
+    background: var(--ccure-primary);
+    color: var(--ccure-on-primary);
+    border-color: var(--ccure-primary);
+  }
+  .cc-btn--primary:hover:not(:disabled) {
+    background: var(--ccure-primary-hover);
+    border-color: var(--ccure-primary-hover);
+  }
 
-.cc-btn--secondary {
-  background: var(--ccure-surface);
-  color: var(--ccure-text);
-  border-color: var(--ccure-border);
-}
-.cc-btn--secondary:hover:not(:disabled) {
-  background: var(--ccure-surface-hover);
-  border-color: var(--ccure-border-strong);
-}
+  .cc-btn--secondary {
+    background: var(--ccure-surface);
+    color: var(--ccure-text);
+    border-color: var(--ccure-border);
+  }
+  .cc-btn--secondary:hover:not(:disabled) {
+    background: var(--ccure-surface-hover);
+    border-color: var(--ccure-border-strong);
+  }
 
-.cc-btn--ghost {
-  background: transparent;
-  color: var(--ccure-text);
-  border-color: transparent;
-}
-.cc-btn--ghost:hover:not(:disabled) {
-  background: var(--ccure-surface-hover);
-}
+  .cc-btn--ghost {
+    background: transparent;
+    color: var(--ccure-text);
+    border-color: transparent;
+  }
+  .cc-btn--ghost:hover:not(:disabled) {
+    background: var(--ccure-surface-hover);
+  }
 
-.cc-btn--danger {
-  background: var(--ccure-danger-solid);
-  color: var(--ccure-on-primary);
-  border-color: var(--ccure-danger-solid);
-}
-.cc-btn--danger:hover:not(:disabled) {
-  filter: brightness(0.92);
-}
+  .cc-btn--danger {
+    background: var(--ccure-danger-solid);
+    color: var(--ccure-on-primary);
+    border-color: var(--ccure-danger-solid);
+  }
+  .cc-btn--danger:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
 
-/* Disabled is styled on [disabled], never on a class. A class-only disabled
+  /* Disabled is styled on [disabled], never on a class. A class-only disabled
    look is the shape that produces a button which appears inert and still
    fires — the attribute is what actually stops activation, so the attribute is
    what should carry the appearance. */
-.cc-btn:disabled {
-  cursor: not-allowed;
-  background: var(--ccure-surface-disabled);
-  color: var(--ccure-text-disabled);
-  border-color: var(--ccure-border-subtle);
-}
+  .cc-btn:disabled {
+    cursor: not-allowed;
+    background: var(--ccure-surface-disabled);
+    color: var(--ccure-text-disabled);
+    border-color: var(--ccure-border-subtle);
+  }
 
-.cc-btn--block {
-  width: 100%;
-}
+  .cc-btn--block {
+    width: 100%;
+  }
 
-/* Spinner. `currentColor` so it is legible on every variant without a per-
+  /* Spinner. `currentColor` so it is legible on every variant without a per-
    variant rule, and it inherits the disabled colour when the button is
    disabled — which a loading button always is. */
-.cc-btn__spinner {
-  width: 1em;
-  height: 1em;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: var(--ccure-radius-full);
-  animation: cc-spin 0.7s linear infinite;
-  flex: none;
-}
-
-@keyframes cc-spin {
-  to {
-    transform: rotate(360deg);
+  .cc-btn__spinner {
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: var(--ccure-radius-full);
+    animation: cc-spin 0.7s linear infinite;
+    flex: none;
   }
-}
 
-/* The spinner is the one place a zeroed duration is wrong: an infinite
+  @keyframes cc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* The spinner is the one place a zeroed duration is wrong: an infinite
    rotation at 0.01ms is a strobe. Reduced motion gets a static ring instead —
    the button still reads as busy through aria-busy and the disabled state. */
-@media (prefers-reduced-motion: reduce) {
-  .cc-btn__spinner {
-    animation: none;
-    border-right-color: currentColor;
-    opacity: 0.5;
+  @media (prefers-reduced-motion: reduce) {
+    .cc-btn__spinner {
+      animation: none;
+      border-right-color: currentColor;
+      opacity: 0.5;
+    }
   }
-}
 
-/* ── Field (label + control + hint/error) ─────────────────────────────────── */
-.cc-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ccure-space-2xs);
-}
+  /* ── Field (label + control + hint/error) ─────────────────────────────────── */
+  .cc-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ccure-space-2xs);
+  }
 
-.cc-field__label {
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  font-weight: var(--ccure-weight-medium);
-  /* --ccure-text, never a lighter tier. theme.css carries a comment recording
+  .cc-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    color: var(--ccure-text);
+    line-height: var(--ccure-leading-normal);
+    cursor: pointer;
+  }
+
+  .cc-checkbox > input {
+    flex: none;
+    width: var(--ccure-space-lg);
+    height: var(--ccure-space-lg);
+    margin: 0;
+    accent-color: var(--ccure-primary);
+  }
+
+  .cc-checkbox > input:focus-visible {
+    outline: var(--ccure-focus-ring);
+    outline-offset: var(--ccure-focus-ring-offset);
+  }
+
+  .cc-checkbox:has(> input:disabled) {
+    cursor: default;
+  }
+
+  .cc-field__label {
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    font-weight: var(--ccure-weight-medium);
+    /* --ccure-text, never a lighter tier. theme.css carries a comment recording
      that six CCure labels had drifted onto a 2.6:1 token; the semantic layer
      deliberately exposes no such tier, and labels take the primary one. */
-  color: var(--ccure-text);
-}
+    color: var(--ccure-text);
+  }
 
-.cc-field__required {
-  color: var(--ccure-danger-text);
-  margin-inline-start: var(--ccure-space-3xs);
-}
+  .cc-field__required {
+    color: var(--ccure-danger-text);
+    margin-inline-start: var(--ccure-space-3xs);
+  }
 
-.cc-field__control {
-  width: 100%;
-  min-height: 40px;
-  padding: var(--ccure-space-sm) var(--ccure-space-md);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  color: var(--ccure-text);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-  transition: border-color var(--ccure-duration-fast) var(--ccure-ease);
-}
+  .cc-field__control {
+    width: 100%;
+    min-height: 40px;
+    padding: var(--ccure-space-sm) var(--ccure-space-md);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    color: var(--ccure-text);
+    background: var(--ccure-surface);
+    border: 1px solid var(--ccure-border);
+    border-radius: var(--ccure-radius-md);
+    transition: border-color var(--ccure-duration-fast) var(--ccure-ease);
+  }
 
-.cc-field__control::placeholder {
-  /* Its own tier, not --ccure-text-secondary. A placeholder that reads at the
+  .cc-field__control::placeholder {
+    /* Its own tier, not --ccure-text-secondary. A placeholder that reads at the
      same weight as an entered value makes an empty field look filled; measured
      on the scoped-dark auth surface it was 15.72:1 against a value at 18.97:1.
      See --ccure-text-placeholder in tokens/ccure-tokens.css for the steps and
      the measurements behind them. */
-  color: var(--ccure-text-placeholder);
-  /* Firefox dims placeholders by default. The tier is expressed in the colour,
+    color: var(--ccure-text-placeholder);
+    /* Firefox dims placeholders by default. The tier is expressed in the colour,
      so the correctness does not depend on a browser's opacity default — which
      is the whole reason this is a token and not an `opacity` value. */
-  opacity: 1;
-}
+    opacity: 1;
+  }
 
-.cc-field__control:hover:not(:disabled) {
-  border-color: var(--ccure-border-strong);
-}
+  .cc-field__control:hover:not(:disabled) {
+    border-color: var(--ccure-border-strong);
+  }
 
-.cc-field__control:disabled {
-  background: var(--ccure-surface-disabled);
-  color: var(--ccure-text-disabled);
-  cursor: not-allowed;
-}
+  .cc-field__control:disabled {
+    background: var(--ccure-surface-disabled);
+    color: var(--ccure-text-disabled);
+    cursor: not-allowed;
+  }
 
-/* Invalid state is keyed on aria-invalid, not a class. The attribute is what
+  /* Invalid state is keyed on aria-invalid, not a class. The attribute is what
    the screen reader announces, so binding the visual to it makes the two
    physically incapable of disagreeing. */
-.cc-field__control[aria-invalid="true"] {
-  border-color: var(--ccure-danger-border);
-}
+  .cc-field__control[aria-invalid="true"] {
+    border-color: var(--ccure-danger-border);
+  }
 
-.cc-field__hint {
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
+  .cc-field__hint {
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-field__error {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  font-size: var(--ccure-text-sm);
-  font-weight: var(--ccure-weight-medium);
-  color: var(--ccure-danger-text);
-}
+  .cc-field__error {
+    display: flex;
+    align-items: center;
+    gap: var(--ccure-space-2xs);
+    font-size: var(--ccure-text-sm);
+    font-weight: var(--ccure-weight-medium);
+    color: var(--ccure-danger-text);
+  }
 
-/* Colour is never the only carrier of the error state — WCAG 1.4.1. The glyph
+  /* Colour is never the only carrier of the error state — WCAG 1.4.1. The glyph
    is decorative to assistive tech (the text says the same thing) but it is what
    distinguishes an error from a hint for a user who cannot see the red. */
-.cc-field__error::before {
-  content: "⚠";
-  font-size: 1em;
-  line-height: 1;
-}
-
-/* ── Alert ────────────────────────────────────────────────────────────────── */
-.cc-alert {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  border: 1px solid;
-  border-radius: var(--ccure-radius-md);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  line-height: var(--ccure-leading-normal);
-}
-
-.cc-alert__icon {
-  flex: none;
-  font-size: var(--ccure-text-md);
-  line-height: var(--ccure-leading-tight);
-}
-
-.cc-alert__body {
-  flex: 1;
-  min-width: 0; /* lets long unbroken tokens (a URL, a hash) wrap instead of overflowing */
-}
-
-.cc-alert__title {
-  font-weight: var(--ccure-weight-semibold);
-  margin-bottom: var(--ccure-space-3xs);
-}
-
-.cc-alert__dismiss {
-  flex: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: inherit;
-  font-size: var(--ccure-text-md);
-  line-height: 1;
-  padding: var(--ccure-space-3xs);
-  border-radius: var(--ccure-radius-sm);
-  opacity: 0.7;
-}
-.cc-alert__dismiss:hover {
-  opacity: 1;
-}
-
-.cc-alert--info {
-  background: var(--ccure-info-bg);
-  border-color: var(--ccure-info-border);
-  color: var(--ccure-info-text);
-}
-.cc-alert--success {
-  background: var(--ccure-success-bg);
-  border-color: var(--ccure-success-border);
-  color: var(--ccure-success-text);
-}
-.cc-alert--warning {
-  background: var(--ccure-warning-bg);
-  border-color: var(--ccure-warning-border);
-  color: var(--ccure-warning-text);
-}
-.cc-alert--danger {
-  background: var(--ccure-danger-bg);
-  border-color: var(--ccure-danger-border);
-  color: var(--ccure-danger-text);
-}
-
-/* ── Modal ────────────────────────────────────────────────────────────────── */
-.cc-modal__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--ccure-z-modal);
-  background: var(--ccure-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--ccure-space-lg);
-  overflow-y: auto;
-}
-
-.cc-modal {
-  background: var(--ccure-surface-raised);
-  color: var(--ccure-text);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-lg);
-  box-shadow: var(--ccure-shadow-xl);
-  width: 100%;
-  max-height: calc(100vh - var(--ccure-space-4xl));
-  display: flex;
-  flex-direction: column;
-  font-family: var(--ccure-font);
-}
-
-.cc-modal--sm {
-  max-width: 24rem;
-}
-.cc-modal--md {
-  max-width: 36rem;
-}
-.cc-modal--lg {
-  max-width: 52rem;
-}
-
-.cc-modal__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-lg);
-  border-bottom: 1px solid var(--ccure-border-subtle);
-}
-
-.cc-modal__title {
-  font-size: var(--ccure-text-lg);
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text);
-  margin: 0;
-}
-
-.cc-modal__subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
-
-.cc-modal__close {
-  flex: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: var(--ccure-text-secondary);
-  font-size: var(--ccure-text-xl);
-  line-height: 1;
-  padding: var(--ccure-space-2xs);
-  border-radius: var(--ccure-radius-sm);
-}
-.cc-modal__close:hover {
-  background: var(--ccure-surface-hover);
-  color: var(--ccure-text);
-}
-
-.cc-modal__body {
-  padding: var(--ccure-space-lg);
-  overflow-y: auto;
-  flex: 1;
-}
-
-.cc-modal__footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-lg);
-  border-top: 1px solid var(--ccure-border-subtle);
-}
-
-/* ── Toast ────────────────────────────────────────────────────────────────── */
-.cc-toaster {
-  position: fixed;
-  top: var(--ccure-space-lg);
-  inset-inline-end: var(--ccure-space-lg);
-  z-index: var(--ccure-z-toast);
-  display: flex;
-  flex-direction: column;
-  gap: var(--ccure-space-md);
-  width: min(24rem, calc(100vw - var(--ccure-space-2xl)));
-  /* The container is always mounted so its aria-live region exists before any
-     toast enters it — see CcureToast.jsx. It must therefore not intercept
-     pointer events while empty. */
-  pointer-events: none;
-}
-
-.cc-toaster > * {
-  pointer-events: auto;
-}
-
-.cc-toast {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  border: 1px solid;
-  border-radius: var(--ccure-radius-md);
-  box-shadow: var(--ccure-shadow-lg);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  background: var(--ccure-surface-raised);
-  animation: cc-toast-in var(--ccure-duration-base) var(--ccure-ease);
-}
-
-@keyframes cc-toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(1rem);
+  .cc-field__error::before {
+    content: "⚠";
+    font-size: 1em;
+    line-height: 1;
   }
-  to {
+
+  /* ── Alert ────────────────────────────────────────────────────────────────── */
+  .cc-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ccure-space-md);
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    border: 1px solid;
+    border-radius: var(--ccure-radius-md);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    line-height: var(--ccure-leading-normal);
+  }
+
+  .cc-alert__icon {
+    flex: none;
+    font-size: var(--ccure-text-md);
+    line-height: var(--ccure-leading-tight);
+  }
+
+  .cc-alert__body {
+    flex: 1;
+    min-width: 0; /* lets long unbroken tokens (a URL, a hash) wrap instead of overflowing */
+  }
+
+  .cc-alert__title {
+    font-weight: var(--ccure-weight-semibold);
+    margin-bottom: var(--ccure-space-3xs);
+  }
+
+  .cc-alert__dismiss {
+    flex: none;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+    font-size: var(--ccure-text-md);
+    line-height: 1;
+    padding: var(--ccure-space-3xs);
+    border-radius: var(--ccure-radius-sm);
+    opacity: 0.7;
+  }
+  .cc-alert__dismiss:hover {
     opacity: 1;
-    transform: none;
   }
-}
 
-.cc-toast--info {
-  border-color: var(--ccure-info-border);
-  color: var(--ccure-info-text);
-}
-.cc-toast--success {
-  border-color: var(--ccure-success-border);
-  color: var(--ccure-success-text);
-}
-.cc-toast--warning {
-  border-color: var(--ccure-warning-border);
-  color: var(--ccure-warning-text);
-}
-.cc-toast--danger {
-  border-color: var(--ccure-danger-border);
-  color: var(--ccure-danger-text);
-}
+  .cc-alert--info {
+    background: var(--ccure-info-bg);
+    border-color: var(--ccure-info-border);
+    color: var(--ccure-info-text);
+  }
+  .cc-alert--success {
+    background: var(--ccure-success-bg);
+    border-color: var(--ccure-success-border);
+    color: var(--ccure-success-text);
+  }
+  .cc-alert--warning {
+    background: var(--ccure-warning-bg);
+    border-color: var(--ccure-warning-border);
+    color: var(--ccure-warning-text);
+  }
+  .cc-alert--danger {
+    background: var(--ccure-danger-bg);
+    border-color: var(--ccure-danger-border);
+    color: var(--ccure-danger-text);
+  }
 
-.cc-toast__body {
-  flex: 1;
-  min-width: 0;
-}
+  /* ── Modal ────────────────────────────────────────────────────────────────── */
+  .cc-modal__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--ccure-z-modal);
+    background: var(--ccure-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--ccure-space-lg);
+    overflow-y: auto;
+  }
 
-.cc-toast__dismiss {
-  flex: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.7;
-  padding: var(--ccure-space-3xs);
-  border-radius: var(--ccure-radius-sm);
-  line-height: 1;
-}
-.cc-toast__dismiss:hover {
-  opacity: 1;
-}
+  .cc-modal {
+    background: var(--ccure-surface-raised);
+    color: var(--ccure-text);
+    border: 1px solid var(--ccure-border);
+    border-radius: var(--ccure-radius-lg);
+    box-shadow: var(--ccure-shadow-xl);
+    width: 100%;
+    max-height: calc(100vh - var(--ccure-space-4xl));
+    display: flex;
+    flex-direction: column;
+    font-family: var(--ccure-font);
+  }
 
-/* ── Skip link ────────────────────────────────────────────────────────────
+  .cc-modal--sm {
+    max-width: 24rem;
+  }
+  .cc-modal--md {
+    max-width: 36rem;
+  }
+  .cc-modal--lg {
+    max-width: 52rem;
+  }
+
+  .cc-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ccure-space-lg);
+    padding: var(--ccure-space-lg);
+    border-bottom: 1px solid var(--ccure-border-subtle);
+  }
+
+  .cc-modal__title {
+    font-size: var(--ccure-text-lg);
+    font-weight: var(--ccure-weight-semibold);
+    color: var(--ccure-text);
+    margin: 0;
+  }
+
+  .cc-modal__subtitle {
+    margin: var(--ccure-space-3xs) 0 0;
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text-secondary);
+  }
+
+  .cc-modal__close {
+    flex: none;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: var(--ccure-text-secondary);
+    font-size: var(--ccure-text-xl);
+    line-height: 1;
+    padding: var(--ccure-space-2xs);
+    border-radius: var(--ccure-radius-sm);
+  }
+  .cc-modal__close:hover {
+    background: var(--ccure-surface-hover);
+    color: var(--ccure-text);
+  }
+
+  .cc-modal__body {
+    padding: var(--ccure-space-lg);
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .cc-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ccure-space-md);
+    padding: var(--ccure-space-lg);
+    border-top: 1px solid var(--ccure-border-subtle);
+  }
+
+  /* ── Toast ────────────────────────────────────────────────────────────────── */
+
+  .cc-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ccure-space-md);
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    border: 1px solid;
+    border-radius: var(--ccure-radius-md);
+    box-shadow: var(--ccure-shadow-lg);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    background: var(--ccure-surface-raised);
+    animation: cc-toast-in var(--ccure-duration-base) var(--ccure-ease);
+  }
+
+  @keyframes cc-toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(1rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .cc-toast--info {
+    border-color: var(--ccure-info-border);
+    color: var(--ccure-info-text);
+  }
+  .cc-toast--success {
+    border-color: var(--ccure-success-border);
+    color: var(--ccure-success-text);
+  }
+  .cc-toast--warning {
+    border-color: var(--ccure-warning-border);
+    color: var(--ccure-warning-text);
+  }
+  .cc-toast--danger {
+    border-color: var(--ccure-danger-border);
+    color: var(--ccure-danger-text);
+  }
+
+  /* ── Skip link ────────────────────────────────────────────────────────────
    Phase 0 measured zero skip links in the application. It is the first thing
    in the tab order and is visible only when focused. `position: absolute` with
    a translate rather than `display:none`, because a display-none element cannot
    receive focus and the link would be unreachable. */
-.cc-skip-link {
-  position: absolute;
-  top: 0;
-  inset-inline-start: 0;
-  z-index: calc(var(--ccure-z-toast) + 1);
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  background: var(--ccure-primary);
-  color: var(--ccure-on-primary);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  font-weight: var(--ccure-weight-semibold);
-  border-radius: 0 0 var(--ccure-radius-md) 0;
-  text-decoration: none;
-  transform: translateY(-100%);
-}
+  .cc-skip-link {
+    position: absolute;
+    top: 0;
+    inset-inline-start: 0;
+    z-index: calc(var(--ccure-z-toast) + 1);
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    background: var(--ccure-primary);
+    color: var(--ccure-on-primary);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    font-weight: var(--ccure-weight-semibold);
+    border-radius: 0 0 var(--ccure-radius-md) 0;
+    text-decoration: none;
+    transform: translateY(-100%);
+  }
 
-.cc-skip-link:focus {
-  transform: translateY(0);
-}
+  .cc-skip-link:focus {
+    transform: translateY(0);
+  }
 
-/* ── Screen-reader-only text ──────────────────────────────────────────────
+  /* ── Screen-reader-only text ──────────────────────────────────────────────
    The standard clip-rect pattern. `display:none` and `visibility:hidden` both
    remove the node from the accessibility tree, which is the opposite of what
    is wanted: this text exists *for* assistive technology.
@@ -490,102 +483,102 @@
    `white-space: nowrap` matters — without it a long string collapses to one
    character per line inside the 1px box, and some readers then announce it
    letter by letter. */
-.cc-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
+  .cc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
-/* ══════════════════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════════════════
    Checkpoint 3A primitives
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Card ─────────────────────────────────────────────────────────────────
+  /* ── Card ─────────────────────────────────────────────────────────────────
    A surface with optional header/footer. Deliberately thin: 34 files contain
    something card-shaped, and most differ only in what they put inside. */
-.cc-card {
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-lg);
-  color: var(--ccure-text);
-  font-family: var(--ccure-font);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
+  .cc-card {
+    background: var(--ccure-surface);
+    border: 1px solid var(--ccure-border);
+    border-radius: var(--ccure-radius-lg);
+    color: var(--ccure-text);
+    font-family: var(--ccure-font);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
 
-.cc-card--raised {
-  box-shadow: var(--ccure-shadow-md);
-}
+  .cc-card--raised {
+    box-shadow: var(--ccure-shadow-md);
+  }
 
-.cc-card--flush {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
+  .cc-card--flush {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
 
-.cc-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ccure-space-lg);
-  padding: var(--ccure-space-lg);
-  border-bottom: 1px solid var(--ccure-border-subtle);
-}
+  .cc-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ccure-space-lg);
+    padding: var(--ccure-space-lg);
+    border-bottom: 1px solid var(--ccure-border-subtle);
+  }
 
-.cc-card__heading {
-  min-width: 0;
-}
+  .cc-card__heading {
+    min-width: 0;
+  }
 
-.cc-card__title {
-  margin: 0;
-  font-size: var(--ccure-text-md);
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text);
-  line-height: var(--ccure-leading-tight);
-}
+  .cc-card__title {
+    margin: 0;
+    font-size: var(--ccure-text-md);
+    font-weight: var(--ccure-weight-semibold);
+    color: var(--ccure-text);
+    line-height: var(--ccure-leading-tight);
+  }
 
-.cc-card__subtitle {
-  margin: var(--ccure-space-3xs) 0 0;
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
+  .cc-card__subtitle {
+    margin: var(--ccure-space-3xs) 0 0;
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-card__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  flex: none;
-}
+  .cc-card__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+    flex: none;
+  }
 
-.cc-card__body {
-  padding: var(--ccure-space-lg);
-  flex: 1;
-  min-width: 0;
-}
+  .cc-card__body {
+    padding: var(--ccure-space-lg);
+    flex: 1;
+    min-width: 0;
+  }
 
-/* A card whose body is a table wants no padding — the table supplies its own
+  /* A card whose body is a table wants no padding — the table supplies its own
    cell padding, and doubling it wastes a lot of width on a dense console. */
-.cc-card__body--flush {
-  padding: 0;
-}
+  .cc-card__body--flush {
+    padding: 0;
+  }
 
-.cc-card__footer {
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  border-top: 1px solid var(--ccure-border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--ccure-space-md);
-}
+  .cc-card__footer {
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    border-top: 1px solid var(--ccure-border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ccure-space-md);
+  }
 
-/* ── Badge ────────────────────────────────────────────────────────────────
+  /* ── Badge ────────────────────────────────────────────────────────────────
    Status/label pill. The application currently has at least 18 distinct
    ad-hoc badge classes; this is the one that replaces them.
 
@@ -593,210 +586,210 @@
    (WCAG 1.4.1), which for a security console is not a formality — severity
    and scan status are exactly the things a colour-blind operator must be
    able to read. */
-.cc-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  border: 1px solid transparent;
-  border-radius: var(--ccure-radius-sm);
-  font-family: var(--ccure-font);
-  font-weight: var(--ccure-weight-semibold);
-  line-height: var(--ccure-leading-tight);
-  white-space: nowrap;
-  vertical-align: middle;
-}
+  .cc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ccure-space-2xs);
+    border: 1px solid transparent;
+    border-radius: var(--ccure-radius-sm);
+    font-family: var(--ccure-font);
+    font-weight: var(--ccure-weight-semibold);
+    line-height: var(--ccure-leading-tight);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
 
-.cc-badge--sm {
-  padding: 1px var(--ccure-space-sm);
-  font-size: var(--ccure-text-xs);
-}
+  .cc-badge--sm {
+    padding: 1px var(--ccure-space-sm);
+    font-size: var(--ccure-text-xs);
+  }
 
-.cc-badge--md {
-  padding: 2px var(--ccure-space-md);
-  font-size: var(--ccure-text-sm);
-}
+  .cc-badge--md {
+    padding: 2px var(--ccure-space-md);
+    font-size: var(--ccure-text-sm);
+  }
 
-.cc-badge--mono {
-  font-family: var(--ccure-font-mono);
-  letter-spacing: 0.04em;
-}
+  .cc-badge--mono {
+    font-family: var(--ccure-font-mono);
+    letter-spacing: 0.04em;
+  }
 
-.cc-badge__dot {
-  width: 0.5em;
-  height: 0.5em;
-  border-radius: var(--ccure-radius-full);
-  background: currentColor;
-  flex: none;
-}
+  .cc-badge__dot {
+    width: 0.5em;
+    height: 0.5em;
+    border-radius: var(--ccure-radius-full);
+    background: currentColor;
+    flex: none;
+  }
 
-.cc-badge--neutral {
-  background: var(--ccure-surface-sunken);
-  border-color: var(--ccure-border);
-  color: var(--ccure-text-secondary);
-}
+  .cc-badge--neutral {
+    background: var(--ccure-surface-sunken);
+    border-color: var(--ccure-border);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-badge--primary {
-  background: var(--ccure-primary-soft);
-  border-color: var(--ccure-primary);
-  color: var(--ccure-primary-text);
-}
+  .cc-badge--primary {
+    background: var(--ccure-primary-soft);
+    border-color: var(--ccure-primary);
+    color: var(--ccure-primary-text);
+  }
 
-.cc-badge--success {
-  background: var(--ccure-success-bg);
-  border-color: var(--ccure-success-border);
-  color: var(--ccure-success-text);
-}
+  .cc-badge--success {
+    background: var(--ccure-success-bg);
+    border-color: var(--ccure-success-border);
+    color: var(--ccure-success-text);
+  }
 
-.cc-badge--warning {
-  background: var(--ccure-warning-bg);
-  border-color: var(--ccure-warning-border);
-  color: var(--ccure-warning-text);
-}
+  .cc-badge--warning {
+    background: var(--ccure-warning-bg);
+    border-color: var(--ccure-warning-border);
+    color: var(--ccure-warning-text);
+  }
 
-.cc-badge--danger {
-  background: var(--ccure-danger-bg);
-  border-color: var(--ccure-danger-border);
-  color: var(--ccure-danger-text);
-}
+  .cc-badge--danger {
+    background: var(--ccure-danger-bg);
+    border-color: var(--ccure-danger-border);
+    color: var(--ccure-danger-text);
+  }
 
-.cc-badge--info {
-  background: var(--ccure-info-bg);
-  border-color: var(--ccure-info-border);
-  color: var(--ccure-info-text);
-}
+  .cc-badge--info {
+    background: var(--ccure-info-bg);
+    border-color: var(--ccure-info-border);
+    color: var(--ccure-info-text);
+  }
 
-/* ── Table ────────────────────────────────────────────────────────────────
+  /* ── Table ────────────────────────────────────────────────────────────────
    The accessibility-critical primitive: 46 tables and 330 header cells in the
    application today carry zero `scope` attributes and no caption. */
 
-/* The scroll container, not the table, owns overflow. A wide table must
+  /* The scroll container, not the table, owns overflow. A wide table must
    scroll inside its own box rather than widening the page — otherwise the
    whole layout scrolls sideways and the sidebar leaves the viewport. */
-.cc-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
+  .cc-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
 
-.cc-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  color: var(--ccure-text);
-}
+  .cc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    color: var(--ccure-text);
+  }
 
-.cc-table__caption {
-  text-align: start;
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  font-size: var(--ccure-text-sm);
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text-secondary);
-}
+  .cc-table__caption {
+    text-align: start;
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    font-size: var(--ccure-text-sm);
+    font-weight: var(--ccure-weight-semibold);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-table th,
-.cc-table td {
-  text-align: start;
-  border-bottom: 1px solid var(--ccure-border-subtle);
-  vertical-align: top;
-}
+  .cc-table th,
+  .cc-table td {
+    text-align: start;
+    border-bottom: 1px solid var(--ccure-border-subtle);
+    vertical-align: top;
+  }
 
-.cc-table thead th {
-  border-bottom: 2px solid var(--ccure-border);
-  font-size: var(--ccure-text-sm);
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text-secondary);
-  white-space: nowrap;
-  background: var(--ccure-surface);
-}
+  .cc-table thead th {
+    border-bottom: 2px solid var(--ccure-border);
+    font-size: var(--ccure-text-sm);
+    font-weight: var(--ccure-weight-semibold);
+    color: var(--ccure-text-secondary);
+    white-space: nowrap;
+    background: var(--ccure-surface);
+  }
 
-.cc-table--comfortable th,
-.cc-table--comfortable td {
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-}
+  .cc-table--comfortable th,
+  .cc-table--comfortable td {
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+  }
 
-.cc-table--compact th,
-.cc-table--compact td {
-  padding: var(--ccure-space-sm) var(--ccure-space-md);
-}
+  .cc-table--compact th,
+  .cc-table--compact td {
+    padding: var(--ccure-space-sm) var(--ccure-space-md);
+  }
 
-.cc-table__cell--end {
-  text-align: end;
-}
+  .cc-table__cell--end {
+    text-align: end;
+  }
 
-.cc-table__cell--center {
-  text-align: center;
-}
+  .cc-table__cell--center {
+    text-align: center;
+  }
 
-.cc-table__cell--nowrap {
-  white-space: nowrap;
-}
+  .cc-table__cell--nowrap {
+    white-space: nowrap;
+  }
 
-.cc-table__cell--mono {
-  font-family: var(--ccure-font-mono);
-}
+  .cc-table__cell--mono {
+    font-family: var(--ccure-font-mono);
+  }
 
-.cc-table--hoverable tbody tr:hover {
-  background: var(--ccure-surface-hover);
-}
+  .cc-table--hoverable tbody tr:hover {
+    background: var(--ccure-surface-hover);
+  }
 
-/* Sticky header. Only meaningful inside a scrolling container, which is why
+  /* Sticky header. Only meaningful inside a scrolling container, which is why
    it is opt-in rather than the default. */
-.cc-table--sticky thead th {
-  position: sticky;
-  top: 0;
-  z-index: var(--ccure-z-sticky);
-}
+  .cc-table--sticky thead th {
+    position: sticky;
+    top: 0;
+    z-index: var(--ccure-z-sticky);
+  }
 
-/* Sort control. A real button inside the header cell, not a click handler on
+  /* Sort control. A real button inside the header cell, not a click handler on
    the cell: the header must be reachable by Tab and activatable by
    Enter/Space, which a bare cell is not. */
-.cc-table__sort {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  background: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  border-radius: var(--ccure-radius-sm);
-}
+  .cc-table__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ccure-space-2xs);
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border-radius: var(--ccure-radius-sm);
+  }
 
-.cc-table__sort:hover {
-  color: var(--ccure-text);
-}
+  .cc-table__sort:hover {
+    color: var(--ccure-text);
+  }
 
-/* The indicator is a glyph, not a colour: hidden from assistive tech (aria-sort
+  /* The indicator is a glyph, not a colour: hidden from assistive tech (aria-sort
    already says it) but readable by a sighted user without relying on hue. */
-.cc-table__sort-indicator {
-  font-size: 0.85em;
-  opacity: 0.7;
-}
+  .cc-table__sort-indicator {
+    font-size: 0.85em;
+    opacity: 0.7;
+  }
 
-.cc-table th[aria-sort]:not([aria-sort="none"]) .cc-table__sort-indicator {
-  opacity: 1;
-  color: var(--ccure-primary-text);
-}
+  .cc-table th[aria-sort]:not([aria-sort="none"]) .cc-table__sort-indicator {
+    opacity: 1;
+    color: var(--ccure-primary-text);
+  }
 
-.cc-table th[aria-sort]:not([aria-sort="none"]) {
-  color: var(--ccure-text);
-}
+  .cc-table th[aria-sort]:not([aria-sort="none"]) {
+    color: var(--ccure-text);
+  }
 
-.cc-table__message {
-  padding: var(--ccure-space-2xl);
-  text-align: center;
-  color: var(--ccure-text-secondary);
-}
+  .cc-table__message {
+    padding: var(--ccure-space-2xl);
+    text-align: center;
+    color: var(--ccure-text-secondary);
+  }
 
-/* ── Tabs ─────────────────────────────────────────────────────────────────
+  /* ── Tabs ─────────────────────────────────────────────────────────────────
    React owns the state; this is presentation plus ARIA wiring. */
-.cc-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-2xs);
-  /* The rule below the tab strip is an inset shadow, not a border, and the
+  .cc-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--ccure-space-2xs);
+    /* The rule below the tab strip is an inset shadow, not a border, and the
      tabs carry no negative margin. Both details exist for one reason:
      `overflow-x: auto` forces `overflow-y` to compute to `auto` as well (a
      non-visible value on one axis does that to the other), so a tab pulled 1px
@@ -807,353 +800,353 @@
      the active tab's 2px indicator, so the selected state would visibly thin.
      An inset shadow takes no layout space at all, and the active tab's own
      border paints over it. */
-  box-shadow: inset 0 -1px 0 var(--ccure-border);
-  overflow-x: auto;
-  overflow-y: hidden;
-}
+    box-shadow: inset 0 -1px 0 var(--ccure-border);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
 
-.cc-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  padding: var(--ccure-space-md) var(--ccure-space-lg);
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-base);
-  font-weight: var(--ccure-weight-medium);
-  color: var(--ccure-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
+  .cc-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+    padding: var(--ccure-space-md) var(--ccure-space-lg);
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-base);
+    font-weight: var(--ccure-weight-medium);
+    color: var(--ccure-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
 
-.cc-tab:hover:not(:disabled) {
-  color: var(--ccure-text);
-  background: var(--ccure-surface-hover);
-}
+  .cc-tab:hover:not(:disabled) {
+    color: var(--ccure-text);
+    background: var(--ccure-surface-hover);
+  }
 
-/* Selected state keys on aria-selected, so the visual and the announced state
+  /* Selected state keys on aria-selected, so the visual and the announced state
    are the same fact and cannot drift apart. */
-.cc-tab[aria-selected="true"] {
-  color: var(--ccure-primary-text);
-  border-bottom-color: var(--ccure-primary);
-  font-weight: var(--ccure-weight-semibold);
-}
+  .cc-tab[aria-selected="true"] {
+    color: var(--ccure-primary-text);
+    border-bottom-color: var(--ccure-primary);
+    font-weight: var(--ccure-weight-semibold);
+  }
 
-.cc-tab:disabled {
-  color: var(--ccure-text-disabled);
-  cursor: not-allowed;
-}
+  .cc-tab:disabled {
+    color: var(--ccure-text-disabled);
+    cursor: not-allowed;
+  }
 
-.cc-tab__count {
-  font-size: var(--ccure-text-xs);
-  font-weight: var(--ccure-weight-semibold);
-  padding: 0 var(--ccure-space-2xs);
-  border-radius: var(--ccure-radius-sm);
-  background: var(--ccure-surface-sunken);
-  color: var(--ccure-text-secondary);
-}
+  .cc-tab__count {
+    font-size: var(--ccure-text-xs);
+    font-weight: var(--ccure-weight-semibold);
+    padding: 0 var(--ccure-space-2xs);
+    border-radius: var(--ccure-radius-sm);
+    background: var(--ccure-surface-sunken);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-tab[aria-selected="true"] .cc-tab__count {
-  background: var(--ccure-primary-soft);
-  color: var(--ccure-primary-text);
-}
+  .cc-tab[aria-selected="true"] .cc-tab__count {
+    background: var(--ccure-primary-soft);
+    color: var(--ccure-primary-text);
+  }
 
-.cc-tabpanel:focus {
-  outline: none;
-}
+  .cc-tabpanel:focus {
+    outline: none;
+  }
 
-/* ── Pagination ───────────────────────────────────────────────────────── */
-.cc-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
+  /* ── Pagination ───────────────────────────────────────────────────────── */
+  .cc-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ccure-space-md);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-pagination__summary {
-  min-width: 0;
-}
+  .cc-pagination__summary {
+    min-width: 0;
+  }
 
-.cc-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-}
+  .cc-pagination__controls {
+    display: flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+  }
 
-.cc-pagination__size {
-  display: flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-}
+  .cc-pagination__size {
+    display: flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+  }
 
-.cc-pagination__size select {
-  min-height: 32px;
-  padding: 0 var(--ccure-space-sm);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text);
-  background: var(--ccure-surface);
-  border: 1px solid var(--ccure-border);
-  border-radius: var(--ccure-radius-md);
-}
+  .cc-pagination__size select {
+    min-height: 32px;
+    padding: 0 var(--ccure-space-sm);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text);
+    background: var(--ccure-surface);
+    border: 1px solid var(--ccure-border);
+    border-radius: var(--ccure-radius-md);
+  }
 
-.cc-pagination__status {
-  padding: 0 var(--ccure-space-sm);
-  white-space: nowrap;
-}
+  .cc-pagination__status {
+    padding: 0 var(--ccure-space-sm);
+    white-space: nowrap;
+  }
 
-/* ── Breadcrumb ───────────────────────────────────────────────────────── */
-.cc-breadcrumb__list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-sm);
-}
+  /* ── Breadcrumb ───────────────────────────────────────────────────────── */
+  .cc-breadcrumb__list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-sm);
+  }
 
-.cc-breadcrumb__item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ccure-space-sm);
-  min-width: 0;
-}
+  .cc-breadcrumb__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ccure-space-sm);
+    min-width: 0;
+  }
 
-.cc-breadcrumb__link {
-  color: var(--ccure-text-link);
-  text-decoration: none;
-  border-radius: var(--ccure-radius-sm);
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
+  .cc-breadcrumb__link {
+    color: var(--ccure-text-link);
+    text-decoration: none;
+    border-radius: var(--ccure-radius-sm);
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+  }
 
-.cc-breadcrumb__link:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
+  .cc-breadcrumb__link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
 
-.cc-breadcrumb__current {
-  color: var(--ccure-text);
-  font-weight: var(--ccure-weight-medium);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .cc-breadcrumb__current {
+    color: var(--ccure-text);
+    font-weight: var(--ccure-weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-/* The separator is decorative and hidden from assistive tech — the list
+  /* The separator is decorative and hidden from assistive tech — the list
    structure is already announced, and hearing a slash between every crumb is
    noise. */
-.cc-breadcrumb__separator {
-  color: var(--ccure-text-secondary);
-  user-select: none;
-}
+  .cc-breadcrumb__separator {
+    color: var(--ccure-text-secondary);
+    user-select: none;
+  }
 
-/* ── Progress ─────────────────────────────────────────────────────────── */
-.cc-progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ccure-space-2xs);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-sm);
-}
+  /* ── Progress ─────────────────────────────────────────────────────────── */
+  .cc-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ccure-space-2xs);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-sm);
+  }
 
-.cc-progress__labels {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--ccure-space-md);
-  color: var(--ccure-text-secondary);
-}
+  .cc-progress__labels {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--ccure-space-md);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-progress__value {
-  font-family: var(--ccure-font-mono);
-  color: var(--ccure-text);
-}
+  .cc-progress__value {
+    font-family: var(--ccure-font-mono);
+    color: var(--ccure-text);
+  }
 
-.cc-progress__track {
-  height: 8px;
-  border-radius: var(--ccure-radius-full);
-  background: var(--ccure-surface-sunken);
-  overflow: hidden;
-}
+  .cc-progress__track {
+    height: 8px;
+    border-radius: var(--ccure-radius-full);
+    background: var(--ccure-surface-sunken);
+    overflow: hidden;
+  }
 
-.cc-progress__bar {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ccure-primary);
-  transition: width var(--ccure-duration-base) var(--ccure-ease);
-}
+  .cc-progress__bar {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--ccure-primary);
+    transition: width var(--ccure-duration-base) var(--ccure-ease);
+  }
 
-.cc-progress--success .cc-progress__bar {
-  background: var(--ccure-success-solid);
-}
+  .cc-progress--success .cc-progress__bar {
+    background: var(--ccure-success-solid);
+  }
 
-.cc-progress--warning .cc-progress__bar {
-  background: var(--ccure-warning-solid);
-}
+  .cc-progress--warning .cc-progress__bar {
+    background: var(--ccure-warning-solid);
+  }
 
-.cc-progress--danger .cc-progress__bar {
-  background: var(--ccure-danger-solid);
-}
+  .cc-progress--danger .cc-progress__bar {
+    background: var(--ccure-danger-solid);
+  }
 
-/* Indeterminate: the value is genuinely unknown, so no percentage is shown
+  /* Indeterminate: the value is genuinely unknown, so no percentage is shown
    and aria-valuenow is omitted rather than faked. */
-.cc-progress--indeterminate .cc-progress__bar {
-  width: 40%;
-  animation: cc-progress-slide 1.4s var(--ccure-ease) infinite;
-}
-
-@keyframes cc-progress-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(250%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
   .cc-progress--indeterminate .cc-progress__bar {
-    animation: none;
-    width: 100%;
-    opacity: 0.4;
+    width: 40%;
+    animation: cc-progress-slide 1.4s var(--ccure-ease) infinite;
   }
-}
 
-/* ── Loader ───────────────────────────────────────────────────────────── */
-.cc-loader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ccure-space-md);
-  padding: var(--ccure-space-2xl);
-  font-family: var(--ccure-font);
-  font-size: var(--ccure-text-sm);
-  color: var(--ccure-text-secondary);
-}
+  @keyframes cc-progress-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
 
-.cc-loader--inline {
-  flex-direction: row;
-  padding: 0;
-}
+  @media (prefers-reduced-motion: reduce) {
+    .cc-progress--indeterminate .cc-progress__bar {
+      animation: none;
+      width: 100%;
+      opacity: 0.4;
+    }
+  }
 
-.cc-loader__spinner {
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2px solid var(--ccure-border);
-  border-top-color: var(--ccure-primary);
-  border-radius: var(--ccure-radius-full);
-  animation: cc-spin 0.7s linear infinite;
-  flex: none;
-}
+  /* ── Loader ───────────────────────────────────────────────────────────── */
+  .cc-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ccure-space-md);
+    padding: var(--ccure-space-2xl);
+    font-family: var(--ccure-font);
+    font-size: var(--ccure-text-sm);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-loader--inline .cc-loader__spinner {
-  width: 1em;
-  height: 1em;
-}
+  .cc-loader--inline {
+    flex-direction: row;
+    padding: 0;
+  }
 
-@media (prefers-reduced-motion: reduce) {
   .cc-loader__spinner {
-    animation: none;
-    border-top-color: var(--ccure-border);
-    opacity: 0.5;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid var(--ccure-border);
+    border-top-color: var(--ccure-primary);
+    border-radius: var(--ccure-radius-full);
+    animation: cc-spin 0.7s linear infinite;
+    flex: none;
   }
-}
 
-/* ── Skeleton ─────────────────────────────────────────────────────────── */
-.cc-skeleton {
-  display: block;
-  background: var(--ccure-surface-sunken);
-  border-radius: var(--ccure-radius-sm);
-  position: relative;
-  overflow: hidden;
-}
+  .cc-loader--inline .cc-loader__spinner {
+    width: 1em;
+    height: 1em;
+  }
 
-.cc-skeleton--text {
-  height: 1em;
-  margin: 0.2em 0;
-}
+  @media (prefers-reduced-motion: reduce) {
+    .cc-loader__spinner {
+      animation: none;
+      border-top-color: var(--ccure-border);
+      opacity: 0.5;
+    }
+  }
 
-.cc-skeleton--circle {
-  border-radius: var(--ccure-radius-full);
-}
+  /* ── Skeleton ─────────────────────────────────────────────────────────── */
+  .cc-skeleton {
+    display: block;
+    background: var(--ccure-surface-sunken);
+    border-radius: var(--ccure-radius-sm);
+    position: relative;
+    overflow: hidden;
+  }
 
-/* The shimmer is a pseudo-element rather than an animated background on the
+  .cc-skeleton--text {
+    height: 1em;
+    margin: 0.2em 0;
+  }
+
+  .cc-skeleton--circle {
+    border-radius: var(--ccure-radius-full);
+  }
+
+  /* The shimmer is a pseudo-element rather than an animated background on the
    element itself, so a caller can still set its own background. */
-.cc-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--ccure-surface-hover),
-    transparent
-  );
-  animation: cc-skeleton-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes cc-skeleton-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
   .cc-skeleton::after {
-    animation: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--ccure-surface-hover),
+      transparent
+    );
+    animation: cc-skeleton-shimmer 1.4s ease-in-out infinite;
   }
-}
 
-/* ── Empty state ──────────────────────────────────────────────────────── */
-.cc-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ccure-space-sm);
-  padding: var(--ccure-space-3xl) var(--ccure-space-lg);
-  text-align: center;
-  font-family: var(--ccure-font);
-  color: var(--ccure-text-secondary);
-}
+  @keyframes cc-skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
 
-.cc-empty__icon {
-  font-size: var(--ccure-text-3xl);
-  line-height: 1;
-  opacity: 0.6;
-}
+  @media (prefers-reduced-motion: reduce) {
+    .cc-skeleton::after {
+      animation: none;
+    }
+  }
 
-.cc-empty__title {
-  font-size: var(--ccure-text-md);
-  font-weight: var(--ccure-weight-semibold);
-  color: var(--ccure-text);
-}
+  /* ── Empty state ──────────────────────────────────────────────────────── */
+  .cc-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ccure-space-sm);
+    padding: var(--ccure-space-3xl) var(--ccure-space-lg);
+    text-align: center;
+    font-family: var(--ccure-font);
+    color: var(--ccure-text-secondary);
+  }
 
-.cc-empty__description {
-  font-size: var(--ccure-text-base);
-  max-width: 42ch;
-}
+  .cc-empty__icon {
+    font-size: var(--ccure-text-3xl);
+    line-height: 1;
+    opacity: 0.6;
+  }
 
-.cc-empty__action {
-  margin-top: var(--ccure-space-md);
-}
+  .cc-empty__title {
+    font-size: var(--ccure-text-md);
+    font-weight: var(--ccure-weight-semibold);
+    color: var(--ccure-text);
+  }
 
-/* ── Field adornment ──────────────────────────────────────────────────────────
+  .cc-empty__description {
+    font-size: var(--ccure-text-base);
+    max-width: 42ch;
+  }
+
+  .cc-empty__action {
+    margin-top: var(--ccure-space-md);
+  }
+
+  /* ── Field adornment ──────────────────────────────────────────────────────────
    An interactive control inside the field's box: a password visibility toggle,
    a clear button, a unit suffix.
 
@@ -1167,35 +1160,35 @@
    wider adornment can widen the gutter without a second rule redefining the
    whole control.
    ────────────────────────────────────────────────────────────────────────── */
-.cc-field__adorned {
-  --cc-adornment-size: 40px;
-  position: relative;
-  display: block;
-}
+  .cc-field__adorned {
+    --cc-adornment-size: 40px;
+    position: relative;
+    display: block;
+  }
 
-.cc-field__adorned .cc-field__control {
-  padding-inline-end: var(--cc-adornment-size);
-}
+  .cc-field__adorned .cc-field__control {
+    padding-inline-end: var(--cc-adornment-size);
+  }
 
-.cc-field__adornment {
-  position: absolute;
-  inset-inline-end: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--cc-adornment-size);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* The gutter itself must not swallow clicks aimed at the input; only the
+  .cc-field__adornment {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--cc-adornment-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* The gutter itself must not swallow clicks aimed at the input; only the
      control inside it is interactive. */
-  pointer-events: none;
-}
+    pointer-events: none;
+  }
 
-.cc-field__adornment > * {
-  pointer-events: auto;
-}
+  .cc-field__adornment > * {
+    pointer-events: auto;
+  }
 
-/* ── Autofill ─────────────────────────────────────────────────────────────────
+  /* ── Autofill ─────────────────────────────────────────────────────────────────
    Chrome paints its own background and text colour into an autofilled field
    and ignores `background`/`color`. On a dark surface the result is the
    browser's pale yellow behind the field's own light text, which on the auth
@@ -1211,11 +1204,12 @@
    absurd transition delay keeps Chrome from re-applying its colour on focus;
    it is the standard workaround and it animates nothing.
    ────────────────────────────────────────────────────────────────────────── */
-.cc-field__control:-webkit-autofill,
-.cc-field__control:-webkit-autofill:hover,
-.cc-field__control:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--ccure-text);
-  -webkit-box-shadow: 0 0 0 1000px var(--ccure-surface) inset;
-  caret-color: var(--ccure-text);
-  transition: background-color 5000s ease-in-out 0s;
+  .cc-field__control:-webkit-autofill,
+  .cc-field__control:-webkit-autofill:hover,
+  .cc-field__control:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ccure-text);
+    -webkit-box-shadow: 0 0 0 1000px var(--ccure-surface) inset;
+    caret-color: var(--ccure-text);
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }

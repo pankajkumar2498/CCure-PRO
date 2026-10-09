@@ -1,0 +1,441 @@
+/* ============================================================================
+   AMT integration and reconciliation — page layout and meaning
+   ----------------------------------------------------------------------------
+   Batch 20. The page borrowed 15 classes from the global dashboard.css and
+   two from scan.css, and set 107 inline style objects carrying 34 colour
+   literals. The coverage band, each category's tone, risk and the selected
+   category are named for what they mean, and every colour resolves through a
+   `--ccure-*` token in both themes.
+
+   dashboard.css and scan.css are untouched; other pages still use them.
+   ============================================================================ */
+
+/* ── Page frame ───────────────────────────────────────────────────────────── */
+.amt-page {
+  --ccure-page-gap: var(--ccure-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+  color: var(--ccure-text);
+}
+
+.amt-alert {
+  margin: 0;
+}
+
+/* Cards are positioned so a visually hidden descendant (the table caption, the
+   category explanations) is contained by its card, not by the page. */
+.amt-card {
+  position: relative;
+}
+
+/* ── Layout: import beside status ─────────────────────────────────────────── */
+.amt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr);
+  gap: var(--ccure-space-lg);
+  align-items: start;
+}
+
+.amt-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-lg);
+  min-width: 0;
+}
+
+/* ── Import ───────────────────────────────────────────────────────────────── */
+.amt-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-md);
+}
+
+.amt-drop {
+  position: relative;
+}
+
+/* Visually hidden, never display:none: a hidden input leaves the tab order,
+   which is how the legacy zone came to be reachable only by pointer. */
+.amt-drop__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.amt-drop__zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  padding: var(--ccure-space-2xl) var(--ccure-space-md);
+  border: 2px dashed var(--ccure-border-strong);
+  border-radius: var(--ccure-radius-md);
+  background: var(--ccure-surface-sunken);
+  text-align: center;
+  cursor: pointer;
+}
+
+.amt-drop__zone:hover {
+  border-color: var(--ccure-primary);
+  background: var(--ccure-surface-hover);
+}
+
+/* The input is invisible, so its focus is drawn on the zone it is labelled
+   by. :focus-visible keeps the ring off a mouse click. */
+.amt-drop__input:focus-visible + .amt-drop__zone {
+  border-color: var(--ccure-primary);
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.amt-drop__icon {
+  margin-bottom: var(--ccure-space-xs);
+  font-size: var(--ccure-text-2xl);
+  line-height: 1;
+}
+
+.amt-drop__status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+}
+
+.amt-drop__name {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-semibold);
+  color: var(--ccure-text);
+  overflow-wrap: anywhere;
+}
+
+.amt-drop__hint {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Reconciliation status ────────────────────────────────────────────────── */
+.amt-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--ccure-space-lg);
+  align-items: center;
+}
+
+.amt-ring,
+.amt-category {
+  position: relative;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.amt-ring:focus-visible,
+.amt-category:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+/* The coverage summary opens Fully Audited, as the ring always did. */
+.amt-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+  padding: var(--ccure-space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--ccure-radius-md);
+  justify-content: flex-start;
+  white-space: normal;
+  height: auto;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.amt-ring.cc-btn > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+}
+
+.amt-ring:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.amt-ring[aria-pressed="true"] {
+  border-color: var(--ccure-primary);
+  background: var(--ccure-primary-soft);
+}
+
+.amt-ring__gauge {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+
+.amt-ring__svg {
+  display: block;
+}
+
+.amt-ring__track {
+  fill: none;
+  stroke: var(--ccure-border);
+  stroke-width: 10;
+}
+
+.amt-ring__arc {
+  fill: none;
+  stroke: var(--ccure-danger-solid);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.amt-ring--strong .amt-ring__arc {
+  stroke: var(--ccure-success-solid);
+}
+
+.amt-ring--good .amt-ring__arc {
+  stroke: var(--ccure-info-solid);
+}
+
+.amt-ring--fair .amt-ring__arc {
+  stroke: var(--ccure-warning-solid);
+}
+
+.amt-ring__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.amt-ring__value {
+  font-size: var(--ccure-text-2xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+  color: var(--ccure-danger-text);
+}
+
+.amt-ring--strong .amt-ring__value {
+  color: var(--ccure-success-text);
+}
+
+.amt-ring--good .amt-ring__value {
+  color: var(--ccure-info-text);
+}
+
+.amt-ring--fair .amt-ring__value {
+  color: var(--ccure-warning-text);
+}
+
+.amt-ring__label {
+  margin-top: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  font-weight: var(--ccure-weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ccure-text-secondary);
+}
+
+.amt-ring__caption {
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  text-align: center;
+}
+
+.amt-ring__caption strong {
+  color: var(--ccure-text);
+}
+
+/* ── Categories ───────────────────────────────────────────────────────────── */
+.amt-categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-3xs);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.amt-category {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  white-space: normal;
+  height: auto;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+  padding: var(--ccure-space-xs) var(--ccure-space-sm);
+  border: 0;
+  border-bottom: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-sm);
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  text-align: start;
+}
+
+/* CcureButton wraps its children in one span (after the spinner, when
+   loading), so this control's own layout is applied there; on the button alone
+   the span was content-sized and centred. */
+.amt-category.cc-btn > span:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  width: 100%;
+}
+
+.amt-categories__item:last-child .amt-category {
+  border-bottom: 0;
+}
+
+.amt-category:hover {
+  background: var(--ccure-surface-hover);
+}
+
+.amt-category[aria-pressed="true"] {
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+/* Colour is not the only marker of the selected category (WCAG 1.4.1). */
+.amt-category[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: var(--ccure-space-2xs);
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-primary);
+}
+
+.amt-category__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+}
+
+.amt-category__help {
+  cursor: help;
+}
+
+.amt-category__value {
+  font-size: var(--ccure-text-base);
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ccure-text);
+}
+
+/* Fully Audited, Shadow IT and Coverage Gap carry a tone, so their counts are
+   badges: the badge's own tinted ground is what makes the amber legible in the
+   light theme. Sized to sit level with the plain counts. */
+.amt-category__badge {
+  font-size: var(--ccure-text-sm);
+  font-weight: var(--ccure-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Guidance ─────────────────────────────────────────────────────────────── */
+.amt-guidance {
+  margin: 0;
+  padding-inline-start: var(--ccure-space-lg);
+  font-size: var(--ccure-text-sm);
+  line-height: var(--ccure-leading-relaxed);
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Drilldown ────────────────────────────────────────────────────────────── */
+.amt-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  gap: var(--ccure-space-sm);
+  align-items: end;
+  margin-bottom: var(--ccure-space-md);
+}
+
+.amt-filters__field {
+  margin: 0;
+}
+
+.amt-state {
+  padding-block: var(--ccure-space-2xl);
+}
+
+.amt-table {
+  position: relative;
+}
+
+.amt-link {
+  color: var(--ccure-text-link);
+  text-decoration: none;
+}
+
+.amt-link:hover {
+  text-decoration: underline;
+}
+
+.amt-link:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.amt-link--strong,
+.amt-strong {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.amt-mono {
+  font-family: var(--ccure-font-mono);
+  font-size: 0.95em;
+}
+
+.amt-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+  margin-top: var(--ccure-space-md);
+}
+
+.amt-pagination__summary {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.amt-pagination__summary strong {
+  color: var(--ccure-text);
+}
+
+.amt-pagination__controls {
+  display: flex;
+  gap: var(--ccure-space-xs);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .amt-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .amt-metrics,
+  .amt-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

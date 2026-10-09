@@ -1,8 +1,20 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { ALIASES } from "./modules.config.js";
+
+// `@shell/…` and `@<module>/…`, from modules.config.js (Phase 12.3), so an
+// import does not depend on how deep the importing file sits.
+const alias = Object.fromEntries(
+  Object.entries(ALIASES).map(([name, dir]) => [
+    name,
+    fileURLToPath(new URL(`./${dir}`, import.meta.url)),
+  ]),
+);
 
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias },
   server: {
     host: true,
     port: 3000,
@@ -21,6 +33,7 @@ export default defineConfig({
     },
   },
   test: {
+    include: ["src/**/*.{test,spec}.{js,jsx}"],
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/__tests__/setupTests.js"],

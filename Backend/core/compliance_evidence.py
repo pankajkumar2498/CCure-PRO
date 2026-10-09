@@ -18,7 +18,7 @@ from db.models.findings import (
     VulnerabilityDefinition,
 )
 from db.models.topology import NetworkLink
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("ccure.compliance.evidence")
@@ -379,21 +379,38 @@ class ComplianceEvidenceProvider:
             rdp_nla_enforced = bool(_nla_raw)
 
         # --- PCI-DSS v4.0 FIM (File Integrity Monitoring) Detection ---
-        fim_active = registry_attrs.get("fim_active", False) or custom_attrs.get(
-            "fim_active", False
-        )
+        # None when neither source recorded it: read only by a PCI rule, where a
+        # False default failed requirement 11.5.2 on every host nobody had
+        # checked (see the note on the PCI keys below).
+        _fim_values = [
+            v
+            for v in (registry_attrs.get("fim_active"), custom_attrs.get("fim_active"))
+            if v is not None
+        ]
+        fim_active = any(bool(v) for v in _fim_values) if _fim_values else None
         fim_monitored_dirs = registry_attrs.get(
             "fim_monitored_dirs", []
         ) or custom_attrs.get("fim_monitored_dirs", [])
 
+        # The four PCI keys below are None when nothing was recorded, never
+        # False. Each is read by an active PCI rule (crl_pci_auth_mfa,
+        # crl_pci_asv_fresh, crl_pci_log_daily, crl_pci_ir_test_365d), and a
+        # False default made every host that had never recorded the fact FAIL
+        # the requirement — an unknown reported as a known failure. None is
+        # dropped from the payload below, so the rule reads the key as missing
+        # and renders manual_review. The same applies to a stored date that
+        # does not parse: nothing was established.
+
         # --- PCI-DSS v4.0 PAM MFA Module Detection (Linux pam_duo.so, pam_google_authenticator.so) ---
-        pam_mfa_modules = custom_attrs.get("pam_mfa_modules", [])
-        pam_mfa_enforced = len(pam_mfa_modules) > 0
+        pam_mfa_modules = custom_attrs.get("pam_mfa_modules")
+        pam_mfa_enforced = (
+            len(pam_mfa_modules) > 0 if isinstance(pam_mfa_modules, list) else None
+        )
 
         # --- PCI-DSS v4.0 ASV Scan Freshness Tracking ---
         # Track last PASSING ASV scan date, not just any scan execution
         asv_last_passing_scan_date = custom_attrs.get("asv_last_passing_scan_date")
-        asv_scan_fresh = False
+        asv_scan_fresh = None
         if asv_last_passing_scan_date:
             try:
                 last_scan = datetime.fromisoformat(
@@ -402,14 +419,14 @@ class ComplianceEvidenceProvider:
                 days_since = (datetime.now(timezone.utc) - last_scan).days
                 asv_scan_fresh = days_since <= 90  # Quarterly cadence
             except (ValueError, TypeError):
-                asv_scan_fresh = False
+                asv_scan_fresh = None
 
         # --- PCI-DSS v4.0 Daily Log Review (Req 10.4.1) ---
-        pci_log_daily_reviewed = custom_attrs.get("pci_log_daily_reviewed", False)
+        pci_log_daily_reviewed = custom_attrs.get("pci_log_daily_reviewed")
 
         # --- PCI-DSS v4.0 IR Tabletop Exercise Freshness (Req 12.10.2) ---
         ir_last_test_date = custom_attrs.get("ir_last_test_date")
-        ir_test_fresh_365d = False
+        ir_test_fresh_365d = None
         if ir_last_test_date:
             try:
                 last_test = datetime.fromisoformat(
@@ -418,7 +435,7 @@ class ComplianceEvidenceProvider:
                 days_since_test = (datetime.now(timezone.utc) - last_test).days
                 ir_test_fresh_365d = days_since_test <= 365
             except (ValueError, TypeError):
-                ir_test_fresh_365d = False
+                ir_test_fresh_365d = None
 
         # --- PCI-DSS v4.0 Session Timeout Configuration (Req 8.2.8) ---
         session_timeout_minutes = registry_attrs.get(
@@ -431,10 +448,10 @@ class ComplianceEvidenceProvider:
         ) or custom_attrs.get("account_lockout_threshold")
 
         # --- PCI-DSS v4.0 WAF Active (Req 6.4.1) ---
-        waf_active = custom_attrs.get("waf_active", False)
+        waf_active = custom_attrs.get("waf_active")
 
         # --- PCI-DSS v4.0 IDS/IPS Active (Req 11.5.1) ---
-        ids_ips_active = custom_attrs.get("ids_ips_active", False)
+        ids_ips_active = custom_attrs.get("ids_ips_active")
 
         # --- PCI-DSS v4.0 Log Retention (Req 10.5.1: >= 365 days) ---
         log_retention_days = registry_attrs.get("retention_days") or custom_attrs.get(
@@ -454,11 +471,19 @@ class ComplianceEvidenceProvider:
             else None
         )
 
+        # No ``False`` default on these four or on ``ids_ips_active`` /
+        # ``waf_active`` above: a value that was never collected is absent, and
+        # the engine renders an absent key as not assessed. They defaulted to
+        # False until 28 Sep 2026 — the pattern CLAUDE.md forbids on this path —
+        # so a host whose registry hardening was never read FAILED the ISO,
+        # NIST CSF, CIS and PCI rules that read them (3 of this installation's 4
+        # assets on that date). ``rdp_disabled`` stays a boolean for the NLA
+        # derivation above; only what is published changes.
         payload = {
-            "uac_enabled": registry_attrs.get("uac_enabled", False),
-            "firewall_profile_active": registry_attrs.get("firewall_active", False),
-            "remote_desktop_disabled": rdp_disabled,
-            "audit_policy_configured": registry_attrs.get("audit_configured", False),
+            "uac_enabled": registry_attrs.get("uac_enabled"),
+            "firewall_profile_active": registry_attrs.get("firewall_active"),
+            "remote_desktop_disabled": registry_attrs.get("rdp_disabled"),
+            "audit_policy_configured": registry_attrs.get("audit_configured"),
             # New normalized protocol hardening attributes
             # No ``False`` default on these four: the key is absent when the
             # transport did not collect the setting, and a default turns "not
@@ -535,12 +560,83 @@ class ComplianceEvidenceProvider:
     # ── 8. Web Vulnerability Audit Mapping ─────────────────────────────────────────
     @staticmethod
     def _adapt_web_vulnerability_audit(db: Session, asset_id: str) -> dict[str, Any]:
-        """Query open WebFinding records for the web asset to drive policy compliance."""
-        from db.models.web_scans import WebFinding
+        """
+        Web-application evidence for a network asset, or an explicit "not assessed".
+
+        This used to filter ``WebFinding.web_asset_id == asset_id``. The id it is
+        handed is a network ``Asset.id`` (``ast_…``); ``web_asset_id`` holds
+        web-scan asset ids (``was_…``). The two never meet, so the query always
+        returned nothing and every web rule read "0 critical findings, no SQLi" —
+        a PASS on evidence nobody had collected (finding F3).
+
+        There is no stored link between a network asset and a web scan, so the
+        link is made explicitly: the most recent **completed** web scan in the
+        same organisation whose target host is this asset's IP address or
+        hostname (port ignored). Only that scan's findings are evidence. With no
+        such scan the answer is ``_evidence_available: False`` — the rules then
+        record ``manual_review`` with the reason, because "no web scan ran against
+        this host" and "a web scan found nothing" are different facts.
+
+        Current conditions are the statuses a finding can hold while still true
+        of the application: ``open``, ``confirmed`` and ``reopened``. The
+        network-finding adapter likewise leaves accepted and fixed findings out.
+        """
+        from db.models.web_scans import WebFinding, WebScan
+
+        asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        if asset is None:
+            return {
+                "_evidence_available": False,
+                "_reason": "Asset not found; web-application evidence cannot be read.",
+            }
+
+        hosts = set()
+        if asset.ip_address:
+            hosts.add(str(asset.ip_address).split("/")[0].lower())
+        if asset.hostname:
+            hosts.add(asset.hostname.strip().lower())
+        hosts.discard("")
+        if not hosts:
+            return {
+                "_evidence_available": False,
+                "_reason": (
+                    "The asset has neither an IP address nor a hostname to match "
+                    "against a web application scan target."
+                ),
+            }
+
+        domain = func.lower(WebScan.target_domain)
+        host_match = or_(
+            *[domain == host for host in hosts],
+            *[domain.like(f"{host}:%") for host in hosts],
+        )
+        latest = (
+            db.query(WebScan)
+            .filter(
+                WebScan.org_id == asset.org_id,
+                WebScan.status == "complete",
+                WebScan.is_deleted == False,  # noqa: E712
+                host_match,
+            )
+            .order_by(WebScan.completed_at.desc().nullslast())
+            .first()
+        )
+        if latest is None:
+            return {
+                "_evidence_available": False,
+                "_reason": (
+                    "No completed web application scan targets this host "
+                    f"({', '.join(sorted(hosts))}); web-application rules are not "
+                    "assessed."
+                ),
+            }
 
         findings = (
             db.query(WebFinding)
-            .filter(WebFinding.web_asset_id == asset_id, WebFinding.status == "open")
+            .filter(
+                WebFinding.web_scan_id == latest.id,
+                WebFinding.status.in_(("open", "confirmed", "reopened")),
+            )
             .all()
         )
 

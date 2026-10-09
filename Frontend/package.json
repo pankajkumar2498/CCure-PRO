@@ -8,11 +8,13 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.23.1",
-    "ux4g-web-components": "2.1.0",
+    "ux4g-web-components": "3.0.2",
     "vis-data": "^7.1.9",
     "vis-network": "^9.1.9"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^6.4.5",
     "@testing-library/react": "^15.0.7",
     "@testing-library/user-event": "^14.5.2",
@@ -21,6 +23,7 @@
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.2",
     "jsdom": "^24.0.0",
+    "postcss": "8.5.26",
     "vite": "^8.2.2",
     "vitest": "^4.1.11",
     "wawoff2": "^2.0.1"
@@ -28,12 +31,17 @@
   "scripts": {
     "prebuild": "node scripts/build-ux4g-assets.mjs",
     "build": "vite build",
+    "postbuild": "node scripts/check-ux4g-foundation.mjs --dist",
     "dev": "node scripts/build-ux4g-assets.mjs && vite",
+    "prepreview": "node scripts/check-ux4g-foundation.mjs --dist",
     "preview": "vite preview",
     "pretest": "node scripts/build-ux4g-assets.mjs",
     "test": "vitest run",
-    "lint": "eslint src --ext .js,.jsx --max-warnings=0",
+    "lint": "eslint src --ext .js,.jsx --max-warnings=0 && eslint browser-tests scripts/check-ux4g-architecture.mjs scripts/ux4g-harness/browser-server.mjs playwright.config.mjs --ext .mjs --max-warnings=0",
     "ux4g:assets": "node scripts/build-ux4g-assets.mjs",
-    "ux4g:verify": "node scripts/verify-ux4g-assets.mjs"
+    "ux4g:check": "node scripts/check-ux4g-foundation.mjs",
+    "ux4g:verify": "node scripts/verify-ux4g-assets.mjs",
+    "ux4g:architecture": "node scripts/check-ux4g-architecture.mjs",
+    "test:browser": "playwright test"
   }
 }

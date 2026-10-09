@@ -193,21 +193,11 @@ def _can_read_scan(db: Session, scan: Scan, user_id: str) -> bool:
     if str(scan.created_by) == str(user_id):
         return True
 
-    from db.models import Permission, RolePermission, User
+    from ccure_platform import api as platform_api
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = platform_api.user(db, user_id)
     if not user or str(user.org_id) != str(scan.org_id):
         return False
-    if (getattr(getattr(user, "role", None), "name", "") or "").lower() == "superadmin":
-        return True
-
-    return (
-        db.query(RolePermission)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .filter(
-            RolePermission.role_id == user.role_id,
-            Permission.resource == "scans",
-            Permission.action == "read_all",
-        )
-        .first()
-    ) is not None
+    return platform_api.has_permission(
+        db, user.id, "audit.scan.read_all", org_id=str(scan.org_id)
+    )

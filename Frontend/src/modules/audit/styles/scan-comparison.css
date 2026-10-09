@@ -1,0 +1,312 @@
+/* Scan Comparison.
+ *
+ * Built on the same tokens as the credentialed results page — no colour
+ * literals, no second visual system. The count cards deliberately give
+ * "Not assessed" the same weight as "Fixed": on real data those are 1,869 and
+ * 24, and a layout that made the first a footnote would report progress the
+ * scan did not establish.
+ */
+
+.sc-page {
+  --ccure-page-gap: var(--ccure-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-page-gap);
+}
+
+.sc-summary {
+  margin: 0;
+  font-size: var(--ccure-text-md);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sc-code,
+.sc-mono {
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.sc-note {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+  color: var(--ccure-text-secondary);
+  line-height: var(--ccure-leading-relaxed);
+}
+
+.sc-muted {
+  color: var(--ccure-text-secondary);
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+.sc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ccure-space-md);
+}
+
+.sc-field {
+  min-width: 280px;
+}
+
+.sc-sevfilter {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sc-sevfilter__legend {
+  padding: 0;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sc-sevfilter__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+  margin-top: var(--ccure-space-3xs);
+}
+
+.sc-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-sm);
+  text-transform: capitalize;
+}
+
+/* ── Counts ─────────────────────────────────────────────────────────────── */
+.sc-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.sc-count {
+  padding: var(--ccure-space-md);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+  background: var(--ccure-surface-sunken);
+}
+
+.sc-count__label {
+  margin: 0;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sc-count__value {
+  margin: var(--ccure-space-3xs) 0 0;
+  font-size: var(--ccure-text-xl);
+  font-weight: var(--ccure-weight-bold);
+  line-height: var(--ccure-leading-tight);
+}
+
+.sc-count--danger .sc-count__value {
+  color: var(--ccure-danger-text);
+}
+.sc-count--warning .sc-count__value {
+  color: var(--ccure-warning-text);
+}
+.sc-count--success .sc-count__value {
+  color: var(--ccure-success-text);
+}
+
+.sc-count__hint {
+  margin: var(--ccure-space-2xs) 0 0;
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+  line-height: var(--ccure-leading-normal);
+}
+
+.sc-bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+  margin: var(--ccure-space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sc-band {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccure-space-3xs);
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sc-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-sev-info);
+}
+.sc-dot--critical {
+  background: var(--ccure-sev-critical);
+}
+.sc-dot--high {
+  background: var(--ccure-sev-high);
+}
+
+.sc-sev {
+  text-transform: capitalize;
+}
+.sc-sev--critical {
+  color: var(--ccure-sev-critical);
+}
+.sc-sev--high {
+  color: var(--ccure-sev-high);
+}
+
+/* ── Scope ──────────────────────────────────────────────────────────────── */
+.sc-scopes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--ccure-space-md);
+}
+
+.sc-scope {
+  padding: var(--ccure-space-md);
+  border: 1px solid var(--ccure-border-subtle);
+  border-radius: var(--ccure-radius-md);
+}
+
+.sc-scope__title {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+}
+
+.sc-scope__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+.sc-scope__grid dt,
+.sc-detail__grid dt {
+  font-size: var(--ccure-text-xs);
+  color: var(--ccure-text-secondary);
+}
+
+.sc-scope__grid dd,
+.sc-detail__grid dd {
+  margin: 0;
+  font-size: var(--ccure-text-sm);
+}
+
+/* ── Findings ───────────────────────────────────────────────────────────── */
+.sc-findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ccure-space-sm);
+}
+
+.sc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ccure-space-sm);
+}
+
+.sc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-2xs);
+}
+
+.sc-chip {
+  padding: var(--ccure-space-3xs) var(--ccure-space-sm);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-full);
+  background: var(--ccure-surface);
+  color: var(--ccure-text);
+  font-size: var(--ccure-text-sm);
+  cursor: pointer;
+}
+
+.sc-chip:hover {
+  background: var(--ccure-surface-hover);
+}
+
+/* Selected state is border weight plus background plus weight — never colour
+   alone, which a monochrome display or a colour-blind reader cannot see. */
+.sc-chip.is-active {
+  border-color: var(--ccure-primary);
+  background: var(--ccure-primary-soft);
+  color: var(--ccure-primary-text);
+  font-weight: var(--ccure-weight-semibold);
+}
+
+.sc-chip:focus-visible,
+.sc-expand:focus-visible {
+  outline: var(--ccure-focus-ring-width) solid var(--ccure-focus-ring-color);
+  outline-offset: var(--ccure-focus-ring-offset);
+}
+
+.sc-search {
+  min-width: 260px;
+}
+
+.sc-expand {
+  padding: var(--ccure-space-3xs) var(--ccure-space-xs);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-md);
+  background: var(--ccure-surface);
+  color: var(--ccure-text);
+  font-size: var(--ccure-text-xs);
+  cursor: pointer;
+}
+
+.sc-detail {
+  padding: var(--ccure-space-md);
+  border: 1px solid var(--ccure-border);
+  border-radius: var(--ccure-radius-lg);
+  background: var(--ccure-surface);
+}
+
+.sc-detail__title {
+  margin: 0 0 var(--ccure-space-sm);
+  font-size: var(--ccure-text-sm);
+}
+
+.sc-detail__sub {
+  margin: var(--ccure-space-md) 0 var(--ccure-space-2xs);
+  font-size: var(--ccure-text-sm);
+}
+
+.sc-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--ccure-space-sm);
+  margin: 0;
+}
+
+/* Evidence is multi-line probe output. Wrapped and bounded so one long reading
+   cannot own the page or introduce a horizontal scrollbar. */
+.sc-evidence {
+  margin: 0;
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--ccure-font-mono);
+  font-size: var(--ccure-text-xs);
+}
+
+@media (max-width: 720px) {
+  .sc-controls,
+  .sc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sc-field,
+  .sc-search {
+    min-width: 0;
+  }
+}

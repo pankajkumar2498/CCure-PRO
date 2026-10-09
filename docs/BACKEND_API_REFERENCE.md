@@ -1,5 +1,7 @@
 # Backend API Reference
 
+> **Superseded in part (6 Oct 2026, Phase 9.6c).** Where this document describes HS256 tokens, `JWT_SECRET_KEY`, `CCURE_TOKEN_SIGNING_ALG` or `CCURE_ACCEPT_LEGACY_HS256`, that is **history**: the platform signs and accepts ES256 only and holds no JWT secret. `MFA_ENCRYPTION_KEY` is required and has no fallback. Current state: `CLAUDE.md`, "Token signing keys" and "MFA key".
+
 **CCure-Audit-PRO** — complete inventory of the FastAPI surface, derived from
 `Backend/main.py`'s router registration and the route decorators in each router
 module.
@@ -96,7 +98,7 @@ array. Rate-limit rejections use `error_code: "RATE_LIMIT_EXCEEDED"` with status
 
 Five routers register both the bare and the trailing-slash form of their
 collection routes, so `/admin/users` and `/admin/users/` are both valid:
-`/admin/organizations`, `/admin/roles`, `/admin/users`, `/admin/audit-logs`,
+`/admin/organizations`, `/admin/users`, `/admin/audit-logs`,
 `/assets`, `/findings`, plus the parameterised admin sub-routes
 (`/admin/users/{user_id}/`, `/admin/organizations/{org_id}/status/`, etc.).
 The frontend's `api/admin.js` sends the trailing-slash form.
@@ -105,7 +107,7 @@ The frontend's `api/admin.js` sends the trailing-slash form.
 
 ## 2. Authentication — `/auth`
 
-Source: `Backend/auth/router.py` — 15 operations.
+Source: `Backend/ccure_platform/identity/router.py` (legacy path `auth/router.py`) — 18 operations.
 
 | Method | Path                         | Auth                       | Rate limit | Purpose                                  |
 | ------ | ---------------------------- | -------------------------- | ---------- | ---------------------------------------- |
@@ -119,6 +121,8 @@ Source: `Backend/auth/router.py` — 15 operations.
 | GET    | `/auth/me`                   | authenticated              | —          | Current user + role + permissions + org  |
 | POST   | `/auth/refresh`              | public (cookie/body token) | —          | Rotate refresh, issue access             |
 | POST   | `/auth/ticket`               | authenticated              | —          | 60-second WebSocket/download ticket      |
+| GET    | `/auth/jwks.json`            | public                     | 60/min     | Token-verification public keys (JWKS)    |
+| POST   | `/auth/service-token`        | service assertion          | 30/min     | Service identity → service token (9.5)   |
 | POST   | `/auth/forgot-password`      | public                     | 3/min      | Send reset link                          |
 | POST   | `/auth/reset-password`       | public                     | —          | Consume reset token                      |
 | POST   | `/auth/login/send-email-otp` | MFA challenge token        | 5/min      | Email a 6-digit OTP                      |
@@ -349,6 +353,58 @@ a deactivated organization.
 Returns `{"ticket": "<JWT>"}` with `type="ticket"`, valid **60 seconds**. Used
 for WebSocket connections and for `GET /reports/download/{scan_id}?ticket=`.
 
+### `GET /auth/jwks.json`
+
+The platform's token-verification keys as a JSON Web Key Set (RFC 7517), added
+in Phase 9.3. **Public key material only**: each key is
+`{"kty":"EC","crv":"P-256","x","y","kid","alg":"ES256","use":"sig"}`. The `kid`
+is the RFC 7638 thumbprint of the key. Every key in the `next`, `active` and
+`retired` states is listed. `Cache-Control: public, max-age=300`. Answers **503**
+when no signing keyset is configured. Verifiers (the gateway, IR) cache it and
+refetch only on an unknown `kid`. Tokens are still issued HS256 until Phase 9.4,
+so no issued token uses these keys yet.
+
+### `POST /auth/service-token`
+
+A service exchanges a signed assertion for a service token (Phase 9.5). Served by
+`Backend/ccure_platform/service_identity/router.py`, not the identity router.
+Standard OAuth 2.0 client credentials (RFC 6749 §4.4) with `private_key_jwt`
+client authentication (RFC 7523). **No user token, cookie or shared secret is
+involved, and a user token is refused.**
+
+Form-encoded body:
+
+| Field                   | Value                                                                |
+| ----------------------- | -------------------------------------------------------------------- |
+| `grant_type`            | `client_credentials`                                                 |
+| `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`             |
+| `client_assertion`      | JWT signed ES256 by the **service's own** registered key (below)     |
+| `scope`                 | space-separated scopes, each within those the identity is allowed    |
+| `tenant`                | organisation id; required only for a service granted several tenants |
+
+The assertion carries `kid` (a key registered to that service), `iss` = `sub` =
+the service id, `aud` = `https://ccurepro.cdac.in/api/auth/service-token`, a
+`jti` used once only, and `iat`/`exp` at most 60 seconds apart.
+
+Returns `{"access_token", "token_type": "Bearer", "expires_in": 600, "scope",
+"tenant"}` with `Cache-Control: no-store`. The token is ES256, signed by the
+platform's active key, with `aud` = the service the caller may call
+(`urn:ccure:core` or `urn:ccure:ir`), `sub` = `svc:<id>`,
+`type` = `service_access`, `ptype` = `service`, and `tenant` and `scope` claims.
+Issuance writes a `service.token_issued` audit event.
+
+Errors:
+
+- **401 `invalid_client`** — any authentication failure: unknown service, bad
+  signature, wrong key, expired, replayed, or a disabled identity. The cause is
+  logged, never returned.
+- **400** — `invalid_scope` or `invalid_request`.
+- **403** — a tenant the service is not granted, or an inactive organisation.
+- **503** — the registry or the replay store is unavailable.
+
+Identities live in a static registry (`CCURE_SERVICE_REGISTRY_DIR`); none is
+registered yet.
+
 ### `POST /auth/forgot-password`
 
 Always returns `200` with the same message regardless of whether the address
@@ -578,16 +634,35 @@ is already `running` with a `current_task_id`, it returns that task ID instead o
 dispatching a duplicate — the backend chains phases itself, so a UI that also
 triggers them would otherwise double-scan.
 
+This route **continues a scan Host Discovery admitted**, and refuses anything
+else:
+
+- `scan_id` is required (`422` without it). The scan is loaded through the same
+  organization- and visibility-scoped lookup as Scan History, so another
+  organization's scan — or a colleague's, without `scans:read_all` — answers
+  `404`. Superadmins name the organization with `?org_id=`.
+- Every host record needs `ip_address` (or `ip`) — `422` otherwise.
+- Every host must lie inside the targets the scan was admitted for
+  (`scans.target_hosts`) **and** inside the organization's current scan scope —
+  `403` otherwise. A continuation cannot widen its own scan.
+- Quota is not re-charged: it was spent when Host Discovery admitted the scan.
+
 ### `POST /scan/vulnerability-audit`
 
 **Body — `VulnerabilityAuditRequest`**: `hosts` (required), `scan_id`,
 `pipeline_mode`, `vulnerability_profile` (`recommended` \| `conservative` \|
-`deep`), `phases`, `exclude_ot_from_nmap`, `exclude_ips`. Same 400 guard and same
-duplicate-trigger suppression.
+`deep`), `phases`, `exclude_ot_from_nmap`, `exclude_ips`. **Query**: `org_id`
+(superadmin only). Same 400 guard, same duplicate-trigger suppression, and the
+same continuation checks as `POST /scan/asset-discovery` above — required
+`scan_id`, scoped scan lookup, hosts inside the admitted targets and the current
+scope.
 
-> **NOTE:** `vulnerability_profile` is accepted and validated by the schema but is
-> not forwarded to `run_vulnerability_audit_task`; plugin selection is driven by
-> the host's open ports (see [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md) §6).
+> **NOTE:** Only `vulnerability_profile: "recommended"` (or omitting it) is
+> accepted; `conservative` and `deep` answer `422`. The profile was never forwarded
+> to `run_vulnerability_audit_task` — plugin selection is driven by the host's open
+> ports (see [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md) §6) — so the other
+> values used to be accepted and silently ignored. The Phase 2 screen shows them
+> disabled and labelled "not yet available".
 
 ### `POST /scan/phases`
 
@@ -1454,9 +1529,14 @@ they created it. `404` when the scan does not exist.
 
 ## 13. Web application scans — `/web-scans`
 
-Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. All
-use `Depends(get_current_user)`; authorization is organization scoping inside
-each handler rather than a permission atom.
+Source: `Backend/routers/web_scans.py` — 12 HTTP operations + 1 WebSocket. Each
+HTTP operation requires the same permission atom as its network-scan counterpart
+(`scans:execute` to start or cancel, `scans:read` to view, `findings:read` for
+findings and screenshots, `findings:update` to triage — plus
+`findings:accept_risk` to set `accepted_risk`), on top of organization scoping
+inside each handler. Starting, cancelling and triaging each write an audit event
+(`web_scan.created`, `web_scan.cancelled`, `web_finding.<status>`). The progress
+WebSocket authenticates by ticket.
 
 | Method | Path                                                    | Purpose                                                |
 | ------ | ------------------------------------------------------- | ------------------------------------------------------ |
@@ -1891,20 +1971,13 @@ every admin-created account out of its own login.
 > **NOTE:** `restore` and `purge` are gated on `users:delete`, not a separate
 > restore permission — the delete atom governs the whole soft-delete lifecycle.
 
-### Roles — `/admin/roles` (2 operations)
+### Roles — removed (RBAC-8)
 
-Source: `Backend/routers/admin_rbac.py`. Both require `roles:read`.
-
-| Method | Path                                 | Returns                                          |
-| ------ | ------------------------------------ | ------------------------------------------------ |
-| GET    | `/admin/roles`                       | All roles with descriptions and `is_system_role` |
-| GET    | `/admin/roles/{role_id}/permissions` | Permission atoms for one role (`role_id: int`)   |
-
-> **IMPORTANT:** This router is **read-only**. The `roles:create`,
-> `roles:update` and `roles:delete` permission atoms are defined and granted to
-> superadmin, but **no endpoint consumes them** — the five system roles are
-> seeded by `db/migrate_production_schema.py` and cannot be modified through the
-> API.
+The legacy read-only `/admin/roles` routes (`routers/admin_rbac.py`) were **removed** with the
+legacy authorization model. Roles, permissions and assignments are administered through
+Platform RBAC — `/platform/rbac/*` (`ccure_platform/administration/rbac_admin.py`), documented
+in [`architecture/RBAC_ADMINISTRATION.md`](architecture/RBAC_ADMINISTRATION.md). User create /
+change-role take an `rbac_role_id`.
 
 ### Organizations — `/admin/organizations` (8 operations)
 
@@ -2181,6 +2254,76 @@ count in `vuln_intel`.
 
 ---
 
+## Platform — `/platform` (CCure Home)
+
+### `GET /platform/modules`
+
+The products CCure Home shows (Phase 12.1), read from the platform's module
+registry (`ccure_platform/modules`), which is the only source of this list —
+the frontend holds no product list or availability vocabulary of its own.
+Router: `ccure_platform/hub/router.py`.
+
+- **Auth:** any signed-in user; no permission. A request without credentials
+  gets the shared dependency's `403 Not authenticated`, and an invalid token
+  `401`, exactly as `/auth/me` does. Not rate-limited beyond the 600/minute
+  baseline: authenticated, and a constant in-memory list.
+- **Filtered by nothing.** Every signed-in user receives the same four products,
+  whatever their role or organisation, and a product is listed whatever its
+  state (owner decision D12-4).
+- **Response** (`PlatformProductList`):
+
+```json
+{
+  "tile_states": ["available", "not_yet_available"],
+  "modules": [
+    {
+      "key": "policy_pro",
+      "title": "CCure Policy Pro",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/policy-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "audit",
+      "title": "CCure Audit",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/audit-dashboard",
+      "tile_state": "available"
+    },
+    {
+      "key": "rank",
+      "title": "CCure Rank",
+      "kind": "core_module",
+      "description": "Responsible for …",
+      "entry_path": "/rank-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "ir",
+      "title": "CCure IR",
+      "kind": "service",
+      "description": "Responsible for …",
+      "entry_path": "/ir-dashboard",
+      "tile_state": "not_yet_available"
+    }
+  ]
+}
+```
+
+| Field         | Meaning                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `tile_states` | every availability state a product can be in; a client renders any other value as unknown, never as available |
+| `key`         | stable product identifier                                                                                     |
+| `title`       | the product's name                                                                                            |
+| `kind`        | `core_module` (hosted by the core service) or `service` (a separate service the platform lists — CCure IR)    |
+| `description` | what the product is responsible for — never a statement that its functionality exists                         |
+| `entry_path`  | the frontend address the product's card opens                                                                 |
+| `tile_state`  | `available`, or `not_yet_available`: the product's entry page then says it is not available yet               |
+
+---
+
 ## 18. WebSocket endpoints
 
 | Path                            | Source                              | Auth       | Channel                         |
@@ -2226,7 +2369,7 @@ Source: `Backend/scans/router.py::stream_scan_history`.
 **Authentication** — `Depends(require_permission("scans", "read"))`, i.e. a normal
 `Authorization: Bearer` header. The browser's native `EventSource` cannot set
 headers, so the frontend uses `fetch()` with a `ReadableStream` reader
-(`Frontend/src/api/scans.js::streamScanEvents`) and sends
+(`Frontend/src/modules/audit/api/scans.js::streamScanEvents`) and sends
 `Accept: text/event-stream` plus `credentials: "include"`.
 
 **Query parameters**
@@ -2281,7 +2424,7 @@ starts. Authentication and permission failures likewise fail the initial request
 with 401/403. There is no in-stream error event: an exception inside the
 generator terminates the response, and the client reconnects.
 
-**Frontend consumer** — `Frontend/src/pages/ScanHistory.jsx` (line ~955) calls
+**Frontend consumer** — `Frontend/src/modules/audit/pages/ScanHistory.jsx` (line ~955) calls
 `streamScanEvents({...})` with an `AbortSignal`, and re-renders on the `scans`
 event. `ArchivedScans.jsx` and `RecycleBin.jsx` reach the same data through
 `getScans` with a different `scope`.
@@ -2311,7 +2454,7 @@ receives no events until it reconnects.
 exception is logged; the `finally` block always unsubscribes and closes the
 pubsub and logs the disconnect.
 
-**Frontend consumer** — `Frontend/src/components/layout/AppLayout.jsx`
+**Frontend consumer** — `Frontend/src/modules/audit/components/layout/AppLayout.jsx`
 (line ~561) via `api/notifications.js::streamNotificationEvents`, which drives the
 notification bell badge.
 
@@ -2405,7 +2548,7 @@ values for their respective endpoints.
 ## 21. Frontend/backend contract gaps
 
 Verified by cross-referencing `Frontend/src/api/*.js` and
-`Frontend/src/modules/web-scanning/api/webScansApi.js` against the registered
+`Frontend/src/modules/audit/web-scanning/api/webScansApi.js` against the registered
 routes.
 
 | Frontend call                                                                                                                                                                                             | Backend status                                                                                        |
@@ -2428,3 +2571,76 @@ Backend capability with no frontend consumer, for completeness:
 - [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
 - [SCAN_ENGINE_DEEP_DIVE.md](SCAN_ENGINE_DEEP_DIVE.md)
 - [FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md)
+
+---
+
+## Platform RBAC administration — `/platform/rbac` (RBAC-7)
+
+The governed administration of roles, permissions and role assignments. Router:
+`ccure_platform/administration/rbac_admin.py`; rules: `ccure_platform/rbac/governance.py`
+(RBAC-2), applied by `ccure_platform/rbac/administration.py`. Authorization is the RBAC
+engine's alone: an account with no RBAC role assignment receives
+`403 RBAC administration needs an RBAC role assignment for this account.` Every mutation is
+audited; a refused one answers `403 {"code": "governance_refused", "violations": [{code, message}]}`
+and, for an escalation, writes `rbac.escalation.refused`. A sensitive change (a system or
+platform role, a privileged permission, a cross-organisation change) needs step-up: a current
+authenticator code in `X-Reauth-Code` for an account with MFA enrolled
+(`403 {"code": "reauth_required"}` otherwise). The organisation is the one the backend accepts
+(`org_id` is a request, validated by the scope seam).
+
+### `GET /platform/rbac/permissions`
+
+The permission catalogue: `key`, `module`, `resource`, `action`, `description`, `scope`,
+`sensitivity`, `delegable`, `status`. Needs `platform.permission.read`.
+
+### `GET /platform/rbac/roles`
+
+Roles visible in the active organisation (system roles and that organisation's custom roles):
+`id`, `key`, `display_name`, `kind`, `assignable_scope`, `state`, `permission_count`,
+`assignment_count`. `include_retired` optional. Needs `platform.role.read`.
+
+### `POST /platform/rbac/roles`
+
+Create a custom organisation role: `display_name`, `permission_keys`, `description`. Only
+delegable organisation-scope permissions the actor holds (the delegation ceiling). `201`.
+
+### `GET /platform/rbac/roles/{role_id}`
+
+Detail: permission keys, revision history, `retirement_blockers`, `sensitive`. `404` for a role of
+another organisation.
+
+### `PATCH /platform/rbac/roles/{role_id}`
+
+Change the display name or description — a label, never an authorization input. A system role
+needs `platform.role.rename_system`; a custom role `platform.role.update`. Unknown fields are refused.
+
+### `PUT /platform/rbac/roles/{role_id}/permissions`
+
+Make a custom role hold exactly `permission_keys`. System roles are immutable here; adding is
+bounded by the ceiling; nobody adds to a role they hold.
+
+### `POST /platform/rbac/roles/{role_id}/transition`
+
+`target`: `retiring` | `retired` | `active`. Retirement is gated (no live assignments, not a
+default role, no continuity invariant newly broken); reactivation is bounded by the ceiling.
+
+### `POST /platform/rbac/roles/{role_id}/replace`
+
+Move every live assignment to `to_role_id` (governed, all or nothing); the old role is then
+retirable. Assignments are revoked with reason `migrated`, never deleted.
+
+### `GET /platform/rbac/assignable-roles`
+
+`user_id`, `org_id` optional. Each role with `assignable` and the governance `reasons` when not,
+plus the actor's `delegation` summary. The UI offers exactly the assignable ones.
+
+### `GET /platform/rbac/users/{user_id}/assignments` · `POST …/assignments`
+
+View a user's assignments (display name, kind, state, scope, status), or assign `role_id`:
+organisation boundary, scope and permission ceilings, system-role rules, self-assignment and
+escalation are enforced.
+
+### `DELETE /platform/rbac/assignments/{assignment_id}`
+
+End an assignment (history kept). Refused when it would leave nobody holding a continuity
+permission (the last superadmin, the last role administrator of an organisation).

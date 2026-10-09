@@ -1,0 +1,61 @@
+/* ============================================================================
+   Organization management — page-specific layout
+   ----------------------------------------------------------------------------
+   Layout and two semantic colours. Everything else is a CCure primitive
+   (CcureTable, CcureBadge, CcureButton, CcureAlert, CcureLoader), a security
+   pattern (CcureConfirmDialog), the shared
+   page structure (`CcurePage`, `CcurePageHeader`; B.13), or — for the create and
+   edit dialogs — the shared `Modal` and `OrganizationForm`, both deliberately
+   out of this batch's scope.
+
+   Almost nothing was deleted from the legacy stylesheets. `.table-wrap`,
+   `.data-table`, `.ip-code`, `.chip`, `.chip--active`, `.chip--inactive`,
+   `.action-btns`, `.table-action-cell`, `.text-muted`, `.page-actions-row`
+   and `.spinner` all still have other consumers. The page stops *using* them;
+   it does not get to remove them.
+
+   Two exceptions, and only because a repository-wide search proved them dead:
+   `.chip--info` and `.table-empty-cell` had this page as their ONLY consumer,
+   so they are removed from scan.css. `.chip--info` is worth naming: it
+   measured 2.34:1 against its own background, so deleting it removes a
+   sub-AA rule from the codebase rather than merely stopping one page using
+   it.
+   ============================================================================ */
+
+.om-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+}
+
+.om-message {
+  margin-bottom: var(--ccure-space-lg);
+}
+
+/* The whole-page loading state, which previously centred a bare `.spinner`
+   inside an inline flex box. */
+.om-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--ccure-space-4xl) 0;
+}
+
+.om-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ccure-space-xs);
+}
+
+/* The tenant name is the row's identity and was previously a bare <strong>.
+   As a row header it is already announced first; the weight is what makes it
+   scannable down the column. */
+.om-name {
+  font-weight: var(--ccure-weight-semibold);
+}
+
+/* Secondary tier. Replaces `.text-muted` plus an inline `fontSize: 12`. */
+.om-muted {
+  color: var(--ccure-text-secondary);
+  font-size: var(--ccure-text-xs);
+}

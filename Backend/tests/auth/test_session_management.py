@@ -12,11 +12,13 @@ session list and its revocation paths as the security control, and a regression
 that silently caps concurrent logins fails the first test here.
 """
 
+from native_rbac import system_role, create_user
+
 from unittest.mock import patch
 
 import pytest
 from db.base import gen_user_id, utcnow
-from db.models import Organization, RefreshTokenSession, Role, User
+from db.models import Organization, RefreshTokenSession, User
 from db.models.users import PasswordResetToken  # noqa: F401  (schema import)
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -38,15 +40,16 @@ def session_user(db_session: Session) -> User:
     db_session.add(org)
     db_session.flush()
 
-    role = db_session.query(Role).filter_by(name="analyst").first()
-    user = User(
+    role = system_role(db_session, "platform.analyst")
+    user = create_user(
+        db_session,
         id=gen_user_id(org.slug, "sessionuser"),
         username="sessionuser",
         email="sessions@test.com",
         full_name="Session User",
         password_hash=hash_password("securepassword123"),
         org_id=org.id,
-        role_id=role.id,
+        role=role,
         is_active=True,
         is_verified=True,
         approved_at=utcnow(),
@@ -412,7 +415,9 @@ def test_expired_sessions_are_swept_but_recent_history_is_kept(
     import datetime
 
     from config import AppConfig
-    from core.tasks import purge_expired_refresh_sessions
+    from ccure_platform.identity.account_maintenance import (
+        purge_expired_refresh_sessions,
+    )
     from db.models import RefreshTokenSession
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -468,6 +473,6 @@ def test_session_purge_is_scheduled():
     assert entry, "no beat entry for the refresh-session sweep"
     assert entry["task"] == "ccure.tasks.purge_expired_refresh_sessions"
 
-    import core.tasks  # noqa: F401
+    import ccure_platform.identity.account_maintenance  # noqa: F401
 
     assert "ccure.tasks.purge_expired_refresh_sessions" in celery_app.tasks

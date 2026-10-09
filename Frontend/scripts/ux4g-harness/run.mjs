@@ -49,6 +49,10 @@ const KEYS = {
     code: "ArrowLeft",
     windowsVirtualKeyCode: 37,
   },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
+  Home: { key: "Home", code: "Home", windowsVirtualKeyCode: 36 },
+  End: { key: "End", code: "End", windowsVirtualKeyCode: 35 },
 };
 
 export function parseArgs(argv) {

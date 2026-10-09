@@ -1,0 +1,37 @@
+{
+  "tile_states": ["available", "not_yet_available"],
+  "modules": [
+    {
+      "key": "policy_pro",
+      "title": "CCure Policy Pro",
+      "kind": "core_module",
+      "description": "Responsible for your organisation's security policies and controls, and for the baseline — which controls apply, with what parameters — that the other products assess against.",
+      "entry_path": "/policy-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "audit",
+      "title": "CCure Audit",
+      "kind": "core_module",
+      "description": "Responsible for finding and assessing your assets: network and web scanning, vulnerability and configuration audits, compliance against frameworks, remediation tracking and reports.",
+      "entry_path": "/audit-dashboard",
+      "tile_state": "available"
+    },
+    {
+      "key": "rank",
+      "title": "CCure Rank",
+      "kind": "core_module",
+      "description": "Responsible for scoring and ranking your organisation's security posture from the results the other products produce.",
+      "entry_path": "/rank-dashboard",
+      "tile_state": "not_yet_available"
+    },
+    {
+      "key": "ir",
+      "title": "CCure IR",
+      "kind": "service",
+      "description": "Responsible for incident response: recording and managing security incidents, and feeding what is learned back to the other products.",
+      "entry_path": "/ir-dashboard",
+      "tile_state": "not_yet_available"
+    }
+  ]
+}

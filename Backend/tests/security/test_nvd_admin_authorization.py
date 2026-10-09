@@ -1,47 +1,20 @@
+"""Native authorization for shared vulnerability-feed administration.
+
+System roles retain their frozen grants. Organization-scoped grants cannot
+manage global feeds; an explicitly assigned native feed-management grant can.
+Every synchronization is mocked so no test reaches a feed or the catalogue.
 """
-tests/security/test_nvd_admin_authorization.py
-─────────────────────────────────────────────────────────────────────────────
-Who may read the NVD catalogue sync status, and who may start a sync.
 
-Both routes refused **everybody**, superadmin included, for as long as they
-have existed. The local ``_verify_admin`` they used tested
-``getattr(user, "is_superadmin", False)`` and
-``getattr(user, "role", "") in ("superadmin", "org_admin")``; ``User`` has no
-``is_superadmin`` attribute and ``User.role`` is a relationship to a ``Role``
-object, so the membership test compared a ``Role`` instance against two strings
-and was false for every account in the product.
+from native_rbac import fixture_role, assign_role, system_role, create_user
 
-It failed closed, which is the right direction to fail. What makes it worth a
-test rather than a one-line fix is that nothing distinguished it from a correct
-refusal: the endpoint answered 403 with "Admin privileges required", which is
-exactly what it would say to a caller who genuinely lacked the privilege.
-
-The policy asserted here is superadmin-only, and it is read off the codebase
-rather than chosen:
-
-  * ``vulnerability_definitions`` carries no ``org_id``. The catalogue is
-    shared by every tenant, so one workspace's administrator triggering a sync
-    acts on all of them — the same reasoning that makes ``/admin/email-domains``
-    superadmin-only.
-  * ``tests/security/test_endpoint_limit_inventory.py`` already records these
-    two routes as "Feed synchronisation. Superadmin-only" in its rationale for
-    not rate-limiting them.
-  * No permission atom for feeds or the catalogue exists, so a permission guard
-    would mean inventing one — and could not express this anyway, since
-    superadmin holds every atom and any atom an org_admin also held would let
-    them through.
-
-**No test here starts a real synchronisation.** ``sync_nvd_to_vuln_intel`` is
-replaced in the router's namespace, and one test asserts the real one was never
-called. Authorisation is what is under test; the sync is not.
-"""
 
 import pytest
 from fastapi.testclient import TestClient
 
 from auth.jwt_handler import create_access_token
+from ccure_platform.models.rbac_tables import RbacPermission, RbacRolePermission
 from db.base import gen_user_id, utcnow
-from db.models import Organization, Permission, Role, RolePermission, User
+from db.models import Organization, User
 
 STATUS_URL = "/api/v1/admin/nvd-sync-status"
 SYNC_URL = "/api/v1/admin/sync-nvd"
@@ -58,7 +31,6 @@ def _headers(user: User) -> dict:
     token = create_access_token(
         user.id,
         user.username,
-        role=getattr(user.role, "name", None),
         org_id=user.org_id,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -83,17 +55,18 @@ def user_of_role(db_session, org):
     """Build a verified, approved, active account holding a named system role."""
 
     def _make(role_name: str) -> User:
-        role = db_session.query(Role).filter(Role.name == role_name).first()
+        role = system_role(db_session, role_name)
         assert role is not None, f"system role {role_name!r} is not seeded"
-        username = f"nvd-{role_name}"
-        user = User(
+        username = f"nvd-{role_name.split('.')[-1]}"
+        user = create_user(
+            db_session,
             id=gen_user_id(org.slug, username),
             username=username,
             email=f"{username}@test.com",
             full_name=f"NVD {role_name}",
             password_hash="hash",
             org_id=org.id,
-            role_id=role.id,
+            role=role,
             is_active=True,
             is_verified=True,
             approved_at=utcnow(),
@@ -145,7 +118,9 @@ class TestSuperadminAccess:
         The regression this whole module exists for: before the fix this was a
         403 for a superadmin, and the message said "Admin privileges required".
         """
-        response = client.get(STATUS_URL, headers=_headers(user_of_role("superadmin")))
+        response = client.get(
+            STATUS_URL, headers=_headers(user_of_role("platform.superadmin"))
+        )
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -154,7 +129,9 @@ class TestSuperadminAccess:
     def test_superadmin_can_trigger_a_sync(
         self, client: TestClient, user_of_role, never_run_a_real_sync
     ):
-        response = client.post(SYNC_URL, headers=_headers(user_of_role("superadmin")))
+        response = client.post(
+            SYNC_URL, headers=_headers(user_of_role("platform.superadmin"))
+        )
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "STARTED"
@@ -167,7 +144,8 @@ class TestSuperadminAccess:
         self, client: TestClient, user_of_role, never_run_a_real_sync
     ):
         response = client.post(
-            f"{SYNC_URL}?days_back=30", headers=_headers(user_of_role("superadmin"))
+            f"{SYNC_URL}?days_back=30",
+            headers=_headers(user_of_role("platform.superadmin")),
         )
         assert response.status_code == 200
         assert response.json()["mode"] == "backfill"
@@ -182,7 +160,15 @@ class TestSuperadminAccess:
 
 
 class TestUnauthorizedRolesAreRefused:
-    @pytest.mark.parametrize("role_name", ["org_admin", "analyst", "viewer", "scanner"])
+    @pytest.mark.parametrize(
+        "role_name",
+        [
+            "platform.org_admin",
+            "platform.analyst",
+            "platform.viewer",
+            "platform.scanner",
+        ],
+    )
     @pytest.mark.parametrize("method,url", [("get", STATUS_URL), ("post", SYNC_URL)])
     def test_every_other_role_is_refused(
         self, client: TestClient, user_of_role, role_name, method, url
@@ -204,7 +190,9 @@ class TestUnauthorizedRolesAreRefused:
         every other tenant's findings. Widening this back is an authorisation
         decision about cross-tenant reach, not a convenience.
         """
-        response = client.post(SYNC_URL, headers=_headers(user_of_role("org_admin")))
+        response = client.post(
+            SYNC_URL, headers=_headers(user_of_role("platform.org_admin"))
+        )
         assert response.status_code == 403
 
     @pytest.mark.parametrize("method,url", [("get", STATUS_URL), ("post", SYNC_URL)])
@@ -218,7 +206,7 @@ class TestUnauthorizedRolesAreRefused:
     def test_a_refused_caller_never_starts_a_sync(
         self, client: TestClient, user_of_role, never_run_a_real_sync
     ):
-        client.post(SYNC_URL, headers=_headers(user_of_role("org_admin")))
+        client.post(SYNC_URL, headers=_headers(user_of_role("platform.org_admin")))
         client.post(SYNC_URL)
         assert never_run_a_real_sync == []
 
@@ -229,62 +217,55 @@ class TestUnauthorizedRolesAreRefused:
 
 
 class TestBlastRadius:
-    def test_holding_every_permission_does_not_open_these_routes(
+    def test_holding_every_organization_permission_does_not_open_these_routes(
         self, client: TestClient, db_session, user_of_role, never_run_a_real_sync
     ):
         """
-        The guard is by role, not by permission, and this proves the difference
-        is real rather than stylistic. An org_admin granted every atom in the
-        catalogue is still refused, so no future permission grant can open feed
-        synchronisation to a tenant administrator by accident.
+        Global feed management is a platform-scoped permission. Holding every
+        organization-scoped permission cannot grant it.
         """
-        org_admin = user_of_role("org_admin")
-        role = db_session.query(Role).filter(Role.name == "org_admin").first()
-        for permission in db_session.query(Permission).all():
-            exists = (
-                db_session.query(RolePermission)
-                .filter(
-                    RolePermission.role_id == role.id,
-                    RolePermission.permission_id == permission.id,
-                )
-                .first()
+        org_admin = user_of_role("platform.org_admin")
+        keys = [
+            p.key
+            for p in db_session.query(RbacPermission).filter_by(
+                scope_kind="organization", delegable_to_org_roles=True
             )
-            if exists is None:
-                db_session.add(
-                    RolePermission(role_id=role.id, permission_id=permission.id)
-                )
-        db_session.flush()
+        ]
+        extra = fixture_role(db_session, "All organization permissions", keys=keys)
+        assign_role(db_session, org_admin, extra)
 
         assert client.get(STATUS_URL, headers=_headers(org_admin)).status_code == 403
         assert client.post(SYNC_URL, headers=_headers(org_admin)).status_code == 403
         assert never_run_a_real_sync == []
 
+    def test_an_explicit_native_feed_grant_allows_management_without_a_role_name_rule(
+        self, client, db_session, user_of_role, never_run_a_real_sync
+    ):
+        user = user_of_role("platform.viewer")
+        feed_manager = fixture_role(
+            db_session, "Feed manager", keys=["audit.vuln_feed.manage"]
+        )
+        assign_role(db_session, user, feed_manager)
+
+        assert client.get(STATUS_URL, headers=_headers(user)).status_code == 200
+        assert client.post(SYNC_URL, headers=_headers(user)).status_code == 200
+        assert len(never_run_a_real_sync) == 1
+
     def test_the_change_did_not_tighten_an_unrelated_admin_route(
         self, client: TestClient, db_session, user_of_role
     ):
         """
-        An org_admin holding ``users:read`` still reaches the user list. The
+        An org_admin holding ``platform.user.read`` still reaches the user list. The
         NVD fix must narrow these two routes and nothing else.
         """
-        org_admin = user_of_role("org_admin")
-        role = db_session.query(Role).filter(Role.name == "org_admin").first()
-        permission = (
-            db_session.query(Permission)
-            .filter(Permission.resource == "users", Permission.action == "read")
+        org_admin = user_of_role("platform.org_admin")
+        role = system_role(db_session, "platform.org_admin")
+        assert (
+            db_session.query(RbacRolePermission)
+            .filter_by(role_id=role.id, permission_key="platform.user.read")
             .first()
+            is not None
         )
-        assert permission is not None
-        exists = (
-            db_session.query(RolePermission)
-            .filter(
-                RolePermission.role_id == role.id,
-                RolePermission.permission_id == permission.id,
-            )
-            .first()
-        )
-        if exists is None:
-            db_session.add(RolePermission(role_id=role.id, permission_id=permission.id))
-            db_session.flush()
 
         assert (
             client.get("/admin/users", headers=_headers(org_admin)).status_code != 403

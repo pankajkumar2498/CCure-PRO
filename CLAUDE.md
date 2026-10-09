@@ -30,9 +30,9 @@ a rule. It explains a rule and adds no requirement of its own. Two kinds of
 content are history, not current requirements:
 
 - **The Windows-host deployment**, before 17 Sep 2026; retired on 9 Oct 2026,
-  when its start, host-worker, backup and nginx scripts were removed (git
-  history keeps them; `scripts/tls/*.ps1` and `install_feed_schedule.ps1`
-  stay). In "Architecture", the
+  when its start, host-worker, backup, nginx and feed-schedule scripts were
+  removed (git history keeps them; `scripts/tls/*.ps1` stay). In
+  "Architecture", the
   **Scanner worker** and **Database** bullets, the Windows nginx deployment
   steps under **Rate limiting**, and the certificate scripts and host address
   in the **TLS** bullet are marked as history where they appear. The current

@@ -297,8 +297,9 @@ decision where one was needed.
   `scripts/tls/*.ps1` (Windows clients still trust the private CA, and the VM's
   TLS decision names these as the certificate tooling),
   `scripts/host-nginx/nginx-host.conf` (the source the VM's edge files were
-  adapted from) and `scripts/install_feed_schedule.ps1` (the only feed schedule
-  there is; see below). The README was rewritten for the VM — it had told
+  adapted from). `scripts/install_feed_schedule.ps1` was kept at first as the
+  only feed schedule there was, and removed once its VM twin existed (below).
+  The README was rewritten for the VM — it had told
   readers to run the Windows scripts, embedded the database password, and gave a
   `dropdb ccure_db` data-copy recipe that would destroy the live database if run
   there — and the operator refusal in `audit_log/retention.py` now names
@@ -358,6 +359,9 @@ Closed on 9 Oct 2026, in the commit after the cleanup:
   removed, and the built bundle equals the old one minus exactly those
   selectors, in order. 36 data-dependent modifiers the censuses happened not to
   render were kept, each tied to the `className` template that builds it.
+- **The Windows feed scheduler is removed.** With `install_feed_schedule.sh`
+  in place, `scripts/install_feed_schedule.ps1` served only the retired
+  deployment; it was removed in a commit of its own.
 - **`beautifulsoup4` leaves with the next backend image build.** The image's
   dependency stage built from today's `requirements.txt` installs neither it nor
   `soupsieve`; nothing in the current image requires them.
@@ -366,9 +370,6 @@ Still open:
 
 - **`VULNCHECK_API_TOKEN`** must be obtained and put in `Backend/.env` before
   VulnCheck KEV can be scheduled (then re-run the installer).
-- **`scripts/install_feed_schedule.ps1`** is now superseded by its VM twin and
-  serves only the retired Windows deployment; removing it is a one-line
-  decision.
 - **The live gateway-auth and backend images** pick up these changes only when
   rebuilt and redeployed (gateway-auth's openssl/pcre2 fix; the backend image
   dropping `beautifulsoup4`).

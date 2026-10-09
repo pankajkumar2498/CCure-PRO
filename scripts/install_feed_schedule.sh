@@ -3,7 +3,8 @@
 #
 # A feed reports "no findings" with the same confidence whether it is current or
 # months stale, so a feed nobody refreshes produces clean reports about hosts
-# nobody assessed. This is the VM twin of install_feed_schedule.ps1: the same
+# nobody assessed. This carries over the Windows deployment's schedule (its
+# PowerShell installer was removed with that deployment): the same
 # five syncs, at the same hours (this VM keeps IST, as the Windows host did),
 # with the same time limits, one after another so no two write vuln_intel at
 # once. The Windows tasks last ran on 16 Sep 2026; nothing refreshed the feeds

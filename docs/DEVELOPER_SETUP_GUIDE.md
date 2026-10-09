@@ -55,7 +55,8 @@ CCure-Audit-PRO/
 ├── docs/               This documentation set
 ├── gateway/           API gateway (Phase 10): nginx config, route policy, gateway-auth
 ├── scripts/            backup_db.sh · install_backup_schedule.sh ·
-│                       install_feed_schedule.ps1 · docker-postgres-init.sql ·
+│                       install_feed_schedule.sh · run_feed_sync.sh ·
+│                       docker-postgres-init.sql ·
 │                       host-nginx/ · linux/ · tls/
 ├── .env                docker-compose variables ONLY (git-ignored)
 ├── .env.example        Template for the above
@@ -439,8 +440,8 @@ python scripts/vuln/sync_vulncheck.py         # VulnCheck KEV (needs a token)
 python scripts/vuln/backfill_finding_intel.py # Backfill existing findings
 ```
 
-```powershell
-.\scripts\install_feed_schedule.ps1           # register recurring feed sync
+```bash
+scripts/install_feed_schedule.sh   # from the repository root: schedule the nightly syncs (user crontab)
 ```
 
 Budget ~2 GB for the staged archives; `vuln_intel` itself reaches ~10 GB once

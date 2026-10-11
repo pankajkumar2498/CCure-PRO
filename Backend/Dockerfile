@@ -97,7 +97,7 @@ RUN --mount=type=cache,target=/root/.cache/ms-playwright \
 # dependencies: upstream release binaries still carry CVE-2026-78667,
 # CVE-2026-78669 and CVE-2026-97031. Go's checksum database verifies the pinned
 # module sources and dependencies. The compiler never enters the runtime image.
-FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS scanner-builder
+FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS scanner-builder
 
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2
 WORKDIR /src

@@ -155,11 +155,13 @@ digest moves to a base that already carries the fix.
 ### Scanner dependency patches (12 Oct 2026)
 
 The backend now builds the existing Nuclei v3.11.1, ffuf v2.3.0 and
-subfinder v2.6.7 sources with digest-pinned Go 1.27.2 and
+subfinder v2.6.7 sources with digest-pinned Go 1.26.9 and
 `golang.org/x/net@v0.60.0`. This fixes the HTTP/TLS denial-of-service advisories
 CVE-2026-78667, CVE-2026-78669 and CVE-2026-97031 in the upstream release
 binaries without changing scanner release versions. Go's checksum database
 verifies module sources and dependencies; the compiler stays in its build stage.
+Go 1.26.9 also stays within the scanner's Sonic JSON dependency's supported
+Go range, avoiding its Go 1.27 compatibility warning and fallback.
 No new vulnerability exception is added.
 
 The frontend also upgrades `tiff` to fix CVE-2026-4775:

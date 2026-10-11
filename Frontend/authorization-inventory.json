@@ -38,49 +38,49 @@
   "sites": [
     {
       "file": "src/App.jsx",
-      "line": 285,
+      "line": 283,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 303,
+      "line": 310,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 313,
+      "line": 320,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 324,
+      "line": 331,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 339,
+      "line": 346,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 353,
+      "line": 360,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"
     },
     {
       "file": "src/App.jsx",
-      "line": 366,
+      "line": 373,
       "kind": "atom_config",
       "status": "migrated",
       "reason": "route guards resolve through the central helper; the platform-wide route names its key"

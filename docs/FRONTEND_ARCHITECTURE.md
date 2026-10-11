@@ -214,8 +214,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 `App.jsx` keeps two levels apart in the route tree. Audit's routes sit under an
 `AuditProduct` layout route that mounts Audit's `ScanProvider` and nothing else
 of Audit's; CCure Home, the product entry pages and the shared administration
-screens sit outside it and render in the shell's `PlatformLayout` (a left
-sidebar of Home, the registry's products and Administration). Audit's own
+screens sit outside it under a pathless `PlatformLayout` route (a left
+sidebar of Home, the registry's products and Administration). That frame,
+its product registry provider, header and sidebar remain mounted as the
+router updates the outlet. Page-level `PlatformLayout`/`ProductFrame` wrappers
+reuse that enclosing frame and still support standalone rendering. Opening
+Audit switches to its own frame; it never nests the platform sidebar. Audit's own
 `AppLayout` carries Audit's sidebar only. The shell's `AccessFallbackProvider`
 wraps both, carrying Audit's refused-route pages.
 

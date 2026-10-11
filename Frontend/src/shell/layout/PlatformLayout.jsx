@@ -17,7 +17,13 @@
  * product's own layout with its own sidebar. Nothing here names or imports a
  * product.
  */
-import { useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CcureAppShell, CcureIconButton } from "../../design-system";
 import { useAuth } from "../auth/AuthContext";
@@ -75,11 +81,19 @@ function platformSections(user, productList) {
   ];
 }
 
+const PlatformLayoutContext = createContext(false);
+
 export default function PlatformLayout({ children }) {
+  const withinPlatformLayout = useContext(PlatformLayoutContext);
+  // Pages also use this frame when rendered on their own. The route-level
+  // instance owns the persistent shell; those page wrappers only pass content.
+  if (withinPlatformLayout) return children;
   return (
-    <ProductListProvider>
-      <PlatformFrame>{children}</PlatformFrame>
-    </ProductListProvider>
+    <PlatformLayoutContext.Provider value={true}>
+      <ProductListProvider>
+        <PlatformFrame>{children}</PlatformFrame>
+      </ProductListProvider>
+    </PlatformLayoutContext.Provider>
   );
 }
 

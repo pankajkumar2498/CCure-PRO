@@ -12,6 +12,7 @@ import { everything } from "../fixtures/authorization";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import App from "../../App";
@@ -115,6 +116,38 @@ describe("CCurePRO Home", () => {
     expect(screen.queryByTestId("audit-state")).toBeNull();
     expect(screen.queryByText("Scan Templates")).toBeNull();
     expect(screen.queryByText("Security Dashboard")).toBeNull();
+  });
+
+  it("keeps the header and sidebar mounted across platform pages", async () => {
+    const u = userEvent.setup();
+    open("/");
+    await screen.findByRole("heading", { name: "CCurePRO Home" });
+    const header = document.querySelector(".cc-header");
+    const nav = sidebar();
+    const sidebarFrame = document.querySelector(".cc-sidebar");
+    sidebarFrame.scrollTop = 72;
+    for (const [link, content] of [
+      ["CCure Rank", "CCure Rank"],
+      ["User Management", "UserManagement"],
+      ["Home", "CCurePRO Home"],
+    ]) {
+      await u.click(
+        within(sidebar()).getByRole("link", { name: link, exact: true }),
+      );
+      if (content === "UserManagement") await screen.findByTestId("page");
+      else await screen.findByRole("heading", { name: content, exact: true });
+      expect(document.querySelector(".cc-header")).toBe(header);
+      expect(sidebar()).toBe(nav);
+      expect(document.querySelector(".cc-sidebar")).toBe(sidebarFrame);
+      expect(sidebarFrame.scrollTop).toBe(72);
+      expect(
+        within(nav).getByRole("link", { name: link, exact: true }),
+      ).toHaveAttribute("aria-current", "page");
+      expect(document.querySelectorAll(".cc-shell")).toHaveLength(1);
+    }
+    expect(
+      api.get.mock.calls.filter(([url]) => url === "/platform/modules"),
+    ).toHaveLength(1);
   });
 });
 

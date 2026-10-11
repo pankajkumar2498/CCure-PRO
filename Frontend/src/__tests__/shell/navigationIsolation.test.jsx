@@ -114,8 +114,13 @@ describe("CCurePRO Home", () => {
         .map((a) => a.getAttribute("href")),
     ).toEqual(["/", ...real.modules.map((m) => m.entry_path)]);
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Scan Templates")).toBeNull();
-    expect(screen.queryByText("Security Dashboard")).toBeNull();
+    expect(screen.queryByText("Audit Dashboard")).toBeNull();
   });
 
   it("keeps the header and sidebar mounted across platform pages", async () => {
@@ -157,6 +162,11 @@ describe("a shared administration screen", () => {
     await screen.findByTestId("page");
     expect(within(sidebar()).getByRole("list", PLATFORM_LIST)).toBeTruthy();
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Scan Templates")).toBeNull();
   });
 });
@@ -167,6 +177,11 @@ describe("a product entry page for a product not built yet", () => {
     await screen.findByRole("heading", { name: /Rank/ });
     expect(within(sidebar()).getByRole("list", PLATFORM_LIST)).toBeTruthy();
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -175,6 +190,11 @@ describe("Audit", () => {
     open("/audit-dashboard");
     await screen.findByTestId("page");
     expect(screen.getByTestId("audit-state")).toBeTruthy();
+    expect(
+      within(document.querySelector(".cc-header")).queryByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeNull();
     const nav = sidebar();
     expect(within(nav).getByText("Scan Templates")).toBeTruthy();
     // No platform product switcher, no shared administration.

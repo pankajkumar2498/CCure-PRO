@@ -115,7 +115,7 @@ for (const [width, theme] of [
       .click();
     await expect(page).toHaveURL("/audit-dashboard");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Security Dashboard" }),
+      page.getByRole("heading", { level: 1, name: "Audit Dashboard" }),
     ).toBeVisible();
     await expect(page.locator(".cc-shell")).toHaveCount(1);
     await assertPage(page, log);

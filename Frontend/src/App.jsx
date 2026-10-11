@@ -182,7 +182,7 @@ export default function App() {
               (its state, its pages, its own layout and sidebar); nothing the
               platform owns is. Addresses are unchanged. ── */}
             <Route element={<AuditProduct />}>
-              {/* Audit's Security Dashboard. /dashboard was its address until
+              {/* Audit's Audit Dashboard. /dashboard was its address until
               Phase 12 and stays a redirect, so bookmarks, report links and
               anything outside the repository still land (D12-7). */}
               <Route path="/audit-dashboard" element={<SecurityDashboard />} />

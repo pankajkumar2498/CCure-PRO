@@ -145,15 +145,9 @@ const SECTIONS = [
     items: [
       {
         id: "dash",
-        label: "Security Dashboard",
+        label: "Audit Dashboard",
         route: "/design-system",
         icon: "▤",
-      },
-      {
-        id: "reports",
-        label: "Executive Report",
-        route: "/design-system#reports",
-        icon: "▦",
       },
     ],
   },

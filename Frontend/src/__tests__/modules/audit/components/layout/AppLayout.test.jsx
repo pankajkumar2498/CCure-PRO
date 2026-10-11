@@ -8,14 +8,11 @@ import { everything } from "../../../../fixtures/authorization";
  * ── The contract ───────────────────────────────────────────────────────────
  * Reads on mount:  GET /dashboard/summary → GET /scan/quota (then every 30 s);
  *                  GET /admin/organizations/ (superadmin only);
- *                  the notification stream (fetch, SSE) with
- *                  GET /notifications/summary as its first-failure fallback.
  * Writes:          none from the shell itself.
  * Storage:         localStorage activeOrgId, sidebarCollapsed;
  *                  sessionStorage sidebarScrollPos.
  * Navigation:      SIDEBAR_SECTIONS filtered by canSeeNavItem
  *                  (superadminOnly → role gate; permission → canPermission);
- *                  New Scan → onNewScan prop, else navigate("/scan");
  *                  global search Enter → /vulnerabilities?search= for a CVE id,
  *                  /assets?search= otherwise; Ctrl/Cmd+K focuses it.
  * Org switch:      writes activeOrgId and reloads the document.
@@ -159,16 +156,6 @@ const ORGS = {
   ],
 };
 
-/* A stream that never resolves and rejects only on abort, so no reconnect loop
-   runs during a test. Tests that need an event call `onEvent` first. */
-const hangingStream =
-  (events = []) =>
-  ({ signal, onEvent }) =>
-    new Promise((_, reject) => {
-      for (const e of events) onEvent(e);
-      signal?.addEventListener("abort", () => reject(new Error("aborted")));
-    });
-
 function wire() {
   axiosInstance.get.mockImplementation((url) => {
     if (url === "/dashboard/summary")
@@ -178,9 +165,6 @@ function wire() {
     return Promise.reject(new Error("unexpected GET " + url));
   });
   listOrganizations.mockResolvedValue(ORGS);
-  getUnreadCount.mockResolvedValue({ total_unread: 3 });
-  getNotifications.mockResolvedValue([]);
-  streamNotificationEvents.mockImplementation(hangingStream());
 }
 
 const renderShell = async (props = {}) => {
@@ -295,49 +279,11 @@ describe("AppLayout — reads on mount", () => {
     expect(within(vulns).getByText("4")).toBeInTheDocument();
   });
 
-  it("opens the notification stream once and takes the unread count from its connected event", async () => {
-    streamNotificationEvents.mockImplementation(
-      hangingStream([
-        { event: "connected", data: { summary: { total_unread: 5 } } },
-      ]),
-    );
+  it("leaves notification reads and streams to the Common Platform", async () => {
     await renderShell();
-    expect(streamNotificationEvents).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("5")).toBeInTheDocument();
+    expect(streamNotificationEvents).not.toHaveBeenCalled();
     expect(getUnreadCount).not.toHaveBeenCalled();
-  });
-
-  it("falls back to GET /notifications/summary when the stream fails, without a toast", async () => {
-    streamNotificationEvents.mockRejectedValue(new Error("stream down"));
-    await renderShell();
-    await waitFor(() => expect(getUnreadCount).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText("3")).toBeInTheDocument();
-  });
-
-  it("increments the unread badge on a live notification.created event", async () => {
-    streamNotificationEvents.mockImplementation(
-      hangingStream([
-        { event: "connected", data: { summary: { total_unread: 1 } } },
-        {
-          event: "notification.created",
-          data: {
-            notification: {
-              id: "n-9",
-              is_read: false,
-              title: "t",
-              message: "m",
-              category: "scan",
-              created_at: new Date().toISOString(),
-            },
-          },
-        },
-      ]),
-    );
-    await renderShell();
-    const bell = screen.getByTitle("Notifications");
-    await waitFor(() =>
-      expect(within(bell).getByText("2")).toBeInTheDocument(),
-    );
+    expect(getNotifications).not.toHaveBeenCalled();
   });
 });
 
@@ -346,7 +292,7 @@ describe("AppLayout — navigation gating (real permissions)", () => {
   it("shows every section to a superadmin, including the superadmin-only item", async () => {
     await renderShell();
     for (const label of [
-      "Security Dashboard",
+      "Audit Dashboard",
       "Scan Templates",
       "Scan Schedules",
       "Vulnerabilities",
@@ -377,7 +323,7 @@ describe("AppLayout — navigation gating (real permissions)", () => {
   it("shows a viewer only what their permissions allow", async () => {
     user = VIEWER;
     await renderShell();
-    expect(navButton(/Security Dashboard/)).toBeTruthy();
+    expect(navButton(/Audit Dashboard/)).toBeTruthy();
     expect(navButton(/Asset Registry/)).toBeTruthy();
     expect(navButton(/Scan Templates/)).toBeNull();
     expect(navButton(/AMT Integration/)).toBeNull();
@@ -412,27 +358,38 @@ describe("AppLayout — navigation gating (real permissions)", () => {
     el.className.includes("--active") ||
     el.getAttribute("aria-current") === "page";
 
-  it("Security Dashboard opens /audit-dashboard, not CCurePRO Home", async () => {
+  it("Audit Dashboard opens /audit-dashboard, not CCurePRO Home", async () => {
     const u = userEvent.setup();
     await renderShell();
-    await u.click(navButton(/^Security Dashboard/));
+    await u.click(navButton(/^Audit Dashboard/));
     expect(navigate).toHaveBeenCalledWith("/audit-dashboard");
     expect(navigate).not.toHaveBeenCalledWith("/");
   });
 
   it.each(["/audit-dashboard", "/dashboard"])(
-    "Security Dashboard is the active item on %s",
+    "Audit Dashboard is the active item on %s",
     async (pathname) => {
       location = { pathname, search: "" };
       await renderShell();
-      expect(isActive(navButton(/^Security Dashboard/))).toBe(true);
+      expect(isActive(navButton(/^Audit Dashboard/))).toBe(true);
     },
   );
 
   it("no Audit item is active on CCurePRO Home's address", async () => {
     location = { pathname: "/", search: "" };
     await renderShell();
-    expect(isActive(navButton(/^Security Dashboard/))).toBe(false);
+    expect(isActive(navButton(/^Audit Dashboard/))).toBe(false);
+  });
+
+  it("Executive Report is accessed through Security Reports without an Overview duplicate", async () => {
+    location = { pathname: "/reports", search: "?tab=executive" };
+    const u = userEvent.setup();
+    await renderShell();
+    expect(navButton(/^Executive Report/)).toBeNull();
+    const reports = navButton(/^Security Reports/);
+    expect(isActive(reports)).toBe(true);
+    await u.click(reports);
+    expect(navigate).toHaveBeenCalledWith("/reports");
   });
 
   it("the header carries a CCurePRO Home link to /", async () => {
@@ -448,29 +405,27 @@ describe("AppLayout — navigation gating (real permissions)", () => {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 describe("AppLayout — header actions", () => {
-  it("shows New Scan only with scans:execute and calls the page's handler first", async () => {
-    const u = userEvent.setup();
-    const onNewScan = vi.fn();
-    await renderShell({ onNewScan });
-    await u.click(screen.getByRole("button", { name: /New Scan/ }));
-    expect(onNewScan).toHaveBeenCalledTimes(1);
-    expect(navigate).not.toHaveBeenCalled();
-  });
-
-  it("New Scan navigates to /scan when the page gives no handler", async () => {
-    const u = userEvent.setup();
-    await renderShell();
-    await u.click(screen.getByRole("button", { name: /New Scan/ }));
-    expect(navigate).toHaveBeenCalledWith("/scan");
-  });
-
-  it("hides New Scan from a viewer", async () => {
-    user = VIEWER;
-    await renderShell();
-    expect(
-      screen.queryByRole("button", { name: /New Scan/ }),
-    ).not.toBeInTheDocument();
-  });
+  it.each([SUPERADMIN, ORG_ADMIN, VIEWER])(
+    "omits New Scan, notifications, and Help for persona $username",
+    async (persona) => {
+      user = persona;
+      await renderShell();
+      const header = within(screen.getByRole("banner"));
+      for (const name of [
+        /New Scan/i,
+        /Notifications/i,
+        /^Help$|Help Center/i,
+      ]) {
+        expect(header.queryByRole("button", { name })).not.toBeInTheDocument();
+      }
+      expect(
+        header.getByRole("link", { name: "CCurePRO Home" }),
+      ).toBeInTheDocument();
+      expect(
+        header.getByRole("button", { name: "Switch to dark mode" }),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("reflects saveStatus", async () => {
     const { rerender } = await renderShell({ saveStatus: "saving" });
@@ -660,26 +615,6 @@ describe("AppLayout — sidebar state", () => {
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 describe("AppLayout — panels", () => {
-  /* Both panels are disclosure popovers named by aria-label, not modals: the
-     trigger carries aria-expanded and aria-controls and the page behind stays
-     interactive, so they are groups. The settings drawer below is a real modal
-     and keeps its dialog role. */
-  it("opens the notifications panel from the bell and closes the others", async () => {
-    const u = userEvent.setup();
-    await renderShell();
-    await u.click(iconButton("Help", /^help$/i));
-    expect(
-      screen.getByRole("group", { name: "Help Center" }),
-    ).toBeInTheDocument();
-    await u.click(screen.getByTitle("Notifications"));
-    expect(
-      screen.getByRole("group", { name: "Notifications" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("group", { name: "Help Center" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens the settings drawer from the sidebar and it reads the preferences", async () => {
     const u = userEvent.setup();
     const { getPreferences } = await import("@shell/api/user");
@@ -776,24 +711,6 @@ describe("AppLayout — accessibility and design-system expectations (migration 
     expect(btn).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("menu")).toBeInTheDocument();
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
-  });
-
-  it("names the bell with its unread count and states which panel it controls", async () => {
-    streamNotificationEvents.mockImplementation(
-      hangingStream([
-        { event: "connected", data: { summary: { total_unread: 3 } } },
-      ]),
-    );
-    await renderShell();
-    await waitFor(() =>
-      expect(
-        within(screen.getByTitle("Notifications")).getByText("3"),
-      ).toBeInTheDocument(),
-    );
-    const bell = screen.getByRole("button", {
-      name: /notifications.*3 unread/i,
-    });
-    expect(bell).toHaveAttribute("aria-expanded", "false");
   });
 
   it("names every header and sidebar control", async () => {

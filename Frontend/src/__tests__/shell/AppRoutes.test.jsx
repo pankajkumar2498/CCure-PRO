@@ -7,7 +7,7 @@
  * page are real; the product list is the live :443 body recorded at 12.1.
  *
  *   /                  CCurePRO Home
- *   /audit-dashboard   Audit's Security Dashboard (canonical)
+ *   /audit-dashboard   Audit's Audit Dashboard (canonical)
  *   /dashboard         redirect to /audit-dashboard, query and fragment kept
  *   /{policy,rank,ir}-dashboard   the module page from the registry
  *   every other Audit address     unchanged
@@ -254,7 +254,7 @@ describe("/ is CCurePRO Home", () => {
 });
 
 describe("Audit's dashboard address", () => {
-  it("/audit-dashboard is Audit's Security Dashboard", () => {
+  it("/audit-dashboard is Audit's Audit Dashboard", () => {
     visit("/audit-dashboard");
     expect(page()).toBe("SecurityDashboard");
     expect(where().pathname).toBe("/audit-dashboard");

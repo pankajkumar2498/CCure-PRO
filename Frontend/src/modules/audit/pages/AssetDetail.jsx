@@ -831,7 +831,7 @@ export default function AssetDetail() {
 
   if (loading) {
     return (
-      <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
+      <AppLayout pageTitle="Asset Details">
         <CcurePage className="ad-page" aria-busy="true">
           <CcureSkeleton height={48} className="ad-mb-lg" />
           <div className="ad-body">
@@ -845,7 +845,7 @@ export default function AssetDetail() {
 
   if (error || !asset) {
     return (
-      <AppLayout pageTitle="Asset Details" onNewScan={() => navigate("/scan")}>
+      <AppLayout pageTitle="Asset Details">
         <CcurePage className="ad-page">
           <CcurePageHeader title="Asset Details" />
           <CcureAlert variant="danger" title="Failed to Load Asset">
@@ -867,10 +867,7 @@ export default function AssetDetail() {
   const changelogCount = changelogData?.stats?.total_events || 0;
 
   return (
-    <AppLayout
-      pageTitle={`Asset: ${asset.ip_address}`}
-      onNewScan={() => navigate("/scan")}
-    >
+    <AppLayout pageTitle={`Asset: ${asset.ip_address}`}>
       <CcurePage className="ad-page">
         {writeError && (
           <div className="ad-write-error">

@@ -432,7 +432,7 @@ export default function AssetRegistry() {
   };
 
   return (
-    <AppLayout pageTitle="Asset Registry" onNewScan={() => navigate("/scan")}>
+    <AppLayout pageTitle="Asset Registry">
       <CcurePage className="ar-page">
         {/* Header */}
         <CcurePageHeader

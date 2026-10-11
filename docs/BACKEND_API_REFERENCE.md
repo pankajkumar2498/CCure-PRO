@@ -107,29 +107,65 @@ The frontend's `api/admin.js` sends the trailing-slash form.
 
 ## 2. Authentication — `/auth`
 
-Source: `Backend/ccure_platform/identity/router.py` (legacy path `auth/router.py`) — 18 operations.
+Source: `Backend/ccure_platform/identity/router.py` (legacy path `auth/router.py`) — 19 operations.
 
-| Method | Path                         | Auth                       | Rate limit | Purpose                                  |
-| ------ | ---------------------------- | -------------------------- | ---------- | ---------------------------------------- |
-| GET    | `/auth/check-username`       | public\*                   | 10/min     | Username availability                    |
-| GET    | `/auth/check-email`          | public\*                   | 10/min     | Email syntax only — never an oracle      |
-| POST   | `/auth/register`             | public\*                   | 3/min      | Self-registration → **202, no tokens**   |
-| POST   | `/auth/verify-email`         | public                     | 10/min     | Consume verification token               |
-| POST   | `/auth/resend-verification`  | public\*                   | 3/min      | Re-send verification link                |
-| POST   | `/auth/login`                | public                     | 10/min     | Password login → tokens or MFA challenge |
-| POST   | `/auth/logout`               | public (cookie/body token) | —          | Revoke refresh session                   |
-| GET    | `/auth/me`                   | authenticated              | —          | Current user + role + permissions + org  |
-| POST   | `/auth/refresh`              | public (cookie/body token) | —          | Rotate refresh, issue access             |
-| POST   | `/auth/ticket`               | authenticated              | —          | 60-second WebSocket/download ticket      |
-| GET    | `/auth/jwks.json`            | public                     | 60/min     | Token-verification public keys (JWKS)    |
-| POST   | `/auth/service-token`        | service assertion          | 30/min     | Service identity → service token (9.5)   |
-| POST   | `/auth/forgot-password`      | public                     | 3/min      | Send reset link                          |
-| POST   | `/auth/reset-password`       | public                     | —          | Consume reset token                      |
-| POST   | `/auth/login/send-email-otp` | MFA challenge token        | 5/min      | Email a 6-digit OTP                      |
-| POST   | `/auth/login/verify-mfa`     | MFA challenge token        | 5/min      | Verify TOTP / OTP / backup code          |
-| POST   | `/auth/mfa/enable`           | authenticated              | —          | Generate TOTP secret + QR                |
-| POST   | `/auth/mfa/confirm`          | authenticated              | —          | Activate MFA, return backup codes        |
-| POST   | `/auth/mfa/disable`          | authenticated              | —          | Disable MFA (password required)          |
+| Method | Path                         | Auth                       | Rate limit    | Purpose                                  |
+| ------ | ---------------------------- | -------------------------- | ------------- | ---------------------------------------- |
+| GET    | `/auth/config`               | public                     | baseline/edge | Public registration policy               |
+| GET    | `/auth/check-username`       | public\*                   | 10/min        | Username availability                    |
+| GET    | `/auth/check-email`          | public\*                   | 10/min        | Email syntax only — never an oracle      |
+| POST   | `/auth/register`             | public\*                   | 3/min         | Self-registration → **202, no tokens**   |
+| POST   | `/auth/verify-email`         | public                     | 10/min        | Consume verification token               |
+| POST   | `/auth/resend-verification`  | public\*                   | 3/min         | Re-send verification link                |
+| POST   | `/auth/login`                | public                     | 10/min        | Password login → tokens or MFA challenge |
+| POST   | `/auth/logout`               | public (cookie/body token) | —             | Revoke refresh session                   |
+| GET    | `/auth/me`                   | authenticated              | —             | Current user + role + permissions + org  |
+| POST   | `/auth/refresh`              | public (cookie/body token) | —             | Rotate refresh, issue access             |
+| POST   | `/auth/ticket`               | authenticated              | —             | 60-second WebSocket/download ticket      |
+| GET    | `/auth/jwks.json`            | public                     | 60/min        | Token-verification public keys (JWKS)    |
+| POST   | `/auth/service-token`        | service assertion          | 30/min        | Service identity → service token (9.5)   |
+| POST   | `/auth/forgot-password`      | public                     | 3/min         | Send reset link                          |
+| POST   | `/auth/reset-password`       | public                     | —             | Consume reset token                      |
+| POST   | `/auth/login/send-email-otp` | MFA challenge token        | 5/min         | Email a 6-digit OTP                      |
+| POST   | `/auth/login/verify-mfa`     | MFA challenge token        | 5/min         | Verify TOTP / OTP / backup code          |
+| POST   | `/auth/mfa/enable`           | authenticated              | —             | Generate TOTP secret + QR                |
+| POST   | `/auth/mfa/confirm`          | authenticated              | —             | Activate MFA, return backup codes        |
+| POST   | `/auth/mfa/disable`          | authenticated              | —             | Disable MFA (password required)          |
+
+### `GET /auth/config`
+
+Returns `{"self_registration_enabled": true | false}` from the effective
+platform registration policy, including when registration is disabled. A saved
+administrator policy takes precedence over `ALLOW_SELF_REGISTRATION`; a null
+override follows that deployment default. Only the singleton policy is queried;
+no session, tenant or account lookup is required. Responses use `Cache-Control: no-store`.
+The baseline and edge rate limits apply; this inexpensive configuration read
+does not share the email/username availability probes' 10/minute quota.
+
+Login and registration wait for an explicit boolean before offering signup.
+Timeouts, malformed responses and HTTP errors (including 404 and 429) mean
+configuration is unavailable and offer a retry. Sign-in remains usable.
+
+### Administration — registration settings
+
+`GET /admin/registration-settings` requires the platform-scope
+`platform.registration.read` permission. It returns `self_registration_enabled`,
+`deployment_default`, `source` (`deployment` or `administrator`), `revision`, and
+`administrator_approval_required`. Responses are not cached.
+
+`PATCH /admin/registration-settings` requires `platform.registration.manage` and
+existing authenticator step-up (`X-Reauth-Code` when requested). Send
+`{"self_registration_enabled": true | false | null, "revision": <current revision>}`.
+Booleans save an override; null restores the deployment default. Values are
+strictly typed; unknown fields are rejected. The singleton is locked, conflicting
+revisions return **409**, and the policy change and platform audit event commit
+atomically. The resulting policy takes effect for the public configuration and
+all signup gates on the next request, across API processes, without restarting.
+The operation does not change mailbox verification or administrator approval.
+
+For Docker, the default is configured in the root `.env` and passed to the API by
+Compose. Changing that default requires recreating the API with its existing
+Compose files. See [Registration policy](../README.md#registration-policy).
 
 ### `GET /auth/check-username`
 

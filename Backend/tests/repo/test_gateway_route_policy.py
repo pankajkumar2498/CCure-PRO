@@ -34,6 +34,7 @@ from scripts.gateway import route_policy as rp
 from testpaths import BACKEND_ROOT, REPO_ROOT
 
 PUBLIC = [
+    ("GET", "/auth/config"),
     ("GET", "/auth/check-username"),
     ("GET", "/auth/check-email"),
     ("POST", "/auth/register"),
@@ -119,13 +120,13 @@ def _entries(policy, route_class):
 
 def test_counts_are_the_characterised_ones(policy):
     assert policy["counts"] == {
-        "public": 17,
+        "public": 18,
         # 252 since Phase 12.1 (GET /platform/modules); 264 since RBAC-7 added the
         # twelve /platform/rbac administration operations.
-        "bearer": 260,
+        "bearer": 262,
         "ticket_or_bearer": 3,
         "websocket": 2,
-        "total": 282,
+        "total": 285,
     }
 
 
@@ -134,13 +135,13 @@ def test_the_product_list_is_a_bearer_route(policy):
     assert ("GET", "/platform/modules") in _entries(policy, "bearer")
 
 
-def test_the_public_allowlist_is_exactly_the_characterised_17(policy):
+def test_the_public_allowlist_includes_only_recorded_public_routes(policy):
     assert sorted(_entries(policy, "public")) == sorted(PUBLIC)
 
 
 def test_bearer_routes(policy):
     bearer = _entries(policy, "bearer")
-    assert len(bearer) == 260  # 264 until RBAC-8 removed the four /admin/roles routes
+    assert len(bearer) == 262  # Registration policy adds two protected operations.
     assert ("GET", "/scans") in bearer and ("POST", "/auth/ticket") in bearer
     assert all(
         e["checker_policy"] == "bearer"

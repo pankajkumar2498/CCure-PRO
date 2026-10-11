@@ -10,20 +10,22 @@
  *                  product from the platform registry (fetched, never copied),
  *                  and Administration (the /admin/* screens, by permission).
  *   HEADER         organisation switcher (superadmin) · notifications ·
- *                  settings (platform preferences only) · account menu ·
- *                  sign out
+ *                  settings (platform preferences only) · account menu
+ *                  (My Account, Sign Out)
  *
  * Choosing a product navigates to its entry address, which mounts that
  * product's own layout with its own sidebar. Nothing here names or imports a
  * product.
  */
-import { useCallback, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import {
-  CcureAppShell,
-  CcureButton,
-  CcureIconButton,
-} from "../../design-system";
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { CcureAppShell, CcureIconButton } from "../../design-system";
 import { useAuth } from "../auth/AuthContext";
 import { canSwitchOrganisation } from "../auth/permissions";
 import { usePreferences } from "../preferences/PreferencesContext";
@@ -33,6 +35,7 @@ import useProductList, {
   ProductListProvider,
 } from "../products/useProductList";
 import AccountMenu from "../navigation/AccountMenu";
+import ThemeToggle from "../navigation/ThemeToggle";
 import OrgSwitcher from "../navigation/OrgSwitcher";
 import useOrganizationSwitcher from "../navigation/useOrganizationSwitcher";
 import { IcoSettings } from "../navigation/navIcons";
@@ -71,18 +74,26 @@ function platformSections(user, productList) {
   const admin = SHARED_ADMIN_NAV.filter((item) => canSeeNavItem(user, item));
   return [
     {
-      label: "CCure Platform",
+      label: "CCurePRO Platform",
       items: [{ id: "home", label: "Home", route: "/" }, ...productItems],
     },
     ...(admin.length ? [{ label: "Administration", items: admin }] : []),
   ];
 }
 
+const PlatformLayoutContext = createContext(false);
+
 export default function PlatformLayout({ children }) {
+  const withinPlatformLayout = useContext(PlatformLayoutContext);
+  // Pages also use this frame when rendered on their own. The route-level
+  // instance owns the persistent shell; those page wrappers only pass content.
+  if (withinPlatformLayout) return children;
   return (
-    <ProductListProvider>
-      <PlatformFrame>{children}</PlatformFrame>
-    </ProductListProvider>
+    <PlatformLayoutContext.Provider value={true}>
+      <ProductListProvider>
+        <PlatformFrame>{children}</PlatformFrame>
+      </ProductListProvider>
+    </PlatformLayoutContext.Provider>
   );
 }
 
@@ -163,6 +174,7 @@ function PlatformFrame({ children }) {
           </div>
         )}
       </div>
+      <ThemeToggle />
       <CcureIconButton
         ref={settingsBtnRef}
         size="sm"
@@ -182,21 +194,13 @@ function PlatformFrame({ children }) {
         onLogout={() => logout()}
         onOpenProfile={() => setShowProfile(true)}
       />
-      <CcureButton
-        variant="ghost"
-        size="sm"
-        className="pl-signout"
-        onClick={() => logout()}
-      >
-        Sign out
-      </CcureButton>
     </>
   );
 
   return (
     <>
       <CcureAppShell
-        brand={{ name: "CCure", sub: "Platform" }}
+        brand={{ name: "CCurePRO", sub: "Platform" }}
         sections={platformSections(user, productList)}
         currentPath={pathname}
         onNavigate={(route) => navigate(route)}

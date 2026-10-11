@@ -22,11 +22,6 @@
   gap: var(--ccure-space-md);
 }
 
-.tpl-grid--modal {
-  width: 100%;
-  gap: var(--ccure-space-lg);
-}
-
 .tpl-card {
   position: relative;
   background: var(--ccure-surface);

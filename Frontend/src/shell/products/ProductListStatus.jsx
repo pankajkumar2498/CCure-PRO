@@ -7,7 +7,7 @@ import { describeLoadError } from "./productList";
  * a product, and zero cards would read as "there are no products".
  */
 export function ProductListLoading() {
-  return <CcureLoader label="Loading the CCure products…" />;
+  return <CcureLoader label="Loading the CCurePRO products…" />;
 }
 
 export function ProductListError({ error, onRetry }) {
@@ -15,7 +15,7 @@ export function ProductListError({ error, onRetry }) {
     <div>
       <CcureAlert
         variant="danger"
-        title="The CCure product list could not be loaded"
+        title="The CCurePRO product list could not be loaded"
       >
         {describeLoadError(error)} No product is shown rather than a guess.
       </CcureAlert>

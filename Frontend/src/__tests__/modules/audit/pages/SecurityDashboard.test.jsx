@@ -521,7 +521,7 @@ describe("SecurityDashboard — batch 17", () => {
   it("names the page with a level-one heading", async () => {
     await renderPage();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Security Dashboard" }),
+      screen.getByRole("heading", { level: 1, name: "Audit Dashboard" }),
     ).toBeInTheDocument();
   });
 

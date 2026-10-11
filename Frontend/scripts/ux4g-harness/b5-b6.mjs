@@ -49,6 +49,7 @@ export function nativePersona(keys = allKeys) {
 const persona = nativePersona();
 const stubs = {
   "/platform/modules": PLATFORM_MODULES,
+  "/auth/config": { self_registration_enabled: true },
   "/auth/check-email": { available: true, domain_allowed: true },
   "/auth/check-username": { available: true },
   "/notifications/stream": {

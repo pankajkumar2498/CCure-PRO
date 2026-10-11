@@ -21,8 +21,8 @@ def test_native_declarations_match_frozen_permission_metadata():
         for source in composition.load_permission_sources()
         for p in source.permissions
     }
-    assert len(declarations) == 67
-    assert sum(k.startswith("platform.") for k in declarations) == 30
+    assert len(declarations) == 69
+    assert sum(k.startswith("platform.") for k in declarations) == 32
     assert sum(k.startswith("audit.") for k in declarations) == 37
     assert set(declarations) == {p["key"] for p in EXPECTED["permissions"]}
     for permission in EXPECTED["permissions"]:
@@ -46,7 +46,7 @@ def test_native_declarations_match_frozen_permission_metadata():
 @pytest.mark.parametrize(
     "key,count",
     [
-        ("platform.superadmin", 67),
+        ("platform.superadmin", 69),
         ("platform.org_admin", 47),
         ("platform.analyst", 23),
         ("platform.viewer", 9),

@@ -5,6 +5,7 @@ import { openState, assertPage } from "./helpers.mjs";
 const selected = [
   "common-home",
   "common-users",
+  "common-registration",
   "b5-register-320",
   "ar-assets",
   "sd-default",

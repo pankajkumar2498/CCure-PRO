@@ -17,6 +17,8 @@ PUBLIC_ROUTE_WHITELIST = {
     "/auth/forgot-password",
     "/auth/check-username",
     "/auth/check-email",
+    # Public deployment policy needed before the caller can sign in or sign up.
+    "/auth/config",
     "/auth/reset-password-request",
     "/auth/reset-password",
     # Necessarily unauthenticated: the caller is proving control of a mailbox

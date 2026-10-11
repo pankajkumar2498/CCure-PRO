@@ -134,6 +134,9 @@ services:
       # its Secure flag is not a failure anyone would notice.
       - REFRESH_COOKIE_SECURE=${REFRESH_COOKIE_SECURE:-false}
       - REFRESH_COOKIE_SAMESITE=${REFRESH_COOKIE_SAMESITE:-lax}
+      # Central deployment default. A saved Registration Settings policy takes
+      # precedence until an administrator selects Use deployment default.
+      - ALLOW_SELF_REGISTRATION=${ALLOW_SELF_REGISTRATION:-false}
       - APP_ENV=production
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:3000}
       - SMTP_HOST=${SMTP_HOST:-host.docker.internal}

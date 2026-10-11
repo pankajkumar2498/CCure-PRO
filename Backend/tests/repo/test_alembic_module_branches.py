@@ -8,7 +8,7 @@ What is pinned:
   branch of its own, not a child of Audit's history;
 * with the branches activated (``scripts/db/alembic_module_branches.activate``,
   exactly what the live step applies), the history has three heads: Audit's
-  ``b8d2f6a4c0e1`` and the two module bases — and Audit's own lineage is
+  current head and the two module bases — and Audit's own lineage is
   unchanged;
 * Phase 11 creates **no Policy Pro or Rank table**: the base revisions create
   their schema and nothing else;
@@ -38,7 +38,6 @@ from scripts.architecture import module_boundaries as mb
 from scripts.db import alembic_module_branches as branches
 from testpaths import BACKEND_ROOT, REPO_ROOT
 
-AUDIT_HEAD = "d4f8b2c6e0a1"
 MODULES = [m for m in registry.modules() if m.key != "audit"]
 EXAMPLE_MIGRATIONS = (
     BACKEND_ROOT
@@ -67,6 +66,13 @@ def _audit_script() -> ScriptDirectory:
     return ScriptDirectory.from_config(cfg)
 
 
+def _audit_head() -> str:
+    """Audit stays on one branch as new revisions extend its history."""
+    heads = _audit_script().get_heads()
+    assert len(heads) == 1, heads
+    return heads[0]
+
+
 def _ini_text() -> str:
     # Bytes: universal-newline reading would hide the file's CRLF.
     return (BACKEND_ROOT / "alembic.ini").read_bytes().decode("utf-8")
@@ -93,7 +99,7 @@ def test_each_module_has_exactly_one_base_revision_labelled_with_its_key(m):
 
 def test_activated_history_has_audits_head_and_one_head_per_module():
     script = _activated_script()
-    assert set(script.get_heads()) == {AUDIT_HEAD, "policy_pro_0001", "rank_0001"}
+    assert set(script.get_heads()) == {_audit_head(), "policy_pro_0001", "rank_0001"}
     assert {"policy_pro_0001", "rank_0001"} <= set(script.get_bases())
     assert script.get_revision("policy_pro@head").revision == "policy_pro_0001"
     assert script.get_revision("rank@head").revision == "rank_0001"
@@ -108,7 +114,7 @@ def test_audits_own_lineage_is_unchanged_by_the_branches():
     assert {
         k: activated[k] for k in committed
     } == committed  # every Audit revision, same parent
-    assert _audit_script().get_heads() == [AUDIT_HEAD]
+    assert set(_activated_script().get_heads()) & set(committed) == {_audit_head()}
 
 
 # ── no feature tables ────────────────────────────────────────────────────────
@@ -353,4 +359,4 @@ def test_a_fresh_install_stamps_only_audits_history():
     # must then run as migrations, not be stamped past a CREATE SCHEMA.
     from db import migrate_production_schema as migrator
 
-    assert migrator._audit_heads() == [AUDIT_HEAD]
+    assert migrator._audit_heads() == [_audit_head()]

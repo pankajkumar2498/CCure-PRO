@@ -18,10 +18,6 @@
  * back to "basic", so the other order would start every pipeline as basic.
  * The order is asserted, not just the calls.
  *
- * The "Start New Scan" modal is opened by the SHELL — AppLayout's New Scan
- * button calls the `onNewScan` prop, and this is the only page that answers
- * with a modal rather than a navigation. The AppLayout mock therefore exposes
- * that button so the path can be driven.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -43,11 +39,8 @@ vi.mock("@shell/api/axiosInstance", () => ({
 }));
 
 vi.mock("@audit/components/layout/AppLayout", () => ({
-  default: ({ children, pageTitle, onNewScan }) => (
+  default: ({ children, pageTitle }) => (
     <div data-testid="app-layout" data-page-title={pageTitle}>
-      <button type="button" onClick={onNewScan}>
-        New Scan
-      </button>
       {children}
     </div>
   ),
@@ -93,9 +86,7 @@ const UNMAPPED = [
 const card = (title, root = screen) =>
   root.getByRole("button", { name: new RegExp("\\b" + title + "\\b") });
 
-/* Every template card on screen, excluding the shell's own New Scan button. */
-const allCards = () =>
-  screen.getAllByRole("button").filter((b) => b.textContent !== "New Scan");
+const allCards = () => screen.queryAllByRole("button");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -259,72 +250,6 @@ describe("Dashboard — search", () => {
   });
 });
 
-/* ── The Start New Scan modal ─────────────────────────────────────────────── */
-describe("Dashboard — Start New Scan modal", () => {
-  it("is closed until the shell asks for a new scan", () => {
-    render(<Dashboard />);
-    expect(screen.queryByText("Start New Scan")).not.toBeInTheDocument();
-  });
-
-  it("opens from the shell's New Scan button with the same templates", async () => {
-    const user = userEvent.setup();
-    render(<Dashboard />);
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-
-    expect(screen.getByText("Start New Scan")).toBeInTheDocument();
-    expect(
-      screen.getByText("Choose a scan type to begin your next assessment."),
-    ).toBeInTheDocument();
-    // Grid and modal both list the templates now.
-    expect(
-      screen.getAllByRole("button", {
-        name: /Basic Network Scan/,
-        hidden: true,
-      }),
-    ).toHaveLength(2);
-  });
-
-  it("applies the page search to the modal's templates", async () => {
-    const user = userEvent.setup();
-    render(<Dashboard />);
-    await user.type(screen.getByPlaceholderText("Search templates…"), "asset");
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-    expect(
-      screen.getAllByRole("button", { name: /Asset Discovery/, hidden: true }),
-    ).toHaveLength(2);
-    expect(
-      screen.queryByRole("button", { name: /Malware Scan/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("choosing a template in the modal navigates and closes it", async () => {
-    const user = userEvent.setup();
-    render(<Dashboard />);
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-    const inModal = screen.getByRole("button", { name: /Asset Discovery/ });
-    expect(inModal.closest("[role=dialog]")).not.toBeNull();
-    await user.click(inModal);
-
-    expect(resetScan).toHaveBeenCalledTimes(1);
-    expect(setPipelineMode).toHaveBeenCalledWith("asset");
-    expect(navigate).toHaveBeenCalledWith("/scan/new");
-    expect(screen.queryByText("Start New Scan")).not.toBeInTheDocument();
-  });
-
-  it("closes on the Close control and on Escape", async () => {
-    const user = userEvent.setup();
-    render(<Dashboard />);
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByText("Start New Scan")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-    expect(screen.getByText("Start New Scan")).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-    expect(screen.queryByText("Start New Scan")).not.toBeInTheDocument();
-  });
-});
-
 /* ── Migration specification (expected to FAIL before migration) ──────────── */
 describe("Dashboard — accessibility and design-system expectations", () => {
   it("names the search control (not just a placeholder)", () => {
@@ -332,14 +257,6 @@ describe("Dashboard — accessibility and design-system expectations", () => {
     // getByLabelText ignores placeholder by design: a placeholder disappears
     // the moment the user types and is not a label.
     expect(screen.getByLabelText(/search templates/i)).toBeInTheDocument();
-  });
-
-  it("exposes the modal as a named dialog", async () => {
-    const user = userEvent.setup();
-    render(<Dashboard />);
-    await user.click(screen.getByRole("button", { name: "New Scan" }));
-    const dlg = screen.getByRole("dialog", { name: /start new scan/i });
-    expect(dlg).toHaveAttribute("aria-modal", "true");
   });
 
   it("renders no inline styles — template icon tones come from classes", () => {

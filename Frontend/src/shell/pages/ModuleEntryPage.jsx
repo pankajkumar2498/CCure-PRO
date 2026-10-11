@@ -38,7 +38,7 @@ import {
 function BackToHome() {
   return (
     <CcureButton as={Link} to="/" variant="secondary" className="pm-back">
-      Back to CCure Home
+      Back to CCurePRO Home
     </CcureButton>
   );
 }
@@ -56,7 +56,7 @@ function Statement({ product, availability }) {
   if (availability === AVAILABILITY.AVAILABLE) {
     return (
       <CcureAlert variant="warning" title={`${name} has no page in this build`}>
-        The platform reports {name} as available, but this build of the CCure
+        The platform reports {name} as available, but this build of the CCurePRO
         frontend has no page at {product.entryPath}. Nothing is shown in its
         place.
       </CcureAlert>

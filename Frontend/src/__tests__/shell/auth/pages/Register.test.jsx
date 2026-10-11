@@ -79,7 +79,7 @@ const VALID = {
 const completeForm = async (overrides = {}) => {
   const v = { ...VALID, ...overrides };
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/full name/i), v.fullName);
+  await user.type(await screen.findByLabelText(/full name/i), v.fullName);
   await user.type(screen.getByLabelText(/username/i), v.username);
   await user.type(screen.getByLabelText(/^email\b/i), v.email);
   await user.type(screen.getByLabelText(/^password\b/i), v.password);
@@ -110,8 +110,10 @@ describe("Register — self-registration gate", () => {
     isSelfRegistrationEnabled.mockReturnValue(new Promise(() => {}));
     renderPage();
 
-    // The gate is `selfRegAllowed === false`, so the form renders while the
-    // probe is null. What must not happen is the *disabled* panel flashing.
+    expect(screen.queryByLabelText(/full name/i)).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /checking registration availability/i,
+    );
     expect(screen.queryByText(/created by an administrator/i)).toBeNull();
   });
 
@@ -126,6 +128,22 @@ describe("Register — self-registration gate", () => {
     expect(
       screen.getByRole("link", { name: /back to sign in/i }),
     ).toHaveAttribute("href", "/login");
+  });
+
+  it("keeps unknown configuration distinct and retries before exposing the form", async () => {
+    isSelfRegistrationEnabled
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(true);
+    renderPage();
+
+    await screen.findByText(/registration options are unavailable/i);
+    expect(screen.queryByLabelText(/full name/i)).toBeNull();
+    expect(screen.queryByText(/created by an administrator/i)).toBeNull();
+    expect(register).not.toHaveBeenCalled();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByLabelText(/full name/i)).toBeInTheDocument();
   });
 
   it("falls back to the disabled panel when the API answers 404", async () => {
@@ -144,6 +162,7 @@ describe("Register — self-registration gate", () => {
 describe("Register — API contract", () => {
   it("submits the normalised payload", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
@@ -158,6 +177,7 @@ describe("Register — API contract", () => {
 
   it("lower-cases and trims the email but not the password", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm({
       email: "  Person@EXAMPLE.com  ",
       password: "  Str0ng!Pass  ",
@@ -172,6 +192,7 @@ describe("Register — API contract", () => {
 
   it("shows the pending panel and never signs the user in", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(await screen.findByText(/check your email/i)).toBeInTheDocument();
@@ -187,6 +208,7 @@ describe("Register — API contract", () => {
 
   it("resends verification to the normalised address", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm({ email: "  Person@EXAMPLE.com  " });
     await screen.findByText(/check your email/i);
 
@@ -202,6 +224,7 @@ describe("Register — API contract", () => {
   it("reports the resend as sent even when it fails", async () => {
     resendVerification.mockRejectedValue(new Error("smtp down"));
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
     await screen.findByText(/check your email/i);
 
@@ -221,6 +244,7 @@ describe("Register — API contract", () => {
 
   it("makes no registration request on mount", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await waitFor(() =>
       expect(isSelfRegistrationEnabled).toHaveBeenCalledTimes(1),
     );
@@ -239,6 +263,7 @@ describe("Register — account-enumeration safety", () => {
       detail: "Disposable mail domains are not accepted.",
     });
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^email\b/i), "taken@example.com");
 
@@ -255,6 +280,7 @@ describe("Register — account-enumeration safety", () => {
       detail: "Disposable mail domains are not accepted.",
     });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^email\b/i), "a@mailinator.com");
 
@@ -266,6 +292,7 @@ describe("Register — account-enumeration safety", () => {
   it("stays silent when the advisory probe fails", async () => {
     checkEmail.mockRejectedValue(new Error("offline"));
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^email\b/i), "a@example.com");
 
@@ -277,6 +304,7 @@ describe("Register — account-enumeration safety", () => {
 
   it("does not probe an incomplete address", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^email\b/i), "not-an-email");
 
@@ -286,6 +314,7 @@ describe("Register — account-enumeration safety", () => {
 
   it("confirms the outcome without naming the address's status", async () => {
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
     await screen.findByText(/check your email/i);
 
@@ -299,6 +328,7 @@ describe("Register — account-enumeration safety", () => {
 describe("Register — username availability", () => {
   it("checks availability once the name is long enough", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/username/i), "abc");
 
@@ -308,6 +338,7 @@ describe("Register — username availability", () => {
 
   it("does not check a name shorter than three characters", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/username/i), "ab");
 
@@ -317,6 +348,7 @@ describe("Register — username availability", () => {
 
   it("does not check a name containing @", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/username/i), "a@b.com");
 
@@ -327,6 +359,7 @@ describe("Register — username availability", () => {
   it("reports a taken name", async () => {
     checkUsername.mockResolvedValue({ available: false });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/username/i), "taken");
 
@@ -370,6 +403,7 @@ describe("Register — validation", () => {
   for (const [name, overrides, expected] of cases) {
     it(`refuses ${name} without calling the API`, async () => {
       renderPage();
+      await screen.findByLabelText(/full name/i);
       await completeForm(overrides);
 
       expect(await screen.findByText(expected)).toBeInTheDocument();
@@ -379,6 +413,7 @@ describe("Register — validation", () => {
 
   it("refuses an unticked terms box without calling the API", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm({ agree: false });
 
     // The checkbox carries `required`, so constraint validation stops the
@@ -391,6 +426,7 @@ describe("Register — validation", () => {
 
   it("refuses a username containing @ without calling the API", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm({ username: "bad@name" });
 
     // Two elements say so — the live field hint and the submit-time error.
@@ -402,6 +438,7 @@ describe("Register — validation", () => {
 
   it("grades password strength as the rules are met", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     const field = screen.getByLabelText(/^password\b/i);
 
@@ -415,6 +452,7 @@ describe("Register — validation", () => {
 
   it("confirms a matching confirmation", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^password\b/i), "Str0ng!Passphrase");
     await user.type(
@@ -441,6 +479,7 @@ describe("Register — error semantics", () => {
       },
     });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(
@@ -455,6 +494,7 @@ describe("Register — error semantics", () => {
       },
     });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(await screen.findByText(/registration closed/i)).toBeInTheDocument();
@@ -466,6 +506,7 @@ describe("Register — error semantics", () => {
       response: { data: { detail: "Value error, that domain is blocked" } },
     });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(
@@ -476,6 +517,7 @@ describe("Register — error semantics", () => {
   it("falls back to a generic message", async () => {
     register.mockRejectedValue(new Error("network"));
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(
@@ -486,6 +528,7 @@ describe("Register — error semantics", () => {
   it("never echoes the chosen password outside its own fields", async () => {
     register.mockRejectedValue({ response: { data: { detail: "nope" } } });
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm({ password: "Uniq3!Secret", confirm: "Uniq3!Secret" });
     await screen.findByText(/nope/i);
 
@@ -497,6 +540,7 @@ describe("Register — error semantics", () => {
   it("keeps the form mounted after a failure", async () => {
     register.mockRejectedValue({ response: { data: { detail: "nope" } } });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
     await screen.findByText(/nope/i);
 
@@ -511,6 +555,7 @@ describe("Register — error semantics", () => {
 describe("Register — terms and privacy", () => {
   it("opens the terms modal and accepting it ticks the box", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
 
@@ -523,6 +568,7 @@ describe("Register — terms and privacy", () => {
 
   it("opens the privacy modal and accepting it ticks the box", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /privacy policy/i }));
 
@@ -534,6 +580,7 @@ describe("Register — terms and privacy", () => {
 
   it("closes on the dismiss control without ticking the box", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
     await screen.findByText(/1\. authorized use/i);
@@ -549,6 +596,7 @@ describe("Register — terms and privacy", () => {
 
   it("says so when a document is not provided, never an empty dialog", async () => {
     renderPage({});
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
     expect(
@@ -563,6 +611,7 @@ describe("Register — terms and privacy", () => {
 
   it("does not submit the form from a policy trigger", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
 
@@ -573,8 +622,9 @@ describe("Register — terms and privacy", () => {
 /* ── Accessibility — the migration specification ──────────────────────────── */
 
 describe("Register — accessibility", () => {
-  it("names the page with a level-1 heading inside the auth card", () => {
+  it("names the page with a level-1 heading inside the auth card", async () => {
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
     const card = container.querySelector(".auth-card");
 
     expect(within(card).getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -582,8 +632,9 @@ describe("Register — accessibility", () => {
     );
   });
 
-  it("has exactly one h1 on the page", () => {
+  it("has exactly one h1 on the page", async () => {
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
 
     expect(container.querySelectorAll("h1")).toHaveLength(1);
   });
@@ -591,6 +642,7 @@ describe("Register — accessibility", () => {
   it("announces the submission failure as an alert", async () => {
     register.mockRejectedValue({ response: { data: { detail: "nope" } } });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     await completeForm();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/nope/i);
@@ -598,6 +650,7 @@ describe("Register — accessibility", () => {
 
   it("describes each field's hint through aria-describedby", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/^email\b/i), "a@example.com");
     await screen.findByText(/we will send a verification link/i);
@@ -613,6 +666,7 @@ describe("Register — accessibility", () => {
   it("marks a rejected username invalid to assistive technology", async () => {
     checkUsername.mockResolvedValue({ available: false });
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/username/i), "taken");
     await screen.findByText(/already taken/i);
@@ -625,6 +679,7 @@ describe("Register — accessibility", () => {
 
   it("announces the caps-lock warning to assistive technology", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.keyboard("{CapsLock}");
     screen.getByLabelText(/^password\b/i).focus();
@@ -636,6 +691,7 @@ describe("Register — accessibility", () => {
 
   it("gives the policy modals a dialog role and an accessible name", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
 
@@ -645,6 +701,7 @@ describe("Register — accessibility", () => {
 
   it("gives the modal dismiss control an accessible name", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /terms of service/i }));
     await screen.findByText(/1\. authorized use/i);
@@ -655,8 +712,9 @@ describe("Register — accessibility", () => {
     expect(screen.queryByRole("button", { name: "×" })).toBeNull();
   });
 
-  it("marks every required field as required", () => {
+  it("marks every required field as required", async () => {
     renderPage();
+    await screen.findByLabelText(/full name/i);
 
     expect(screen.getByLabelText(/full name/i)).toBeRequired();
     expect(screen.getByLabelText(/username/i)).toBeRequired();
@@ -665,8 +723,9 @@ describe("Register — accessibility", () => {
     expect(screen.getByLabelText(/^confirm password\b/i)).toBeRequired();
   });
 
-  it("pins no colour inline", () => {
+  it("pins no colour inline", async () => {
     const { container } = renderPage();
+    await screen.findByLabelText(/full name/i);
 
     for (const el of container.querySelectorAll("*")) {
       const style = el.getAttribute("style") || "";
@@ -680,6 +739,7 @@ describe("Register — shared consent controls", () => {
   it("keeps policy actions outside the required checkbox label and restores focus", async () => {
     const u = userEvent.setup();
     renderPage();
+    await screen.findByLabelText(/full name/i);
     const consent = await screen.findByRole("checkbox", {
       name: "I agree to the Terms of Service and Privacy Policy",
     });

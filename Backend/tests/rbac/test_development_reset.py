@@ -232,7 +232,7 @@ def test_reset_bootstraps_native_administrator_without_touching_catalogues(
         "snapshot": {"sha256": "test-only"},
     }
     result = reset.reset_database(rbac_db, plan, manifest, "Testing_Reset_123!")
-    assert result["permissions"] == result["effective_permissions"] == 67
+    assert result["permissions"] == result["effective_permissions"] == 69
     assert result["system_roles"] == 5
     assert result["organization"] == "org_development"
     assert conn.execute(text("SELECT count(*) FROM users")).scalar_one() == 1

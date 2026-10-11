@@ -6,13 +6,13 @@
 and the source of truth for repository-wide rules.** The others either route
 to it or own one subject:
 
-| Document                                                                     | Role                                                                                                         |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `CLAUDE.md` (this file)                                                      | Repository-wide rules, and the engineering record behind them                                                |
-| `AGENTS.md`                                                                  | Entry point for agents that read that file: sends every agent here, then to the specialist documents. No rules of its own |
-| `Frontend/AGENTS.md`                                                         | Frontend-specific guidance                                                                                   |
-| [`docs/ux4g/UX4G_STANDARD.md`](docs/ux4g/UX4G_STANDARD.md)                   | The UX4G standard: approved release, boundaries, required checks                                             |
-| `Frontend/ux4g-baseline.json`                                                | The binding UX4G release pin and checksums, read by the asset pipeline and its checks                        |
+| Document                                                                     | Role                                                                                                                               |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE.md` (this file)                                                      | Repository-wide rules, and the engineering record behind them                                                                      |
+| `AGENTS.md`                                                                  | Entry point for agents that read that file: sends every agent here, then to the specialist documents. No rules of its own          |
+| `Frontend/AGENTS.md`                                                         | Frontend-specific guidance                                                                                                         |
+| [`docs/ux4g/UX4G_STANDARD.md`](docs/ux4g/UX4G_STANDARD.md)                   | The UX4G standard: approved release, boundaries, required checks                                                                   |
+| `Frontend/ux4g-baseline.json`                                                | The binding UX4G release pin and checksums, read by the asset pipeline and its checks                                              |
 | `.pre-commit-config.yaml`, `Backend/scripts/architecture/`, repository tests | Authoritative for the rules they enforce. If a document and a check disagree, the check is right and the document needs correcting |
 
 **Current stack** (verified against the files named, 9 Oct 2026):
@@ -807,7 +807,7 @@ each folder's `README.md` says what belongs in it.
     - **Gates:** Trivy (0 fixable critical/high), the image smoke test, unit
       3,128 and browser 198/198 in each of three engines.
     - **How it was started:** `docker compose up -d --no-deps --force-recreate
-      frontend` with the base file, as the container had been created. The
+frontend` with the base file, as the container had been created. The
       development overlay changes only the frontend's build context, and plain
       `up -d` answered `Running` without recreating.
     - **Before it:** from 19:57 IST a build of the uncommitted tree ran
@@ -959,7 +959,7 @@ unless-stopped` so a reboot brings it all back together.
   owned by `admin` — the role the feed sync scripts and the application's
   `VULN_DB_USER` use — and `ccure_user` holds SELECT through
   `ALTER DEFAULT PRIVILEGES FOR ROLE admin`, so a table a sync creates next
-  month is readable the moment it exists. Note what did *not* grant that:
+  month is readable the moment it exists. Note what did _not_ grant that:
   `GRANT ALL PRIVILEGES ON DATABASE vuln_intel TO ccure_user` had been in
   `docker-postgres-init.sql` all along and confers CONNECT, CREATE and TEMP
   only; every SELECT still failed with 42501 until 18 Sep 2026. The
@@ -1117,6 +1117,18 @@ dump": up to six hours of operational data.
   unverified, inactive, unapproved, in the `viewer` role, and needs both a
   confirmed mailbox and `POST /admin/users/{id}/approve`. It used to return
   working tokens for an `analyst`, which carries `scans:execute`.
+
+  **Registration policy:** Docker receives its default from the root `.env`,
+  explicitly passed to the api by Compose. Administration → User Management →
+  Registration settings opens a dialog that persists a platform-wide override
+  in `platform_registration_policy`; there is no separate sidebar item.
+  **Use deployment default** clears it. `/auth/config` and all signup gates
+  read this same singleton on every request, without process-local caching.
+  The platform-scope `platform.registration.read` / `.manage` permissions
+  govern the page/API; saves use authenticator step-up, row locking, revision
+  checks and an atomic platform audit event. They do not change verification
+  or approval. A UI save takes effect immediately; editing the deployment
+  default requires recreating the api with its existing Compose overrides.
 
 - **Token signing keys (Phase 9.3, 9.4)** — the API verifies ES256 tokens
   signed by the keyset in `CCURE_TOKEN_KEYS_HOST_DIR` (`/home/cdac/ccure-keys`,

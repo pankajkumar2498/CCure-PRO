@@ -19,6 +19,7 @@ import UserTable from "../components/UserTable";
 import UserRolesPanel from "../components/UserRolesPanel";
 import { listAssignableRoles } from "../../api/rbac";
 import UserForm from "../components/UserForm";
+import RegistrationSettingsDialog from "../components/RegistrationSettingsDialog";
 import { useToasts, ToastContainer } from "../../feedback/Toast";
 import {
   CcureAlert,
@@ -119,7 +120,7 @@ export function describeEmailDomain(risk) {
 
 export default function UserManagement() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user: currentUser } = useAuth();
 
   // Data
@@ -179,6 +180,22 @@ export default function UserManagement() {
   const canUpdateUsers = can(currentUser, "platform.user.update");
   const canDeleteUsers = can(currentUser, "platform.user.delete");
   const canManageRoles = can(currentUser, "platform.role.read");
+  const canReadRegistration = can(currentUser, "platform.registration.read", {
+    scope: "platform",
+  });
+  const registrationOpen =
+    canReadRegistration && searchParams.get("registration") === "settings";
+  const setRegistrationOpen = (open) => {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        if (open) next.set("registration", "settings");
+        else next.delete("registration");
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const [rolesUser, setRolesUser] = useState(null);
   // The backend decides which roles may be handed out (`assignable`, from the
   // assignment rules: organisation boundary, ceilings, hierarchy — RBAC-7). The form
@@ -639,6 +656,16 @@ export default function UserManagement() {
               >
                 {refreshing ? "Refreshing..." : "Refresh"}
               </CcureButton>
+              {canReadRegistration && (
+                <CcureButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRegistrationOpen(true)}
+                  disabled={busy}
+                >
+                  Registration settings
+                </CcureButton>
+              )}
               {canCreateUsers && (
                 <CcureButton
                   variant="primary"
@@ -839,6 +866,12 @@ export default function UserManagement() {
           canDeleteUsers={canDeleteUsers}
         />
       </CcurePage>
+
+      {registrationOpen && (
+        <RegistrationSettingsDialog
+          onClose={() => setRegistrationOpen(false)}
+        />
+      )}
 
       <CcureModal
         open={modalOpen}

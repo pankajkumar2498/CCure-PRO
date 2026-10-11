@@ -15,7 +15,7 @@
  * Checkpoint 3C batch 11: presentation moved onto the CCure design system.
  * Nothing about template selection changed — `handleCard` is verbatim, and
  * the page still issues no request. What changed is what assistive technology
- * is told: the search control has a name, the picker is a real dialog, the
+ * is told: the search control has a name, the
  * decorative icons are hidden, the badge no longer leads a card's accessible
  * name, and the "coming soon" reason is announced rather than living only in
  * a tooltip. Icon tones come from six semantic classes instead of twenty-two
@@ -30,7 +30,6 @@ import {
   CcureBadge,
   CcureEmptyState,
   CcureInput,
-  CcureModal,
   CcureButton,
   CcurePage,
   CcurePageHeader,
@@ -349,7 +348,6 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { setPipelineMode, resetScan } = useScan();
   const [search, setSearch] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
 
   const filtered = TEMPLATES.filter(
     (t) =>
@@ -394,76 +392,46 @@ export default function Dashboard() {
     }
   };
 
-  const onNewScan = () => setModalOpen(true);
-
   return (
-    <>
-      <AppLayout pageTitle="Scan Templates" onNewScan={onNewScan}>
-        <CcurePage>
-          <CcurePageHeader
-            title="Scan Templates"
-            subtitle={<>Choose a scan type to begin your network assessment</>}
+    <AppLayout pageTitle="Scan Templates">
+      <CcurePage>
+        <CcurePageHeader
+          title="Scan Templates"
+          subtitle={<>Choose a scan type to begin your network assessment</>}
+        />
+
+        {/* Search — named, not merely placeholdered. */}
+        <div className="tpl-search">
+          <CcureInput
+            id="tpl-search"
+            type="search"
+            aria-label="Search templates"
+            placeholder="Search templates…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            adornment={<SvgSearch />}
           />
+        </div>
 
-          {/* Search — named, not merely placeholdered. */}
-          <div className="tpl-search">
-            <CcureInput
-              id="tpl-search"
-              type="search"
-              aria-label="Search templates"
-              placeholder="Search templates…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              adornment={<SvgSearch />}
-            />
-          </div>
-
-          {/* Template grid */}
-          {filtered.length === 0 ? (
-            /* role="status": the result of a search is announced, not just
+        {/* Template grid */}
+        {filtered.length === 0 ? (
+          /* role="status": the result of a search is announced, not just
                painted, so a keyboard user typing into the box hears that
                nothing matched without leaving it. */
-            <div role="status">
-              <CcureEmptyState
-                icon={<CcureIcon name="search" />}
-                title={`No templates match "${search}"`}
-              />
-            </div>
-          ) : (
-            <div className="tpl-grid">
-              {filtered.map((tpl) => (
-                <ScanCard key={tpl.id} tpl={tpl} onClick={handleCard} />
-              ))}
-            </div>
-          )}
-        </CcurePage>
-      </AppLayout>
-
-      {/* The picker the shell's New Scan button opens. CcureModal supplies
-          role="dialog", aria-modal, the title as accessible name, the focus
-          trap and Escape — the legacy Modal had the Escape and nothing else.
-          `closeLabel="Close"` keeps the control's existing accessible name. */}
-      <CcureModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Start New Scan"
-        subtitle="Choose a scan type to begin your next assessment."
-        size="lg"
-        closeLabel="Close"
-      >
-        <div className="tpl-grid tpl-grid--modal">
-          {filtered.map((tpl) => (
-            <ScanCard
-              key={tpl.id}
-              tpl={tpl}
-              onClick={(tpl) => {
-                handleCard(tpl);
-                setModalOpen(false);
-              }}
+          <div role="status">
+            <CcureEmptyState
+              icon={<CcureIcon name="search" />}
+              title={`No templates match "${search}"`}
             />
-          ))}
-        </div>
-      </CcureModal>
-    </>
+          </div>
+        ) : (
+          <div className="tpl-grid">
+            {filtered.map((tpl) => (
+              <ScanCard key={tpl.id} tpl={tpl} onClick={handleCard} />
+            ))}
+          </div>
+        )}
+      </CcurePage>
+    </AppLayout>
   );
 }

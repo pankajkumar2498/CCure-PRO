@@ -67,6 +67,8 @@
     "audit.compliance.approve_exception": "organization",
     "audit.compliance.export_report": "organization",
     "audit.compliance.manage_shared_rules": "platform",
-    "audit.vuln_feed.manage": "platform"
+    "audit.vuln_feed.manage": "platform",
+    "platform.registration.read": "platform",
+    "platform.registration.manage": "platform"
   }
 }

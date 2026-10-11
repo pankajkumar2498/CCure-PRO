@@ -112,7 +112,7 @@ Frontend/
     ├── modules/
     │   ├── audit/             @audit — CCure Audit
     │   │   ├── api/           one client per backend area
-    │   │   ├── components/    layout/ (AppLayout, HelpPanel, auditSettings) · scan/ · assets/ · compliance/ · remediation/ · common/
+    │   │   ├── components/    layout/ (AppLayout, auditSettings) · scan/ · assets/ · compliance/ · remediation/ · common/
     │   │   ├── config/        scanConfig.js, accessFallbacks.js
     │   │   ├── context/       ScanContext
     │   │   ├── hooks/, utils/
@@ -214,8 +214,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 `App.jsx` keeps two levels apart in the route tree. Audit's routes sit under an
 `AuditProduct` layout route that mounts Audit's `ScanProvider` and nothing else
 of Audit's; CCure Home, the product entry pages and the shared administration
-screens sit outside it and render in the shell's `PlatformLayout` (a left
-sidebar of Home, the registry's products and Administration). Audit's own
+screens sit outside it under a pathless `PlatformLayout` route (a left
+sidebar of Home, the registry's products and Administration). That frame,
+its product registry provider, header and sidebar remain mounted as the
+router updates the outlet. Page-level `PlatformLayout`/`ProductFrame` wrappers
+reuse that enclosing frame and still support standalone rendering. Opening
+Audit switches to its own frame; it never nests the platform sidebar. Audit's own
 `AppLayout` carries Audit's sidebar only. The shell's `AccessFallbackProvider`
 wraps both, carrying Audit's refused-route pages.
 
@@ -704,12 +708,15 @@ the scan finishes.
 
 ### `AppLayout`
 
-`modules/audit/components/layout/AppLayout.jsx` is Audit's layout: its sidebar, its header
-actions (global search, New Scan, help), its quota footer and badges, composing the shell's
-shared pieces — `CcureHomeLink`, `AccountMenu`, `OrgSwitcher` (with `useOrganizationSwitcher`),
-`UserCard`, the notification bell (`useNotificationFeed`), the account dialog and the settings
-drawer, to which it adds its "Scan Defaults" section. It is also the frame the shared
-administration screens render in.
+`modules/audit/components/layout/AppLayout.jsx` composes Audit's sidebar,
+global search, quota footer and badges with the shared `CcureHomeLink`,
+`ThemeToggle`, `AccountMenu`, `OrgSwitcher`, `UserCard`, account dialog and
+settings drawer. Audit supplies the drawer's "Scan Defaults" section.
+Notifications remain in the Common Platform header; Audit has no notification,
+Help Center or New Scan header control. Page-level New Scan actions and the
+Scan Templates cards retain their existing scan workflows. Executive Report is
+accessed through the existing Security Reports tab (`/reports?tab=executive`).
+Shared administration screens use `PlatformLayout`.
 
 `SIDEBAR_SECTIONS` is a five-section declarative model filtered per user by
 `canSeeNavItem(user, item)` — `item.permission` must pass `canPermission`, and
@@ -719,7 +726,7 @@ administration screens render in.
 
 | Section        | Items and gates                                                                                                                                                                                       |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview       | Security Dashboard `dashboard:read` · Executive Report `reports:read`                                                                                                                                 |
+| Overview       | Audit Dashboard `audit.dashboard.read`                                                                                                                                                                |
 | Scanning       | Scan Templates `scans:execute` · Active Scans `scans:read` · Scan History `scans:read` · Archived Scans _any of_ `scans:restore`/`scans:recycle` · Recycle Bin _any of_ `scans:restore`/`scans:purge` |
 | Intelligence   | Vulnerabilities `findings:read` · Asset Registry `assets:read` · Services & Ports `assets:read` · TLS / Certificates `assets:read` · Network Topology `scans:read`                                    |
 | Reports        | Security Reports `reports:read` · Compliance `reports:read` · Risk Trends `reports:read`                                                                                                              |
@@ -737,7 +744,7 @@ shell's organization switcher, which writes `localStorage.activeOrgId`.
 | Directory                                                                        | Components                                                                                                                                        |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `modules/audit/components/common/`                                               | `CVELink`, `PanelErrorBoundary`, `RootErrorBoundary`                                                                                              |
-| `modules/audit/components/layout/`                                               | `AppLayout`, `HelpPanel`, `ScanStepper`, `auditSettings` (Scan Defaults section)                                                                  |
+| `modules/audit/components/layout/`                                               | `AppLayout`, `ScanStepper`, `auditSettings` (Scan Defaults section)                                                                               |
 | `shell/admin/components/`                                                        | `AuditLogDetailsModal`, `OrganizationForm`, `UserForm`, `UserTable`                                                                               |
 | `shell/account/`, `shell/notifications/`, `shell/navigation/`, `shell/feedback/` | `ProfileModal`, `ChangePasswordModal`, `SettingsDrawer`; `NotificationsPanel`; `CcureHomeLink`, `AccountMenu`, `OrgSwitcher`, `UserCard`; `Toast` |
 | `modules/audit/components/scan/`                                                 | `ExportPanel`, `RiskBadge`, `ScanQuotaBar`                                                                                                        |
@@ -838,7 +845,7 @@ COPY . . && ARG VITE_API_BASE_URL=/api
 RUN npm run ux4g:check -- --dependencies-only && npm run build
 
 FROM nginx:stable-alpine@sha256:… AS runtime
-RUN apk upgrade --no-cache pcre2 libexpat
+RUN apk upgrade --no-cache pcre2 libexpat tiff
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 ```

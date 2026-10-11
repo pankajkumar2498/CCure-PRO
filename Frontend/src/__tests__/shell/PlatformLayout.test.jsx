@@ -1,13 +1,13 @@
 import { everything } from "../fixtures/authorization";
 /**
- * The platform header (PlatformLayout) — the shared CCure Platform navigation a
+ * The platform header (PlatformLayout) — the shared CCurePRO Platform navigation a
  * person sees the moment they sign in, before entering any product.
  *
  * Every control is the shell's own shared component; these pin that each is
  * present, works, and is gated exactly as it is in Audit's layout:
- *   CCure Home · Administration (by permission) · organisation switcher
+ *   CCurePRO Home · Administration (by permission) · organisation switcher
  *   (superadmin) · notifications · settings (platform preferences only) ·
- *   account menu (My Account, Sign Out) · Sign out.
+ *   account menu (My Account, Sign Out).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
@@ -108,7 +108,7 @@ beforeEach(() => {
 });
 
 describe("the shared platform navigation", () => {
-  it("carries a platform sidebar, notifications, settings, the account menu and Sign out", async () => {
+  it("carries a platform sidebar, notifications, settings and the account menu without a standalone sign-out button", async () => {
     renderLayout();
     const nav = screen.getByRole("navigation", { name: "Sections" });
     expect(within(nav).getByRole("link", { name: "Home" })).toHaveAttribute(
@@ -125,17 +125,24 @@ describe("the shared platform navigation", () => {
       screen.getByRole("button", { name: "Account menu for pat" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Sign out" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /^sign out$/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("hub")).toBeInTheDocument();
   });
 
-  it("Sign out signs out", async () => {
+  it("shows exactly one Sign Out action inside the account menu", async () => {
     renderLayout();
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "Sign out" }));
-    expect(logout).toHaveBeenCalledTimes(1);
+      .click(screen.getByRole("button", { name: "Account menu for pat" }));
+    expect(screen.getAllByText(/^sign out$/i)).toHaveLength(1);
+    const menu = screen.getByRole("menu", { name: "Account" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "My Account" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Sign Out" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -245,7 +252,7 @@ describe("settings", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Settings" }));
-    await screen.findByText("Theme");
+    await screen.findByText("Rows per page");
     expect(
       screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent),
     ).toEqual(["Display", "Notifications"]);
@@ -257,7 +264,7 @@ describe("the platform sidebar is a product switcher", () => {
   it("lists every product from the registry, in its order, and nothing of Audit's", async () => {
     renderLayout();
     const nav = screen.getByRole("navigation", { name: "Sections" });
-    const list = within(nav).getByRole("list", { name: "CCure Platform" });
+    const list = within(nav).getByRole("list", { name: "CCurePRO Platform" });
     await waitFor(() =>
       expect(within(list).getAllByRole("link")).toHaveLength(
         1 + real.modules.length,

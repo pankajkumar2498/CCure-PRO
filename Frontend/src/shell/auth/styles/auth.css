@@ -131,6 +131,12 @@
   line-height: var(--ccure-leading-normal);
 }
 
+/* Reserve the account-access footer during configuration loading and retry,
+   so the credential form does not move when the decision arrives. */
+.auth-layout .auth-registration-switch {
+  min-block-size: 6rem;
+}
+
 .auth-platform-footer {
   display: flex;
   justify-content: space-between;

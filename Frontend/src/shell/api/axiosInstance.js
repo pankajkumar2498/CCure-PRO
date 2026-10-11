@@ -3,6 +3,14 @@ import { clearAuthTokens, getAccessToken, setAuthTokens } from "./tokenStorage";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || "";
 
+// Public configuration must not carry session/tenant hints or trigger token
+// refresh and logout when it fails. Keep its timeout bounded for the retry UI.
+export const publicAuthClient = axios.create({
+  baseURL,
+  withCredentials: false,
+  timeout: 10000,
+});
+
 const axiosInstance = axios.create({
   baseURL,
   withCredentials: true,

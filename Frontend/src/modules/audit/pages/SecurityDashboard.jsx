@@ -1781,10 +1781,7 @@ export default function SecurityDashboard() {
   ].filter((t) => t.show !== false);
 
   return (
-    <AppLayout
-      pageTitle="Security Dashboard"
-      onNewScan={() => navigate("/scan")}
-    >
+    <AppLayout pageTitle="Audit Dashboard">
       <CcurePage className="sd-page">
         {/* Always mounted, so there is something to observe changing. */}
         <div role="status" aria-live="polite" className="cc-sr-only">
@@ -1793,7 +1790,7 @@ export default function SecurityDashboard() {
 
         {/* ── Page Header ── */}
         <CcurePageHeader
-          title="Security Dashboard"
+          title="Audit Dashboard"
           subtitle={
             <>
               <span className="sd-live-dot" aria-hidden="true" />

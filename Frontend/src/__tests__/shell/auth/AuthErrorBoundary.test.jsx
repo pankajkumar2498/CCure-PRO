@@ -30,7 +30,9 @@ it("keeps Authentication rendering errors within CCure without exposing diagnost
     expect(container).not.toHaveTextContent(
       /audit|scan result|saved|SYNTHETIC_PRIVATE_TOKEN/i,
     );
-    expect(document.title).toBe("Authentication page unavailable | CCure");
+    expect(document.title).toBe(
+      "Authentication page unavailable | CCurePRO Platform",
+    );
     expect(errors).toHaveBeenCalled();
   } finally {
     errors.mockRestore();

@@ -3,7 +3,7 @@ import { everything } from "../fixtures/authorization";
  * Platform navigation and product navigation are separate levels, decided by
  * the route tree — not by hiding one of two rendered menus.
  *
- *   CCure Home / an entry page / a shared admin screen   → Platform Shell
+ *   CCurePRO Home / an entry page / a shared admin screen   → Platform Shell
  *   an Audit address                                     → Audit's own layout
  *
  * Audit's state (ScanProvider) mounts only under Audit's routes, so the
@@ -12,6 +12,7 @@ import { everything } from "../fixtures/authorization";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import real from "../fixtures/platformModules.real.json";
 import api from "@shell/api/axiosInstance";
 import App from "../../App";
@@ -91,7 +92,7 @@ const open = (path) =>
     </MemoryRouter>,
   );
 const sidebar = () => screen.getByRole("navigation", { name: "Sections" });
-const PLATFORM_LIST = { name: "CCure Platform" };
+const PLATFORM_LIST = { name: "CCurePRO Platform" };
 
 beforeEach(() => {
   api.get.mockReset();
@@ -102,10 +103,10 @@ beforeEach(() => {
   );
 });
 
-describe("CCure Home", () => {
+describe("CCurePRO Home", () => {
   it("is in the Platform Shell, with the product switcher and no Audit", async () => {
     open("/");
-    await screen.findByRole("heading", { name: "CCure Home" });
+    await screen.findByRole("heading", { name: "CCurePRO Home" });
     const list = within(sidebar()).getByRole("list", PLATFORM_LIST);
     expect(
       within(list)
@@ -113,8 +114,45 @@ describe("CCure Home", () => {
         .map((a) => a.getAttribute("href")),
     ).toEqual(["/", ...real.modules.map((m) => m.entry_path)]);
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Scan Templates")).toBeNull();
-    expect(screen.queryByText("Security Dashboard")).toBeNull();
+    expect(screen.queryByText("Audit Dashboard")).toBeNull();
+  });
+
+  it("keeps the header and sidebar mounted across platform pages", async () => {
+    const u = userEvent.setup();
+    open("/");
+    await screen.findByRole("heading", { name: "CCurePRO Home" });
+    const header = document.querySelector(".cc-header");
+    const nav = sidebar();
+    const sidebarFrame = document.querySelector(".cc-sidebar");
+    sidebarFrame.scrollTop = 72;
+    for (const [link, content] of [
+      ["CCure Rank", "CCure Rank"],
+      ["User Management", "UserManagement"],
+      ["Home", "CCurePRO Home"],
+    ]) {
+      await u.click(
+        within(sidebar()).getByRole("link", { name: link, exact: true }),
+      );
+      if (content === "UserManagement") await screen.findByTestId("page");
+      else await screen.findByRole("heading", { name: content, exact: true });
+      expect(document.querySelector(".cc-header")).toBe(header);
+      expect(sidebar()).toBe(nav);
+      expect(document.querySelector(".cc-sidebar")).toBe(sidebarFrame);
+      expect(sidebarFrame.scrollTop).toBe(72);
+      expect(
+        within(nav).getByRole("link", { name: link, exact: true }),
+      ).toHaveAttribute("aria-current", "page");
+      expect(document.querySelectorAll(".cc-shell")).toHaveLength(1);
+    }
+    expect(
+      api.get.mock.calls.filter(([url]) => url === "/platform/modules"),
+    ).toHaveLength(1);
   });
 });
 
@@ -124,6 +162,11 @@ describe("a shared administration screen", () => {
     await screen.findByTestId("page");
     expect(within(sidebar()).getByRole("list", PLATFORM_LIST)).toBeTruthy();
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Scan Templates")).toBeNull();
   });
 });
@@ -134,6 +177,11 @@ describe("a product entry page for a product not built yet", () => {
     await screen.findByRole("heading", { name: /Rank/ });
     expect(within(sidebar()).getByRole("list", PLATFORM_LIST)).toBeTruthy();
     expect(screen.queryByTestId("audit-state")).toBeNull();
+    expect(
+      within(document.querySelector(".cc-header")).getByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -142,6 +190,11 @@ describe("Audit", () => {
     open("/audit-dashboard");
     await screen.findByTestId("page");
     expect(screen.getByTestId("audit-state")).toBeTruthy();
+    expect(
+      within(document.querySelector(".cc-header")).queryByRole("button", {
+        name: /notifications/i,
+      }),
+    ).toBeNull();
     const nav = sidebar();
     expect(within(nav).getByText("Scan Templates")).toBeTruthy();
     // No platform product switcher, no shared administration.

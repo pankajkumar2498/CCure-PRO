@@ -43,6 +43,61 @@ export async function visibleFocus(page) {
   ).toBe(true);
 }
 const home = COMMON_STATES[0];
+
+for (const width of [320, 1440]) {
+  test(`profile dropdown is the only sign-out action and clears the session at ${width}px`, async ({
+    page,
+  }) => {
+    const log = await openState(
+      page,
+      {
+        ...home,
+        stubs: {
+          ...home.stubs,
+          "/auth/config": { self_registration_enabled: false },
+        },
+        writes: { "POST /auth/logout": {} },
+      },
+      { width },
+    );
+    await expect(page.getByRole("button", { name: /^sign out$/i })).toHaveCount(
+      0,
+    );
+    await page.evaluate(() => {
+      localStorage.setItem("activeOrgId", "logout-test-org");
+      sessionStorage.setItem("postLoginRedirect", "/admin/users");
+    });
+    await tabTo(page, ".sh-user-btn");
+    await page.keyboard.press("ArrowDown");
+    const menu = page.getByRole("menu", { name: "Account" });
+    await expect(
+      menu.getByRole("menuitem", { name: "My Account" }),
+    ).toBeVisible();
+    await expect(page.getByText(/^sign out$/i)).toHaveCount(1);
+    await assertPage(page, log);
+    await page.keyboard.press("End");
+    await expect(
+      menu.getByRole("menuitem", { name: "Sign Out" }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator(".sh-user-btn")).toHaveCount(0);
+    expect(
+      log.requests.filter(
+        (r) => r.method === "POST" && r.path === "/api/auth/logout",
+      ),
+    ).toHaveLength(1);
+    expect(
+      await page.evaluate(() => ({
+        organization: localStorage.getItem("activeOrgId"),
+        redirect: sessionStorage.getItem("postLoginRedirect"),
+      })),
+    ).toEqual({ organization: null, redirect: null });
+    await assertPage(page, log);
+  });
+}
+
 async function assertAccessibilityDialogs(page, info, names) {
   // Chromium exposes its actual accessibility tree through CDP. Other engines
   // retain the cross-browser role, inert, focus and axe assertions below.

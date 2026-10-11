@@ -4,6 +4,19 @@ from ccure_platform.rbac.contract import PermissionDecl
 
 PERMISSIONS = (
     PermissionDecl(
+        key="platform.registration.read",
+        description="View the platform-wide self-registration policy.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+    ),
+    PermissionDecl(
+        key="platform.registration.manage",
+        description="Enable or disable self-registration for the entire platform.",
+        scope_kind="platform",
+        delegable_to_org_roles=False,
+        sensitivity="privileged",
+    ),
+    PermissionDecl(
         key="platform.user.read",
         description="List and view the user accounts of an organisation.",
         scope_kind="organization",

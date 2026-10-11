@@ -27,6 +27,8 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
 import AuthLayout from "../components/AuthLayout";
+import RegistrationStatus from "../components/RegistrationStatus";
+import { useSelfRegistration } from "../useSelfRegistration";
 import {
   CcureAlert,
   CcureButton,
@@ -37,7 +39,6 @@ import {
 import {
   verifyMfa as verifyMfaApi,
   sendEmailOtp as sendEmailOtpApi,
-  isSelfRegistrationEnabled,
 } from "@shell/api/auth";
 import "../styles/auth.css";
 
@@ -46,24 +47,11 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Whether this deployment allows self-service signup. The backend is the only
-  // authority: with ALLOW_SELF_REGISTRATION off, /auth/register and the
-  // availability probes all return 404, so a "Register here" link would send
-  // the user to a page that can only tell them they cannot register.
-  //
-  // null while the probe is in flight, so nothing is rendered in that gap
-  // rather than flashing a link that is about to disappear.
-  const [selfRegAllowed, setSelfRegAllowed] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    isSelfRegistrationEnabled().then((allowed) => {
-      if (!cancelled) setSelfRegAllowed(allowed);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const {
+    allowed: selfRegAllowed,
+    loading: registrationLoading,
+    retry,
+  } = useSelfRegistration();
   const fromLocation = location.state?.from;
   const savedRedirect =
     location.state?.reason === "expired"
@@ -372,26 +360,34 @@ export default function Login() {
             </CcureButton>
           </form>
 
-          {selfRegAllowed === true && (
-            <p className="auth-switch">
-              No account?{" "}
-              <CcureButton
-                as={Link}
-                variant="ghost"
-                size="sm"
-                to="/register"
-                className="auth-link"
-              >
-                Register here
-              </CcureButton>
-            </p>
-          )}
-          {selfRegAllowed === false && (
-            <p className="auth-switch">
-              Accounts are created by your administrator. Contact them to
-              request access.
-            </p>
-          )}
+          <div className="auth-switch auth-registration-switch">
+            {selfRegAllowed === true && (
+              <>
+                No account?{" "}
+                <CcureButton
+                  as={Link}
+                  variant="ghost"
+                  size="sm"
+                  to="/register"
+                  className="auth-link"
+                >
+                  Register here
+                </CcureButton>
+              </>
+            )}
+            {selfRegAllowed === false && (
+              <>
+                Accounts are created by your administrator. Contact them to
+                request access.
+              </>
+            )}
+            {selfRegAllowed === null && (
+              <RegistrationStatus
+                loading={registrationLoading}
+                onRetry={retry}
+              />
+            )}
+          </div>
         </>
       )}
     </AuthLayout>

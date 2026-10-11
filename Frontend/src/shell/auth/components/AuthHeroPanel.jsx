@@ -8,9 +8,9 @@ import { CcureBadge } from "../../../design-system";
 const HERO_CONTENT = {
   login: {
     badge: "Account access",
-    heading: "Your CCure workspace",
+    heading: "Your CCurePRO workspace",
     subheadline:
-      "Use your CCure account to continue to your organization's security workspace.",
+      "Use your CCurePRO account to continue to your organization's security workspace.",
   },
   register: {
     badge: "Account registration",
@@ -20,14 +20,14 @@ const HERO_CONTENT = {
   },
   forgot: {
     badge: "Account recovery",
-    heading: "Restore access to CCure",
+    heading: "Restore access to CCurePRO",
     subheadline: "Reset your password with a link sent to your email address.",
   },
   reset: {
     badge: "Password reset",
-    heading: "Restore access to CCure",
+    heading: "Restore access to CCurePRO",
     subheadline:
-      "Choose a new password to restore access to your CCure account.",
+      "Choose a new password to restore access to your CCurePRO account.",
   },
   mfa: {
     badge: "Identity verification",
@@ -53,9 +53,12 @@ export default function AuthHeroPanel({ pageType = "login" }) {
   const content = HERO_CONTENT[pageType] || HERO_CONTENT.login;
 
   return (
-    <aside className="auth-hero-panel cc-theme-dark" aria-label="About CCure">
+    <aside
+      className="auth-hero-panel cc-theme-dark"
+      aria-label="About CCurePRO"
+    >
       <div className="auth-hero-content">
-        <p className="auth-hero-eyebrow">CCure platform</p>
+        <p className="auth-hero-eyebrow">CCurePRO Platform</p>
         <h2 className="auth-hero-headline">
           Enterprise security &amp; vulnerability management
         </h2>

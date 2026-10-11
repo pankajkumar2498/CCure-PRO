@@ -32,10 +32,11 @@ FROM nginx:stable-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1
 
 # Patch the base-image packages the scan flags with a published fix:
 # pcre2 10.48-r0 -> 10.49-r0 (CVE-2026-103111) and libexpat 2.8.4-r0 -> 2.8.5-r0
-# (CVE-2026-93990, previously a dated exception in trivy-frontend.yaml). Scoped
-# to those packages so the pinned base stays otherwise untouched; drop each
+# (CVE-2026-93990, previously a dated exception in trivy-frontend.yaml).
+# libtiff 4.7.1-r0 -> 4.7.2-r0 fixes CVE-2026-4775 (12 Oct 2026 scan).
+# Scoped to those packages so the pinned base stays otherwise untouched; drop each
 # once the digest moves to an nginx build that already carries the fix.
-RUN apk upgrade --no-cache pcre2 libexpat
+RUN apk upgrade --no-cache pcre2 libexpat tiff
 
 # Copy build artifacts from build stage
 COPY --from=build /app/dist /usr/share/nginx/html

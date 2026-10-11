@@ -2067,6 +2067,19 @@
         "title": "ProfileUpdateRequest",
         "type": "object"
       },
+      "PublicAuthConfig": {
+        "properties": {
+          "self_registration_enabled": {
+            "title": "Self Registration Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "self_registration_enabled"
+        ],
+        "title": "PublicAuthConfig",
+        "type": "object"
+      },
       "RangeRequest": {
         "properties": {
           "scan_type": {
@@ -2336,6 +2349,70 @@
           "full_name"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RegistrationSettings": {
+        "properties": {
+          "administrator_approval_required": {
+            "title": "Administrator Approval Required",
+            "type": "boolean"
+          },
+          "deployment_default": {
+            "title": "Deployment Default",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "self_registration_enabled": {
+            "title": "Self Registration Enabled",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "deployment",
+              "administrator"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "self_registration_enabled",
+          "deployment_default",
+          "source",
+          "revision",
+          "administrator_approval_required"
+        ],
+        "title": "RegistrationSettings",
+        "type": "object"
+      },
+      "RegistrationSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "self_registration_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Registration Enabled"
+          }
+        },
+        "required": [
+          "self_registration_enabled",
+          "revision"
+        ],
+        "title": "RegistrationSettingsUpdate",
         "type": "object"
       },
       "RemediationAcceptRisk": {
@@ -7615,6 +7692,78 @@
         ]
       }
     },
+    "/admin/registration-settings": {
+      "get": {
+        "description": "Read the effective registration policy and deployment default.",
+        "operationId": "get_registration_settings_admin_registration_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Registration Settings",
+        "tags": [
+          "Admin: Registration"
+        ]
+      },
+      "patch": {
+        "description": "Save a registration override, or use null to follow the deployment default.",
+        "operationId": "update_registration_settings_admin_registration_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Registration Settings",
+        "tags": [
+          "Admin: Registration"
+        ]
+      }
+    },
     "/admin/users": {
       "get": {
         "operationId": "list_users_admin_users_get",
@@ -10965,6 +11114,28 @@
         ]
       }
     },
+    "/auth/config": {
+      "get": {
+        "description": "Public account-access configuration, independent of sessions and account data.",
+        "operationId": "public_auth_config_auth_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAuthConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Auth Config",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/auth/forgot-password": {
       "post": {
         "description": "Submits a password reset request.\nGenerates a secure token, hashes it, saves it to the database,\nand dispatches a Celery task to send the email.\n\nAlways returns 200 OK to prevent account enumeration.",
@@ -11425,7 +11596,7 @@
     },
     "/auth/register": {
       "post": {
-        "description": "Create a new, inert account and email a verification link.\n\nWhat changed and why\n────────────────────\nThis endpoint used to create the account and return access + refresh\ntokens in the same response, placing the user in a self-service\norganisation with the `analyst` role. In this product `analyst` carries\nscans:execute — so anyone who could reach this route could issue\nthemselves a working credential and point Nmap, Scapy and Nuclei at the\nnetwork from a worker running with raw-socket privileges on the host.\n\nRegistration now yields nothing usable:\n\n  * the route only exists when ALLOW_SELF_REGISTRATION is on (default off,\n    because POST /admin/users is the supported onboarding path),\n  * no tokens are returned — 202, not 201, because the account is pending,\n  * the account is created is_verified=False, is_active=False,\n    approved_at=NULL and cannot log in until *both* the mailbox is\n    confirmed and an administrator approves it.\n\nThe response body is identical whether or not the address was already\nregistered, so this route cannot be used to enumerate accounts.",
+        "description": "Create a new, inert account and email a verification link.\n\nWhat changed and why\n────────────────────\nThis endpoint used to create the account and return access + refresh\ntokens in the same response, placing the user in a self-service\norganisation with the `analyst` role. In this product `analyst` carries\nscans:execute — so anyone who could reach this route could issue\nthemselves a working credential and point Nmap, Scapy and Nuclei at the\nnetwork from a worker running with raw-socket privileges on the host.\n\nRegistration now yields nothing usable:\n\n  * the route is available only when the effective registration policy is on (default off,\n    because POST /admin/users is the supported onboarding path),\n  * no tokens are returned — 202, not 201, because the account is pending,\n  * the account is created is_verified=False, is_active=False,\n    approved_at=NULL and cannot log in until *both* the mailbox is\n    confirmed and an administrator approves it.\n\nThe response body is identical whether or not the address was already\nregistered, so this route cannot be used to enumerate accounts.",
         "operationId": "register_auth_register_post",
         "requestBody": {
           "content": {

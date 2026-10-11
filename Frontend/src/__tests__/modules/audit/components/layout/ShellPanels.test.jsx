@@ -1,5 +1,5 @@
 /**
- * NotificationsPanel, HelpPanel, SettingsDrawer — Checkpoint 3C batch 12
+ * NotificationsPanel, SettingsDrawer — Checkpoint 3C batch 12
  * baseline. Written against the panels BEFORE migration.
  *
  * ── Contracts ──────────────────────────────────────────────────────────────
@@ -9,7 +9,6 @@
  *   /notifications/{id}; GET /notifications/summary after read/delete to
  *   refresh the badge; a live `created` event is inserted at the top when it
  *   matches the category; click outside closes (the bell is exempt).
- * HelpPanel: no request at all — the support form is client-side only.
  * SettingsDrawer: GET /user/preferences on open; PUT /user/preferences with
  *   the full preferences object on Save; onPreferencesUpdated(response);
  *   Cancel closes without a write.
@@ -27,7 +26,6 @@ import { NotificationPresentationProvider } from "@shell/notifications/notificat
 import NotificationsPanel, {
   NotificationBell,
 } from "@shell/notifications/NotificationsPanel";
-import HelpPanel from "@audit/components/layout/HelpPanel";
 import SettingsDrawer from "@shell/account/SettingsDrawer";
 import axiosInstance from "@shell/api/axiosInstance";
 
@@ -292,66 +290,6 @@ describe("NotificationsPanel", () => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-describe("HelpPanel", () => {
-  it("is a named group that issues no request", () => {
-    render(<HelpPanel onClose={() => {}} />);
-    expect(
-      screen.getByRole("group", { name: "Help Center" }),
-    ).toBeInTheDocument();
-    expect(axiosInstance.get).not.toHaveBeenCalled();
-    expect(axiosInstance.post).not.toHaveBeenCalled();
-  });
-
-  it("filters FAQs by question, answer and tag, and expands an answer", async () => {
-    const u = userEvent.setup();
-    render(<HelpPanel onClose={() => {}} />);
-    await u.type(screen.getByPlaceholderText("Search FAQs…"), "new scan");
-    const q = screen.getByRole("button", { name: /How do I start a new scan/ });
-    expect(q).toBeInTheDocument();
-    await u.click(q);
-    expect(screen.getByText(/New Scan' button/)).toBeInTheDocument();
-    await u.clear(screen.getByPlaceholderText("Search FAQs…"));
-    await u.type(screen.getByPlaceholderText("Search FAQs…"), "zzzz");
-    expect(
-      screen.getByText("No matching questions found."),
-    ).toBeInTheDocument();
-  });
-
-  it("switches sections and the support form sends nothing over the wire", async () => {
-    const u = userEvent.setup();
-    render(<HelpPanel onClose={() => {}} />);
-    await u.click(tabOrButton("Quick Links"));
-    expect(screen.getByText("Getting Started Guide")).toBeInTheDocument();
-    await u.click(tabOrButton("What's New"));
-    await u.click(tabOrButton("Support"));
-    const send = screen.getByRole("button", { name: "Send Message" });
-    expect(send).toBeDisabled();
-    await u.type(screen.getByPlaceholderText(/Describe your issue/), "hello");
-    await u.click(send);
-    expect(screen.getByText(/Message sent/)).toBeInTheDocument();
-    expect(axiosInstance.post).not.toHaveBeenCalled();
-  });
-
-  it("closes from its close control and on a click outside (help button exempt)", async () => {
-    const u = userEvent.setup();
-    const onClose = vi.fn();
-    render(
-      <>
-        <button type="button" id="header-help-btn">
-          help
-        </button>
-        <button type="button">elsewhere</button>
-        <HelpPanel onClose={onClose} />
-      </>,
-    );
-    await u.click(screen.getByText("help"));
-    expect(onClose).not.toHaveBeenCalled();
-    await u.click(screen.getByText("elsewhere"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════ */
 describe("SettingsDrawer", () => {
   it("reads the preferences on open and renders them", async () => {
     render(
@@ -361,7 +299,8 @@ describe("SettingsDrawer", () => {
     await waitFor(() =>
       expect(axiosInstance.get).toHaveBeenCalledWith("/user/preferences"),
     );
-    expect(await findRadioOrButton(/Light/)).toBeInTheDocument();
+    expect(await findRadioOrButton("25")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
     expect(radioOrButton("25")).toBeInTheDocument();
     // The toggles had no accessible name before the migration (the label
     // element was empty); by id then, by name now.
@@ -375,7 +314,7 @@ describe("SettingsDrawer", () => {
     expect(email).toBeChecked();
   });
 
-  it("saves the whole preferences object with PUT and reports it upward", async () => {
+  it("saves drawer preferences without overwriting the header theme and reports the response upward", async () => {
     const u = userEvent.setup();
     const onPreferencesUpdated = vi.fn();
     render(
@@ -384,19 +323,18 @@ describe("SettingsDrawer", () => {
         onPreferencesUpdated={onPreferencesUpdated}
       />,
     );
-    await findRadioOrButton(/Dark/);
-    await u.click(radioOrButton(/Dark/));
+    await findRadioOrButton("50");
+    const { theme: _theme, ...drawerPreferences } = PREFS;
     await u.click(radioOrButton("50"));
     await u.click(screen.getByRole("button", { name: "Save Settings" }));
     await waitFor(() =>
       expect(axiosInstance.put).toHaveBeenCalledWith("/user/preferences", {
-        ...PREFS,
-        theme: "dark",
+        ...drawerPreferences,
         default_rows_per_page: 50,
       }),
     );
     expect(onPreferencesUpdated).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: "dark", saved: true }),
+      expect.objectContaining({ default_rows_per_page: 50, saved: true }),
     );
     expect(await screen.findByText("Saved")).toBeInTheDocument();
   });
@@ -407,7 +345,7 @@ describe("SettingsDrawer", () => {
     render(
       <SettingsDrawer onClose={onClose} onPreferencesUpdated={() => {}} />,
     );
-    await findRadioOrButton(/Dark/);
+    await findRadioOrButton("25");
     await u.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(axiosInstance.put).not.toHaveBeenCalled();
@@ -453,25 +391,6 @@ describe("Shell panels — accessibility expectations (migration spec)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("help: FAQ toggles state, the search is labelled, Escape closes", async () => {
-    const u = userEvent.setup();
-    const onClose = vi.fn();
-    render(<HelpPanel onClose={onClose} />);
-    expect(
-      screen.getByLabelText(/search faqs/i, { selector: "input" }),
-    ).toBeInTheDocument();
-    const q = screen.getByRole("button", { name: /How do I start a new scan/ });
-    expect(q).toHaveAttribute("aria-expanded", "false");
-    await u.click(q);
-    expect(q).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("tab", { name: "FAQ" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await u.keyboard("{Escape}");
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
   it("settings: a named dialog that traps focus, whose option groups announce selection, and whose save result is announced", async () => {
     const u = userEvent.setup();
     const onClose = vi.fn();
@@ -483,7 +402,7 @@ describe("Shell panels — accessibility expectations (migration spec)", () => {
     );
     const dlg = screen.getByRole("dialog", { name: "Settings" });
     expect(dlg).toHaveAttribute("aria-modal", "true");
-    await screen.findByRole("radio", { name: /Light/ });
+    await screen.findByRole("radio", { name: "25" });
     await waitFor(() =>
       expect(dlg.contains(document.activeElement)).toBe(true),
     );
@@ -492,8 +411,8 @@ describe("Shell panels — accessibility expectations (migration spec)", () => {
       expect(dlg.contains(document.activeElement)).toBe(true);
     }
     expect(screen.getByLabelText(/In-app notifications/)).not.toBeChecked();
-    expect(screen.getByRole("radio", { name: /Light/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: "25" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "50" })).not.toBeChecked();
     await u.click(screen.getByRole("button", { name: "Save Settings" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Saved");
     await u.keyboard("{Escape}");
@@ -504,12 +423,11 @@ describe("Shell panels — accessibility expectations (migration spec)", () => {
     const { container } = render(
       <>
         <NotificationsPanel onClose={() => {}} />
-        <HelpPanel onClose={() => {}} />
         <SettingsDrawer onClose={() => {}} />
       </>,
     );
     await screen.findByText("Scan #41 complete");
-    await findRadioOrButton(/Dark/);
+    await findRadioOrButton("25");
     expect(container.querySelectorAll("[style]")).toHaveLength(0);
   });
 });

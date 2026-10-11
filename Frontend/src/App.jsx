@@ -76,6 +76,7 @@ import WebScanningRoutes from "@audit/web-scanning/WebScanningRoutes";
 import CcureHome from "@shell/pages/CcureHome";
 import ModuleEntryPage from "@shell/pages/ModuleEntryPage";
 import AccessDenied from "@shell/pages/AccessDenied";
+import PlatformLayout from "@shell/layout/PlatformLayout";
 
 // ── Design-system showcase, development builds only ─────────────────────────
 // `import.meta.env.DEV` is a literal `false` in a production build, so Rollup
@@ -177,14 +178,11 @@ export default function App() {
 
           {/* ── Protected ── */}
           <Route element={<PrivateRoute />}>
-            {/* CCure Home — the Product Hub, read from the platform registry */}
-            <Route path="/" element={<CcureHome />} />
-
             {/* ── CCure Audit — the product. Everything in this group is Audit's
               (its state, its pages, its own layout and sidebar); nothing the
               platform owns is. Addresses are unchanged. ── */}
             <Route element={<AuditProduct />}>
-              {/* Audit's Security Dashboard. /dashboard was its address until
+              {/* Audit's Audit Dashboard. /dashboard was its address until
               Phase 12 and stays a redirect, so bookmarks, report links and
               anything outside the repository still land (D12-7). */}
               <Route path="/audit-dashboard" element={<SecurityDashboard />} />
@@ -288,77 +286,100 @@ export default function App() {
               </Route>
             </Route>
 
-            {/* ── CCure Platform — outside Audit. ── */}
-            {/* A product's entry page — /policy-dashboard, /rank-dashboard,
+            {/* ── Common Platform — one persistent frame, outside Audit. ── */}
+            <Route
+              element={
+                <PlatformLayout>
+                  <Outlet />
+                </PlatformLayout>
+              }
+            >
+              {/* CCure Home — the Product Hub, read from the platform registry */}
+              <Route path="/" element={<CcureHome />} />
+              {/* A product's entry page — /policy-dashboard, /rank-dashboard,
               /ir-dashboard — looked up in the registry. Every static route
               outranks it; an address that is no product's entry falls through
               to / exactly as the catch-all below does. */}
-            <Route path="/:entry" element={<ModuleEntryPage />} />
+              <Route path="/:entry" element={<ModuleEntryPage />} />
 
-            {/* Shared administration — RBAC-gated, rendered in the platform shell */}
-            <Route
-              element={
-                <PrivateRoute
-                  deniedElement={<AccessDenied />}
-                  requiredPermission={"platform.audit_log.read"}
-                />
-              }
-            >
-              <Route path="/admin/audit-logs" element={<AuditLogs />} />
-            </Route>
-            <Route
-              element={
-                <PrivateRoute
-                  deniedElement={<AccessDenied />}
-                  requiredPermission={"platform.user.read"}
-                />
-              }
-            >
-              <Route path="/admin/users" element={<UserManagement />} />
-              <Route path="/admin/users/deleted" element={<DeletedUsers />} />
-            </Route>
-            {/* Superadmin only, matching require_role("superadmin") on the
-              router. These rules are platform-wide: an org_admin denying a
-              domain would be blocking another tenant's customers. */}
-            <Route
-              element={
-                <PrivateRoute
-                  requiredPermission="platform.email_domain.read"
-                  deniedElement={<AccessDenied />}
-                />
-              }
-            >
+              {/* Shared administration — RBAC-gated, rendered in the platform shell */}
               <Route
-                path="/admin/email-domains"
-                element={<EmailDomainRules />}
-              />
-            </Route>
-            <Route
-              element={
-                <PrivateRoute
-                  deniedElement={<AccessDenied />}
-                  requiredPermission={"platform.organization.read"}
-                />
-              }
-            >
+                element={
+                  <PrivateRoute
+                    deniedElement={<AccessDenied />}
+                    requiredPermission={"platform.audit_log.read"}
+                  />
+                }
+              >
+                <Route path="/admin/audit-logs" element={<AuditLogs />} />
+              </Route>
               <Route
-                path="/admin/organizations"
-                element={<OrganizationManagement />}
-              />
-            </Route>
-            <Route
-              element={
-                <PrivateRoute
-                  deniedElement={<AccessDenied />}
-                  requiredPermission={"platform.role.read"}
+                element={
+                  <PrivateRoute
+                    deniedElement={<AccessDenied />}
+                    requiredPermission={"platform.user.read"}
+                  />
+                }
+              >
+                <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin/users/deleted" element={<DeletedUsers />} />
+              </Route>
+              {/* Platform-wide settings use platform-scope permissions. */}
+              <Route
+                element={
+                  <PrivateRoute
+                    requiredPermission="platform.registration.read"
+                    deniedElement={<AccessDenied />}
+                  />
+                }
+              >
+                <Route
+                  path="/admin/registration-settings"
+                  element={
+                    <Navigate to="/admin/users?registration=settings" replace />
+                  }
                 />
-              }
-            >
-              <Route path="/admin/roles" element={<RoleManagement />} />
-            </Route>
+              </Route>
+              <Route
+                element={
+                  <PrivateRoute
+                    requiredPermission="platform.email_domain.read"
+                    deniedElement={<AccessDenied />}
+                  />
+                }
+              >
+                <Route
+                  path="/admin/email-domains"
+                  element={<EmailDomainRules />}
+                />
+              </Route>
+              <Route
+                element={
+                  <PrivateRoute
+                    deniedElement={<AccessDenied />}
+                    requiredPermission={"platform.organization.read"}
+                  />
+                }
+              >
+                <Route
+                  path="/admin/organizations"
+                  element={<OrganizationManagement />}
+                />
+              </Route>
+              <Route
+                element={
+                  <PrivateRoute
+                    deniedElement={<AccessDenied />}
+                    requiredPermission={"platform.role.read"}
+                  />
+                }
+              >
+                <Route path="/admin/roles" element={<RoleManagement />} />
+              </Route>
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
           </Route>
         </Routes>
       </ProductPresentation>

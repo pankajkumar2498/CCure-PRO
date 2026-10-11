@@ -1,0 +1,19 @@
+.registration-settings-content {
+  display: grid;
+  gap: var(--ccure-space-md);
+}
+
+.registration-settings-form {
+  display: grid;
+  gap: var(--ccure-space-md);
+}
+
+.registration-settings-form p {
+  margin: 0;
+}
+
+.registration-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ccure-space-sm);
+}

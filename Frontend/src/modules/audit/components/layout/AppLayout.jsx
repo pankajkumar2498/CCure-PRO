@@ -2,11 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@shell/auth/AuthContext";
 import CcureHomeLink from "@shell/navigation/CcureHomeLink";
-import { canPermission, canSwitchOrganisation } from "@shell/auth/permissions";
+import { canSwitchOrganisation } from "@shell/auth/permissions";
 import { canSeeNavItem } from "@shell/auth/navVisibility";
 import {
   CcureAppShell,
-  CcureButton,
   CcureInput,
   CcureProgress,
   CcureIconButton,
@@ -16,18 +15,14 @@ import "../../styles/app-shell.css";
 // The platform's shared header pieces (Phase 12 navigation refactor). Imported
 // after app-shell.css so their stylesheets keep their place after it.
 import AccountMenu from "@shell/navigation/AccountMenu";
+import ThemeToggle from "@shell/navigation/ThemeToggle";
 import OrgSwitcher from "@shell/navigation/OrgSwitcher";
 import UserCard from "@shell/navigation/UserCard";
 import useOrganizationSwitcher from "@shell/navigation/useOrganizationSwitcher";
-import useNotificationFeed from "@shell/notifications/useNotificationFeed";
 import { usePreferences } from "@shell/preferences/PreferencesContext";
 import api from "@shell/api/axiosInstance";
 import ProfileModal from "@shell/account/ProfileModal";
 import SettingsDrawer from "@shell/account/SettingsDrawer";
-import NotificationsPanel, {
-  NotificationBell,
-} from "@shell/notifications/NotificationsPanel";
-import HelpPanel from "./HelpPanel";
 import renderAuditSettings from "./auditSettings";
 import { AMT_PERMISSION } from "../../config/permissions";
 
@@ -39,7 +34,6 @@ const nav = (name) => {
   return NavIcon;
 };
 const IcoDashboard = nav("dashboard");
-const IcoFileText = nav("file-text");
 const IcoGrid = nav("grid");
 const IcoFile = nav("file");
 const IcoArchive = nav("archive");
@@ -52,8 +46,6 @@ const IcoChart = nav("bar-chart");
 const IcoCheckCircle = nav("check-circle");
 const IcoTrendUp = nav("trending-up");
 const IcoSettings = nav("settings");
-const IcoHelp = nav("help-circle");
-const IcoPlus = () => <CcureIcon name="plus" size={14} strokeWidth={2.5} />;
 const IcoTopology = nav("topology");
 
 // ── Sidebar Definition ───────────────────────────────────────────────────────
@@ -64,17 +56,10 @@ const SIDEBAR_SECTIONS = [
     items: [
       {
         id: "security-dashboard",
-        label: "Security Dashboard",
+        label: "Audit Dashboard",
         Icon: IcoDashboard,
         route: "/audit-dashboard",
         permission: "audit.dashboard.read",
-      },
-      {
-        id: "executive-report",
-        label: "Executive Report",
-        Icon: IcoFileText,
-        route: "/reports?tab=executive",
-        permission: "audit.report.read",
       },
     ],
   },
@@ -256,32 +241,23 @@ const SIDEBAR_SECTIONS = [
   },
 ];
 
-const hasPermission = (user, permission) => canPermission(user, permission);
-
 // ── Header pieces ────────────────────────────────────────────────────────────
 const IcoSearch = () => <CcureIcon name="search" size={14} />;
 
 // ── Main Layout Component ────────────────────────────────────────────────────
-export default function AppLayout({ children, saveStatus = "", onNewScan }) {
+export default function AppLayout({ children, saveStatus = "" }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { pathname, search } = location;
   const { user, logout } = useAuth();
   const isSuperadmin = canSwitchOrganisation(user);
-  const canStartScans = hasPermission(user, "audit.scan.run");
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showNotifs, setShowNotifs] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Openers, so a panel closed by keyboard hands focus back where it came from.
-  const helpBtnRef = useRef(null);
-  const bellRef = useRef(null);
   const settingsBtnRef = useRef(null);
-  const notifsRef = useRef(null);
-  const helpRef = useRef(null);
 
   // Tenancy is the platform's: the shell lists organisations and switches.
   const { orgs, loadingOrgs, selectedOrg, switchOrg } =
@@ -396,26 +372,12 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
     localStorage.setItem("sidebarCollapsed", next);
   };
 
-  // The platform's notification feed: unread count and live stream.
-  const { unreadCount, setUnreadCount, notificationEvent } =
-    useNotificationFeed();
-
   const closeAll = useCallback(() => {
-    setShowNotifs(false);
-    setShowHelp(false);
     setShowSettings(false);
     setShowOrgDropdown(false);
   }, []);
 
   // Panel closers that hand focus back to the control that opened them.
-  const closeNotifs = useCallback(() => {
-    setShowNotifs(false);
-    bellRef.current?.focus?.();
-  }, []);
-  const closeHelp = useCallback(() => {
-    setShowHelp(false);
-    helpBtnRef.current?.focus?.();
-  }, []);
   const closeSettings = useCallback(() => {
     setShowSettings(false);
     settingsBtnRef.current?.focus?.();
@@ -426,8 +388,6 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
   const activeId = (() => {
     if (pathname === "/audit-dashboard" || pathname === "/dashboard")
       return "security-dashboard";
-    if (pathname.startsWith("/reports") && search.includes("tab=executive"))
-      return "executive-report";
     if (pathname.startsWith("/reports") && search.includes("tab=compliance"))
       return "compliance";
     if (pathname.startsWith("/reports") && search.includes("tab=trends"))
@@ -606,63 +566,7 @@ export default function AppLayout({ children, saveStatus = "", onNewScan }) {
       {/* The way back to the platform's Product Hub (Phase 12, D12-8) — the
           shell's shared link, in Audit's header classes. */}
       <CcureHomeLink className="sh-home" labelClassName="hide-on-mobile" />
-      {canStartScans && (
-        <CcureButton
-          variant="primary"
-          size="sm"
-          className="sh-newscan"
-          aria-label="New Scan"
-          onClick={onNewScan || (() => navigate("/scan"))}
-        >
-          <IcoPlus />
-          <span className="hide-on-mobile">New Scan</span>
-        </CcureButton>
-      )}
-      <CcureIconButton
-        variant="ghost"
-        size="sm"
-        type="button"
-        ref={helpBtnRef}
-        id="header-help-btn"
-        className={`cc-btn cc-btn--ghost cc-btn--sm sh-iconbtn${showHelp ? " sh-iconbtn--active" : ""}`}
-        aria-label="Help"
-        aria-expanded={showHelp}
-        aria-controls="sh-help"
-        onClick={() => {
-          const next = !showHelp;
-          closeAll();
-          setShowHelp(next);
-        }}
-      >
-        <IcoHelp />
-      </CcureIconButton>
-      <div className="sh-menu-anchor">
-        <NotificationBell
-          ref={bellRef}
-          unreadCount={unreadCount}
-          expanded={showNotifs}
-          onClick={() => {
-            const next = !showNotifs;
-            closeAll();
-            setShowNotifs(next);
-          }}
-        />
-        {showNotifs && (
-          <div className="sh-popover" ref={notifsRef}>
-            <NotificationsPanel
-              id="sh-notifications"
-              onClose={closeNotifs}
-              onUnreadChange={setUnreadCount}
-              liveEvent={notificationEvent}
-            />
-          </div>
-        )}
-      </div>
-      {showHelp && (
-        <div className="sh-popover sh-popover--help" ref={helpRef}>
-          <HelpPanel id="sh-help" onClose={closeHelp} />
-        </div>
-      )}
+      <ThemeToggle />
       <AccountMenu
         user={user}
         onLogout={() => logout()}

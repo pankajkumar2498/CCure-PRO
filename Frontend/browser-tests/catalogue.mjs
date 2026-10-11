@@ -81,6 +81,13 @@ export const COMMON_STUBS = {
   "/admin/users/": { users: [user], total: 1 },
   "/admin/users/deleted": { users: [], total: 0 },
   "/admin/users/pending": { users: [], total: 0 },
+  "/admin/registration-settings": {
+    self_registration_enabled: false,
+    deployment_default: false,
+    administrator_approval_required: true,
+    source: "deployment",
+    revision: 0,
+  },
   "/admin/email-domains": {
     rules: [
       {
@@ -134,11 +141,12 @@ export const COMMON_STUBS = {
 const persona = nativePersona();
 persona.authorization.can_switch_organisation = true;
 export const COMMON_STATES = [
-  ["home", "/", "CCure Home"],
+  ["home", "/", "CCurePRO Home"],
   ["users", "/admin/users", "User Management"],
   ["deleted", "/admin/users/deleted", "Deleted Users"],
   ["organizations", "/admin/organizations", "Organizations"],
   ["domains", "/admin/email-domains", "Email Domain Rules"],
+  ["registration", "/admin/users?registration=settings", "User Management"],
   ["roles", "/admin/roles", "Roles & Permissions"],
   ["logs", "/admin/audit-logs", "Audit Logs"],
   ["policy", "/policy-dashboard", "CCure Policy Pro"],
@@ -149,7 +157,10 @@ export const COMMON_STATES = [
   route,
   persona,
   stubs: COMMON_STUBS,
-  ready: `document.body.innerText.includes(${JSON.stringify(title)})`,
+  ready:
+    id === "registration"
+      ? "!!document.querySelector('.registration-settings-form')"
+      : `document.body.innerText.includes(${JSON.stringify(title)})`,
 }));
 
 // One settled representative of every implemented route, plus important states.
@@ -260,6 +271,49 @@ export const PAGE_STATES = [
   return true;
 });
 export const FLOW_STATES = [
+  {
+    ...COMMON_STATES.find((s) => s.id === "common-registration"),
+    id: "registration-loading",
+    stubs: {
+      ...COMMON_STUBS,
+      "/admin/registration-settings": { __pending: true },
+    },
+    ready: "document.body.innerText.includes('Loading registration settings')",
+  },
+  {
+    ...COMMON_STATES.find((s) => s.id === "common-registration"),
+    id: "registration-unavailable",
+    stubs: {
+      ...COMMON_STUBS,
+      "/admin/registration-settings": { __status: 503 },
+    },
+    ready:
+      "document.body.innerText.includes('Registration settings are unavailable')",
+  },
+  {
+    ...COMMON_STATES.find((s) => s.id === "common-registration"),
+    id: "registration-readonly",
+    persona: nativePersona([
+      "platform.user.read",
+      "platform.registration.read",
+    ]),
+    ready: "document.body.innerText.includes('read-only access')",
+  },
+  {
+    ...COMMON_STATES.find((s) => s.id === "common-registration"),
+    id: "registration-enabled",
+    stubs: {
+      ...COMMON_STUBS,
+      "/admin/registration-settings": {
+        ...COMMON_STUBS["/admin/registration-settings"],
+        self_registration_enabled: true,
+        source: "administrator",
+        revision: 1,
+      },
+    },
+    ready:
+      "document.body.innerText.includes('Using the saved administrator setting')",
+  },
   {
     id: "auth-loading",
     route: "/",

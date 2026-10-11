@@ -30,6 +30,8 @@ import { Link } from "react-router-dom";
 import { useLegalDocuments } from "../legalDocuments";
 import { useAuth } from "@shell/auth/AuthContext";
 import AuthLayout from "../components/AuthLayout";
+import RegistrationStatus from "../components/RegistrationStatus";
+import { useSelfRegistration } from "../useSelfRegistration";
 import {
   CcureAlert,
   CcureButton,
@@ -39,12 +41,7 @@ import {
   CcurePasswordField,
   gradePassword,
 } from "../../../design-system";
-import {
-  checkEmail,
-  checkUsername,
-  isSelfRegistrationEnabled,
-  resendVerification,
-} from "@shell/api/auth";
+import { checkEmail, checkUsername, resendVerification } from "@shell/api/auth";
 import { useDebounce } from "@shell/hooks/useDebounce";
 import "../styles/auth.css";
 
@@ -100,20 +97,12 @@ export default function Register() {
   const [submitted, setSubmitted] = useState(false);
   const [resendState, setResendState] = useState("");
 
-  // null = still probing, true/false = known. Rendering the form before this
-  // resolves would flash a signup form at users of a deployment that does not
-  // allow signup.
-  const [selfRegAllowed, setSelfRegAllowed] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    isSelfRegistrationEnabled().then((allowed) => {
-      if (!cancelled) setSelfRegAllowed(allowed);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const {
+    allowed: selfRegAllowed,
+    loading: registrationLoading,
+    retry,
+    disable: disableRegistration,
+  } = useSelfRegistration();
 
   const debouncedUsername = useDebounce(username, 500);
 
@@ -202,7 +191,7 @@ export default function Register() {
     } catch (err) {
       // 404 means the deployment has self-registration disabled.
       if (err.response?.status === 404) {
-        setSelfRegAllowed(false);
+        disableRegistration();
         return;
       }
       let errMsg = "Registration failed. Please try again.";
@@ -257,6 +246,20 @@ export default function Register() {
     </AuthLayout>
   );
 
+  if (selfRegAllowed === null) {
+    return shell(
+      <div className="auth-prose">
+        <h1 className="auth-title">Account registration</h1>
+        <div className="auth-sub">
+          <RegistrationStatus loading={registrationLoading} onRetry={retry} />
+        </div>
+        <CcureButton as={Link} to="/login" block size="lg">
+          Back to sign in
+        </CcureButton>
+      </div>,
+    );
+  }
+
   // ── Self-registration disabled for this deployment ───────────────────────
   if (selfRegAllowed === false) {
     return shell(
@@ -267,7 +270,7 @@ export default function Register() {
           are provisioned deliberately rather than opened on request.
         </p>
         <p className="auth-sub">
-          Ask your CCure administrator to create an account for you. If you
+          Ask your CCurePRO administrator to create an account for you. If you
           already have one, sign in below.
         </p>
         <CcureButton as={Link} to="/login" block size="lg">
@@ -365,7 +368,7 @@ export default function Register() {
         <>
           <h1 className="auth-title">Create account</h1>
           <p className="auth-sub">
-            Create your CCure account. Email verification and administrator
+            Create your CCurePRO account. Email verification and administrator
             approval are required.
           </p>
 

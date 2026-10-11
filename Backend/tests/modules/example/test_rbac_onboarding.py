@@ -116,7 +116,12 @@ def test_sync_registers_the_catalogue_and_materialises_default_grants(rbac_db, e
         "example.widget.read",
         "example.widget.write",
     ]
-    assert len(report.registered) == 67 + 3
+    declared_keys = sorted(
+        permission.key
+        for source in composition.load_permission_sources()
+        for permission in source.permissions
+    )
+    assert report.registered == tuple(declared_keys)
 
     def mine(role_key):
         return tuple(

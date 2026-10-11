@@ -52,6 +52,25 @@ for (const state of SHELL_STATES) {
     // readiness check compares canvas frames, and at 1440px in WebKit each
     // comparison encodes a canvas large enough to push it past the poll limit.
     await openState(page, state, { width: 390 });
+    const header = page.locator(".cc-header");
+    if (await page.locator(".sh-shell").count()) {
+      for (const name of [
+        /New Scan/i,
+        /Notifications/i,
+        /^Help$|Help Center/i,
+      ]) {
+        await expect(
+          header.getByRole("button", { name, includeHidden: true }),
+        ).toHaveCount(0);
+      }
+    } else {
+      await expect(
+        header.getByRole("button", {
+          name: /notifications/i,
+          includeHidden: true,
+        }),
+      ).toHaveCount(1);
+    }
     const narrow = await measure(page);
     expect(narrow.count, "one <h1> in main").toBe(1);
     expect(narrow.inSharedHeader, "the <h1> is CcurePageHeader's").toBe(true);

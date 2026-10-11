@@ -7,12 +7,12 @@ const auth = (name) =>
 const widths = [320, 375, 390, 414, 768, 1024, 1280, 1440, 1920];
 
 async function assertIdentity(page) {
-  await expect(page.locator(".auth-platform-header")).toContainText("CCure");
+  await expect(page.locator(".auth-platform-header")).toContainText("CCurePRO");
   await expect(page.locator(".auth-platform-description")).toBeVisible();
   await expect(page.locator(".auth-platform-description")).toHaveText(
     "Enterprise Security / Vulnerability Management Platform",
   );
-  await expect(page).toHaveTitle(/\| CCure$/);
+  await expect(page).toHaveTitle(/\| CCurePRO Platform$/);
   await expect(page.locator("h1")).toHaveCount(1);
   // Excludes legally controlled dialog content, which retains its approved text.
   expect(await page.locator(".auth-layout").innerText()).not.toMatch(
@@ -257,7 +257,7 @@ test("Authentication registration unavailable state names the platform", async (
       ...auth("register"),
       stubs: {
         ...auth("register").stubs,
-        "/auth/check-email": { __status: 404, body: { detail: "Not found" } },
+        "/auth/config": { self_registration_enabled: false },
       },
       ready:
         "document.body.innerText.includes('Accounts are created by an administrator')",
@@ -266,6 +266,150 @@ test("Authentication registration unavailable state names the platform", async (
   );
   await expect(page.locator("#fullName")).toHaveCount(0);
   await assertResponsive(page, log);
+});
+
+for (const enabled of [false, true]) {
+  test(`Authentication registration policy remains ${enabled} across reloads`, async ({
+    page,
+  }) => {
+    const log = await openState(page, {
+      ...auth("login"),
+      stubs: {
+        ...auth("login").stubs,
+        "/auth/config": { self_registration_enabled: enabled },
+      },
+    });
+    for (let visit = 0; visit < 3; visit += 1) {
+      if (visit) await page.reload();
+      if (enabled) {
+        await expect(
+          page.getByRole("link", { name: "Register here" }),
+        ).toBeVisible();
+        await expect(
+          page.getByText(/created by your administrator/),
+        ).toHaveCount(0);
+      } else {
+        await expect(
+          page.getByText(/created by your administrator/),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("link", { name: "Register here" }),
+        ).toHaveCount(0);
+      }
+    }
+    expect(
+      log.requests.filter((r) => r.path === "/api/auth/config"),
+    ).toHaveLength(3);
+    expect(log.requests.some((r) => r.path === "/api/auth/check-email")).toBe(
+      false,
+    );
+    await assertPage(page, log);
+  });
+}
+
+test("Authentication waits for delayed configuration without moving credentials or flashing signup", async ({
+  page,
+}) => {
+  let pending;
+  await page.route(
+    (url) => url.pathname === "/api/auth/config",
+    (request) => {
+      pending = request;
+    },
+  );
+  const log = await openState(page, auth("login"), { width: 320 });
+  await expect(page.getByRole("status")).toContainText(
+    "Checking registration availability",
+  );
+  await expect(page.getByRole("link", { name: "Register here" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/created by your administrator/)).toHaveCount(0);
+  const before = await page.locator(".auth-card").boundingBox();
+  await page.locator("#emailOrUsername").fill("analyst");
+  await page.locator("#password").fill("Example!Passphrase1");
+  await pending.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ self_registration_enabled: false }),
+  });
+  await expect(page.getByText(/created by your administrator/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Register here" })).toHaveCount(
+    0,
+  );
+  await expect(page.locator("#emailOrUsername")).toHaveValue("analyst");
+  await expect(page.locator("#password")).toHaveValue("Example!Passphrase1");
+  const after = await page.locator(".auth-card").boundingBox();
+  expect(after.y).toBeCloseTo(before.y, 0);
+  expect(after.height).toBeCloseTo(before.height, 0);
+  await assertPage(page, log);
+});
+
+for (const [name, status, body] of [
+  ["throttled", 429, { message: "Synthetic rate limit" }],
+  ["unauthorized", 401, { message: "Synthetic auth failure" }],
+  ["malformed", 200, { available: true }],
+]) {
+  test(`Authentication ${name} configuration stays unknown and can be retried`, async ({
+    page,
+  }) => {
+    let attempts = 0;
+    await page.route(
+      (url) => url.pathname === "/api/auth/config",
+      (request) => {
+        attempts += 1;
+        return request.fulfill({
+          status: attempts === 1 ? status : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            attempts === 1 ? body : { self_registration_enabled: false },
+          ),
+        });
+      },
+    );
+    const log = await openState(page, auth("login"), { width: 320 });
+    await expect(page.getByRole("status")).toContainText(
+      "Registration options are unavailable",
+    );
+    await expect(page.getByRole("link", { name: "Register here" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByText(/created by your administrator/)).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: /Sign In/ })).toBeEnabled();
+    await assertPage(page, log);
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByText(/created by your administrator/)).toBeVisible();
+    expect(attempts).toBe(2);
+    await assertPage(page, log);
+  });
+}
+
+test("Authentication direct registration waits for configuration and recovers without exposing a form", async ({
+  page,
+}) => {
+  const log = await openState(
+    page,
+    {
+      ...auth("register"),
+      stubs: {
+        ...auth("register").stubs,
+        "/auth/config": {
+          __status: 503,
+          body: { message: "Synthetic outage" },
+        },
+      },
+      ready:
+        "document.body.innerText.includes('Registration options are unavailable')",
+    },
+    { width: 320 },
+  );
+  await expect(page.locator("#fullName")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Back to sign in" }),
+  ).toHaveAttribute("href", "/login");
+  await assertPage(page, log);
 });
 
 test("Authentication MFA email code and error retain the challenge", async ({

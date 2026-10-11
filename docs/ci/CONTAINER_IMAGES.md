@@ -152,6 +152,28 @@ unnecessary; it was removed a day before it expired, and
 `trivy-frontend.yaml` holds no exceptions now. Drop each upgrade once the
 digest moves to a base that already carries the fix.
 
+### Scanner dependency patches (12 Oct 2026)
+
+The backend now builds the existing Nuclei v3.11.1, ffuf v2.3.0 and
+subfinder v2.6.7 sources with digest-pinned Go 1.26.9 and
+`golang.org/x/net@v0.60.0`. This fixes the HTTP/TLS denial-of-service advisories
+CVE-2026-78667, CVE-2026-78669 and CVE-2026-97031 in the upstream release
+binaries without changing scanner release versions. Go's checksum database
+verifies module sources and dependencies; the compiler stays in its build stage.
+Go 1.26.9 also stays within the scanner's Sonic JSON dependency's supported
+Go range, avoiding its Go 1.27 compatibility warning and fallback.
+No new vulnerability exception is added.
+
+The frontend also upgrades `tiff` to fix CVE-2026-4775:
+`apk upgrade --no-cache pcre2 libexpat tiff`. Drop the package patch once its
+pinned base contains the fix.
+
+The backend image smoke test runs
+[`scanner_fixture.py`](../../scripts/ci/scanner_fixture.py) in a container with
+`--network none`. It checks Nuclei detection and ffuf discovery/JSON output
+against a loopback HTTP fixture and confirms all three scanner release
+versions. It never scans a real target or connects to the application database.
+
 ## Changes made, with the evidence for each
 
 Measured on this VM on 24 Sep 2026, building from the committed tree.

@@ -29,6 +29,7 @@ ADMIN_FILES = (
     "ccure_platform/administration/users.py",
     "ccure_platform/administration/organizations.py",
     "ccure_platform/administration/rbac_admin.py",
+    "ccure_platform/administration/registration_settings.py",
     "ccure_platform/audit_log/router.py",
 )
 

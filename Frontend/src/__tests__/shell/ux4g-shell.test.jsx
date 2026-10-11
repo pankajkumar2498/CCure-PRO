@@ -194,7 +194,7 @@ describe("shell menu adapters", () => {
   });
 });
 
-it("saves native Switch values and preserves the complete preference document", async () => {
+it("saves native Switch values without overwriting the header theme preference", async () => {
   const u = userEvent.setup();
   render(<SettingsDrawer onClose={() => {}} />);
   const email = await screen.findByRole("switch", { name: "Email alerts" });
@@ -207,7 +207,6 @@ it("saves native Switch values and preserves the complete preference document", 
   await u.click(screen.getByRole("button", { name: "Save Settings" }));
   await waitFor(() =>
     expect(updatePreferences).toHaveBeenCalledExactlyOnceWith({
-      theme: "light",
       default_rows_per_page: 25,
       sidebar_collapsed: false,
       email_alerts: false,

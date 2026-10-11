@@ -401,16 +401,33 @@ def _issue_verification_token(db: Session, user: User, request: Request | None =
     return token
 
 
-def _require_self_registration_enabled() -> None:
+class PublicAuthConfig(BaseModel):
+    self_registration_enabled: bool
+
+
+@router.get("/config", response_model=PublicAuthConfig)
+def public_auth_config(response: Response, db: Session = Depends(get_db)):
+    """Public account-access configuration, independent of sessions and account data."""
+    from ccure_platform.identity.registration_policy import read_policy
+
+    # Never infer deployment policy from a throttled availability probe. This
+    # read looks up only the singleton policy, never accounts or sessions.
+    response.headers["Cache-Control"] = "no-store"
+    return PublicAuthConfig(
+        self_registration_enabled=read_policy(db)["self_registration_enabled"]
+    )
+
+
+def _require_self_registration_enabled(db: Session = Depends(get_db)) -> None:
     """
-    Gate every self-service signup route behind ALLOW_SELF_REGISTRATION.
+    Gate every self-service signup route behind the effective registration policy.
 
     404 rather than 403: when the feature is off, the endpoint should not
     advertise that it exists and is merely disabled here.
     """
-    from config import AppConfig
+    from ccure_platform.identity.registration_policy import read_policy
 
-    if not AppConfig.ALLOW_SELF_REGISTRATION:
+    if not read_policy(db)["self_registration_enabled"]:
         raise HTTPException(status_code=404, detail="Not Found")
 
 
@@ -433,7 +450,7 @@ def check_username(
     username endpoint too. Usernames are semi-public within a tenant; email
     addresses are not.
     """
-    _require_self_registration_enabled()
+    _require_self_registration_enabled(db)
     query_str = q.strip()
     if len(query_str) < 3 or "@" in query_str:
         return {"available": False}
@@ -468,7 +485,7 @@ def check_email(
     privacy and saves the person filling in the form from completing a signup
     that is going to be refused at submit.
     """
-    _require_self_registration_enabled()
+    _require_self_registration_enabled(db)
     query_str = q.strip()
     if not query_str or "@" not in query_str:
         return {"available": False, "reason": "invalid"}
@@ -514,7 +531,7 @@ def register(
 
     Registration now yields nothing usable:
 
-      * the route only exists when ALLOW_SELF_REGISTRATION is on (default off,
+      * the route is available only when the effective registration policy is on (default off,
         because POST /admin/users is the supported onboarding path),
       * no tokens are returned — 202, not 201, because the account is pending,
       * the account is created is_verified=False, is_active=False,
@@ -524,7 +541,7 @@ def register(
     The response body is identical whether or not the address was already
     registered, so this route cannot be used to enumerate accounts.
     """
-    _require_self_registration_enabled()
+    _require_self_registration_enabled(db)
 
     email = normalize_email(req.email)
     username = req.username.strip()
@@ -845,7 +862,7 @@ def resend_verification(
     address the caller chose, which makes it usable as a mail relay against a
     third party if left open.
     """
-    _require_self_registration_enabled()
+    _require_self_registration_enabled(db)
 
     generic = {
         "detail": (

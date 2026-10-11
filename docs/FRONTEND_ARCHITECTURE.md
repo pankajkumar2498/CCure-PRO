@@ -845,7 +845,7 @@ COPY . . && ARG VITE_API_BASE_URL=/api
 RUN npm run ux4g:check -- --dependencies-only && npm run build
 
 FROM nginx:stable-alpine@sha256:… AS runtime
-RUN apk upgrade --no-cache pcre2 libexpat
+RUN apk upgrade --no-cache pcre2 libexpat tiff
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 ```

@@ -92,57 +92,56 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/ms-playwright \
     /root/.local/bin/playwright install chromium 2>/dev/null || echo "Playwright browser install skipped"
 
+# ── Patched Scanner Build Stage ───────────────────────────────────────────
+# Keep the scanner releases and CLI contracts, but rebuild their HTTP/TLS
+# dependencies: upstream release binaries still carry CVE-2026-78667,
+# CVE-2026-78669 and CVE-2026-97031. Go's checksum database verifies the pinned
+# module sources and dependencies. The compiler never enters the runtime image.
+FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS scanner-builder
+
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2
+WORKDIR /src
+ARG NUCLEI_VERSION=v3.11.1
+ARG SUBFINDER_VERSION=v2.6.7
+ARG FFUF_VERSION=v2.3.0
+ARG SCANNER_X_NET_VERSION=v0.60.0
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download github.com/projectdiscovery/nuclei/v3@${NUCLEI_VERSION} && \
+    cp -R /go/pkg/mod/github.com/projectdiscovery/nuclei/v3@${NUCLEI_VERSION} /src/nuclei && \
+    chmod -R u+w /src/nuclei && cd /src/nuclei && \
+    go get golang.org/x/net@${SCANNER_X_NET_VERSION} && \
+    go build -p 2 -trimpath -ldflags="-s -w" -o /out/nuclei ./cmd/nuclei
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download github.com/projectdiscovery/subfinder/v2@${SUBFINDER_VERSION} && \
+    cp -R /go/pkg/mod/github.com/projectdiscovery/subfinder/v2@${SUBFINDER_VERSION} /src/subfinder && \
+    chmod -R u+w /src/subfinder && cd /src/subfinder && \
+    go get golang.org/x/net@${SCANNER_X_NET_VERSION} && \
+    go build -p 2 -trimpath -ldflags="-s -w" -o /out/subfinder ./cmd/subfinder
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download github.com/ffuf/ffuf/v2@${FFUF_VERSION} && \
+    cp -R /go/pkg/mod/github.com/ffuf/ffuf/v2@${FFUF_VERSION} /src/ffuf && \
+    chmod -R u+w /src/ffuf && cd /src/ffuf && \
+    go get golang.org/x/net@${SCANNER_X_NET_VERSION} && \
+    go build -p 2 -trimpath \
+    -ldflags="-s -w -X github.com/ffuf/ffuf/v2/pkg/ffuf.VERSION=${FFUF_VERSION#v} -X github.com/ffuf/ffuf/v2/pkg/ffuf.VERSION_APPENDIX=" \
+    -o /out/ffuf .
+
 # ── Security Tools Stage ──────────────────────────────────────────────────
 FROM base AS tools
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
-    unzip \
     ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Tool versions are PINNED (Phase 15), not fetched as "latest", so a clean
-# rebuild is reproducible and version-controlled. Override at build time with
-# --build-arg NUCLEI_VERSION=vX.Y.Z if a controlled upgrade is intended. These
-# defaults are the versions verified working in the ccure-web-worker runtime.
-# The installs no longer swallow failures with `|| echo skipped`: a pinned
-# download that fails must abort the build rather than silently ship an image
-# missing a primary detector (the runtime gate below is the second line of
-# defence, not the first).
-#
-# Each download is checked against the SHA-256 the project publishes beside the
-# release (its *_checksums.txt). A version pin says which release was asked
-# for; only the checksum says the bytes are that release. An upgrade therefore
-# changes the version and its checksum together — an override of the version
-# alone fails here, which is the intent.
-ARG NUCLEI_VERSION=v3.11.1
-ARG NUCLEI_SHA256=ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
-ARG SUBFINDER_VERSION=v2.6.7
-ARG SUBFINDER_SHA256=d988a481d3037c55e685afee023eb104a81a77dd2691fb902b59019a365f6103
-ARG FFUF_VERSION=v2.3.0
-ARG FFUF_SHA256=b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
-
-# Nuclei — template-based vulnerability scanner (primary DAST engine)
-RUN wget -q "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" -O /tmp/nuclei.zip && \
-    echo "${NUCLEI_SHA256}  /tmp/nuclei.zip" | sha256sum -c - && \
-    unzip -o /tmp/nuclei.zip -d /usr/local/bin/ && \
-    chmod +x /usr/local/bin/nuclei && \
-    rm -f /tmp/nuclei.zip
-
-# Subfinder — passive subdomain enumeration
-RUN wget -q "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" -O /tmp/subfinder.zip && \
-    echo "${SUBFINDER_SHA256}  /tmp/subfinder.zip" | sha256sum -c - && \
-    unzip -o /tmp/subfinder.zip -d /usr/local/bin/ && \
-    chmod +x /usr/local/bin/subfinder && \
-    rm -f /tmp/subfinder.zip
-
-# ffuf — directory/file bruteforcing
-RUN wget -q "https://github.com/ffuf/ffuf/releases/download/${FFUF_VERSION}/ffuf_${FFUF_VERSION#v}_linux_amd64.tar.gz" -O /tmp/ffuf.tar.gz && \
-    echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c - && \
-    tar xf /tmp/ffuf.tar.gz -C /usr/local/bin/ ffuf && \
-    chmod +x /usr/local/bin/ffuf && \
-    rm -f /tmp/ffuf.tar.gz
+COPY --from=scanner-builder /out/ /usr/local/bin/
 
 # Nuclei templates — provisioned once at build time into the image (NOT fetched
 # per scan). This is a build-time snapshot; the runtime gate below refuses to
@@ -191,11 +190,9 @@ COPY --from=tools /root/nuclei-templates /opt/nuclei-templates
 
 # ── Verify the scanners actually made it into the shipped image ────────────
 # This gate runs in `runtime`, not in `tools`, because `runtime` is what ships.
-# The tool installs above each end in `|| echo "... skipped"` so a transient
-# network failure does not abort the build; without a gate, a build that failed
-# to fetch nuclei still succeeds and produces a DAST image whose main detector
-# is absent — the scan then completes, reports nothing, and is indistinguishable
-# from a clean result.
+# Scanner source/dependency fetches and compilation fail the build on error.
+# This additional runtime gate catches a missing COPY into the final image,
+# which would otherwise produce scans that report nothing.
 #
 # Verifying in an earlier stage does not establish this. `runtime` inherits from
 # `base` and copies named paths out of `tools`, so a tool present in `tools` and

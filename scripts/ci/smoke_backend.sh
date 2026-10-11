@@ -148,6 +148,13 @@ docker exec "$API" ffuf -V >/dev/null 2>&1 || fail "ffuf does not run"
 docker exec "$API" subfinder -version >/dev/null 2>&1 || fail "subfinder does not run"
 docker exec "$API" sqlmap --version >/dev/null 2>&1 || fail "sqlmap does not run"
 pass "nuclei, ffuf, subfinder and sqlmap execute"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+docker run --rm --network none --entrypoint python \
+  -v "$SCRIPT_DIR/scanner_fixture.py:/tmp/scanner_fixture.py:ro" \
+  -v "$SCRIPT_DIR/../../Backend/Dockerfile:/tmp/scanner-Dockerfile:ro" "$IMAGE" \
+  /tmp/scanner_fixture.py /tmp/scanner-Dockerfile \
+  || fail "scanner detection or JSON output changed"
+pass "scanner detection and JSON output work against an isolated loopback fixture"
 # nmap is not checked here. The Dockerfile gives it file capabilities including
 # cap_net_admin, and a file capability outside the container's bounding set
 # makes execve fail with EPERM — as ccure and as root alike. Only the worker,

@@ -139,10 +139,13 @@ def test_changes_and_resets_are_audited_with_actor_and_before_after(w):
     events = (
         w.db.query(PlatformAuditEvent)
         .filter_by(action="registration.policy_changed")
-        .order_by(PlatformAuditEvent.occurred_at)
         .all()
     )
     assert len(events) == 2
+    # PostgreSQL now() is shared by this fixture's rollback transaction;
+    # equal timestamps cannot order the two changes. Revisions can.
+    events.sort(key=lambda event: event.changes["after"]["revision"])
+    assert [event.changes["after"]["revision"] for event in events] == [1, 2]
     assert all(e.actor_user_id == w.current["user"].id for e in events)
     assert events[0].changes["before"]["self_registration_enabled"] is False
     assert events[0].changes["after"]["self_registration_enabled"] is True
